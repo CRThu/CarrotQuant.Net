@@ -13,7 +13,7 @@ namespace CarrotQuant.Net.ViewModel
 {
     public class MainWindowDataContext : NotificationObject
     {
-        private DapperSqliteHelper sqliteHelper = new();
+        private SqliteHelper sqliteHelper = new();
 
         private DataTable dg;
         public DataTable DG
@@ -23,6 +23,20 @@ namespace CarrotQuant.Net.ViewModel
             {
                 dg = value;
                 RaisePropertyChanged(() => DG);
+            }
+        }
+
+        private List<string> albums = new()
+        {
+            "sh.000111","sh.000333","sh.000334","sh.000335","sz.000444"
+        };
+        public List<string> Albums
+        {
+            get => albums;
+            set
+            {
+                albums = value;
+                RaisePropertyChanged(() => Albums);
             }
         }
 

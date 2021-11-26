@@ -5,6 +5,7 @@
     <TargetFramework>net5.0-windows</TargetFramework>
 	<UseWPF>true</UseWPF>
 	  <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+	  <Platforms>AnyCPU</Platforms>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="CefSharp.Wpf.NETCore" Version="95.7.141" />
     <PackageReference Include="Dapper" Version="2.0.123" />
     <PackageReference Include="MahApps.Metro" Version="2.4.9" />
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.0.1" />

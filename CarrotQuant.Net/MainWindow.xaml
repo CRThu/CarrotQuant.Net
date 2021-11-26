@@ -7,8 +7,9 @@
         xmlns:local="clr-namespace:CarrotQuant.Net"
         xmlns:viewmodel="clr-namespace:CarrotQuant.Net.ViewModel"
         xmlns:behaviors="http://schemas.microsoft.com/xaml/behaviors"
+        xmlns:cef="clr-namespace:CefSharp.Wpf;assembly=CefSharp.Wpf"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="CarrotQuant.NET" Height="650" Width="1150">
     <mah:MetroWindow.DataContext>
         <viewmodel:MainWindowDataContext/>
     </mah:MetroWindow.DataContext>
@@ -21,7 +22,7 @@
         <Grid>
             <TabControl x:Name="tabControl">
                 <TabItem Header="数据库">
-                    <Grid Background="#FFE5E5E5">
+                    <Grid>
                         <Button Content="加载数据库..." HorizontalAlignment="Left" Width="123" Height="35" VerticalAlignment="Top" Margin="10,10,0,0" FontSize="12" FontWeight="Normal" FontFamily="Microsoft YaHei UI">
                             <behaviors:Interaction.Triggers>
                                 <behaviors:EventTrigger EventName="Click">
@@ -31,11 +32,22 @@
                         </Button>
                         <TextBlock Text="数据库信息" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,71,0,0"/>
                         <TextBox HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,91,0,0" Height="149" Width="270"/>
+                        <ComboBox Width="200"
+                              Margin="285,41,0,0"
+                              mah:TextBoxHelper.UseFloatingWatermark="True"
+                              mah:TextBoxHelper.Watermark="证券代码"
+                              IsEditable="True"
+                              ItemsSource="{Binding Albums}"
+                              MaxDropDownHeight="125"
+                              Style="{DynamicResource MahApps.Styles.ComboBox.Virtualized}"
+                              Height="45" VerticalAlignment="Top" HorizontalAlignment="Left" />
                         <DataGrid x:Name="dataGrid" ItemsSource="{Binding DG}" Margin="285,91,10,10"/>
                     </Grid>
                 </TabItem>
                 <TabItem Header="TabItem">
-                    <Grid Background="#FFE5E5E5"/>
+                    <Grid>
+                        <cef:ChromiumWebBrowser x:Name="Browser" Address="www.google.com"/>
+                    </Grid>
                 </TabItem>
             </TabControl>
         </Grid>

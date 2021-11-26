@@ -10,14 +10,14 @@ using System.Threading.Tasks;
 
 namespace CarrotQuant.Net.Model
 {
-    public class DapperSqliteHelper
+    public class SqliteHelper
     {
         public string FileName;
-        public DapperSqliteHelper()
+        public SqliteHelper()
         {
         }
 
-        public DapperSqliteHelper(string fileName) : this()
+        public SqliteHelper(string fileName) : this()
         {
             FileName = fileName;
         }
