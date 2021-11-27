@@ -16,6 +16,7 @@
     <PackageReference Include="CefSharp.Wpf.NETCore" Version="95.7.141" />
     <PackageReference Include="Dapper" Version="2.0.123" />
     <PackageReference Include="MahApps.Metro" Version="2.4.9" />
+    <PackageReference Include="MahApps.Metro.IconPacks" Version="4.11.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.0.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.0.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="6.0.0" />

@@ -1,4 +1,7 @@
 ﻿using CarrotQuant.Net.Model;
+using CarrotQuant.Net.Utility;
+using MahApps.Metro.Controls;
+using MahApps.Metro.Controls.Dialogs;
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
@@ -13,57 +16,121 @@ namespace CarrotQuant.Net.ViewModel
 {
     public class MainWindowDataContext : NotificationObject
     {
-        private SqliteHelper sqliteHelper = new();
+        // Dialog管理器
+        private IDialogCoordinator dialogCoordinator;
 
-        private DataTable dg;
-        public DataTable DG
+        // 数据库
+        private SqliteHelper dataBase = new();
+        public SqliteHelper DataBase
         {
-            get => dg;
+            get => dataBase;
             set
             {
-                dg = value;
-                RaisePropertyChanged(() => DG);
+                dataBase = value;
+                RaisePropertyChanged(() => DataBase);
             }
         }
 
-        private List<string> albums = new()
+        // 选中的表名(股票代码名)
+        private string selectedDataBaseTableName;
+        public string SelectedDataBaseTableName
         {
-            "sh.000111","sh.000333","sh.000334","sh.000335","sz.000444"
-        };
-        public List<string> Albums
-        {
-            get => albums;
+            get => selectedDataBaseTableName;
             set
             {
-                albums = value;
-                RaisePropertyChanged(() => Albums);
+                selectedDataBaseTableName = value;
+                RaisePropertyChanged(() => SelectedDataBaseTableName);
             }
         }
 
-        private CommandBase loadDatabaseEvent;
-        public CommandBase LoadDatabaseEvent
+        // 选中的股票代码数据表
+        private DataTable selectedDataBaseTable;
+        public DataTable SelectedDataBaseTable
+        {
+            get => selectedDataBaseTable;
+            set
+            {
+                selectedDataBaseTable = value;
+                RaisePropertyChanged(() => SelectedDataBaseTable);
+            }
+        }
+
+        public MainWindowDataContext()
+        {
+
+        }
+
+        public MainWindowDataContext(IDialogCoordinator instance)
+        {
+            dialogCoordinator = instance;
+        }
+
+        // 函数
+        public void LoadDataBase()
+        {
+            try
+            {
+                OpenFileDialog openFileDialog = new()
+                {
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                    Filter = "SQLite数据库文件|*.db;*.sqlite"
+                };
+                if (openFileDialog.ShowDialog() == true)
+                {
+                    DataBase.Open(openFileDialog.FileName);
+                }
+            }
+            catch (Exception ex)
+            {
+                MahAppsDialogUtility.ShowExceptionMessage(this, dialogCoordinator, ex);
+            }
+        }
+
+        public void UpdateDataBaseSelectedTable()
+        {
+            try
+            {
+                SelectedDataBaseTable = DataBase.GetTable(SelectedDataBaseTableName);
+            }
+            catch (Exception ex)
+            {
+                MahAppsDialogUtility.ShowExceptionMessage(this, dialogCoordinator, ex);
+            }
+        }
+
+        // 事件
+        private CommandBase loadDataBaseEvent;
+        public CommandBase LoadDataBaseEvent
         {
             get
             {
-                if (loadDatabaseEvent == null)
+                if (loadDataBaseEvent == null)
                 {
-                    loadDatabaseEvent = new CommandBase(new Action<object>(o =>
+                    loadDataBaseEvent = new CommandBase(new Action<object>(o =>
                     {
-                        OpenFileDialog openFileDialog = new()
-                        {
-                            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                            Filter = "SQLite数据库文件|*.db;*.sqlite"
-                        };
-                        if (openFileDialog.ShowDialog() == true)
-                        {
-                            sqliteHelper.FileName = openFileDialog.FileName;
-                            DataTable dt = sqliteHelper.Query("select * from 'sh.601020'");
-                            DG = dt;
-                        }
+                        LoadDataBase();
                     }));
                 }
-                return loadDatabaseEvent;
+                return loadDataBaseEvent;
             }
         }
+
+        private CommandBase updateDataBaseSelectedTableEvent;
+        public CommandBase UpdateDataBaseSelectedTableEvent
+        {
+            get
+            {
+                if (updateDataBaseSelectedTableEvent == null)
+                {
+                    updateDataBaseSelectedTableEvent = new CommandBase(new Action<object>(o =>
+                    {
+                        UpdateDataBaseSelectedTable();
+                    }));
+                }
+                return updateDataBaseSelectedTableEvent;
+            }
+        }
+
+
     }
 }
