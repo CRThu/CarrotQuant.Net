@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -39,6 +40,17 @@ namespace CarrotQuant.Net.Model
             }
         }
 
+        public Dictionary<string, dynamic> info;
+        public Dictionary<string, dynamic> Info
+        {
+
+            get => info;
+            set
+            {
+                info = value;
+                RaisePropertyChanged(() => Info);
+            }
+        }
 
         public SqliteHelper()
         {
@@ -63,6 +75,12 @@ namespace CarrotQuant.Net.Model
 
             // 更新数据库基础信息
             TableNames = GetTableNames();
+            Info = new()
+            {
+                { "文件路径", Path.GetDirectoryName(FileName) },
+                { "文件名", Path.GetFileName(FileName) },
+                { "数据表数量", TableNames.Count }
+            };
         }
 
         public DataTable Query(string query)

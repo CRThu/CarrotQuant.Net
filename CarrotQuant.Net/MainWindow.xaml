@@ -33,8 +33,12 @@
                                 </behaviors:EventTrigger>
                             </behaviors:Interaction.Triggers>
                         </Button>
-                        <TextBlock Text="数据库信息" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,71,0,0"/>
-                        <TextBox HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,91,0,0" Height="149" Width="270"/>
+                        <DataGrid ItemsSource="{Binding DataBase.Info}" IsReadOnly="True" CanUserSortColumns="False" AutoGenerateColumns="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,73,0,0" Height="149" Width="270">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Key" Binding="{Binding Key}"/>
+                                <DataGridTextColumn Header="Value" Binding="{Binding Value}"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
                         <ComboBox Width="200"
                               Margin="285,23,0,0"
                               mah:TextBoxHelper.UseFloatingWatermark="True"
@@ -53,7 +57,7 @@
                                 </behaviors:EventTrigger>
                             </behaviors:Interaction.Triggers>
                         </Button>
-                        <DataGrid x:Name="dataGrid" ItemsSource="{Binding SelectedDataBaseTable}" Margin="285,73,10,10"/>
+                        <DataGrid x:Name="dataGrid" ItemsSource="{Binding SelectedDataBaseTable}" IsReadOnly="True" CanUserSortColumns="False" Margin="285,73,10,10"/>
                     </Grid>
                 </TabItem>
                 <TabItem Header="TabItem">
