@@ -1,0 +1,70 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8">
+    <title>第一个 ECharts 实例</title>
+    <script src="echarts.js"></script>
+</head>
+<body>
+    <!-- 为ECharts准备一个具备大小（宽高）的Dom -->
+    <div id="main" style="width: 1400px;height:600px;"></div>
+    <script type="text/javascript">
+        //InitCodeData方法从MainWindow中进行调用。
+        function InitCodeData(listdata) {
+            myChart = echarts.init(document.getElementById('main'), 'macarons');
+            //alert(listdata.Name);
+            option = {
+                title: {
+                    text: '动态折线图'
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross',
+                        label: {
+                            backgroundColor: '#6a7985'
+                        }
+                    }
+                },
+                legend: {
+                    data: ['XX数据'],
+                },
+                //toolbox: {
+                //    feature: {
+                //        saveAsImage: {}
+                //    }
+                //},
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: [
+                    {
+                        type: 'category',
+                        boundaryGap: false,
+                        data: listdata.datetime
+                    }
+                ],
+                yAxis: [
+                    {
+                        type: 'value'
+                    }
+                ],
+                series: [
+                    {
+                        name: 'XX数据',
+                        type: 'line',
+                        stack: '测试数据1',
+                        areaStyle: {},
+                        data: listdata.open
+                    },
+                ]
+            };
+            myChart.setOption(option);
+        }
+    </script>
+</body>
+</html>

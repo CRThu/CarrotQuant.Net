@@ -131,6 +131,5 @@ namespace CarrotQuant.Net.ViewModel
             }
         }
 
-
     }
 }
