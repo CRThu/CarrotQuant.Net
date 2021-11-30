@@ -28,7 +28,7 @@
                     }
                 },
                 legend: {
-                    data: ['XX数据'],
+                    data: ['股价'],
                 },
                 //toolbox: {
                 //    feature: {
@@ -45,7 +45,7 @@
                     {
                         type: 'category',
                         boundaryGap: false,
-                        data: listdata.datetime
+                        data: listdata.DateTime
                     }
                 ],
                 yAxis: [
@@ -55,15 +55,13 @@
                 ],
                 series: [
                     {
-                        name: 'XX数据',
-                        type: 'line',
-                        stack: '测试数据1',
-                        areaStyle: {},
-                        data: listdata.open
+                        name: '股价',
+                        type: 'candlestick',
+                        data: listdata.OHLC
                     },
                 ]
             };
-            myChart.setOption(option);
+            option && myChart.setOption(option);
         }
     </script>
 </body>

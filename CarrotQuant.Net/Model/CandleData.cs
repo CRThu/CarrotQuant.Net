@@ -8,10 +8,13 @@ namespace CarrotQuant.Net.Model
 {
     public class CandleData
     {
-        public List<string> datetime { get; set; } = new();
-        public List<double> open { get; set; } = new();
-        public List<double> high { get; set; } = new();
-        public List<double> low { get; set; } = new();
-        public List<double> close { get; set; } = new();
+        public List<string> DateTime { get; set; } = new();
+        public List<double[]> OHLC { get; set; } = new();
+
+        public void Add(string dateTime,double open,double high,double low,double close)
+        {
+            DateTime.Add(dateTime);
+            OHLC.Add(new[] { open,close , low, high });
+        }
     }
 }

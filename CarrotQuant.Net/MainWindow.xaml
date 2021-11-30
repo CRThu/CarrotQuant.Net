@@ -6,16 +6,19 @@
         xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
         xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
         xmlns:local="clr-namespace:CarrotQuant.Net"
-        xmlns:viewmodel="clr-namespace:CarrotQuant.Net.ViewModel"
+        xmlns:vm="clr-namespace:CarrotQuant.Net.ViewModel"
         xmlns:behaviors="http://schemas.microsoft.com/xaml/behaviors"
-        xmlns:cef="clr-namespace:CefSharp.Wpf;assembly=CefSharp.Wpf"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:dialog="clr-namespace:MahApps.Metro.Controls.Dialogs;assembly=MahApps.Metro"
         dialog:DialogParticipation.Register="{Binding}"
         mc:Ignorable="d"
         Title="CarrotQuant.NET" Height="650" Width="1150">
     <mah:MetroWindow.DataContext>
-        <viewmodel:MainWindowDataContext/>
+        <vm:MainWindowDataContext/>
     </mah:MetroWindow.DataContext>
+    <mah:MetroWindow.Resources>
+        <vm:SystemWindowsMediaColor2SystemDrawingColorConverter x:Key="SystemWindowsMediaColor2SystemDrawingColorConverter"/>
+    </mah:MetroWindow.Resources>
     <DockPanel>
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
@@ -29,7 +32,7 @@
                         <Button Content="加载数据库..." HorizontalAlignment="Left" Width="123" Height="35" VerticalAlignment="Top" Margin="10,28,0,0" FontSize="12" FontWeight="Normal" FontFamily="Microsoft YaHei UI">
                             <behaviors:Interaction.Triggers>
                                 <behaviors:EventTrigger EventName="Click">
-                                    <viewmodel:EventCommandBase Command="{Binding LoadDataBaseEvent}"/>
+                                    <vm:EventCommandBase Command="{Binding LoadDataBaseEvent}"/>
                                 </behaviors:EventTrigger>
                             </behaviors:Interaction.Triggers>
                         </Button>
@@ -61,7 +64,7 @@
                             <iconPacks:PackIconMaterial Kind="DatabaseSearch" Height="28" Width="28"/>
                             <behaviors:Interaction.Triggers>
                                 <behaviors:EventTrigger EventName="Click">
-                                    <viewmodel:EventCommandBase Command="{Binding UpdateDataBaseSelectedTableEvent}"/>
+                                    <vm:EventCommandBase Command="{Binding UpdateDataBaseSelectedTableEvent}"/>
                                 </behaviors:EventTrigger>
                             </behaviors:Interaction.Triggers>
                         </Button>
@@ -71,7 +74,8 @@
                 <TabItem Header="TabItem">
                     <Grid>
                         <Button Content="+++" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,10,0,0" Height="37" Width="112" Click="Button_Click"/>
-                        <cef:ChromiumWebBrowser x:Name="Browser" Margin="0,52,0,0"/>
+                        <wv2:WebView2 x:Name="Browser" Margin="0,52,0,0" DefaultBackgroundColor="{Binding Mode=OneWay, Source={StaticResource MahApps.Colors.ThemeBackground},Converter={StaticResource SystemWindowsMediaColor2SystemDrawingColorConverter}}"/>
+                        <!--<cef:ChromiumWebBrowser x:Name="Browser" Margin="0,52,0,0"/>-->
                     </Grid>
                 </TabItem>
             </TabControl>
