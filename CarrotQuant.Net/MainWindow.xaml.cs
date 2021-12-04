@@ -41,16 +41,18 @@ namespace CarrotQuant.Net
         Random randomNum = new Random(Guid.NewGuid().GetHashCode());
         private void Button_Click(object sender, RoutedEventArgs e)
         {
+            cd.StockName = "证券名称";
+            cd.StockCode = "SH888888";
             for (int i = 0; i < 100; i++)
             {
                 dateTime = dateTime.AddDays(1);
                 cd.Add(dateTime.ToString("yyyy-MM-dd"),
                     trend,
-                    trend + randomNum.Next(0, 7 + 1),
-                    trend - randomNum.Next(0, 7 + 1),
-                    trend + randomNum.Next(-3, 3 + 1)
+                    trend + randomNum.Next(0, 21 + 1),
+                    trend - randomNum.Next(0, 21 + 1),
+                    trend + randomNum.Next(-9, 9 + 1)
                     );
-                trend += randomNum.Next(-5, 5 + 1);
+                trend += randomNum.Next(-15, 15 + 1);
             }
             var jsons = JsonSerializer.Serialize(cd);
             string js = $"InitCodeData({jsons});";

@@ -71,11 +71,10 @@
                         <DataGrid x:Name="dataGrid" ItemsSource="{Binding SelectedDataBaseTable}" IsReadOnly="True" CanUserSortColumns="False" Margin="285,73,10,10"/>
                     </Grid>
                 </TabItem>
-                <TabItem Header="TabItem">
+                <TabItem Header="历史行情">
                     <Grid>
                         <Button Content="+++" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,10,0,0" Height="37" Width="112" Click="Button_Click"/>
                         <wv2:WebView2 x:Name="Browser" Margin="0,52,0,0" DefaultBackgroundColor="{Binding Mode=OneWay, Source={StaticResource MahApps.Colors.ThemeBackground},Converter={StaticResource SystemWindowsMediaColor2SystemDrawingColorConverter}}"/>
-                        <!--<cef:ChromiumWebBrowser x:Name="Browser" Margin="0,52,0,0"/>-->
                     </Grid>
                 </TabItem>
             </TabControl>
