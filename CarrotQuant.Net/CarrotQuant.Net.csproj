@@ -20,13 +20,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="View\Chart1 - 复制.html">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <SubType>Code</SubType>
+    </None>
     <None Update="View\Chart1.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="View\Chart2.html">
+    <None Update="View\echarts.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="View\echarts.js">
+    <None Update="View\echarts.js.map">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
