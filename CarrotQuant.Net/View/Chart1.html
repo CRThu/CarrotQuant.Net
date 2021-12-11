@@ -1,14 +1,17 @@
 ﻿<!DOCTYPE html>
 
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+
 <head>
     <meta charset="utf-8">
     <title>ECharts实例</title>
     <script src="echarts.js"></script>
 </head>
+
 <body>
     <style type="text/css">
-        html, body {
+        html,
+        body {
             height: 100%;
         }
 
@@ -19,6 +22,8 @@
     <div id="main" style="width:100%;height:100%;" />
     <script type="text/javascript">
         function InitCodeData(data) {
+            console.log(JSON.stringify(data));
+
             myChart = echarts.init(document.getElementById('main'));
             window.onresize = function () {
                 myChart.resize();
@@ -49,12 +54,13 @@
                     containLabel: true
                 },
                 // 指标图例
-                legend: {
+                /*legend: {
                     data: ['股价', 'MA5', 'MA20'],
                     textStyle: {
                         color: '#ccc'
                     }
                 },
+                */
                 // 数据缩放
                 dataZoom: [
                     {
@@ -82,16 +88,14 @@
                 // 数据源
                 dataset: [
                     {
-                        dimensions: data.IndicatorsName,
-                        source: data.IndicatorsData
+                        dimensions: data.Dimension,
+                        source: data.Data
                     },
                 ],
                 // 坐标轴
                 xAxis: [
                     {
-                        type: 'category',
-                        boundaryGap: false,
-                        data: data.DateTime
+                        type: 'category'
                     }
                 ],
                 yAxis: [
@@ -102,40 +106,44 @@
                 // 图表
                 series: [
                     {
-                        name: '股价',
                         type: 'candlestick',
-                        data: data.OHLC
-                    },
-                    {
-                        name: 'MA5',
-                        type: 'line',
-                        lineStyle: {
-                            width: 1
-                        },
-                        symbol: "none",
-                        datasetIndex: 0,
                         encode: {
-                            x: 'DateTime',
-                            y: 'MA5'
-                        },
+                            x: 'datetime',
+                            y: ['open', 'close', 'high', 'low']
+                        }
                     },
-                    {
-                        name: 'MA20',
-                        type: 'line',
-                        lineStyle: {
-                            width: 1
-                        },
-                        symbol: "none",
-                        datasetIndex: 0,
-                        encode: {
-                            x: 'DateTime',
-                            y: 'MA20'
-                        },
-                    }
+                    /* {
+                         name: 'MA5',
+                         type: 'line',
+                         lineStyle: {
+                             width: 1
+                         },
+                         symbol: "none",
+                         datasetIndex: 0,
+                         encode: {
+                             x: 'DateTime',
+                             y: 'MA5'
+                         },
+                     },
+                     {
+                         name: 'MA20',
+                         type: 'line',
+                         lineStyle: {
+                             width: 1
+                         },
+                         symbol: "none",
+                         datasetIndex: 0,
+                         encode: {
+                             x: 'DateTime',
+                             y: 'MA20'
+                         },
+                     }
+                     */
                 ]
             };
             option && myChart.setOption(option);
         }
     </script>
 </body>
+
 </html>
