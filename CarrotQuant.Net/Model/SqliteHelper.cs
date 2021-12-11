@@ -93,7 +93,7 @@ namespace CarrotQuant.Net.Model
         public List<string> GetTableNames()
         {
             DataTable tbs = Query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
-            return DataTableUtility.GetDatatableColumn<string>(tbs, "name").ToList();
+            return MiscExtensions.GetDatatableColumn<string>(tbs, "name").ToList();
         }
 
         public DataTable GetTable(string tableName)

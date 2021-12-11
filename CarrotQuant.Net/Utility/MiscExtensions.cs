@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace CarrotQuant.Net.Utility
 {
-    public static class DataTableUtility
+    public static class MiscExtensions
     {
         public static IEnumerable<T> GetDatatableColumn<T>(DataTable dt, string colName)
         {
