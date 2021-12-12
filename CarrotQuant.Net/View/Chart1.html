@@ -28,6 +28,7 @@
             window.onresize = function () {
                 myChart.resize();
             };
+            // 图表配置对象
             option = {
                 // 图表标题
                 title: {
@@ -54,13 +55,12 @@
                     containLabel: true
                 },
                 // 指标图例
-                /*legend: {
-                    data: ['股价', 'MA5', 'MA20'],
+                legend: {
+                    data: data.LegendData,
                     textStyle: {
                         color: '#ccc'
                     }
                 },
-                */
                 // 数据缩放
                 dataZoom: [
                     {
@@ -106,41 +106,34 @@
                 // 图表
                 series: [
                     {
+                        name: '股价',
                         type: 'candlestick',
                         encode: {
                             x: 'datetime',
                             y: ['open', 'close', 'high', 'low']
                         }
-                    },
-                    /* {
-                         name: 'MA5',
-                         type: 'line',
-                         lineStyle: {
-                             width: 1
-                         },
-                         symbol: "none",
-                         datasetIndex: 0,
-                         encode: {
-                             x: 'DateTime',
-                             y: 'MA5'
-                         },
-                     },
-                     {
-                         name: 'MA20',
-                         type: 'line',
-                         lineStyle: {
-                             width: 1
-                         },
-                         symbol: "none",
-                         datasetIndex: 0,
-                         encode: {
-                             x: 'DateTime',
-                             y: 'MA20'
-                         },
-                     }
-                     */
+                    }
                 ]
             };
+            // 图表技术指标添加
+            var addition_series_count = data.LegendData.length - 1;
+            for (var i = 0; i < addition_series_count; i++) {
+                console.log(data.LegendData[i+1]);
+                var addition_series =
+                {
+                    name: data.LegendData[i + 1],
+                    type: 'line',
+                    lineStyle: {
+                        width: 1
+                    },
+                    symbol: "none",
+                    encode: {
+                        x: 'datetime',
+                        y: data.Dimension[i + 5]
+                    },
+                };
+                option.series.push(addition_series);
+            }
             option && myChart.setOption(option);
         }
     </script>

@@ -36,7 +36,7 @@ namespace CarrotQuant.Net
         }
 
         DateTime dateTime = DateTime.Parse("2020-01-01");
-        EChartsData cd = new(new[] { 5,10 });
+        EChartsData cd = new(new[] { 5,10});
         int trend = 100;
         Random randomNum = new Random(Guid.NewGuid().GetHashCode());
         private void Button_Click(object sender, RoutedEventArgs e)

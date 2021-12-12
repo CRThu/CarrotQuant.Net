@@ -15,16 +15,19 @@ namespace CarrotQuant.Net.Model
         public string StockCode { get; set; }
 
         // Echarts数据源
+        public List<string> LegendData { get; set; } = new();
         public List<string> Dimension { get; set; } = new();
         public List<dynamic[]> Data { get; set; } = new();
 
         // 技术指标dataset
         public EChartsData()
         {
+            LegendData = new() { "股价" };
             Dimension = new() { "datetime", "open", "high", "low", "close" };
         }
         public EChartsData(int[] MAx) : this()
         {
+            LegendData.AddRange(MAx.Select(x => $"MA{x}"));
             Dimension.AddRange(MAx.Select(x => $"MA{x}"));
         }
 
