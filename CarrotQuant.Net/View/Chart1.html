@@ -21,13 +21,14 @@
     </style>
     <div id="main" style="width:100%;height:100%;" />
     <script type="text/javascript">
-        function InitCodeData(data) {
-            console.log(JSON.stringify(data));
+        myChart = echarts.init(document.getElementById('main'));
+        window.onresize = function () {
+            myChart.resize();
+        };
 
-            myChart = echarts.init(document.getElementById('main'));
-            window.onresize = function () {
-                myChart.resize();
-            };
+        function UpdateData(data) {
+            // console.log(JSON.stringify(data));
+
             // 图表配置对象
             option = {
                 // 图表标题
@@ -46,13 +47,6 @@
                             backgroundColor: '#6a7985'
                         }
                     }
-                },
-                // 坐标系网格位置
-                grid: {
-                    left: '3%',
-                    right: '4%',
-                    bottom: '3%',
-                    containLabel: true
                 },
                 // 指标图例
                 legend: {
@@ -92,33 +86,101 @@
                         source: data.Data
                     },
                 ],
+                // 坐标系网格位置
+                grid: [
+                    //{
+                    //    left: '3%',
+                    //    right: '4%',
+                    //    bottom: '3%',
+                    //    containLabel: true
+                    //}
+                ],
                 // 坐标轴
                 xAxis: [
-                    {
-                        type: 'category'
-                    }
+                    //{
+                    //    type: 'category'
+                    //}
                 ],
                 yAxis: [
-                    {
-                        type: 'value'
-                    }
+                    //{
+                    //    type: 'value'
+                    //}
                 ],
                 // 图表
                 series: [
-                    {
-                        name: '股价',
-                        type: 'candlestick',
-                        encode: {
-                            x: 'datetime',
-                            y: ['open', 'close', 'high', 'low']
-                        }
-                    }
-                ]
+                    // {
+                    //    name: '股价',
+                    //    type: 'candlestick',
+                    //    encode: {
+                    //        x: 'datetime',
+                    //        y: ['open', 'close', 'high', 'low']
+                    //    }
+                    //}
+                ],
             };
+
+            // XY坐标轴和主副图网格添加
+            AddXYAxisAndGrid(option, data);
+            // 图表蜡烛图添加
+            AddCandleStickSeries(option, data);
             // 图表技术指标添加
+            AddAdditionSeries(option, data);
+            // replaceMerge删除更新中不存在的线
+            option && myChart.setOption(option, { replaceMerge: 'series' });
+        }
+
+        // XY坐标轴添加
+        function AddXYAxisAndGrid(option, data) {
+            // 生成GridsCount个坐标轴网格
+            switch (data.GridsCount) {
+                case 1:
+                    option.grid.push({ left: '3%', right: '4%', top: '60', bottom: '3%', containLabel: 'true' });
+                    break;
+                case 2:
+                    option.grid.push({ left: '5%', right: '4%', top: '5%', height: '69%' });
+                    option.grid.push({ left: '5%', right: '4%', bottom: '3%', height: '20%' });
+                    break;
+                case 3:
+                    option.grid.push({ left: '5%', right: '4%', top: '5%', height: '60%' });
+                    option.grid.push({ left: '5%', right: '4%', top: '68%', height: '12%' });
+                    option.grid.push({ left: '5%', right: '4%', top: '83%', height: '12%' });
+                    break;
+            }
+
+            // 生成GridsCount个XYAxis坐标轴
+            for (var i = 0; i < data.GridsCount; i++) {
+                var xAxis = {
+                    gridIndex: i,
+                    type: 'category'
+                }
+                var yAxis = {
+                    gridIndex: i,
+                    type: 'value'
+                }
+                option.xAxis.push(xAxis);
+                option.yAxis.push(yAxis);
+            }
+        }
+
+        // 图表蜡烛图添加
+        function AddCandleStickSeries(option, data) {
+            var candle_stick_series =
+            {
+                name: '股价',
+                type: 'candlestick',
+                encode: {
+                    x: 'datetime',
+                    y: ['open', 'close', 'high', 'low']
+                }
+            }
+            option.series.push(candle_stick_series);
+        }
+
+        // 图表技术指标添加
+        function AddAdditionSeries(option, data) {
             var addition_series_count = data.LegendData.length - 1;
             for (var i = 0; i < addition_series_count; i++) {
-                console.log(data.LegendData[i+1]);
+                // console.log(data.LegendData[i + 1]);
                 var addition_series =
                 {
                     name: data.LegendData[i + 1],
@@ -134,7 +196,6 @@
                 };
                 option.series.push(addition_series);
             }
-            option && myChart.setOption(option);
         }
     </script>
 </body>

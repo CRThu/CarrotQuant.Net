@@ -14,19 +14,26 @@ namespace CarrotQuant.Net.Model
         public string StockName { get; set; }
         public string StockCode { get; set; }
 
+        // ECharts副图数量：1:仅主图,2:主图+副图,3:主图+2副图
+        public int GridsCount { get; set; } = 1;
+
         // Echarts数据源
+        // 图表名称：股价,[技术指标名1],[技术指标名2],...
         public List<string> LegendData { get; set; } = new();
+        // 数据维度：datetime,open,high,low,close,[技术指标名1],[技术指标名2],...
         public List<string> Dimension { get; set; } = new();
         public List<dynamic[]> Data { get; set; } = new();
 
         // 技术指标dataset
         public EChartsData()
         {
+            GridsCount = 1;
             LegendData = new() { "股价" };
             Dimension = new() { "datetime", "open", "high", "low", "close" };
         }
-        public EChartsData(int[] MAx) : this()
+        public EChartsData(int[] MAx, int gridCount = 1) : this()
         {
+            GridsCount = gridCount;
             LegendData.AddRange(MAx.Select(x => $"MA{x}"));
             Dimension.AddRange(MAx.Select(x => $"MA{x}"));
         }

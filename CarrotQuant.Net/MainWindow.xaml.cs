@@ -36,7 +36,7 @@ namespace CarrotQuant.Net
         }
 
         DateTime dateTime = DateTime.Parse("2020-01-01");
-        EChartsData cd = new(new[] { 5,10});
+        EChartsData cd = new(new[] { 5, 10 }, 3);
         int trend = 100;
         Random randomNum = new Random(Guid.NewGuid().GetHashCode());
         private void Button_Click(object sender, RoutedEventArgs e)
@@ -55,7 +55,7 @@ namespace CarrotQuant.Net
                 trend += randomNum.Next(-15, 15 + 1);
             }
             string jsons = cd.ToJson();
-            string js = $"InitCodeData({jsons});";
+            string js = $"UpdateData({jsons});";
             Browser.CoreWebView2.ExecuteScriptAsync(js);
         }
     }
