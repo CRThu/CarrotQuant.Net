@@ -36,21 +36,22 @@ namespace CarrotQuant.Net
         }
 
         DateTime dateTime = DateTime.Parse("2020-01-01");
-        EChartsData cd = new(new[] { 5, 10 }, 3);
+        EChartsData cd = new(new[] { 5, 10 }, new[] { 0, 0 }, 1);
         int trend = 100;
         Random randomNum = new Random(Guid.NewGuid().GetHashCode());
         private void Button_Click(object sender, RoutedEventArgs e)
         {
             cd.StockName = "证券名称";
             cd.StockCode = "SH888888";
-            for (int i = 0; i < 15; i++)
+            for (int i = 0; i < 20; i++)
             {
                 dateTime = dateTime.AddDays(1);
-                cd.Add(dateTime.ToString("yyyy-MM-dd"),
+                cd.AddTick(dateTime.ToString("yyyy-MM-dd"),
                     trend,
                     trend + randomNum.Next(0, 21 + 1),
                     trend - randomNum.Next(0, 21 + 1),
-                    trend + randomNum.Next(-9, 9 + 1)
+                    trend + randomNum.Next(-9, 9 + 1),
+                    randomNum.Next(0, 10000)
                     );
                 trend += randomNum.Next(-15, 15 + 1);
             }
