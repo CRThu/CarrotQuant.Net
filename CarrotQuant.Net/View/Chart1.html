@@ -46,6 +46,13 @@
                         label: {
                             backgroundColor: '#6a7985'
                         }
+                    },
+                    position: function (pos, params, el, elRect, size) {
+                        const obj = {
+                            top: 10
+                        };
+                        obj[['left', 'right'][+(pos[0] < size.viewSize[0] / 2)]] = 30;
+                        return obj;
                     }
                 },
                 // 指标图例
@@ -72,13 +79,20 @@
                                 color: '#8392A5'
                             }
                         },
-                        xAxisIndex: Array.from(Array(data.GridsCount), (v, k) => k),
+                        xAxisIndex: 'all',
                     },
                     {
                         type: 'inside',
-                        xAxisIndex: Array.from(Array(data.GridsCount), (v, k) => k),
+                        xAxisIndex: 'all',
                     }
                 ],
+                // 坐标轴同步
+                axisPointer: {
+                    link: { xAxisIndex: 'all' },
+                    label: {
+                        backgroundColor: '#777'
+                    }
+                },
                 // 数据源
                 dataset: [
                     {
@@ -145,6 +159,8 @@
                     option.grid.push({ left: '5%', right: '4%', top: '69%', height: '10%' });
                     option.grid.push({ left: '5%', right: '4%', top: '81%', height: '10%' });
                     break;
+                default:
+                    throw new Error("data.GridsCount=" + data.GridsCount);
             }
 
             // 生成GridsCount个XYAxis坐标轴
@@ -153,17 +169,26 @@
                     gridIndex: i,
                     type: 'category',
                     show: i == 0 ? true : false,
+                    axisLabel: { show: i == 0 ? true : false },
+                    axisLine: { show: true },
+                    axisTick: { show: i == 0 ? true : false },
                 }
                 var yAxis = {
                     gridIndex: i,
                     type: 'value',
                     scale: true,
+                    axisLabel: { show: i == 0 ? true : false },
+                    axisLine: { show: false },
+                    axisTick: { show: i == 0 ? true : false },
                     splitLine: {
-                        show: true,
+                        show: i == 0 ? true : false,
                         lineStyle: {
                             color: "rgba(133, 133, 133, 1)"
                         }
-                    }
+                    },
+                    splitArea: {
+                        show: i == 0 ? true : false,
+                    },
                 }
                 option.xAxis.push(xAxis);
                 option.yAxis.push(yAxis);
@@ -186,23 +211,22 @@
 
         // 图表技术指标添加
         function AddAdditionSeries(option, data) {
-            var addition_series_count = data.LegendData.length - 1;
-            for (var i = 0; i < addition_series_count; i++) {
-                // console.log(data.LegendData[i + 1]);
+            // 0为股价数据
+            for (var i = 1; i < data.LegendData.length; i++) {
                 var addition_series =
                 {
-                    name: data.LegendData[i + 1],
-                    type: 'line',
+                    name: data.LegendData[i],
+                    type: data.LegendDataDisplayType[i],
                     lineStyle: {
                         width: 1
                     },
                     symbol: "none",
                     encode: {
                         x: 'datetime',
-                        y: data.Dimension[i + 5]
+                        y: data.LegendDataDimensionIndex[i]
                     },
-                    xAxisIndex: data.GridsCount == 1 ? 0 : (data.GridsCount == 2 ? 1 : i+1),
-                    yAxisIndex: data.GridsCount == 1 ? 0 : (data.GridsCount == 2 ? 1 : i+1),
+                    xAxisIndex: data.LegendDataOnGridIndex[i],
+                    yAxisIndex: data.LegendDataOnGridIndex[i],
                 };
                 option.series.push(addition_series);
             }

@@ -16,11 +16,17 @@ namespace CarrotQuant.Net.Model
 
         // ECharts副图数量：1:仅主图,2:主图+副图,3:主图+2副图
         public int GridsCount { get; set; } = 1;
+        // 第几张图显示
+        public List<int> LegendDataOnGridIndex { get; set; } = new();
+        public List<string> LegendDataDisplayType { get; set; } = new();
+
+        // Data映射数据维度列
+        public List<int> LegendDataDimensionIndex { get; set; } = new();
 
         // Echarts数据源
         // 图表名称：股价,[技术指标名1],[技术指标名2],...
         public List<string> LegendData { get; set; } = new();
-        // 数据维度：datetime,open,high,low,close,[技术指标名1],[技术指标名2],...
+        // 数据维度：datetime,open,high,low,close,volume,[技术指标名1],[技术指标名2],...
         public List<string> Dimension { get; set; } = new();
         public List<dynamic[]> Data { get; set; } = new();
 
@@ -28,17 +34,23 @@ namespace CarrotQuant.Net.Model
         public EChartsData()
         {
             GridsCount = 1;
-            LegendData = new() { "股价" };
-            Dimension = new() { "datetime", "open", "high", "low", "close" };
+            LegendData = new() { "股价", "成交量" };
+            LegendDataDimensionIndex = new() { 0, 5 };
+            LegendDataOnGridIndex = new() { 0, 1 };
+            LegendDataDisplayType = new() { "candlestick", "bar" };
+            Dimension = new() { "datetime", "open", "high", "low", "close", "volume" };
         }
-        public EChartsData(int[] MAx, int gridCount = 1) : this()
+        public EChartsData(int[] MAx, int[] MAxOnGridIndex, int gridCount = 1) : this()
         {
             GridsCount = gridCount;
             LegendData.AddRange(MAx.Select(x => $"MA{x}"));
             Dimension.AddRange(MAx.Select(x => $"MA{x}"));
+            LegendDataDimensionIndex.AddRange(Enumerable.Range(6, MAx.Length));
+            LegendDataOnGridIndex.AddRange(MAxOnGridIndex);
+            LegendDataDisplayType.AddRange(MAx.Select(x => "line"));
         }
 
-        public void Add(string dateTime, double open, double high, double low, double close)
+        public void AddTick(string dateTime, double open, double high, double low, double close, double volume = 0)
         {
             dynamic[] tickData = new dynamic[Dimension.Count];
             tickData[0] = dateTime;
@@ -46,6 +58,7 @@ namespace CarrotQuant.Net.Model
             tickData[2] = high;
             tickData[3] = low;
             tickData[4] = close;
+            tickData[5] = volume;
 
             // Add Indicators
             int index;
