@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -61,26 +62,23 @@ namespace CarrotQuant.Net.Model
             tickData[5] = volume;
 
             // Add Indicators
-            int index;
-            if ((index = Dimension.IndexOf("MA5")) != -1)
-            {
-                double? MA5;
-                if (Data.Count < 5)
-                    MA5 = null;
-                else
-                    MA5 = Data.ToArray()[^5..].Select(k => (double)k[4]).Sum() / 5;
-                tickData[index] = MA5;
-            }
-            if ((index = Dimension.IndexOf("MA10")) != -1)
-            {
-                double? MA10;
-                if (Data.Count < 10)
-                    MA10 = null;
-                else
-                    MA10 = Data.ToArray()[^10..].Select(k => (double)k[4]).Sum() / 10;
-                tickData[index] = MA10;
-            }
             Data.Add(tickData);
+        }
+
+        public void calcTA()
+        {
+            int start;
+            int count;
+            double[] real = new double[Data.Count];
+            double[] real2 = new double[Data.Count];
+            TicTacTec.TA.Library.Core.MovingAverage(0, Data.Count - 1, Data.Select(d => (double)d[4]).ToArray(), 5, TicTacTec.TA.Library.Core.MAType.Sma, out start, out count, real);
+            TicTacTec.TA.Library.Core.MovingAverage(0, Data.Count - 1, Data.Select(d => (double)d[4]).ToArray(), 20, TicTacTec.TA.Library.Core.MAType.Sma, out start, out count, real2);
+            Debug.WriteLine("Data:");
+            Debug.WriteLine(string.Join("\n", Data.Select(d => (double)d[4])));
+            Debug.WriteLine("MA5:");
+            Debug.WriteLine(string.Join("\n", real));
+            Debug.WriteLine("MA20:");
+            Debug.WriteLine(string.Join("\n", real2));
         }
 
         public string ToJson()
