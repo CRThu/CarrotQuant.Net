@@ -4,6 +4,7 @@ using MahApps.Metro.Controls;
 using MahApps.Metro.Controls.Dialogs;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -41,9 +42,11 @@ namespace CarrotQuant.Net
         Random randomNum = new Random(Guid.NewGuid().GetHashCode());
         private void Button_Click(object sender, RoutedEventArgs e)
         {
+            Stopwatch stopwatch = new Stopwatch();
             cd.StockName = "证券名称";
             cd.StockCode = "SH888888";
-            for (int i = 0; i < 10000; i++)
+            stopwatch.Start(); //  开始监视代码运行时间
+            for (int i = 0; i < 50; i++)
             {
                 dateTime = dateTime.AddDays(1);
                 cd.AddTick(dateTime.ToString("yyyy-MM-dd"),
@@ -55,7 +58,14 @@ namespace CarrotQuant.Net
                     );
                 trend += randomNum.Next(-15, 15 + 1);
             }
+            cd.calcTA();
+            stopwatch.Stop(); //  停止监视
+            Debug.WriteLine($"AddTick:{stopwatch.ElapsedMilliseconds}ms.");
+            stopwatch.Reset();
+            stopwatch.Start(); //  开始监视代码运行时间
             string jsons = cd.ToJson();
+            stopwatch.Stop(); //  停止监视
+            Debug.WriteLine($"Serialize:{stopwatch.ElapsedMilliseconds}ms.");
             string js = $"UpdateData({jsons});";
             Browser.CoreWebView2.ExecuteScriptAsync(js);
         }
