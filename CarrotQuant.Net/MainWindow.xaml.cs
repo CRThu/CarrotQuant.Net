@@ -37,11 +37,16 @@ namespace CarrotQuant.Net
         }
 
         DateTime dateTime = DateTime.Parse("2020-01-01");
-        EChartsData cd = new(new[] { 5, 10 }, new[] { 0, 0 }, 3);
+        EChartsDataOld cd = new(new[] { 5, 10 }, new[] { 0, 0 }, 3);
         int trend = 100;
         Random randomNum = new Random(Guid.NewGuid().GetHashCode());
         private void Button_Click(object sender, RoutedEventArgs e)
         {
+            Model.EChartsData.EChartsData eChartsData = new Model.EChartsData.EChartsData();
+            eChartsData.StockName = "股票代码";
+            eChartsData.StockCode = "SH888888";
+            Debug.WriteLine(eChartsData.ToJson());
+
             Stopwatch stopwatch = new Stopwatch();
             cd.StockName = "证券名称";
             cd.StockCode = "SH888888";
