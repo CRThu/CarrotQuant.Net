@@ -5,10 +5,11 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using static TicTacTec.TA.Library.Core;
 
 namespace CarrotQuant.Net.Model
 {
-    public class EChartsData
+    public class EChartsDataOld
     {
 
         // 股票名称
@@ -32,7 +33,7 @@ namespace CarrotQuant.Net.Model
         public List<dynamic[]> Data { get; set; } = new();
 
         // 技术指标dataset
-        public EChartsData()
+        public EChartsDataOld()
         {
             GridsCount = 1;
             LegendData = new() { "股价", "成交量" };
@@ -41,7 +42,7 @@ namespace CarrotQuant.Net.Model
             LegendDataDisplayType = new() { "candlestick", "bar" };
             Dimension = new() { "datetime", "open", "high", "low", "close", "volume" };
         }
-        public EChartsData(int[] MAx, int[] MAxOnGridIndex, int gridCount = 1) : this()
+        public EChartsDataOld(int[] MAx, int[] MAxOnGridIndex, int gridCount = 1) : this()
         {
             GridsCount = gridCount;
             LegendData.AddRange(MAx.Select(x => $"MA{x}"));
@@ -69,16 +70,13 @@ namespace CarrotQuant.Net.Model
         {
             int start;
             int count;
+            int start2;
+            int count2;
             double[] real = new double[Data.Count];
             double[] real2 = new double[Data.Count];
             TicTacTec.TA.Library.Core.MovingAverage(0, Data.Count - 1, Data.Select(d => (double)d[4]).ToArray(), 5, TicTacTec.TA.Library.Core.MAType.Sma, out start, out count, real);
-            TicTacTec.TA.Library.Core.MovingAverage(0, Data.Count - 1, Data.Select(d => (double)d[4]).ToArray(), 20, TicTacTec.TA.Library.Core.MAType.Sma, out start, out count, real2);
-            Debug.WriteLine("Data:");
-            Debug.WriteLine(string.Join("\n", Data.Select(d => (double)d[4])));
-            Debug.WriteLine("MA5:");
-            Debug.WriteLine(string.Join("\n", real));
-            Debug.WriteLine("MA20:");
-            Debug.WriteLine(string.Join("\n", real2));
+            TicTacTec.TA.Library.Core.MovingAverage(0, Data.Count - 1, Data.Select(d => (double)d[4]).ToArray(), 20, TicTacTec.TA.Library.Core.MAType.Sma, out start2, out count2, real2);
+
         }
 
         public string ToJson()
