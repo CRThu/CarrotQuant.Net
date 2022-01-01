@@ -21,7 +21,7 @@ namespace CarrotQuant.Net.Model.EChartsData
 
         // 数据源集合
         public List<string> Dimension { get; set; } = new();
-        public List<double[]> Data { get; set; } = new();
+        public List<dynamic[]> Data { get; set; } = new();
 
         public string ToJson()
         {
