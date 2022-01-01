@@ -57,7 +57,7 @@
                 },
                 // 指标图例
                 legend: {
-                    data: data.LegendData,
+                    // data: data.LegendData,
                     textStyle: {
                         color: '#ccc'
                     }
@@ -135,10 +135,8 @@
 
             // XY坐标轴和主副图网格添加
             AddXYAxisAndGrid(option, data);
-            // 图表蜡烛图添加
-            AddCandleStickSeries(option, data);
-            // 图表技术指标添加
-            AddAdditionSeries(option, data);
+            // 图表Series添加
+            AddSeries(option, data);
             // replaceMerge删除更新中不存在的线
             option && myChart.setOption(option, { replaceMerge: ['series'] });
         }
@@ -194,44 +192,23 @@
                 option.yAxis.push(yAxis);
             }
         }
-
-        // 图表蜡烛图添加
-        function AddCandleStickSeries(option, data) {
-            var candle_stick_series =
-            {
-                name: '股价',
-                type: 'candlestick',
-                encode: {
-                    x: 'datetime',
-                    y: ['open', 'close', 'high', 'low']
-                },
-                large: true,
-            }
-            option.series.push(candle_stick_series);
-        }
-
-        // 图表技术指标添加
-        function AddAdditionSeries(option, data) {
-            // 0为股价数据
-            for (var i = 1; i < data.LegendData.length; i++) {
-                var addition_series =
+        // 图表Series添加
+        function AddSeries(option, data) {
+            for (var i = 0; i < data.Series.length; i++) {
+                var series =
                 {
-                    name: data.LegendData[i],
-                    type: data.LegendDataDisplayType[i],
-                    lineStyle: {
-                        width: 1
-                    },
-                    symbol: "none",
+                    name: data.Series[i].Name,
+                    type: data.Series[i].Type,
                     encode: {
-                        x: 'datetime',
-                        y: data.LegendDataDimensionIndex[i]
+                        x: data.Series[i].DataXColumnsName,
+                        y: data.Series[i].DataYColumnsName
                     },
-                    xAxisIndex: data.LegendDataOnGridIndex[i],
-                    yAxisIndex: data.LegendDataOnGridIndex[i],
-                    large: true,
-                    sampling: 'lttb',
+                    seriesLayoutBy: "row",
+                    xAxisIndex: data.Series[i].GridIndex,
+                    yAxisIndex: data.Series[i].GridIndex,
                 };
-                option.series.push(addition_series);
+                Object.assign(series, data.Series[i].Options);
+                option.series.push(series);
             }
         }
     </script>
