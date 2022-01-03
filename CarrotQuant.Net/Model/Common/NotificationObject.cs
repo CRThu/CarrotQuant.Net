@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace CarrotQuant.Net.Model
+namespace CarrotQuant.Net.Model.Common
 {
     public abstract class NotificationObject : INotifyPropertyChanged
     {

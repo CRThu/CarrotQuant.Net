@@ -1,4 +1,5 @@
-﻿using CarrotQuant.Net.Utility;
+﻿using CarrotQuant.Net.Model.Common;
+using CarrotQuant.Net.Model.Utility;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using System;
@@ -10,7 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 
-namespace CarrotQuant.Net.Model
+namespace CarrotQuant.Net.Model.IO
 {
     public class SqliteHelper : NotificationObject
     {

@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotQuant.Net.Utility
+namespace CarrotQuant.Net.Model.Utility
 {
     public static class MahAppsDialogUtility
     {

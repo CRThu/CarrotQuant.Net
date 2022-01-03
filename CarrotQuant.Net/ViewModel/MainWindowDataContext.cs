@@ -1,5 +1,7 @@
 ﻿using CarrotQuant.Net.Model;
-using CarrotQuant.Net.Utility;
+using CarrotQuant.Net.Model.Common;
+using CarrotQuant.Net.Model.IO;
+using CarrotQuant.Net.Model.Utility;
 using MahApps.Metro.Controls;
 using MahApps.Metro.Controls.Dialogs;
 using Microsoft.Win32;
