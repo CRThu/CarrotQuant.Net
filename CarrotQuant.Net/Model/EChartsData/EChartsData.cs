@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -21,8 +22,8 @@ namespace CarrotQuant.Net.Model.EChartsData
         public List<EChartsSeries> Series { get; set; }
 
         // 数据源集合
-        public List<string> Dimension { get; set; }
-        public List<dynamic[]> Data { get; set; }
+        public Dictionary<string, object> Data { get; set; }
+
 
         // 构造函数
         public EChartsData()
@@ -31,7 +32,6 @@ namespace CarrotQuant.Net.Model.EChartsData
             StockCode = string.Empty;
             GridsCount = 1;
             Series = new();
-            Dimension = new();
             Data = new();
         }
 
@@ -53,11 +53,17 @@ namespace CarrotQuant.Net.Model.EChartsData
             Series.Add(new EChartsSeries(name, type, gridIndex, dataXColumnName, dataYColumnsName));
         }
 
-        // 添加Data
-        public void AddData(string dimension, dynamic[] data)
+        // 添加Data数组
+        public void AddData(string dimension, object data)
         {
-            Dimension.Add(dimension);
-            Data.Add(data);
+            if (data.GetType().BaseType == typeof(Array))
+            {
+                Data.Add(dimension, data);
+            }
+            else
+            {
+                throw new ArrayTypeMismatchException("Argument \'data\' of AddData() BaseType is not Array");
+            }
         }
 
         // 序列化Json

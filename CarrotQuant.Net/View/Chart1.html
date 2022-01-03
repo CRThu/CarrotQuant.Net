@@ -96,8 +96,8 @@
                 // 数据源
                 dataset: [
                     {
-                        dimensions: data.Dimension,
-                        source: data.Data
+                        dimensions: Object.keys(data.Data),
+                        source: Object.values(data.Data)
                     },
                 ],
                 // 坐标系网格位置
