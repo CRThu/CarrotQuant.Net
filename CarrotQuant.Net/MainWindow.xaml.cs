@@ -46,7 +46,6 @@ namespace CarrotQuant.Net
 
                 EChartsData eChartsData = new("股票代码", "SH888888", 3);
 
-                EChartsSeries eChartsSeries = new("open", EChartSeriesType.line, 0, "time", "open");
                 eChartsData.AddSeries("open", EChartSeriesType.line, 0, "time", "open");
                 eChartsData.AddSeries("kline", EChartSeriesType.candlestick, 0, "time", new[] { "open", "close", "high", "low" });
                 eChartsData.AddSeries("close", EChartSeriesType.line, 1, "time", "close");
@@ -74,6 +73,8 @@ namespace CarrotQuant.Net
                 Debug.WriteLine($"Serialize:{stopwatch.ElapsedMilliseconds}ms.");
                 string js = $"UpdateData({jsons});";
                 Browser.CoreWebView2.ExecuteScriptAsync(js);
+
+                ((MainWindowDataContext)DataContext).EChartsData = "TEST";
             }
             catch (Exception ex)
             {
