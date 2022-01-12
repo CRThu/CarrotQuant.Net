@@ -9,8 +9,8 @@
         xmlns:vm="clr-namespace:CarrotQuant.Net.ViewModel"
         xmlns:behaviors="http://schemas.microsoft.com/xaml/behaviors"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        xmlns:dialog="clr-namespace:MahApps.Metro.Controls.Dialogs;assembly=MahApps.Metro"
-        dialog:DialogParticipation.Register="{Binding}"
+        xmlns:dialog="clr-namespace:MahApps.Metro.Controls.Dialogs;assembly=MahApps.Metro" xmlns:control="clr-namespace:CarrotQuant.Net.View.Control"
+                 dialog:DialogParticipation.Register="{Binding}"
         mc:Ignorable="d"
         Title="CarrotQuant.NET" Height="650" Width="1150">
     <mah:MetroWindow.DataContext>
@@ -74,7 +74,7 @@
                 <TabItem Header="历史行情">
                     <Grid>
                         <Button Content="+++" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,10,0,0" Height="37" Width="112" Click="Button_Click"/>
-                        <wv2:WebView2 x:Name="Browser" Margin="0,52,0,0" DefaultBackgroundColor="{Binding Mode=OneWay, Source={StaticResource MahApps.Colors.ThemeBackground},Converter={StaticResource SystemWindowsMediaColor2SystemDrawingColorConverter}}"/>
+                        <control:EChartsView x:Name="Browser" Margin="0,52,0,0" Data="{Binding EChartsData,UpdateSourceTrigger=PropertyChanged,Mode=TwoWay}" DefaultBackgroundColor="{Binding Mode=OneWay, Source={StaticResource MahApps.Colors.ThemeBackground},Converter={StaticResource SystemWindowsMediaColor2SystemDrawingColorConverter}}"/>
                     </Grid>
                 </TabItem>
             </TabControl>

@@ -57,6 +57,18 @@ namespace CarrotQuant.Net.ViewModel
             }
         }
 
+        // ECharts Data
+        private string eChartsData;
+        public string EChartsData
+        {
+            get => eChartsData;
+            set
+            {
+                eChartsData = value;
+                RaisePropertyChanged(() => EChartsData);
+            }
+        }
+
         public MainWindowDataContext()
         {
 
