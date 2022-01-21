@@ -32,7 +32,8 @@ namespace CarrotQuant.Net.View.Control
 
         private void DataChangedCallback(string newvalue, string oldvalue)
         {
-            // todo
+            if (newvalue != oldvalue)
+                this.CoreWebView2.ExecuteScriptAsync(newvalue);
         }
 
         public EChartsView() : base()
