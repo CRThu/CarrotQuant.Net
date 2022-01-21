@@ -33,8 +33,6 @@ namespace CarrotQuant.Net
             InitializeComponent();
 
             DataContext = new MainWindowDataContext(DialogCoordinator.Instance);
-            //Browser.Source = new Uri("https://html5test.com");
-            Browser.Source = new Uri(Directory.GetCurrentDirectory() + "/View/Chart1.html");
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)
@@ -72,7 +70,9 @@ namespace CarrotQuant.Net
                 stopwatch.Stop(); //  停止监视
                 Debug.WriteLine($"Serialize:{stopwatch.ElapsedMilliseconds}ms.");
                 string js = $"UpdateData({jsons});";
-                Browser.CoreWebView2.ExecuteScriptAsync(js);
+
+                if (Browser != null)
+                    Browser.CoreWebView2.ExecuteScriptAsync(js);
 
                 ((MainWindowDataContext)DataContext).EChartsData = "TEST";
             }
