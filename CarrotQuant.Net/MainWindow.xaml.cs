@@ -71,10 +71,7 @@ namespace CarrotQuant.Net
                 Debug.WriteLine($"Serialize:{stopwatch.ElapsedMilliseconds}ms.");
                 string js = $"UpdateData({jsons});";
 
-                if (Browser != null)
-                    Browser.CoreWebView2.ExecuteScriptAsync(js);
-
-                ((MainWindowDataContext)DataContext).EChartsData = "TEST";
+                ((MainWindowDataContext)DataContext).EChartsData = js;
             }
             catch (Exception ex)
             {
