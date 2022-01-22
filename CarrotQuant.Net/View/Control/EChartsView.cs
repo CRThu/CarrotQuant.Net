@@ -2,6 +2,7 @@
 using Microsoft.Web.WebView2.Wpf;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -12,9 +13,9 @@ namespace CarrotQuant.Net.View.Control
 {
     public class EChartsView : WebView2
     {
-        public static readonly DependencyProperty TextProperty = DependencyProperty.Register("Data", typeof(string), typeof(EChartsView), new PropertyMetadata(null, DataChangedCallback));
+        public static readonly DependencyProperty TextProperty = DependencyProperty.Register("Data", typeof(EChartsData), typeof(EChartsView), new PropertyMetadata(null, DataChangedCallback));
 
-        public string Data
+        public EChartsData Data
         {
             set
             {
@@ -22,18 +23,27 @@ namespace CarrotQuant.Net.View.Control
             }
             get
             {
-                return (string)GetValue(TextProperty);
+                return (EChartsData)GetValue(TextProperty);
             }
         }
         private static void DataChangedCallback(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            ((EChartsView)d).DataChangedCallback(e.NewValue as string, e.OldValue as string);
+            ((EChartsView)d).DataChangedCallback(e.NewValue as EChartsData, e.OldValue as EChartsData);
         }
 
-        private void DataChangedCallback(string newvalue, string oldvalue)
+        private void DataChangedCallback(EChartsData newvalue, EChartsData oldvalue)
         {
-            if (newvalue != oldvalue)
-                this.CoreWebView2.ExecuteScriptAsync(newvalue);
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start(); //  开始监视代码运行时间
+
+            string jsons = newvalue.ToJson();
+            string js = $"UpdateData({jsons});";
+
+            stopwatch.Stop(); //  停止监视
+            Debug.WriteLine($"Serialize:{stopwatch.ElapsedMilliseconds}ms.");
+
+            if (CoreWebView2 != null)
+                this.CoreWebView2.ExecuteScriptAsync(js);
         }
 
         public EChartsView() : base()

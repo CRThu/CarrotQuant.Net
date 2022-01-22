@@ -73,8 +73,14 @@
                 </TabItem>
                 <TabItem Header="历史行情">
                     <Grid>
-                        <Button Content="+++" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,10,0,0" Height="37" Width="112" Click="Button_Click"/>
-                        <control:EChartsView x:Name="Browser" Margin="0,52,0,0" Data="{Binding EChartsData,UpdateSourceTrigger=PropertyChanged,Mode=TwoWay}" DefaultBackgroundColor="{Binding Mode=OneWay, Source={StaticResource MahApps.Colors.ThemeBackground},Converter={StaticResource SystemWindowsMediaColor2SystemDrawingColorConverter}}"/>
+                        <Button Content="+++" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10,10,0,0" Height="37" Width="112">
+                            <behaviors:Interaction.Triggers>
+                                <behaviors:EventTrigger EventName="Click">
+                                    <vm:EventCommandBase Command="{Binding ButtonClickEvent}"/>
+                                </behaviors:EventTrigger>
+                            </behaviors:Interaction.Triggers>
+                        </Button>
+                        <control:EChartsView x:Name="Browser" Margin="0,52,0,0" Data="{Binding ChartData,UpdateSourceTrigger=PropertyChanged,Mode=TwoWay}" DefaultBackgroundColor="{Binding Mode=OneWay, Source={StaticResource MahApps.Colors.ThemeBackground},Converter={StaticResource SystemWindowsMediaColor2SystemDrawingColorConverter}}"/>
                     </Grid>
                 </TabItem>
             </TabControl>
