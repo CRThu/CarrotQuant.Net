@@ -2,6 +2,8 @@
 using Microsoft.Web.WebView2.Wpf;
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -33,10 +35,15 @@ namespace CarrotQuant.Net.View.Control
 
         private void DataChangedCallback(EChartsData newvalue, EChartsData oldvalue)
         {
+            UpdateChart();
+        }
+
+        private void UpdateChart()
+        {
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start(); //  开始监视代码运行时间
 
-            string jsons = newvalue.ToJson();
+            string jsons = Data.ToJson();
             string js = $"UpdateData({jsons});";
 
             stopwatch.Stop(); //  停止监视

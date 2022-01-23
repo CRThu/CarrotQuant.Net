@@ -206,6 +206,9 @@
                     seriesLayoutBy: "row",
                     xAxisIndex: data.Series[i].GridIndex,
                     yAxisIndex: data.Series[i].GridIndex,
+                    markPoint: {
+                        data: data.Series[i].MarkPoints
+                    }
                 };
                 Object.assign(series, data.Series[i].Options);
                 option.series.push(series);
