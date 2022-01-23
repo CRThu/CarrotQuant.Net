@@ -138,6 +138,18 @@ namespace CarrotQuant.Net.ViewModel
 
                 eChartsData.AddData("MA5", TechnicalAnalysis.MovingAverage((double[])eChartsData.Data["close"], 5));
 
+                eChartsData.Series[1].MarkPoints = new List<object>();
+                eChartsData.Series[1].MarkPoints.Add(new Dictionary<string, object>()
+                {
+                    {"coord",new List<dynamic>(){ "14:00", 3} },
+                    {"value","B" }
+                });
+                eChartsData.Series[1].MarkPoints.Add(new Dictionary<string, object>()
+                {
+                    {"coord",new List<dynamic>(){ 3, 7} },
+                    {"value","S" }
+                });
+
                 ChartData = eChartsData;
                 stopwatch.Stop(); //  停止监视
                 Debug.WriteLine($"AddTick:{stopwatch.ElapsedMilliseconds}ms.");

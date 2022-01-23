@@ -1,5 +1,7 @@
-﻿using System;
+﻿using CarrotQuant.Net.Model.Common;
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -9,21 +11,66 @@ using System.Threading.Tasks;
 
 namespace CarrotQuant.Net.Model.EChartsData
 {
-    public class EChartsData
+    public class EChartsData : NotificationObject
     {
         // 图表标题(股票名称+股票代码)
-        public string StockName { get; set; }
-        public string StockCode { get; set; }
+        private string stockName;
+        public string StockName
+        {
+            get => stockName;
+            set
+            {
+                stockName = value;
+                RaisePropertyChanged(() => StockName);
+            }
+        }
+
+        private string stockCode;
+        public string StockCode
+        {
+            get => stockCode;
+            set
+            {
+                stockCode = value;
+                RaisePropertyChanged(() => StockCode);
+            }
+        }
 
         // 主副图数量:主图,[+副图1,][+副图2]
-        public int GridsCount { get; set; }
+        private int gridsCount;
+        public int GridsCount
+        {
+            get => gridsCount;
+            set
+            {
+                gridsCount = value;
+                RaisePropertyChanged(() => GridsCount);
+            }
+        }
 
         // 图表集合
-        public List<EChartsSeries> Series { get; set; }
+        private ObservableCollection<EChartsSeries> series = new();
+        public ObservableCollection<EChartsSeries> Series
+        {
+            get => series;
+            set
+            {
+                series = value;
+                RaisePropertyChanged(() => Series);
+            }
+        }
 
         // 数据源集合
-        public Dictionary<string, object> Data { get; set; }
-
+        private ObservableDictionary<string, object> data = new();
+        public ObservableDictionary<string, object> Data
+        {
+            get => data;
+            set
+            {
+                data = value;
+                RaisePropertyChanged(() => Data);
+            }
+        }
 
         // 构造函数
         public EChartsData()
@@ -46,11 +93,13 @@ namespace CarrotQuant.Net.Model.EChartsData
         public void AddSeries(string name, EChartSeriesType type, int gridIndex, string dataXColumnName, string dataYColumnName)
         {
             Series.Add(new EChartsSeries(name, type, gridIndex, dataXColumnName, dataYColumnName));
+            RaisePropertyChanged(() => Series);
         }
 
         public void AddSeries(string name, EChartSeriesType type, int gridIndex, string dataXColumnName, string[] dataYColumnsName)
         {
             Series.Add(new EChartsSeries(name, type, gridIndex, dataXColumnName, dataYColumnsName));
+            RaisePropertyChanged(() => Series);
         }
 
         // 添加Data数组
@@ -59,6 +108,7 @@ namespace CarrotQuant.Net.Model.EChartsData
             if (data.GetType().BaseType == typeof(Array))
             {
                 Data.Add(dimension, data);
+                RaisePropertyChanged(() => Data);
             }
             else
             {

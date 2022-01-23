@@ -38,6 +38,9 @@ namespace CarrotQuant.Net.Model.EChartsData
         public List<string> DataXColumnsName { get; set; }
         public List<string> DataYColumnsName { get; set; }
 
+        // Mark点
+        public List<object> MarkPoints { get; set; }
+
         // 构造函数
         public EChartsSeries()
         {
@@ -47,6 +50,7 @@ namespace CarrotQuant.Net.Model.EChartsData
             // Options = new();
             DataXColumnsName = new();
             DataYColumnsName = new();
+            MarkPoints = new();
         }
 
         public EChartsSeries(string name, EChartSeriesType type, int gridIndex, string dataXColumnName, string dataYColumnName) : this()
