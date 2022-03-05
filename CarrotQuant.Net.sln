@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.31911.196
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32210.238
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotQuant.Net", "CarrotQuant.Net\CarrotQuant.Net.csproj", "{22C20D11-5483-432A-9C8A-89D6C1EF8F10}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotBacktesting.NET", "CarrotBacktesting.NET\CarrotBacktesting.NET.csproj", "{D5878DEC-E63B-4382-BABA-02374B896891}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{22C20D11-5483-432A-9C8A-89D6C1EF8F10}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{22C20D11-5483-432A-9C8A-89D6C1EF8F10}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{22C20D11-5483-432A-9C8A-89D6C1EF8F10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D5878DEC-E63B-4382-BABA-02374B896891}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5878DEC-E63B-4382-BABA-02374B896891}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5878DEC-E63B-4382-BABA-02374B896891}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5878DEC-E63B-4382-BABA-02374B896891}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
