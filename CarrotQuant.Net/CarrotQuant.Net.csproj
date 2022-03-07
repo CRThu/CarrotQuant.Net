@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CarrotBacktesting.NET\CarrotBacktesting.NET.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="View\Chart1 - 复制.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <SubType>Code</SubType>

@@ -13,20 +13,12 @@ namespace CarrotBacktesting.NET.DataFeed
         /// key为stock名, value指向个股数据
         /// value的字典的key为数据列名(例如OHLC), Value为对应数据
         /// </summary>
-        private Dictionary<string, Dictionary<string, double[]>> MarketCache { get; set; }
-
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        public DataFeed()
-        {
-            MarketCache = new();
-        }
+        private Dictionary<string, ShareData> MarketCache { get; set; } = new();
 
         /// <summary>
         /// 设置一支股票的行情数据
         /// </summary>
-        public void SetShareData(string shareCode, List<double[]> shareData)
+        public void SetShareData(string shareCode, ShareData shareData)
         {
             if (!MarketCache.ContainsKey(shareCode))
                 MarketCache[shareCode] = shareData;
