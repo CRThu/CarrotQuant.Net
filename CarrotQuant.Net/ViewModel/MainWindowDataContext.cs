@@ -106,10 +106,13 @@ namespace CarrotQuant.Net.ViewModel
         {
             try
             {
-                SelectedDataBaseTable = DataBase.GetTable(SelectedDataBaseTableName);
-                ShareData shareData = new(SelectedDataBaseTable, "交易日期", new string[] { "开盘价", "最低价" });
-                DataFeed dataFeed = new();
-                dataFeed.SetShareData(SelectedDataBaseTable.TableName, shareData);
+                //SelectedDataBaseTable = DataBase.GetTable(SelectedDataBaseTableName);
+                //ShareData shareData = new(SelectedDataBaseTable, "交易日期", new string[] { "开盘价", "最低价" });
+                //DataFeed dataFeed = new();
+                //dataFeed.SetShareData(SelectedDataBaseTable.TableName, shareData);
+                SqliteDataFeed df = new(DataBase.FileName);
+                df.SetShareData(SelectedDataBaseTableName, "交易日期", new string[] { "开盘价", "最低价" });
+                SelectedDataBaseTable = df.GetShareDataTable(SelectedDataBaseTableName);
             }
             catch (Exception ex)
             {

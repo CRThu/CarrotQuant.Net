@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Dapper;
+using System.Diagnostics;
 
 namespace CarrotBacktesting.NET.Common
 {
@@ -13,6 +14,11 @@ namespace CarrotBacktesting.NET.Common
     {
         private IDbConnection connection;
         public string FileName { get; set; }
+
+        // TODO Attribute代替DEBUG
+#if DEBUG
+        Stopwatch sw = new();
+#endif
 
         public SqliteHelper()
         {
@@ -49,9 +55,22 @@ namespace CarrotBacktesting.NET.Common
             return DataTableMisc.GetColumn<string>(tbs, "name");
         }
 
-        public DataTable GetTable(string tableName)
+        public DataTable GetTable(string tableName, string[]? columnNames = null)
         {
-            return Query($"SELECT * FROM '{tableName}'");
+#if DEBUG
+            sw.Start();
+#endif
+
+            string joinColumns = columnNames != null ? string.Join(',', columnNames) : "*";
+            string queryCmd = $"SELECT {joinColumns} FROM '{tableName}'";
+
+            DataTable dataTable = Query(queryCmd);
+
+#if DEBUG
+            sw.Stop();
+            Debug.WriteLine($"GetTable({tableName}): {queryCmd}; Elapsed time: {sw.ElapsedMilliseconds} ms.");
+#endif
+            return dataTable;
         }
     }
 }
