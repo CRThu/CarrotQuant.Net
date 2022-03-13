@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -22,6 +23,23 @@ namespace CarrotBacktesting.NET.DataFeed
         {
             if (!MarketCache.ContainsKey(shareCode))
                 MarketCache[shareCode] = shareData;
+        }
+
+        public DataTable GetShareDataTable(string shareCode)
+        {
+            ShareData shareData = MarketCache[shareCode];
+            DataTable dataTable = new();
+
+            // Add Columns
+            dataTable.Columns.Add(shareData.TimeDisplayName);
+            foreach (var key in shareData.Data.Keys)
+                dataTable.Columns.Add(key);
+
+            // Add Rows
+            dataTable.Rows.Add(new object[] { 1, 2, 3 });
+            dataTable.Rows.Add(new object[] { 4, 5, 6 });
+            dataTable.Rows.Add(new object[] { 7, 8, 9 });
+            return dataTable;
         }
     }
 }
