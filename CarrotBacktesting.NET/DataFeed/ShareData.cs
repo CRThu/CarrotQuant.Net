@@ -18,6 +18,10 @@ namespace CarrotBacktesting.NET.DataFeed
         public string TimeDisplayName { get; set; }
         public string[] Time { get; set; }
 
+        public int Count => Time.Length;
+        public double[] this[string key] => Data[key];
+        public string[] Keys => Data.Keys.ToArray();
+
         public ShareData()
         {
             Data = new Dictionary<string, double[]>();

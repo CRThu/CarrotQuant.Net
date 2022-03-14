@@ -15,10 +15,6 @@ namespace CarrotBacktesting.NET.Common
         private IDbConnection connection;
         public string FileName { get; set; }
 
-        // TODO Attribute代替DEBUG
-#if DEBUG
-        Stopwatch sw = new();
-#endif
 
         public SqliteHelper()
         {
@@ -44,8 +40,18 @@ namespace CarrotBacktesting.NET.Common
 
         public DataTable Query(string query)
         {
+#if DEBUG
+            Debug.WriteLine($"SqliteHelper.Query({query}) called.");
+            Stopwatch sw = new();
+            sw.Start();
+#endif
             DataTable table = new();
             table.Load(connection.ExecuteReader(query));
+
+#if DEBUG
+            sw.Stop();
+            Debug.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms.");
+#endif
             return table;
         }
 
@@ -57,19 +63,11 @@ namespace CarrotBacktesting.NET.Common
 
         public DataTable GetTable(string tableName, string[]? columnNames = null)
         {
-#if DEBUG
-            sw.Start();
-#endif
-
             string joinColumns = columnNames != null ? string.Join(',', columnNames) : "*";
             string queryCmd = $"SELECT {joinColumns} FROM '{tableName}'";
 
             DataTable dataTable = Query(queryCmd);
 
-#if DEBUG
-            sw.Stop();
-            Debug.WriteLine($"GetTable({tableName}): {queryCmd}; Elapsed time: {sw.ElapsedMilliseconds} ms.");
-#endif
             return dataTable;
         }
     }
