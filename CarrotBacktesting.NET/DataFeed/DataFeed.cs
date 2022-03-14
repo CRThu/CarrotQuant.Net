@@ -32,13 +32,20 @@ namespace CarrotBacktesting.NET.DataFeed
 
             // Add Columns
             dataTable.Columns.Add(shareData.TimeDisplayName);
-            foreach (var key in shareData.Data.Keys)
+            foreach (var key in shareData.Keys)
                 dataTable.Columns.Add(key);
 
             // Add Rows
-            dataTable.Rows.Add(new object[] { 1, 2, 3 });
-            dataTable.Rows.Add(new object[] { 4, 5, 6 });
-            dataTable.Rows.Add(new object[] { 7, 8, 9 });
+            for (int i = 0; i < shareData.Count; i++)
+            {
+                object[] row = new object[shareData.Keys.Length + 1];
+                string[] keysArray = shareData.Keys;
+                row[0] = shareData.Time[i];
+                for (int j = 0; j < shareData.Keys.Length; j++)
+                    row[j + 1] = shareData[keysArray[j]][i];
+
+                dataTable.Rows.Add(row);
+            }
             return dataTable;
         }
     }
