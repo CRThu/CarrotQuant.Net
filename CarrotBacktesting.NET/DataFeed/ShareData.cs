@@ -23,6 +23,9 @@ namespace CarrotBacktesting.NET.DataFeed
         public double[] this[string key] => Data[key];
         public string[] Keys => Data.Keys.ToArray();
 
+        public DateTime StartTime => Time.First();
+        public DateTime EndTime => Time.Last();
+
         public ShareData()
         {
             Data = new Dictionary<string, double[]>();
@@ -67,35 +70,10 @@ namespace CarrotBacktesting.NET.DataFeed
             DataTable2ShareData(this, dataTable, timeColName, dataColNames);
         }
 
-        /// <summary>
-        /// 获取时间对应的索引号, 若没有匹配到精确日期,则向后匹配最近的日期, ShareData中存储的时间必须为正序排列.
-        /// </summary>
-        /// <param name="dateTime"></param>
-        /// <returns></returns>
-        public int GetTimeIndex(DateTime dateTime)
-        {
-            int index = Array.BinarySearch(Time, dateTime);
-            if (index >= 0)
-                return index;
-            else
-            {
-                return (~index == Time.Length) ? (~index - 1) : (~index);
-            }
-        }
-
-        public int GetTimeIndex(int year, int month, int day)
-        {
-            return GetTimeIndex(new DateTime(year, month, day));
-        }
-
-        public int GetTimeIndex(int year, int month, int day, int hour, int minute, int second)
-        {
-            return GetTimeIndex(new DateTime(year, month, day, hour, minute, second));
-        }
-
+        // Get Price
         public double GetPrice(DateTime datetime, string key)
         {
-            int index = GetTimeIndex(datetime);
+            int index = DateTimeMisc.GetTimeIndex(Time, datetime);
             return GetPrice(index, key);
         }
 
@@ -104,12 +82,19 @@ namespace CarrotBacktesting.NET.DataFeed
             return Data[key][index];
         }
 
-        public double[] GetData(DateTime start, DateTime end, string key)
+        public double[] GetPrices(DateTime start, DateTime end, string key)
         {
-            int startIndex = GetTimeIndex(start);
-            int endIndex = GetTimeIndex(end);
-            //TODO
-            return null;
+            int startIndex = DateTimeMisc.GetTimeIndex(Time, start);
+            int endIndex = DateTimeMisc.GetTimeIndex(Time, end);
+            return Data[key][startIndex..(endIndex + 1)];
         }
+
+        // Get DateTimeMisc
+        public int GetTimeIndex(DateTime dateTime) => DateTimeMisc.GetTimeIndex(Time, dateTime);
+        public int GetTimeIndex(int year, int month, int day) => DateTimeMisc.GetTimeIndex(Time, year, month, day);
+        public int GetTimeIndex(int year, int month, int day, int hour, int minute, int second) => DateTimeMisc.GetTimeIndex(Time, year, month, day, hour, minute, second);
+        public DateTime GetTime(DateTime first, int indexOffset) => DateTimeMisc.GetTime(Time, first, indexOffset);
+        public DateTime[] GetTimes(DateTime first, int startIndexOffset, int endIndexOffset) => DateTimeMisc.GetTimes(Time, first, startIndexOffset, endIndexOffset);
+        public DateTime[] GetTimes(DateTime start, DateTime end) => DateTimeMisc.GetTimes(Time, start, end);
     }
 }
