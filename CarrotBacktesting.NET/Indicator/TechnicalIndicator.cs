@@ -1,0 +1,107 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using TicTacTec.TA.Library;
+
+namespace CarrotBacktesting.NET.Indicator
+{
+    /// <summary>
+    /// 技术指标类,使用TA-Lib计算,包含常用指标如下:
+    /// MA EMA MACD KDJ RSI BOLL WR SAR BIAS CCI
+    /// </summary>
+    public static class TechnicalIndicator
+    {
+        /// <summary>
+        /// 数组内移动 real[1,2,3,4,0,0,0] => [0,0,0,1,2,3,4] when idx=3,cnt=4
+        /// </summary>
+        /// <param name="real"></param>
+        /// <param name="idx"></param>
+        /// <param name="cnt"></param>
+        public static void ArrayMoveBack(double[] real, int idx, int cnt)
+        {
+            Array.Copy(real, 0, real, idx, cnt);
+            Array.Clear(real, 0, idx);
+        }
+
+        /// <summary>
+        /// 均线
+        /// </summary>
+        /// <param name="price"></param>
+        /// <param name="period"></param>
+        /// <param name="maType"></param>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        public static double[] MA(double[] price, int period = 5, Core.MAType maType = Core.MAType.Sma)
+        {
+            double[] real = new double[price.Length];
+            Core.RetCode code = Core.MovingAverage(0, price.Length - 1, price,
+                period, maType,
+                out int idx, out int cnt, real);
+            if (code != Core.RetCode.Success)
+                throw new InvalidOperationException($"TA-Lib return: {code}.");
+            ArrayMoveBack(real, idx, cnt);
+            return real;
+        }
+
+        /// <summary>
+        /// 指数加权均线
+        /// </summary>
+        /// <param name="price"></param>
+        /// <param name="period"></param>
+        /// <returns></returns>
+        public static double[] EMA(double[] price, int period = 5)
+        {
+            return MA(price, period, Core.MAType.Ema);
+        }
+
+        /// <summary>
+        /// MACD指标
+        /// </summary>
+        /// <param name="price"></param>
+        /// <param name="fastPeriod"></param>
+        /// <param name="slowPeriod"></param>
+        /// <param name="signalPeriod"></param>
+        /// <returns>(DIF,DEA,MACD)或(MACD,Signal,Hist)</returns>
+        public static (double[] macd, double[] macdSignal, double[] macdHist) MACD(double[] price, int fastPeriod = 12, int slowPeriod = 26, int signalPeriod = 9)
+        {
+            double[] macd = new double[price.Length];
+            double[] macdSignal = new double[price.Length];
+            double[] macdHist = new double[price.Length];
+            Core.Macd(0, price.Length - 1, price,
+                fastPeriod, slowPeriod, signalPeriod,
+                out int idx, out int cnt,
+                macd, macdSignal, macdHist);
+            ArrayMoveBack(macd, idx, cnt);
+            ArrayMoveBack(macdSignal, idx, cnt);
+            ArrayMoveBack(macdHist, idx, cnt);
+            return (macd, macdSignal, macdHist);
+        }
+
+        /// <summary>
+        /// KDJ指标
+        /// </summary>
+        /// <param name="highPrices"></param>
+        /// <param name="lowPrices"></param>
+        /// <param name="closePrices"></param>
+        /// <param name="fastkPeriod"></param>
+        /// <param name="slowkPeriod"></param>
+        /// <param name="slowdPeriod"></param>
+        /// <returns>(K,D,J)</returns>
+        public static (double[] k, double[] d, double[] j) KDJ(double[] highPrices, double[] lowPrices, double[] closePrices,
+            int fastkPeriod = 9, int slowkPeriod = 3, int slowdPeriod = 3)
+        {
+            double[] k = new double[highPrices.Length];
+            double[] d = new double[highPrices.Length];
+            double[] j = new double[highPrices.Length];
+            Core.Stoch(0, highPrices.Length - 1, highPrices, lowPrices, closePrices,
+                fastkPeriod, slowkPeriod, Core.MAType.Ema, slowdPeriod, Core.MAType.Ema,
+                out int idx, out int cnt, k, d);
+            ArrayMoveBack(k, idx, cnt);
+            ArrayMoveBack(d, idx, cnt);
+            j = k.Zip(d, (k, d) => 3 * k - 2 * d).ToArray();
+            return (k, d, j);
+        }
+    }
+}
