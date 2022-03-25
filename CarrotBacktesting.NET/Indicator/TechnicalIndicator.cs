@@ -58,6 +58,8 @@ namespace CarrotBacktesting.NET.Indicator
 
         /// <summary>
         /// MACD指标
+        /// TALIB MACDHist计算为一倍, 同花顺为两倍, TradingView为一倍
+        /// Reference: https://sourceforge.net/p/ta-lib/code/HEAD/tree/trunk/ta-lib/c/src/ta_func/ta_MACD.c#l495
         /// </summary>
         /// <param name="price"></param>
         /// <param name="fastPeriod"></param>
@@ -69,10 +71,12 @@ namespace CarrotBacktesting.NET.Indicator
             double[] macd = new double[price.Length];
             double[] macdSignal = new double[price.Length];
             double[] macdHist = new double[price.Length];
-            Core.Macd(0, price.Length - 1, price,
+            Core.RetCode code = Core.Macd(0, price.Length - 1, price,
                 fastPeriod, slowPeriod, signalPeriod,
                 out int idx, out int cnt,
                 macd, macdSignal, macdHist);
+            if (code != Core.RetCode.Success)
+                throw new InvalidOperationException($"TA-Lib return: {code}.");
             ArrayMoveBack(macd, idx, cnt);
             ArrayMoveBack(macdSignal, idx, cnt);
             ArrayMoveBack(macdHist, idx, cnt);
@@ -92,12 +96,19 @@ namespace CarrotBacktesting.NET.Indicator
         public static (double[] k, double[] d, double[] j) KDJ(double[] highPrices, double[] lowPrices, double[] closePrices,
             int fastkPeriod = 9, int slowkPeriod = 3, int slowdPeriod = 3)
         {
+            // period转换
+            // https://xueqiu.com/1747761477/198676825
+            slowkPeriod = slowkPeriod * 2 - 1;
+            slowdPeriod = slowdPeriod * 2 - 1;
+
             double[] k = new double[highPrices.Length];
             double[] d = new double[highPrices.Length];
             double[] j = new double[highPrices.Length];
-            Core.Stoch(0, highPrices.Length - 1, highPrices, lowPrices, closePrices,
-                fastkPeriod, slowkPeriod, Core.MAType.Ema, slowdPeriod, Core.MAType.Ema,
-                out int idx, out int cnt, k, d);
+            Core.RetCode code = Core.Stoch(0, highPrices.Length - 1, highPrices, lowPrices, closePrices,
+               fastkPeriod, slowkPeriod, Core.MAType.Ema, slowdPeriod, Core.MAType.Ema,
+               out int idx, out int cnt, k, d);
+            if (code != Core.RetCode.Success)
+                throw new InvalidOperationException($"TA-Lib return: {code}.");
             ArrayMoveBack(k, idx, cnt);
             ArrayMoveBack(d, idx, cnt);
             j = k.Zip(d, (k, d) => 3 * k - 2 * d).ToArray();
