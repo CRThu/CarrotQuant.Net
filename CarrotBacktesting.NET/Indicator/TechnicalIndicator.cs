@@ -118,6 +118,12 @@ namespace CarrotBacktesting.NET.Indicator
             return (k, d, j);
         }
 
+        /// <summary>
+        /// RSI指标
+        /// </summary>
+        /// <param name="price"></param>
+        /// <param name="period"></param>
+        /// <returns></returns>
         public static double[] RSI(double[] price, int period = 6)
         {
             double[] real = new double[price.Length];
@@ -129,6 +135,13 @@ namespace CarrotBacktesting.NET.Indicator
             return real;
         }
 
+        /// <summary>
+        /// BOLL指标
+        /// </summary>
+        /// <param name="price"></param>
+        /// <param name="period"></param>
+        /// <param name="nbDev"></param>
+        /// <returns></returns>
         public static (double[] up, double[] mid, double[] low) BOLL(double[] price, int period = 20, int nbDev = 2)
         {
             double[] up = new double[price.Length];
@@ -144,6 +157,14 @@ namespace CarrotBacktesting.NET.Indicator
             return (up, mid, low);
         }
 
+        /// <summary>
+        /// WR指标
+        /// </summary>
+        /// <param name="highPrices"></param>
+        /// <param name="lowPrices"></param>
+        /// <param name="closePrices"></param>
+        /// <param name="period"></param>
+        /// <returns></returns>
         public static double[] WR(double[] highPrices, double[] lowPrices, double[] closePrices, int period = 14)
         {
             double[] real = new double[highPrices.Length];
@@ -155,6 +176,14 @@ namespace CarrotBacktesting.NET.Indicator
             return real;
         }
 
+        /// <summary>
+        /// SAR指标
+        /// </summary>
+        /// <param name="highPrices"></param>
+        /// <param name="lowPrices"></param>
+        /// <param name="acceleration"></param>
+        /// <param name="maximum"></param>
+        /// <returns></returns>
         public static double[] SAR(double[] highPrices, double[] lowPrices, double acceleration = 0.02, double maximum = 0.2)
         {
             double[] real = new double[highPrices.Length];
@@ -166,6 +195,14 @@ namespace CarrotBacktesting.NET.Indicator
             return real;
         }
 
+        /// <summary>
+        /// CCI指标
+        /// </summary>
+        /// <param name="highPrices"></param>
+        /// <param name="lowPrices"></param>
+        /// <param name="closePrices"></param>
+        /// <param name="period"></param>
+        /// <returns></returns>
         public static double[] CCI(double[] highPrices, double[] lowPrices, double[] closePrices, int period = 14)
         {
             double[] real = new double[highPrices.Length];

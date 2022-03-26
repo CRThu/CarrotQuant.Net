@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotQuant.Net", "CarrotQu
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBacktesting.NET", "CarrotBacktesting.NET\CarrotBacktesting.NET.csproj", "{D5878DEC-E63B-4382-BABA-02374B896891}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotBackTesting.Net.UnitTest", "CarrotBackTesting.Net.UnitTest\CarrotBackTesting.Net.UnitTest.csproj", "{F30174DA-64CB-4836-BC37-46AD944300B2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBackTesting.Net.UnitTest", "CarrotBackTesting.Net.UnitTest\CarrotBackTesting.Net.UnitTest.csproj", "{F30174DA-64CB-4836-BC37-46AD944300B2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
