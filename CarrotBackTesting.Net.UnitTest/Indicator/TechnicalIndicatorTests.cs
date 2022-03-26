@@ -94,7 +94,7 @@ namespace CarrotBacktesting.NET.Indicator.Tests
             double[] ma = TechnicalIndicator.MA(AAPLPrice["close"], MAx);
             (double min, double max, double avg) = CollectionVerify.CollectionElementsVerify(ma[^(AAPLTAReference[refKey].Length)..], AAPLTAReference[refKey]);
             Console.WriteLine($"{refKey} Test Result: Min:{min:F2}, Max:{max:F2}, Avg:{avg:F2}.");
-            Assert.IsTrue(avg < 0.01 && max < 0.01);
+            Assert.IsTrue(avg < 0.01 && max < 0.02);
         }
 
         [TestMethod()]

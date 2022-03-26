@@ -9,7 +9,7 @@ namespace CarrotBacktesting.NET.Indicator
 {
     /// <summary>
     /// 技术指标类,使用TA-Lib计算,包含常用指标如下:
-    /// MA EMA MACD KDJ RSI BOLL WR SAR BIAS CCI
+    /// MA EMA MACD KDJ RSI BOLL WR SAR CCI
     /// </summary>
     public static class TechnicalIndicator
     {
@@ -23,6 +23,12 @@ namespace CarrotBacktesting.NET.Indicator
         {
             Array.Copy(real, 0, real, idx, cnt);
             Array.Clear(real, 0, idx);
+        }
+
+        public static void CheckRetCode(Core.RetCode code)
+        {
+            if (code != Core.RetCode.Success)
+                throw new InvalidOperationException($"TA-Lib return: {code}.");
         }
 
         /// <summary>
@@ -39,8 +45,7 @@ namespace CarrotBacktesting.NET.Indicator
             Core.RetCode code = Core.MovingAverage(0, price.Length - 1, price,
                 period, maType,
                 out int idx, out int cnt, real);
-            if (code != Core.RetCode.Success)
-                throw new InvalidOperationException($"TA-Lib return: {code}.");
+            CheckRetCode(code);
             ArrayMoveBack(real, idx, cnt);
             return real;
         }
@@ -75,8 +80,7 @@ namespace CarrotBacktesting.NET.Indicator
                 fastPeriod, slowPeriod, signalPeriod,
                 out int idx, out int cnt,
                 macd, macdSignal, macdHist);
-            if (code != Core.RetCode.Success)
-                throw new InvalidOperationException($"TA-Lib return: {code}.");
+            CheckRetCode(code);
             ArrayMoveBack(macd, idx, cnt);
             ArrayMoveBack(macdSignal, idx, cnt);
             ArrayMoveBack(macdHist, idx, cnt);
@@ -107,12 +111,70 @@ namespace CarrotBacktesting.NET.Indicator
             Core.RetCode code = Core.Stoch(0, highPrices.Length - 1, highPrices, lowPrices, closePrices,
                fastkPeriod, slowkPeriod, Core.MAType.Ema, slowdPeriod, Core.MAType.Ema,
                out int idx, out int cnt, k, d);
-            if (code != Core.RetCode.Success)
-                throw new InvalidOperationException($"TA-Lib return: {code}.");
+            CheckRetCode(code);
             ArrayMoveBack(k, idx, cnt);
             ArrayMoveBack(d, idx, cnt);
             j = k.Zip(d, (k, d) => 3 * k - 2 * d).ToArray();
             return (k, d, j);
+        }
+
+        public static double[] RSI(double[] price, int period = 6)
+        {
+            double[] real = new double[price.Length];
+            Core.RetCode code = Core.Rsi(0, price.Length - 1, price,
+                period,
+                out int idx, out int cnt, real);
+            CheckRetCode(code);
+            ArrayMoveBack(real, idx, cnt);
+            return real;
+        }
+
+        public static (double[] up, double[] mid, double[] low) BOLL(double[] price, int period = 20, int nbDev = 2)
+        {
+            double[] up = new double[price.Length];
+            double[] mid = new double[price.Length];
+            double[] low = new double[price.Length];
+            Core.RetCode code = Core.Bbands(0, price.Length - 1, price,
+                period, nbDev, nbDev, Core.MAType.Sma,
+                out int idx, out int cnt, up, mid, low);
+            CheckRetCode(code);
+            ArrayMoveBack(up, idx, cnt);
+            ArrayMoveBack(mid, idx, cnt);
+            ArrayMoveBack(low, idx, cnt);
+            return (up, mid, low);
+        }
+
+        public static double[] WR(double[] highPrices, double[] lowPrices, double[] closePrices, int period = 14)
+        {
+            double[] real = new double[highPrices.Length];
+            Core.RetCode code = Core.WillR(0, highPrices.Length - 1, highPrices, lowPrices, closePrices,
+                period,
+                out int idx, out int cnt, real);
+            CheckRetCode(code);
+            ArrayMoveBack(real, idx, cnt);
+            return real;
+        }
+
+        public static double[] SAR(double[] highPrices, double[] lowPrices, double acceleration = 0.02, double maximum = 0.2)
+        {
+            double[] real = new double[highPrices.Length];
+            Core.RetCode code = Core.Sar(0, highPrices.Length - 1, highPrices, lowPrices,
+                acceleration, maximum,
+                out int idx, out int cnt, real);
+            CheckRetCode(code);
+            ArrayMoveBack(real, idx, cnt);
+            return real;
+        }
+
+        public static double[] CCI(double[] highPrices, double[] lowPrices, double[] closePrices, int period = 14)
+        {
+            double[] real = new double[highPrices.Length];
+            Core.RetCode code = Core.Cci(0, highPrices.Length - 1, highPrices, lowPrices, closePrices,
+                period,
+                out int idx, out int cnt, real);
+            CheckRetCode(code);
+            ArrayMoveBack(real, idx, cnt);
+            return real;
         }
     }
 }
