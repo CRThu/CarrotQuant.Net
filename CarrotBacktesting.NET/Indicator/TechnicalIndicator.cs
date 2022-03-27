@@ -164,13 +164,16 @@ namespace CarrotBacktesting.NET.Indicator
         /// <param name="lowPrices"></param>
         /// <param name="closePrices"></param>
         /// <param name="period"></param>
+        /// <param name="invert">反相至0-100区间</param>
         /// <returns></returns>
-        public static double[] WR(double[] highPrices, double[] lowPrices, double[] closePrices, int period = 14)
+        public static double[] WR(double[] highPrices, double[] lowPrices, double[] closePrices, int period = 14, bool invert = true)
         {
             double[] real = new double[highPrices.Length];
             Core.RetCode code = Core.WillR(0, highPrices.Length - 1, highPrices, lowPrices, closePrices,
                 period,
                 out int idx, out int cnt, real);
+            if (invert)
+                real = real.Select(x => -x).ToArray();
             CheckRetCode(code);
             ArrayMoveBack(real, idx, cnt);
             return real;

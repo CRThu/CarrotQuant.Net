@@ -93,8 +93,8 @@ namespace CarrotBacktesting.NET.Indicator.Tests
                 new[] { 77.4, 77.8, 79.38, 18.08, 1.08 }
             },
             {
-                "SAR_THS",
-                new[] { 172.35, 170.82, 169.52, 168.39, 154.70 }
+                "SAR_TV",
+                new[] {171.34,169.01,167.01,154.7,155.01 }
             },
             {
                 "CCI14_THS",
@@ -188,31 +188,76 @@ namespace CarrotBacktesting.NET.Indicator.Tests
         [TestMethod()]
         public void RSITest()
         {
-            Assert.Fail();
+            int period = 6;
+            string refKey = "RSI6_THS";
+
+            double[] rsi = TechnicalIndicator.RSI(AAPLPrice["close"], period);
+
+            (double min, double max, double avg) = CollectionVerify.CollectionElementsVerify(rsi[^(AAPLTAReference[refKey].Length)..], AAPLTAReference[refKey]);
+            Console.WriteLine($"{refKey} Test Result: Min:{min:F2}, Max:{max:F2}, Avg:{avg:F2}.");
+            Assert.IsTrue(avg < 0.01 && max < 0.02);
         }
 
         [TestMethod()]
         public void BOLLTest()
         {
-            Assert.Fail();
+            int period = 20;
+            int nbDev = 2;
+            string refKey1 = "BOLL20_2_UP_THS";
+            string refKey2 = "BOLL20_2_MID_THS";
+            string refKey3 = "BOLL20_2_DOWN_THS";
+
+            (double[] up, double[] mid, double[] down) = TechnicalIndicator.BOLL(AAPLPrice["close"], period, nbDev);
+            Console.WriteLine(string.Join(',', up[^5..]));
+
+            (double min, double max, double avg) = CollectionVerify.CollectionElementsVerify(up[^(AAPLTAReference[refKey1].Length)..], AAPLTAReference[refKey1]);
+            Console.WriteLine($"{refKey1} Test Result: Min:{min:F2}, Max:{max:F2}, Avg:{avg:F2}.");
+            Assert.IsTrue(avg < 0.01 && max < 0.02);
+            (min, max, avg) = CollectionVerify.CollectionElementsVerify(mid[^(AAPLTAReference[refKey2].Length)..], AAPLTAReference[refKey2]);
+            Console.WriteLine($"{refKey2} Test Result: Min:{min:F2}, Max:{max:F2}, Avg:{avg:F2}.");
+            Assert.IsTrue(avg < 0.01 && max < 0.02);
+            (min, max, avg) = CollectionVerify.CollectionElementsVerify(down[^(AAPLTAReference[refKey3].Length)..], AAPLTAReference[refKey3]);
+            Console.WriteLine($"{refKey3} Test Result: Min:{min:F2}, Max:{max:F2}, Avg:{avg:F2}.");
+            Assert.IsTrue(avg < 0.01 && max < 0.02);
         }
 
         [TestMethod()]
         public void WRTest()
         {
-            Assert.Fail();
+            int period = 10;
+            string refKey = "WR10_THS";
+
+            double[] wr = TechnicalIndicator.WR(AAPLPrice["high"], AAPLPrice["low"], AAPLPrice["close"], period);
+
+            (double min, double max, double avg) = CollectionVerify.CollectionElementsVerify(wr[^(AAPLTAReference[refKey].Length)..], AAPLTAReference[refKey]);
+            Console.WriteLine($"{refKey} Test Result: Min:{min:F2}, Max:{max:F2}, Avg:{avg:F2}.");
+            Assert.IsTrue(avg < 0.01 && max < 0.02);
         }
 
         [TestMethod()]
         public void SARTest()
         {
-            Assert.Fail();
+            string refKey = "SAR_TV";
+
+            double[] sar = TechnicalIndicator.SAR(AAPLPrice["high"], AAPLPrice["low"]);
+            Console.WriteLine(string.Join(',', sar[^5..]));
+
+            (double min, double max, double avg) = CollectionVerify.CollectionElementsVerify(sar[^(AAPLTAReference[refKey].Length)..], AAPLTAReference[refKey]);
+            Console.WriteLine($"{refKey} Test Result: Min:{min:F2}, Max:{max:F2}, Avg:{avg:F2}.");
+            Assert.IsTrue(avg < 0.01 && max < 0.02);
         }
 
         [TestMethod()]
         public void CCITest()
         {
-            Assert.Fail();
+            int period = 14;
+            string refKey = "CCI14_THS";
+
+            double[] cci = TechnicalIndicator.CCI(AAPLPrice["high"], AAPLPrice["low"], AAPLPrice["close"], period);
+
+            (double min, double max, double avg) = CollectionVerify.CollectionElementsVerify(cci[^(AAPLTAReference[refKey].Length)..], AAPLTAReference[refKey]);
+            Console.WriteLine($"{refKey} Test Result: Min:{min:F2}, Max:{max:F2}, Avg:{avg:F2}.");
+            Assert.IsTrue(avg < 0.01 && max < 0.02);
         }
     }
 }
