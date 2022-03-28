@@ -1,0 +1,25 @@
+﻿using CarrotBacktesting.NET.Engine;
+
+namespace CarrotBacktesting.NET.Strategy
+{
+    public interface IStrategy
+    {
+        /// <summary>
+        /// 策略进入运行函数
+        /// </summary>
+        public void Start(StrategyContext strategyContext);
+        /// <summary>
+        /// 策略结束运行函数
+        /// </summary>
+        public void End(StrategyContext strategyContext);
+
+        /// <summary>
+        /// 策略正常工作时下一时间Next()前更新指标类等数据
+        /// </summary>
+        public void PreNext(StrategyContext strategyContext);
+        /// <summary>
+        /// 策略正常工作时下一时间更新(模拟时间重复运行)
+        /// </summary>
+        public void Next(StrategyContext strategyContext);
+    }
+}

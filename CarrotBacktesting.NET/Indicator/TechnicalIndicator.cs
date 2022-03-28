@@ -181,6 +181,7 @@ namespace CarrotBacktesting.NET.Indicator
 
         /// <summary>
         /// SAR指标
+        /// 本实现数据与TradingView相比存在误差
         /// </summary>
         /// <param name="highPrices"></param>
         /// <param name="lowPrices"></param>
