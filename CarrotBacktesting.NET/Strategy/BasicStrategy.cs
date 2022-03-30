@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Strategy
 {
+    /// <summary>
+    /// 基础测试策略
+    /// </summary>
     public class BasicStrategy : IStrategy
     {
         public void Start(StrategyContext strategyContext)

@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Engine
 {
+    /// <summary>
+    /// 回测/交易引擎接口
+    /// </summary>
     public interface IEngine
     {
         public void SetStrategy(IStrategy strategy);
