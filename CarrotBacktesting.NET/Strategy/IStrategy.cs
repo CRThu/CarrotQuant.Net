@@ -2,6 +2,9 @@
 
 namespace CarrotBacktesting.NET.Strategy
 {
+    /// <summary>
+    /// 策略接口
+    /// </summary>
     public interface IStrategy
     {
         /// <summary>

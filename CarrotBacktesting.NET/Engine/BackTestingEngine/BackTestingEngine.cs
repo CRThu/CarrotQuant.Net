@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Engine.BackTestingEngine
 {
+    /// <summary>
+    /// 回测引擎
+    /// </summary>
     public class BackTestingEngine : IEngine
     {
         public StrategyContext StrategyContext;
