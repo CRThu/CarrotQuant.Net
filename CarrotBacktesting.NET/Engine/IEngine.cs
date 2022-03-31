@@ -12,7 +12,6 @@ namespace CarrotBacktesting.NET.Engine
     /// </summary>
     public interface IEngine
     {
-        public void SetStrategy(IStrategy strategy);
         public void Run();
     }
 }

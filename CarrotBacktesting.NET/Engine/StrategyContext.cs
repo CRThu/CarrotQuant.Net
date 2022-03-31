@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CarrotBacktesting.NET.Portfolio;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,10 +12,20 @@ namespace CarrotBacktesting.NET.Engine
     /// </summary>
     public class StrategyContext
     {
+        public PortfolioManager PortfolioManager;
+
+        /// <summary>
+        /// 当前价格
+        /// </summary>
+        public double NowPrice;
+        /// <summary>
+        /// 当前日期
+        /// </summary>
+        public DateTime NowTime = new(2021, 1, 1);
 
         public StrategyContext()
         {
-
+            PortfolioManager = new PortfolioManager();
         }
     }
 }

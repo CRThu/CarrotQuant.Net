@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.NET.Engine;
+using CarrotBacktesting.NET.Portfolio;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,7 +30,10 @@ namespace CarrotBacktesting.NET.Strategy
 
         public void Next(StrategyContext strategyContext)
         {
+            Console.WriteLine($"{strategyContext.NowTime}| Price: {strategyContext.NowPrice}.");
             Console.WriteLine("BasicStrategy.Next()");
+
+            strategyContext.PortfolioManager.AddOrder(new GeneralOrder("A", "001", 100.0, PositionEnum.Long));
         }
     }
 }

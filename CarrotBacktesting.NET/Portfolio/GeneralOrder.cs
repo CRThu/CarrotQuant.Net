@@ -6,10 +6,7 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Portfolio
 {
-    /// <summary>
-    /// 常规头寸存储类
-    /// </summary>
-    public class GeneralPosition
+    public class GeneralOrder
     {
         /// <summary>
         /// 交易所名称
@@ -29,13 +26,18 @@ namespace CarrotBacktesting.NET.Portfolio
         public PositionEnum Position { get; set; }
 
         /// <summary>
+        /// 委托单状态
+        /// </summary>
+        public OrderStatus Status { get; set; }
+
+        /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="exchangeName"></param>
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="position"></param>
-        public GeneralPosition(string exchangeName, string shareName, double size, PositionEnum position)
+        public GeneralOrder(string exchangeName, string shareName, double size, PositionEnum position)
         {
             ExchangeName = exchangeName;
             ShareName = shareName;
