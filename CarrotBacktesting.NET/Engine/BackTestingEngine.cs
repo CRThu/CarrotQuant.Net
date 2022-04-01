@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.NET.Strategy;
+﻿using CarrotBacktesting.NET.Portfolio;
+using CarrotBacktesting.NET.Strategy;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,7 @@ namespace CarrotBacktesting.NET.Engine
     public class BackTestingEngine : IEngine
     {
         public StrategyContext StrategyContext;
+        public BackTestingExchange Exchange;
         public IStrategy Strategy;
 
         // ex. From DataFeed
@@ -27,6 +29,7 @@ namespace CarrotBacktesting.NET.Engine
         {
             StrategyContext = new();
             Strategy = strategy;
+            Exchange = new(StrategyContext.PortfolioManager);
 
             EventRegister();
         }
@@ -51,11 +54,14 @@ namespace CarrotBacktesting.NET.Engine
         public void EventRegister()
         {
             // 时间片触发策略更新
-            OnTickChanged += () => Strategy.PreNext(StrategyContext);
-            OnBarChanged += () => Strategy.Next(StrategyContext);
+            OnTickChanged += () => Strategy.OnTick(StrategyContext);
+            OnBarChanged += () => Strategy.OnNext(StrategyContext);
 
-            // 投资组合管理类时间片更新
+            // 投资组合管理类价格更新
             OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate(StrategyContext.NowPrice);
+
+            // 交易所类价格更新
+            OnTickChanged += () => Exchange.OnPriceUpdate(StrategyContext.NowPrice);
         }
     }
 }

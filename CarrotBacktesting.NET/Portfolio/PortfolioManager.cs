@@ -24,16 +24,8 @@ namespace CarrotBacktesting.NET.Portfolio
         /// </summary>
         public List<GeneralPosition> Positions { get; set; } = new();
 
-        /// <summary>
-        /// 添加委托单
-        /// </summary>
-        /// <param name="order"></param>
-        public void AddOrder(GeneralOrder order)
-        {
-            Console.WriteLine($"委托单已挂单, 价格{order.LimitPrice}, 数量{order.Size}, 方向{order.Position}.");
-            Orders.Add(order);
-            CheckOrder();
-        }
+        public delegate void AddOrderDelegate();
+        public event AddOrderDelegate? AddOrderEvent;
 
         /// <summary>
         /// 实时股价更新
@@ -42,23 +34,33 @@ namespace CarrotBacktesting.NET.Portfolio
         public void OnPriceUpdate(double price)
         {
             NowPrice = price;
-            CheckOrder();
         }
 
-        public void CheckOrder()
+        /// <summary>
+        /// 添加委托单
+        /// </summary>
+        /// <param name="order"></param>
+        public void AddOrder(GeneralOrder order)
         {
-            for (int i = 0; i < Orders.Count; i++)
-            {
-                if ((Orders[i].LimitPrice >= NowPrice && Orders[i].Position == PositionEnum.Long)
-                    || (Orders[i].LimitPrice <= NowPrice && Orders[i].Position == PositionEnum.Short))
-                {
-                    // TODO pos ord 建立单独的类
-                    Orders[i].LimitPrice = NowPrice;
-                    Positions.Add(new GeneralPosition(Orders[i]));
-                    Console.WriteLine($"委托单已被成交, 价格{Orders[i].LimitPrice}, 数量{Orders[i].Size}, 方向{Orders[i].Position}.");
-                    Orders.Remove(Orders[i]);
-                }
-            }
+            Console.WriteLine($"委托单已挂单, 价格{order.LimitPrice}, 数量{order.Size}, 方向{order.Position}.");
+            Orders.Add(order);
+            AddOrderEvent?.Invoke();
+        }
+
+        /// <summary>
+        /// 交易所更新委托单成交
+        /// </summary>
+        /// <param name="idx"></param>
+        /// <param name="price"></param>
+        /// <param name="size"></param>
+        public void OnExchangeOrderDealUpdate(int idx, double price, double size)
+        {
+            Orders[idx].Size -= size;
+            var position = new GeneralPosition(Orders[idx]) { Size = size };
+            Console.WriteLine($"委托单已被成交, 价格{price}, 数量{position.Size}, 方向{position.Position}.");
+            if (Orders[idx].Size == 0)
+                Orders.Remove(Orders[idx]);
+            Positions.Add(position);
         }
     }
 }
