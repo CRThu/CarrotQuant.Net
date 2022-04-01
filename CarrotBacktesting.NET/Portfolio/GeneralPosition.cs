@@ -42,5 +42,13 @@ namespace CarrotBacktesting.NET.Portfolio
             Size = size;
             Position = position;
         }
+
+        public GeneralPosition(GeneralOrder generalOrder)
+        {
+            ExchangeName = generalOrder.ExchangeName;
+            ShareName = generalOrder.ShareName;
+            Size = generalOrder.Size;
+            Position = generalOrder.Position;
+        }
     }
 }
