@@ -23,12 +23,12 @@ namespace CarrotBacktesting.NET.Strategy
             Console.WriteLine("BasicStrategy.End()");
         }
 
-        public void PreNext(StrategyContext strategyContext)
+        public void OnTick(StrategyContext strategyContext)
         {
             Console.WriteLine("BasicStrategy.PreNext()");
         }
 
-        public void Next(StrategyContext strategyContext)
+        public void OnNext(StrategyContext strategyContext)
         {
             Console.WriteLine("BasicStrategy.Next()");
             Console.WriteLine($"{strategyContext.NowTime}| Price: {strategyContext.NowPrice}.");
