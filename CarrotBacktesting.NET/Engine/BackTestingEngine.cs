@@ -54,6 +54,8 @@ namespace CarrotBacktesting.NET.Engine
             OnTickChanged += () => Strategy.PreNext(StrategyContext);
             OnBarChanged += () => Strategy.Next(StrategyContext);
 
+            // 投资组合管理类时间片更新
+            OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate(StrategyContext.NowPrice);
         }
     }
 }

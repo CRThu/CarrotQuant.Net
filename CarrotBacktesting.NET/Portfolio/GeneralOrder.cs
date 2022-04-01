@@ -6,6 +6,9 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Portfolio
 {
+    /// <summary>
+    /// 常规委托
+    /// </summary>
     public class GeneralOrder
     {
         /// <summary>
@@ -20,15 +23,16 @@ namespace CarrotBacktesting.NET.Portfolio
         /// 头寸大小
         /// </summary>
         public double Size { get; set; }
+
+        /// <summary>
+        /// 委托限价
+        /// </summary>
+        public double LimitPrice { get; set; }
+
         /// <summary>
         /// 头寸方向
         /// </summary>
         public PositionEnum Position { get; set; }
-
-        /// <summary>
-        /// 委托单状态
-        /// </summary>
-        public OrderStatus Status { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -37,12 +41,19 @@ namespace CarrotBacktesting.NET.Portfolio
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="position"></param>
-        public GeneralOrder(string exchangeName, string shareName, double size, PositionEnum position)
+        public GeneralOrder(string exchangeName, string shareName, double price, double size, PositionEnum position)
         {
             ExchangeName = exchangeName;
             ShareName = shareName;
+            LimitPrice = price;
             Size = size;
             Position = position;
+
+            if (Size < 0)
+            {
+                Size = -Size;
+                Position = Position == PositionEnum.Long ? PositionEnum.Short : PositionEnum.Long;
+            }
         }
     }
 }
