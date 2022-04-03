@@ -34,9 +34,9 @@ namespace CarrotBacktesting.NET.Strategy
             Console.WriteLine($"{strategyContext.NowTime}| Price: {strategyContext.NowPrice}.");
 
             if (strategyContext.NowPrice <= 3)
-                strategyContext.PortfolioManager.AddOrder(new GeneralOrder("A", "001", 2.5, 100.0, PositionEnum.Long));
+                strategyContext.PortfolioManager.AddOrder(new GeneralOrder("A", "001", 2.5, 100.0, PositionDirectionEnum.Long));
             if (strategyContext.NowPrice >= 6)
-                strategyContext.PortfolioManager.AddOrder(new GeneralOrder("A", "001", 4.5, 100.0, PositionEnum.Short));
+                strategyContext.PortfolioManager.AddOrder(new GeneralOrder("A", "001", 4.5, 100.0, PositionDirectionEnum.Short));
         }
     }
 }

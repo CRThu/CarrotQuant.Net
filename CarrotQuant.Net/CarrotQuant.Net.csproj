@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\CarrotBacktesting.NET\CarrotBacktesting.NET.csproj" />
+    <ProjectReference Include="..\CarrotBacktesting.NET\CarrotBacktesting.Net.csproj" />
   </ItemGroup>
 
   <ItemGroup>
