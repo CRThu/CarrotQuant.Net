@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Portfolio
 {
-    public enum PositionEnum
+    public enum PositionDirectionEnum
     {
         Long,
         Short,

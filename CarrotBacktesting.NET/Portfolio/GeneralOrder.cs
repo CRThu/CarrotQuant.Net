@@ -32,7 +32,7 @@ namespace CarrotBacktesting.NET.Portfolio
         /// <summary>
         /// 头寸方向
         /// </summary>
-        public PositionEnum Position { get; set; }
+        public PositionDirectionEnum Position { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -41,7 +41,7 @@ namespace CarrotBacktesting.NET.Portfolio
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="position"></param>
-        public GeneralOrder(string exchangeName, string shareName, double price, double size, PositionEnum position)
+        public GeneralOrder(string exchangeName, string shareName, double price, double size, PositionDirectionEnum position)
         {
             ExchangeName = exchangeName;
             ShareName = shareName;
@@ -52,7 +52,7 @@ namespace CarrotBacktesting.NET.Portfolio
             if (Size < 0)
             {
                 Size = -Size;
-                Position = Position == PositionEnum.Long ? PositionEnum.Short : PositionEnum.Long;
+                Position = Position == PositionDirectionEnum.Long ? PositionDirectionEnum.Short : PositionDirectionEnum.Long;
             }
         }
     }
