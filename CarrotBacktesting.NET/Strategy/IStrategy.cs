@@ -8,11 +8,11 @@ namespace CarrotBacktesting.NET.Strategy
     public interface IStrategy
     {
         /// <summary>
-        /// 策略进入运行函数
+        /// 策略进入运行方法
         /// </summary>
         public void Start(StrategyContext strategyContext);
         /// <summary>
-        /// 策略结束运行函数
+        /// 策略结束运行方法
         /// </summary>
         public void End(StrategyContext strategyContext);
 

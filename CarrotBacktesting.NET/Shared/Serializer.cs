@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Shared
 {
-    public static class JsonConverter
+    public static class Serializer
     {
         public static string Serialize(object value, bool isIndented = true)
         {
