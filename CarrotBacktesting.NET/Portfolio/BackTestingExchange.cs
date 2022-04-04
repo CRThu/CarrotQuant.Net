@@ -54,8 +54,8 @@ namespace CarrotBacktesting.NET.Portfolio
         {
             for (int i = 0; i < Portfolio.Orders.Count; i++)
             {
-                if ((Portfolio.Orders[i].LimitPrice >= NowPrice && Portfolio.Orders[i].Position == PositionDirectionEnum.Long)
-                    || (Portfolio.Orders[i].LimitPrice <= NowPrice && Portfolio.Orders[i].Position == PositionDirectionEnum.Short))
+                if ((Portfolio.Orders[i].LimitPrice >= NowPrice && Portfolio.Orders[i].Direction == TradeDirectionEnum.Long)
+                    || (Portfolio.Orders[i].LimitPrice <= NowPrice && Portfolio.Orders[i].Direction == TradeDirectionEnum.Short))
                 {
                     OrderDealEvent?.Invoke(i, NowPrice, Portfolio.Orders[i].Size);
                 }

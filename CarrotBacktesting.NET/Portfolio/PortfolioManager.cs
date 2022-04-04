@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.NET.Portfolio;
+﻿using CarrotBacktesting.Net.Portfolio;
+using CarrotBacktesting.NET.Portfolio;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -22,7 +23,7 @@ namespace CarrotBacktesting.NET.Portfolio
         /// <summary>
         /// 持仓列表
         /// </summary>
-        public List<GeneralPosition> Positions { get; set; } = new();
+        public PositionManager PositionManager { get; set; } = new();
 
         public delegate void AddOrderDelegate();
         public event AddOrderDelegate? AddOrderEvent;
@@ -42,7 +43,7 @@ namespace CarrotBacktesting.NET.Portfolio
         /// <param name="order"></param>
         public void AddOrder(GeneralOrder order)
         {
-            Console.WriteLine($"委托单已挂单, 价格{order.LimitPrice}, 数量{order.Size}, 方向{order.Position}.");
+            Console.WriteLine($"委托单已挂单, 价格:{order.LimitPrice}, 数量:{order.Size}, 方向:{order.Direction}.");
             Orders.Add(order);
             AddOrderEvent?.Invoke();
         }
@@ -56,11 +57,14 @@ namespace CarrotBacktesting.NET.Portfolio
         public void OnExchangeOrderDealUpdate(int idx, double price, double size)
         {
             Orders[idx].Size -= size;
-            var position = new GeneralPosition(Orders[idx]) { Size = size };
-            Console.WriteLine($"委托单已被成交, 价格{price}, 数量{position.Size}.");
+            PositionManager.Trade(Orders[idx].ExchangeName, Orders[idx].ShareName, price, size, Orders[idx].Direction);
+
+            Console.WriteLine($"委托单已被成交, 价格:{price}, 数量:{size}, 方向:{Orders[idx].Direction}.");
+
+            //若全部成交, 则删除委托单
             if (Orders[idx].Size == 0)
                 Orders.Remove(Orders[idx]);
-            Positions.Add(position);
+
         }
     }
 }
