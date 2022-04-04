@@ -57,7 +57,7 @@ namespace CarrotBacktesting.NET.Portfolio
         {
             Orders[idx].Size -= size;
             var position = new GeneralPosition(Orders[idx]) { Size = size };
-            Console.WriteLine($"委托单已被成交, 价格{price}, 数量{position.Size}, 方向{position.Position}.");
+            Console.WriteLine($"委托单已被成交, 价格{price}, 数量{position.Size}.");
             if (Orders[idx].Size == 0)
                 Orders.Remove(Orders[idx]);
             Positions.Add(position);
