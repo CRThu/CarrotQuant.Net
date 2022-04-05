@@ -1,5 +1,4 @@
 ﻿using CarrotBacktesting.Net.Portfolio;
-using CarrotBacktesting.Net.Portfolio;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -9,6 +8,9 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Portfolio
 {
+    /// <summary>
+    /// 投资组合管理类
+    /// </summary>
     public class PortfolioManager
     {
         /// <summary>
@@ -19,7 +21,8 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 委托单列表
         /// </summary>
-        public List<GeneralOrder> Orders { get; set; } = new();
+        public OrderManager OrderManager { get; set; } = new();
+
         /// <summary>
         /// 持仓列表
         /// </summary>
@@ -40,30 +43,35 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 添加委托单
         /// </summary>
-        /// <param name="order"></param>
-        public void AddOrder(GeneralOrder order)
+        /// <param name="exchangeName"></param>
+        /// <param name="shareName"></param>
+        /// <param name="limitPrice"></param>
+        /// <param name="size"></param>
+        /// <param name="direction"></param>
+        public void AddOrder(string exchangeName, string shareName, double limitPrice, double size, TradeDirection direction)
         {
-            Console.WriteLine($"委托单已挂单, 价格:{order.LimitPrice}, 数量:{order.Size}, 方向:{order.Direction}.");
-            Orders.Add(order);
+            Console.WriteLine($"委托单已挂单, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
+            OrderManager.AddOrder(exchangeName, shareName, limitPrice, size, direction);
             AddOrderEvent?.Invoke();
         }
 
         /// <summary>
         /// 交易所更新委托单成交
         /// </summary>
-        /// <param name="idx"></param>
+        /// <param name="orderId"></param>
         /// <param name="price"></param>
         /// <param name="size"></param>
-        public void OnExchangeOrderDealUpdate(int idx, double price, double size)
+        public void OnExchangeOrderDealUpdate(int orderId, double price, double size)
         {
-            Orders[idx].Size -= size;
-            PositionManager.Trade(Orders[idx].ExchangeName, Orders[idx].ShareName, price, size, Orders[idx].Direction);
+            var currentOrder = OrderManager.GetOrder(orderId);
+            currentOrder.Size -= size;
+            PositionManager.Trade(currentOrder.ExchangeName, currentOrder.ShareName, price, size, currentOrder.Direction);
 
-            Console.WriteLine($"委托单已被成交, 价格:{price}, 数量:{size}, 方向:{Orders[idx].Direction}.");
+            Console.WriteLine($"委托单已被成交, 价格:{price}, 数量:{size}, 方向:{currentOrder.Direction}.");
 
             //若全部成交, 则删除委托单
-            if (Orders[idx].Size == 0)
-                Orders.Remove(Orders[idx]);
+            if (currentOrder.Size == 0)
+                OrderManager.RemoveOrder(orderId);
 
         }
     }

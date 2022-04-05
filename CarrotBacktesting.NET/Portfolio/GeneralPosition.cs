@@ -32,11 +32,11 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public GeneralPosition(string exchangeName, string shareName, double size, TradeDirectionEnum direction = TradeDirectionEnum.Long)
+        public GeneralPosition(string exchangeName, string shareName, double size, TradeDirection direction = TradeDirection.Long)
         {
             ExchangeName = exchangeName;
             ShareName = shareName;
-            Size = direction == TradeDirectionEnum.Long ? size : -size;
+            Size = direction == TradeDirection.Long ? size : -size;
         }
 
         /// <summary>
@@ -47,7 +47,7 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             ExchangeName = generalOrder.ExchangeName;
             ShareName = generalOrder.ShareName;
-            Size = generalOrder.Direction == TradeDirectionEnum.Long ? generalOrder.Size : -generalOrder.Size;
+            Size = generalOrder.Direction == TradeDirection.Long ? generalOrder.Size : -generalOrder.Size;
         }
 
         /// <summary>
