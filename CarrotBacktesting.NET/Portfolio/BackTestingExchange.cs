@@ -15,7 +15,7 @@ namespace CarrotBacktesting.Net.Portfolio
         public PortfolioManager Portfolio;
 
 
-        public delegate void OrderDealDelegate(int idx, double price, double size);
+        public delegate void OrderDealDelegate(int orderId, double price, double size);
         /// <summary>
         /// 交易所更新委托单成交事件
         /// </summary>
@@ -52,12 +52,12 @@ namespace CarrotBacktesting.Net.Portfolio
         /// </summary>
         public void CheckOrder()
         {
-            for (int i = 0; i < Portfolio.Orders.Count; i++)
+            foreach ((var orderId, var orderInfo) in Portfolio.OrderManager.Orders)
             {
-                if ((Portfolio.Orders[i].LimitPrice >= NowPrice && Portfolio.Orders[i].Direction == TradeDirectionEnum.Long)
-                    || (Portfolio.Orders[i].LimitPrice <= NowPrice && Portfolio.Orders[i].Direction == TradeDirectionEnum.Short))
+                if ((orderInfo.LimitPrice >= NowPrice && orderInfo.Direction == TradeDirection.Long)
+                    || (orderInfo.LimitPrice <= NowPrice && orderInfo.Direction == TradeDirection.Short))
                 {
-                    OrderDealEvent?.Invoke(i, NowPrice, Portfolio.Orders[i].Size);
+                    OrderDealEvent?.Invoke(orderId, NowPrice, orderInfo.Size);
                 }
             }
         }
