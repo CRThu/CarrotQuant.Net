@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using Dapper;
 using System.Diagnostics;
 
-namespace CarrotBacktesting.NET.Common
+namespace CarrotBacktesting.Net.Common
 {
     public class SqliteHelper
     {

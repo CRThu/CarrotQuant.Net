@@ -1,5 +1,5 @@
 ﻿using CarrotBacktesting.Net.Portfolio;
-using CarrotBacktesting.NET.Portfolio;
+using CarrotBacktesting.Net.Portfolio;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.NET.Portfolio
+namespace CarrotBacktesting.Net.Portfolio
 {
     public class PortfolioManager
     {

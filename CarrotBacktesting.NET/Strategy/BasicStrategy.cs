@@ -1,12 +1,12 @@
-﻿using CarrotBacktesting.NET.Engine;
-using CarrotBacktesting.NET.Portfolio;
+﻿using CarrotBacktesting.Net.Engine;
+using CarrotBacktesting.Net.Portfolio;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.NET.Strategy
+namespace CarrotBacktesting.Net.Strategy
 {
     /// <summary>
     /// 基础测试策略
