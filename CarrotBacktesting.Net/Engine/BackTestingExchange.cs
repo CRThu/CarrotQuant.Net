@@ -1,10 +1,12 @@
-﻿using System;
+﻿using CarrotBacktesting.Net.Portfolio;
+using CarrotBacktesting.Net.Portfolio.Order;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.Portfolio
+namespace CarrotBacktesting.Net.Engine
 {
     public class BackTestingExchange
     {
@@ -54,8 +56,8 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             foreach ((var orderId, var orderInfo) in Portfolio.OrderManager.Orders)
             {
-                if ((orderInfo.LimitPrice >= NowPrice && orderInfo.Direction == TradeDirection.Long)
-                    || (orderInfo.LimitPrice <= NowPrice && orderInfo.Direction == TradeDirection.Short))
+                if ((orderInfo.LimitPrice >= NowPrice && orderInfo.Direction == OrderDirection.Long)
+                    || (orderInfo.LimitPrice <= NowPrice && orderInfo.Direction == OrderDirection.Short))
                 {
                     OrderDealEvent?.Invoke(orderId, NowPrice, orderInfo.Size);
                 }

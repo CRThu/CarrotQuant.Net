@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.Portfolio
+namespace CarrotBacktesting.Net.Portfolio.Order
 {
     /// <summary>
     /// 常规委托
@@ -32,7 +32,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 头寸方向
         /// </summary>
-        public TradeDirection Direction { get; set; }
+        public OrderDirection Direction { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -41,7 +41,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="position"></param>
-        public GeneralOrder(string exchangeName, string shareName, double price, double size, TradeDirection position)
+        public GeneralOrder(string exchangeName, string shareName, double price, double size, OrderDirection position)
         {
             ExchangeName = exchangeName;
             ShareName = shareName;
@@ -52,7 +52,7 @@ namespace CarrotBacktesting.Net.Portfolio
             if (Size < 0)
             {
                 Size = -Size;
-                Direction = Direction == TradeDirection.Long ? TradeDirection.Short : TradeDirection.Long;
+                Direction = Direction == OrderDirection.Long ? OrderDirection.Short : OrderDirection.Long;
             }
         }
     }

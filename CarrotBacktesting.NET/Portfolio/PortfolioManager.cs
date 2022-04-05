@@ -1,4 +1,6 @@
 ﻿using CarrotBacktesting.Net.Portfolio;
+using CarrotBacktesting.Net.Portfolio.Order;
+using CarrotBacktesting.Net.Portfolio.Position;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -48,7 +50,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="limitPrice"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public void AddOrder(string exchangeName, string shareName, double limitPrice, double size, TradeDirection direction)
+        public void AddOrder(string exchangeName, string shareName, double limitPrice, double size, OrderDirection direction)
         {
             Console.WriteLine($"委托单已挂单, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
             OrderManager.AddOrder(exchangeName, shareName, limitPrice, size, direction);

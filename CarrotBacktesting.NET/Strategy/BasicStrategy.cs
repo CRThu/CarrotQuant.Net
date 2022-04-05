@@ -1,5 +1,6 @@
 ﻿using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio;
+using CarrotBacktesting.Net.Portfolio.Order;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -35,9 +36,9 @@ namespace CarrotBacktesting.Net.Strategy
             Console.WriteLine($"{strategyContext.NowTime}| Price: {strategyContext.NowPrice}.");
 
             if (strategyContext.NowPrice <= 3)
-                strategyContext.PortfolioManager.AddOrder("A", "001", 2.5, 100.0, TradeDirection.Long);
+                strategyContext.PortfolioManager.AddOrder("A", "001", 2.5, 100.0, OrderDirection.Long);
             if (strategyContext.NowPrice >= 6)
-                strategyContext.PortfolioManager.AddOrder("A", "001", 4.5, 100.0, TradeDirection.Short);
+                strategyContext.PortfolioManager.AddOrder("A", "001", 4.5, 100.0, OrderDirection.Short);
         }
     }
 }

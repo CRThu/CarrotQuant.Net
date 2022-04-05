@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.Portfolio
+namespace CarrotBacktesting.Net.Portfolio.Order
 {
     /// <summary>
     /// 委托管理类
@@ -44,7 +44,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="limitPrice"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public void AddOrder(string exchangeName, string shareName, double limitPrice, double size, TradeDirection direction)
+        public void AddOrder(string exchangeName, string shareName, double limitPrice, double size, OrderDirection direction)
         {
             Orders.Add(OrderIdGen, new GeneralOrder(exchangeName, shareName, limitPrice, size, direction));
         }
