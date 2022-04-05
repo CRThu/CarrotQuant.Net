@@ -1,6 +1,6 @@
-﻿using CarrotBacktesting.NET.Engine;
+﻿using CarrotBacktesting.Net.Engine;
 
-namespace CarrotBacktesting.NET.Strategy
+namespace CarrotBacktesting.Net.Strategy
 {
     /// <summary>
     /// 策略接口

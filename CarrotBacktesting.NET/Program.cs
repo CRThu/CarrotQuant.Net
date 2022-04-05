@@ -1,6 +1,6 @@
 ﻿// See https://aka.ms/new-console-template for more information
-using CarrotBacktesting.NET.Engine;
-using CarrotBacktesting.NET.Strategy;
+using CarrotBacktesting.Net.Engine;
+using CarrotBacktesting.Net.Strategy;
 
 Console.WriteLine("Hello, World!");
 

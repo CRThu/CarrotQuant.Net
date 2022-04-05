@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.NET.Portfolio
+namespace CarrotBacktesting.Net.Portfolio
 {
     /// <summary>
     /// 常规委托

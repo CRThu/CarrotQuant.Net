@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TicTacTec.TA.Library;
 
-namespace CarrotBacktesting.NET.Indicator
+namespace CarrotBacktesting.Net.Indicator
 {
     /// <summary>
     /// 技术指标类,使用TA-Lib计算,包含常用指标如下:

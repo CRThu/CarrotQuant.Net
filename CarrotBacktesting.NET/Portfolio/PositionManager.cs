@@ -1,5 +1,5 @@
 ﻿using CarrotBacktesting.Net.Shared;
-using CarrotBacktesting.NET.Portfolio;
+using CarrotBacktesting.Net.Portfolio;
 using System;
 using System.Collections.Generic;
 using System.Linq;
