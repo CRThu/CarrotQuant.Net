@@ -5,8 +5,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using CarrotBacktesting.Net.Portfolio.Order;
 
-namespace CarrotBacktesting.Net.Portfolio
+namespace CarrotBacktesting.Net.Portfolio.Position
 {
     /// <summary>
     /// 头寸管理类
@@ -16,7 +17,7 @@ namespace CarrotBacktesting.Net.Portfolio
         public const string RESERVED_SYMBOLS = "|";
         public const string DEFAULT_CASH_NAME = "$CASH$";
         public const string DEFAULT_CASH_KEY = $"{DEFAULT_CASH_NAME}{RESERVED_SYMBOLS}{DEFAULT_CASH_NAME}";
-        
+
         /// <summary>
         /// 头寸存储字典
         /// </summary>
@@ -87,12 +88,12 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="price"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public void Trade(string exchangeName, string shareName, double price, double size, TradeDirection direction)
+        public void Trade(string exchangeName, string shareName, double price, double size, OrderDirection direction)
         {
             // 设置股权头寸
             SetPosition(new GeneralPosition(exchangeName, shareName, size, direction));
             // 计算现金剩余(Short股权时货币方向为Long)
-            Cash += direction == TradeDirection.Short ? price * size : -price * size;
+            Cash += direction == OrderDirection.Short ? price * size : -price * size;
         }
 
         /// <summary>
@@ -112,7 +113,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <returns></returns>
         public static GeneralPosition GenerateCashPosition(double cash)
         {
-            return new(DEFAULT_CASH_NAME, DEFAULT_CASH_NAME, cash, TradeDirection.Long);
+            return new(DEFAULT_CASH_NAME, DEFAULT_CASH_NAME, cash, OrderDirection.Long);
         }
 
         public override string ToString()

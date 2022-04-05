@@ -1,11 +1,12 @@
-﻿using CarrotBacktesting.Net.Shared;
+﻿using CarrotBacktesting.Net.Portfolio.Order;
+using CarrotBacktesting.Net.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.Portfolio
+namespace CarrotBacktesting.Net.Portfolio.Position
 {
     /// <summary>
     /// 常规头寸存储类
@@ -32,11 +33,11 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public GeneralPosition(string exchangeName, string shareName, double size, TradeDirection direction = TradeDirection.Long)
+        public GeneralPosition(string exchangeName, string shareName, double size, OrderDirection direction = OrderDirection.Long)
         {
             ExchangeName = exchangeName;
             ShareName = shareName;
-            Size = direction == TradeDirection.Long ? size : -size;
+            Size = direction == OrderDirection.Long ? size : -size;
         }
 
         /// <summary>
@@ -47,7 +48,7 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             ExchangeName = generalOrder.ExchangeName;
             ShareName = generalOrder.ShareName;
-            Size = generalOrder.Direction == TradeDirection.Long ? generalOrder.Size : -generalOrder.Size;
+            Size = generalOrder.Direction == OrderDirection.Long ? generalOrder.Size : -generalOrder.Size;
         }
 
         /// <summary>

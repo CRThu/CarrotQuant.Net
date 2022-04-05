@@ -4,12 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.Portfolio
+namespace CarrotBacktesting.Net.Portfolio.Order
 {
-    public enum OrderStatus
+    public enum OrderDirection
     {
-        Waiting,
-        Completed,
-        Cancelled
+        Long,
+        Short,
     }
 }
