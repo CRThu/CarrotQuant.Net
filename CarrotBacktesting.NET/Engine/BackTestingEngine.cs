@@ -15,10 +15,13 @@ namespace CarrotBacktesting.Net.Engine
     {
         public StrategyContext StrategyContext;
         public BackTestingExchange Exchange;
+        // TODO
+        public MarketFrame MarketFrame;
         public IStrategy Strategy;
 
         // ex. From DataFeed
         public double[] Price = new[] { 1.0, 2, 3, 4, 5, 6, 5, 5, 6, 6, 7, 6, 5, 4, 3 };
+        public DateTime BackTestingNowTime = new(2021, 1, 1);
 
         // 策略通用委托
         public delegate void FuncDelegate();
@@ -36,6 +39,7 @@ namespace CarrotBacktesting.Net.Engine
 
         public void Run()
         {
+            StrategyContext.NowTime = BackTestingNowTime;
             Strategy.Start(StrategyContext);
             for (int i = 0; i < Price.Length; i++)
             {

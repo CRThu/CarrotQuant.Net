@@ -1,4 +1,4 @@
-﻿using CarrotBacktesting.NET.DataFeed;
+﻿using CarrotBacktesting.Net.DataFeed;
 using CarrotQuant.Net.Model;
 using CarrotQuant.Net.Model.Common;
 using CarrotQuant.Net.Model.EChartsData;

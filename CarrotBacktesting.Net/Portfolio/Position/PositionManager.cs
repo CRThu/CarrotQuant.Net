@@ -10,7 +10,7 @@ using CarrotBacktesting.Net.Portfolio.Order;
 namespace CarrotBacktesting.Net.Portfolio.Position
 {
     /// <summary>
-    /// 头寸管理类
+    /// 头寸管理器
     /// </summary>
     public class PositionManager
     {
@@ -39,12 +39,11 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         }
 
         /// <summary>
-        /// 构造函数, 默认初始化为100000
+        /// 构造函数
         /// </summary>
-        /// <param name="cash"></param>
-        public PositionManager(double cash = 100000)
+        public PositionManager()
         {
-            SetCash(cash);
+            SetCash(0);
         }
 
         /// <summary>
@@ -71,7 +70,10 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             if (!Positions.ContainsKey(key))
                 Positions.Add(key, value);
             else if (Positions[key].IsSameShare(value))
+            {
+                Positions[key].Cost = (Positions[key].Cost * Positions[key].Size + value.Cost * value.Size) / (Positions[key].Size + value.Size);
                 Positions[key].Size += value.Size;
+            }
             else
                 throw new Exception($"PositionManager程序键缓存错误,Key={key},Value={value}.");
 
@@ -88,12 +90,16 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <param name="price"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public void Trade(string exchangeName, string shareName, double price, double size, OrderDirection direction)
+        /// <returns>返回本次交易股权头寸类</returns>
+        public GeneralPosition Trade(string exchangeName, string shareName, double price, double size, OrderDirection direction)
         {
             // 设置股权头寸
-            SetPosition(new GeneralPosition(exchangeName, shareName, size, direction));
+            var tradePosition = new GeneralPosition(exchangeName, shareName, size, price, direction);
+            SetPosition(tradePosition);
             // 计算现金剩余(Short股权时货币方向为Long)
-            Cash += direction == OrderDirection.Short ? price * size : -price * size;
+            Positions[DEFAULT_CASH_KEY].Size += direction == OrderDirection.Short ? price * size : -price * size;
+
+            return tradePosition;
         }
 
         /// <summary>
@@ -113,7 +119,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <returns></returns>
         public static GeneralPosition GenerateCashPosition(double cash)
         {
-            return new(DEFAULT_CASH_NAME, DEFAULT_CASH_NAME, cash, OrderDirection.Long);
+            return new(DEFAULT_CASH_NAME, DEFAULT_CASH_NAME, cash, 0, OrderDirection.Long);
         }
 
         public override string ToString()

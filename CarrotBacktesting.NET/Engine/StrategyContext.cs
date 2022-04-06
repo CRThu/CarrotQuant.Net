@@ -21,7 +21,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 当前日期
         /// </summary>
-        public DateTime NowTime = new(2021, 1, 1);
+        public DateTime NowTime;
 
         public StrategyContext()
         {

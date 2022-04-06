@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace CarrotBacktesting.Net.Portfolio.Order
 {
     /// <summary>
-    /// 委托管理类
+    /// 委托单管理器
     /// </summary>
     public class OrderManager
     {
