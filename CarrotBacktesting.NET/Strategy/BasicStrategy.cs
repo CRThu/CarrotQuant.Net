@@ -14,15 +14,20 @@ namespace CarrotBacktesting.Net.Strategy
     /// </summary>
     public class BasicStrategy : IStrategy
     {
-        public void Start(StrategyContext strategyContext)
+        public void Start(StrategyContext context)
         {
             Console.WriteLine("BasicStrategy.Start()");
+            Console.WriteLine("SetCash:100000.");
+            context.PortfolioManager.SetCash(100000);
         }
 
         public void End(StrategyContext strategyContext)
         {
             Console.WriteLine("BasicStrategy.End()");
+            Console.WriteLine("PositionManager:");
             Console.WriteLine(strategyContext.PortfolioManager.PositionManager.ToString());
+            Console.WriteLine("TransactionLogger:");
+            Console.WriteLine(strategyContext.PortfolioManager.TransactionLogger.ToString());
         }
 
         public void OnTick(StrategyContext strategyContext)

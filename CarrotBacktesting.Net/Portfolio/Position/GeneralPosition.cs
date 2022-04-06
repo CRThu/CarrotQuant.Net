@@ -25,6 +25,10 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// 头寸大小
         /// </summary>
         public double Size { get; set; }
+        /// <summary>
+        /// 头寸持仓成本
+        /// </summary>
+        public double Cost { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -33,22 +37,24 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public GeneralPosition(string exchangeName, string shareName, double size, OrderDirection direction = OrderDirection.Long)
+        public GeneralPosition(string exchangeName, string shareName, double size, double cost, OrderDirection direction = OrderDirection.Long)
         {
             ExchangeName = exchangeName;
             ShareName = shareName;
             Size = direction == OrderDirection.Long ? size : -size;
+            Cost = cost;
         }
 
         /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="generalOrder"></param>
-        public GeneralPosition(GeneralOrder generalOrder)
+        public GeneralPosition(GeneralOrder generalOrder, double price)
         {
             ExchangeName = generalOrder.ExchangeName;
             ShareName = generalOrder.ShareName;
             Size = generalOrder.Direction == OrderDirection.Long ? generalOrder.Size : -generalOrder.Size;
+            Cost = price;
         }
 
         /// <summary>

@@ -21,17 +21,35 @@ namespace CarrotBacktesting.Net.Portfolio
         public double NowPrice;
 
         /// <summary>
-        /// 委托单列表
+        /// 委托单管理器
         /// </summary>
         public OrderManager OrderManager { get; set; } = new();
 
         /// <summary>
-        /// 持仓列表
+        /// 头寸管理器
         /// </summary>
         public PositionManager PositionManager { get; set; } = new();
 
+        /// <summary>
+        /// 交易记录器
+        /// </summary>
+        public TransactionLogger TransactionLogger { get; set; } = new();
+
+
+        public delegate void SetCashDelegate(DateTime dateTime, double cash);
+        public event SetCashDelegate? OnSetCashEvent;
+
+        public delegate void OrderDealDelegate(DateTime dateTime, GeneralPosition position);
+        public event OrderDealDelegate? OnOrderDealEvent;
+
         public delegate void AddOrderDelegate();
         public event AddOrderDelegate? AddOrderEvent;
+
+        public PortfolioManager()
+        {
+            OnSetCashEvent += (t, v) => TransactionLogger.SetCash(t, v);
+            OnOrderDealEvent += (t, v) => TransactionLogger.AddTransaction(t, v);
+        }
 
         /// <summary>
         /// 实时股价更新
@@ -67,7 +85,7 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             var currentOrder = OrderManager.GetOrder(orderId);
             currentOrder.Size -= size;
-            PositionManager.Trade(currentOrder.ExchangeName, currentOrder.ShareName, price, size, currentOrder.Direction);
+            var tradePosition = PositionManager.Trade(currentOrder.ExchangeName, currentOrder.ShareName, price, size, currentOrder.Direction);
 
             Console.WriteLine($"委托单已被成交, 价格:{price}, 数量:{size}, 方向:{currentOrder.Direction}.");
 
@@ -75,6 +93,13 @@ namespace CarrotBacktesting.Net.Portfolio
             if (currentOrder.Size == 0)
                 OrderManager.RemoveOrder(orderId);
 
+            OnOrderDealEvent?.Invoke(DateTime.Now, tradePosition);
+        }
+
+        public void SetCash(double cash = 100000)
+        {
+            PositionManager.SetCash(cash);
+            OnSetCashEvent?.Invoke(DateTime.Now, cash);
         }
     }
 }
