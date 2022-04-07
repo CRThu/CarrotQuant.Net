@@ -61,9 +61,11 @@ namespace CarrotBacktesting.Net.Engine
             OnBarChanged += () => Strategy.OnNext(StrategyContext);
 
             // 投资组合管理类价格更新
+            // TODO优化
             OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate(StrategyContext.MarketFrame);
 
             // 交易所类价格更新
+            // TODO优化
             OnTickChanged += () => Exchange.OnPriceUpdate(StrategyContext.MarketFrame);
         }
     }

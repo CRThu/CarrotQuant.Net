@@ -5,7 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using CarrotBacktesting.NET.Strategy;
+using CarrotBacktesting.Net.Strategy;
+using CarrotBacktesting.Net.Engine;
 
 namespace CarrotBacktesting.NET.Engine.BackTestingEngine.Tests
 {
@@ -15,7 +16,7 @@ namespace CarrotBacktesting.NET.Engine.BackTestingEngine.Tests
         [TestMethod()]
         public void RunTest()
         {
-            IEngine engine = new BackTestingEngine(new BasicStrategy());
+            IEngine engine = new Net.Engine.BackTestingEngine(new BasicStrategy());
             engine.Run();
         }
     }
