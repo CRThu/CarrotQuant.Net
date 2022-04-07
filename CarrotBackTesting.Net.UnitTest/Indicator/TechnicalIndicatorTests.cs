@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using CarrotBackTesting.Net.UnitTest.Common;
-
+using CarrotBacktesting.Net.Indicator;
 
 namespace CarrotBacktesting.NET.Indicator.Tests
 {
