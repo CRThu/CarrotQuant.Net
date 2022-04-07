@@ -12,20 +12,20 @@ namespace CarrotBacktesting.Net.Engine
     /// </summary>
     public class StrategyContext
     {
+        /// <summary>
+        /// 投资组合管理器
+        /// </summary>
         public PortfolioManager PortfolioManager;
 
         /// <summary>
-        /// 当前价格
+        /// 市场信息帧
         /// </summary>
-        public double NowPrice;
-        /// <summary>
-        /// 当前日期
-        /// </summary>
-        public DateTime NowTime;
+        public MarketFrame MarketFrame;
 
         public StrategyContext()
         {
             PortfolioManager = new PortfolioManager();
+            MarketFrame = new MarketFrame();
         }
     }
 }

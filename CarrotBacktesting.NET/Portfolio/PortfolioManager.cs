@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Portfolio;
+﻿using CarrotBacktesting.Net.Engine;
+using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Portfolio.Position;
 using System;
@@ -16,9 +17,9 @@ namespace CarrotBacktesting.Net.Portfolio
     public class PortfolioManager
     {
         /// <summary>
-        /// 当前价格
+        /// 当前时间市场帧
         /// </summary>
-        public double NowPrice;
+        public MarketFrame MarketFrame { get; set; } = new();
 
         /// <summary>
         /// 委托单管理器
@@ -55,9 +56,9 @@ namespace CarrotBacktesting.Net.Portfolio
         /// 实时股价更新
         /// </summary>
         /// <param name="price"></param>
-        public void OnPriceUpdate(double price)
+        public void OnPriceUpdate(MarketFrame marketFrame)
         {
-            NowPrice = price;
+            MarketFrame = marketFrame;
         }
 
         /// <summary>
@@ -93,13 +94,13 @@ namespace CarrotBacktesting.Net.Portfolio
             if (currentOrder.Size == 0)
                 OrderManager.RemoveOrder(orderId);
 
-            OnOrderDealEvent?.Invoke(DateTime.Now, tradePosition);
+            OnOrderDealEvent?.Invoke(MarketFrame.NowTime, tradePosition);
         }
 
         public void SetCash(double cash = 100000)
         {
             PositionManager.SetCash(cash);
-            OnSetCashEvent?.Invoke(DateTime.Now, cash);
+            OnSetCashEvent?.Invoke(MarketFrame.NowTime, cash);
         }
     }
 }

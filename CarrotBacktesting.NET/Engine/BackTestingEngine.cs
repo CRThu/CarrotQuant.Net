@@ -16,7 +16,6 @@ namespace CarrotBacktesting.Net.Engine
         public StrategyContext StrategyContext;
         public BackTestingExchange Exchange;
         // TODO
-        public MarketFrame MarketFrame;
         public IStrategy Strategy;
 
         // ex. From DataFeed
@@ -39,18 +38,18 @@ namespace CarrotBacktesting.Net.Engine
 
         public void Run()
         {
-            StrategyContext.NowTime = BackTestingNowTime;
+            StrategyContext.MarketFrame.UpdateFrame(new(2021, 1, 1), Price[0]);
             Strategy.Start(StrategyContext);
             for (int i = 0; i < Price.Length; i++)
             {
-                StrategyContext.NowPrice = Price[i];
+                StrategyContext.MarketFrame.NowPrice = Price[i];
 
                 // 时间片更新(更新指标等数据 触发PreNext)
                 OnTickChanged?.Invoke();
                 // 策略更新(更新策略,挂单 触发Next)
                 OnBarChanged?.Invoke();
 
-                StrategyContext.NowTime += new TimeSpan(1, 0, 0, 0);
+                StrategyContext.MarketFrame.NowTime += new TimeSpan(1, 0, 0, 0);
             }
             Strategy.End(StrategyContext);
         }
@@ -62,10 +61,10 @@ namespace CarrotBacktesting.Net.Engine
             OnBarChanged += () => Strategy.OnNext(StrategyContext);
 
             // 投资组合管理类价格更新
-            OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate(StrategyContext.NowPrice);
+            OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate(StrategyContext.MarketFrame);
 
             // 交易所类价格更新
-            OnTickChanged += () => Exchange.OnPriceUpdate(StrategyContext.NowPrice);
+            OnTickChanged += () => Exchange.OnPriceUpdate(StrategyContext.MarketFrame);
         }
     }
 }

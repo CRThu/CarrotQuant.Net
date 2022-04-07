@@ -20,7 +20,20 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public double NowPrice { get; set; }
 
-        public MarketFrame(DateTime nowTime, double nowPrice)
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        public MarketFrame()
+        {
+
+        }
+
+        /// <summary>
+        /// 更新帧
+        /// </summary>
+        /// <param name="nowTime"></param>
+        /// <param name="nowPrice"></param>
+        public void UpdateFrame(DateTime nowTime, double nowPrice)
         {
             NowTime = nowTime;
             NowPrice = nowPrice;
