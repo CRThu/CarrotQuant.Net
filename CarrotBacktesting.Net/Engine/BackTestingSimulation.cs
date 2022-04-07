@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CarrotBacktesting.Net.DataFeed;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,9 +12,12 @@ namespace CarrotBacktesting.Net.Engine
     /// </summary>
     public class BackTestingSimulation
     {
-        public BackTestingSimulation(string file)
-        {
+        public SqliteDataFeed DataFeed { get; set; }
 
+        public BackTestingSimulation(string dbPath, string shareCode, BackTestingSimulationOptions options)
+        {
+            DataFeed = new(dbPath);
+            DataFeed.SetShareData(shareCode, "交易日期", new string[] { "开盘价", "最高价", "最低价", "收盘价" });
         }
     }
 }
