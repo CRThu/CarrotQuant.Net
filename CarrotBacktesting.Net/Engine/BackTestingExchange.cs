@@ -11,11 +11,10 @@ namespace CarrotBacktesting.Net.Engine
     public class BackTestingExchange
     {
         /// <summary>
-        /// 当前价格
+        /// 当前时间市场帧
         /// </summary>
-        public double NowPrice;
+        public MarketFrame MarketFrame;
         public PortfolioManager Portfolio;
-
 
         public delegate void OrderDealDelegate(int orderId, double price, double size);
         /// <summary>
@@ -34,12 +33,12 @@ namespace CarrotBacktesting.Net.Engine
         }
 
         /// <summary>
-        /// 实时股价更新
+        /// 市场价格更新
         /// </summary>
         /// <param name="price"></param>
-        public void OnPriceUpdate(double price)
+        public void OnPriceUpdate(MarketFrame frame)
         {
-            NowPrice = price;
+            MarketFrame = frame;
             CheckOrder();
         }
 
@@ -56,10 +55,10 @@ namespace CarrotBacktesting.Net.Engine
         {
             foreach ((var orderId, var orderInfo) in Portfolio.OrderManager.Orders)
             {
-                if ((orderInfo.LimitPrice >= NowPrice && orderInfo.Direction == OrderDirection.Long)
-                    || (orderInfo.LimitPrice <= NowPrice && orderInfo.Direction == OrderDirection.Short))
+                if ((orderInfo.LimitPrice >= MarketFrame.NowPrice && orderInfo.Direction == OrderDirection.Long)
+                    || (orderInfo.LimitPrice <= MarketFrame.NowPrice && orderInfo.Direction == OrderDirection.Short))
                 {
-                    OrderDealEvent?.Invoke(orderId, NowPrice, orderInfo.Size);
+                    OrderDealEvent?.Invoke(orderId, MarketFrame.NowPrice, orderInfo.Size);
                 }
             }
         }
