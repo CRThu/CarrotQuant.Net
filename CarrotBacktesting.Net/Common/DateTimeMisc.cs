@@ -44,7 +44,7 @@ namespace CarrotBacktesting.Net.Common
         }
 
         /// <summary>
-        /// 获取时间对应的索引号, 若没有匹配到精确日期,则向后匹配最近的日期, ShareData中存储的时间必须为正序排列.
+        /// 获取时间对应的索引号, 若没有匹配到精确日期, 则向前匹配最近的日期, ShareData中存储的时间必须为正序排列.
         /// </summary>
         /// <param name="dateTime"></param>
         /// <returns></returns>
@@ -52,10 +52,14 @@ namespace CarrotBacktesting.Net.Common
         {
             int index = Array.BinarySearch(dateTimes, dateTime);
             if (index >= 0)
+                // 匹配精确日期
                 return index;
             else
             {
-                return (~index == dateTimes.Length) ? (~index - 1) : (~index);
+                // 未匹配精确日期, 返回大于value的第一个元素, 若为最大则返回最大索引
+                //return (~index == dateTimes.Length) ? (~index - 1) : (~index);
+                // 未匹配精确日期, 返回小于value的第一个元素, 若为最小则返回最小索引
+                return (~index == 0) ? (~index) : (~index - 1);
             }
         }
 
