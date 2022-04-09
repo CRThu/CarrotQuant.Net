@@ -48,5 +48,23 @@ namespace CarrotBacktesting.Net.DataFeed
             }
             return dataTable;
         }
+
+        /// <summary>
+        /// 获取数据源时间范围
+        /// </summary>
+        /// <returns></returns>
+        public (DateTime start, DateTime end) GetDateTimeRange()
+        {
+            DateTime minStartDateTime = DateTime.MinValue;
+            DateTime maxEndDateTime = DateTime.MaxValue;
+            foreach (var shareData in MarketCache.Values)
+            {
+                if (minStartDateTime > shareData.StartTime)
+                    minStartDateTime = shareData.StartTime;
+                if (maxEndDateTime < shareData.EndTime)
+                    maxEndDateTime = shareData.EndTime;
+            }
+            return (minStartDateTime, maxEndDateTime);
+        }
     }
 }

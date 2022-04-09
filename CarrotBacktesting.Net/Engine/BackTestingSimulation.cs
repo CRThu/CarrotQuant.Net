@@ -12,12 +12,34 @@ namespace CarrotBacktesting.Net.Engine
     /// </summary>
     public class BackTestingSimulation
     {
+        /// <summary>
+        /// 从数据库提供数据
+        /// </summary>
         public SqliteDataFeed DataFeed { get; set; }
+        /// <summary>
+        /// 回测模拟设置
+        /// </summary>
+        public BackTestingSimulationOptions SimulationOptions { get; set; }
+
+        public BackTestingSimulation(string dbPath, string shareCode) : this(dbPath, shareCode, new BackTestingSimulationOptions())
+        {
+        }
 
         public BackTestingSimulation(string dbPath, string shareCode, BackTestingSimulationOptions options)
         {
+            // 配置加载
+            SimulationOptions = options;
+
+            // 数据库加载
             DataFeed = new(dbPath);
-            DataFeed.SetShareData(shareCode, "交易日期", new string[] { "开盘价", "最高价", "最低价", "收盘价" });
+            DataFeed.SetShareData(shareCode, SimulationOptions.DateTimeColumnName, SimulationOptions.OHLCColumnName);
+
+            // 数据源时间范围计算
+            (DateTime minStart, DateTime maxEnd) = DataFeed.GetDateTimeRange();
+            if (options.SimulationStartDateTime == DateTime.MinValue)
+                options.SimulationStartDateTime = minStart;
+            if (options.SimulationEndDateTime == DateTime.MaxValue)
+                options.SimulationEndDateTime = maxEnd;
         }
     }
 }
