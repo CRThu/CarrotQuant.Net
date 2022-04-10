@@ -15,7 +15,7 @@ namespace CarrotBacktesting.Net.Engine
     {
         public StrategyContext StrategyContext;
         public BackTestingExchange Exchange;
-        // TODO
+        public BackTestingSimulation Simulation;
         public IStrategy Strategy;
 
         // ex. From DataFeed
@@ -32,7 +32,16 @@ namespace CarrotBacktesting.Net.Engine
             StrategyContext = new();
             Strategy = strategy;
             Exchange = new(StrategyContext.PortfolioManager);
-
+            Console.WriteLine($"初始化数据库.");
+            var options = new BackTestingSimulationOptions()
+            {
+                SimulationStartDateTime = new DateTime(2021, 10, 1),
+                SimulationEndDateTime = new DateTime(2021, 11, 1),
+                ShareName = "sz.000422"
+            };
+            Simulation = new(@"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db", options);
+            Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
+            // TODO MarketFrame 代替现有引擎和数据生成
             EventRegister();
         }
 

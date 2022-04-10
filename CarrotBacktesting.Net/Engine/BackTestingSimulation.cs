@@ -21,25 +21,69 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public BackTestingSimulationOptions SimulationOptions { get; set; }
 
-        public BackTestingSimulation(string dbPath, string shareCode) : this(dbPath, shareCode, new BackTestingSimulationOptions())
+        /// <summary>
+        /// 模拟时间
+        /// </summary>
+        public DateTime SimulationTime { get; set; }
+        /// <summary>
+        /// 模拟市场帧
+        /// </summary>
+        public MarketFrame SimulationMarketFrame { get; set; }
+        /// <summary>
+        /// 是否模拟结束Flag
+        /// </summary>
+        public bool IsSimulationEnd { get; set; }
+
+        /// <summary>
+        /// 计算模拟时长
+        /// </summary>
+        public TimeSpan SimulationDuration
+        {
+            get
+            {
+                return SimulationOptions.SimulationEndDateTime - SimulationOptions.SimulationStartDateTime;
+            }
+        }
+
+        public BackTestingSimulation(string dbPath) : this(dbPath, new BackTestingSimulationOptions())
         {
         }
 
-        public BackTestingSimulation(string dbPath, string shareCode, BackTestingSimulationOptions options)
+        public BackTestingSimulation(string dbPath, BackTestingSimulationOptions options)
         {
             // 配置加载
             SimulationOptions = options;
 
             // 数据库加载
             DataFeed = new(dbPath);
-            DataFeed.SetShareData(shareCode, SimulationOptions.DateTimeColumnName, SimulationOptions.OHLCColumnName);
+            DataFeed.SetShareData(options.ShareName, SimulationOptions.DateTimeColumnName, SimulationOptions.OHLCColumnName);
 
             // 数据源时间范围计算
             (DateTime minStart, DateTime maxEnd) = DataFeed.GetDateTimeRange();
-            if (options.SimulationStartDateTime == DateTime.MinValue)
-                options.SimulationStartDateTime = minStart;
-            if (options.SimulationEndDateTime == DateTime.MaxValue)
-                options.SimulationEndDateTime = maxEnd;
+            if (SimulationOptions.SimulationStartDateTime == DateTime.MinValue)
+                SimulationOptions.SimulationStartDateTime = minStart;
+            if (SimulationOptions.SimulationEndDateTime == DateTime.MaxValue)
+                SimulationOptions.SimulationEndDateTime = maxEnd;
+
+            // 初始化模拟属性
+            SimulationTime = SimulationOptions.SimulationStartDateTime;
+            SimulationMarketFrame = new();
+
+        }
+
+        /// <summary>
+        /// 市场帧更新
+        /// </summary>
+        public void UpdateFrame()
+        {
+            // 更新市场帧
+            double price = DataFeed.GetPrice(SimulationTime, SimulationOptions.ShareName, SimulationOptions.CloseColumnName);
+            SimulationMarketFrame.UpdateFrame(SimulationTime, price);
+
+            // 下一次更新时间并检测模拟是否结束
+            SimulationTime += SimulationOptions.SimulationDuration;
+            if (SimulationTime >= SimulationOptions.SimulationEndDateTime)
+                IsSimulationEnd = true;
         }
     }
 }
