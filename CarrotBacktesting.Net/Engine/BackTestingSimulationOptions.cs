@@ -61,5 +61,14 @@ namespace CarrotBacktesting.Net.Engine
         /// 模拟结束日期
         /// </summary>
         public DateTime SimulationEndDateTime { get; set; } = DateTime.MaxValue;
+        /// <summary>
+        /// 模拟日期间隔
+        /// </summary>
+        public TimeSpan SimulationDuration { get; set; } = new TimeSpan(1, 0, 0, 0);
+        /// <summary>
+        /// 模拟股票名称
+        /// TODO
+        /// </summary>
+        public string ShareName { get; set; } = "sz.000422";
     }
 }

@@ -22,6 +22,8 @@ namespace CarrotBacktesting.Net.DataFeed
         public void SetShareData(string shareCode, ShareData shareData)
         {
             if (!MarketCache.ContainsKey(shareCode))
+                MarketCache.Add(shareCode, shareData);
+            else
                 MarketCache[shareCode] = shareData;
         }
 
@@ -65,6 +67,11 @@ namespace CarrotBacktesting.Net.DataFeed
                     maxEndDateTime = shareData.EndTime;
             }
             return (minStartDateTime, maxEndDateTime);
+        }
+
+        public double GetPrice(DateTime time, string shareName, string key)
+        {
+            return MarketCache[shareName].GetPrice(time, key);
         }
     }
 }
