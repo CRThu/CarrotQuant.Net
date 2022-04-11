@@ -2,6 +2,7 @@
 using CarrotBacktesting.Net.Strategy;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -29,38 +30,44 @@ namespace CarrotBacktesting.Net.Engine
 
         public BackTestingEngine(IStrategy strategy)
         {
-            StrategyContext = new();
-            Strategy = strategy;
-            Exchange = new(StrategyContext.PortfolioManager);
             Console.WriteLine($"初始化数据库.");
             var options = new BackTestingSimulationOptions()
             {
-                SimulationStartDateTime = new DateTime(2021, 10, 1),
-                SimulationEndDateTime = new DateTime(2021, 11, 1),
+                SimulationStartDateTime = new DateTime(0001, 10, 1),
+                SimulationEndDateTime = new DateTime(9999, 11, 1),
                 ShareName = "sz.000422"
             };
             Simulation = new(@"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db", options);
             Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
-            // TODO MarketFrame 代替现有引擎和数据生成
+
+            StrategyContext = new(Simulation.SimulationMarketFrame);
+            Strategy = strategy;
+            Exchange = new(StrategyContext.PortfolioManager, Simulation.SimulationMarketFrame);
+
             EventRegister();
         }
 
         public void Run()
         {
-            StrategyContext.MarketFrame.UpdateFrame(new(2021, 1, 1), Price[0]);
+            Stopwatch stopwatch = new();
+            stopwatch.Start();
+            int x = 0;
+
             Strategy.Start(StrategyContext);
-            for (int i = 0; i < Price.Length; i++)
+            while (!Simulation.IsSimulationEnd)
             {
-                StrategyContext.MarketFrame.NowPrice = Price[i];
+                Simulation.UpdateFrame();
 
                 // 时间片更新(更新指标等数据 触发PreNext)
                 OnTickChanged?.Invoke();
                 // 策略更新(更新策略,挂单 触发Next)
                 OnBarChanged?.Invoke();
-
-                StrategyContext.MarketFrame.NowTime += new TimeSpan(1, 0, 0, 0);
+                x++;
             }
             Strategy.End(StrategyContext);
+
+            stopwatch.Stop();
+            Console.WriteLine($"循环{x}次, 回测已完成,耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒.");
         }
 
         public void EventRegister()
@@ -70,12 +77,10 @@ namespace CarrotBacktesting.Net.Engine
             OnBarChanged += () => Strategy.OnNext(StrategyContext);
 
             // 投资组合管理类价格更新
-            // TODO优化
-            OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate(StrategyContext.MarketFrame);
+            OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate();
 
             // 交易所类价格更新
-            // TODO优化
-            OnTickChanged += () => Exchange.OnPriceUpdate(StrategyContext.MarketFrame);
+            OnTickChanged += () => Exchange.OnPriceUpdate();
         }
     }
 }

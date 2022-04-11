@@ -22,9 +22,10 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public event OrderDealDelegate? OrderDealEvent;
 
-        public BackTestingExchange(PortfolioManager portfolio)
+        public BackTestingExchange(PortfolioManager portfolio, MarketFrame marketFrame)
         {
             Portfolio = portfolio;
+            MarketFrame = marketFrame;
 
             // 委托单添加事件监听
             Portfolio.AddOrderEvent += OnOrderUpdate;
@@ -35,10 +36,8 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 市场价格更新
         /// </summary>
-        /// <param name="price"></param>
-        public void OnPriceUpdate(MarketFrame frame)
+        public void OnPriceUpdate()
         {
-            MarketFrame = frame;
             CheckOrder();
         }
 
