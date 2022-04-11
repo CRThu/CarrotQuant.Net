@@ -19,6 +19,10 @@ namespace CarrotBacktesting.Net.Engine
         /// 当前价格
         /// </summary>
         public double NowPrice { get; set; }
+        /// <summary>
+        /// 是否开盘
+        /// </summary>
+        public bool IsActive { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -33,10 +37,11 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         /// <param name="nowTime"></param>
         /// <param name="nowPrice"></param>
-        public void UpdateFrame(DateTime nowTime, double nowPrice)
+        public void UpdateFrame(DateTime nowTime, double nowPrice, bool isActive = true)
         {
             NowTime = nowTime;
             NowPrice = nowPrice;
+            IsActive = isActive;
         }
 
     }

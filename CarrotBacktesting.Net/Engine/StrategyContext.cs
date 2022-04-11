@@ -22,10 +22,14 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public MarketFrame MarketFrame;
 
-        public StrategyContext()
+        public StrategyContext() : this(new())
         {
-            PortfolioManager = new PortfolioManager();
-            MarketFrame = new MarketFrame();
+        }
+
+        public StrategyContext(MarketFrame marketFrame)
+        {
+            PortfolioManager = new PortfolioManager(marketFrame);
+            MarketFrame = marketFrame;
         }
     }
 }
