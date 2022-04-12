@@ -8,31 +8,46 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.DataFeed
 {
+    /// <summary>
+    /// 通过Sqlite数据库导入数据
+    /// </summary>
     public class SqliteDataFeed : DataFeed
     {
+        /// <summary>
+        /// 数据库连接实例
+        /// </summary>
         private SqliteHelper sql { get; set; } = new();
 
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="fileName"></param>
         public SqliteDataFeed(string fileName) : base()
         {
             sql.Open(fileName);
         }
 
-        public void SetShareData(string shareCode, string timeColName, string[] dataColNames)
+        /// <summary>
+        /// 通过数据库导入单支股票行情
+        /// </summary>
+        /// <param name="shareCode"></param>
+        /// <param name="timeColName"></param>
+        /// <param name="dataColNames"></param>
+        /// <param name="stringColNames"></param>
+        public void SetShareData(string shareCode, string timeColName, string[] dataColNames, string[] stringColNames = null)
         {
+            if (stringColNames == null)
+                stringColNames = Array.Empty<string>();
+
             ShareData shareData = new();
-            string[] colNames = new string[dataColNames.Length + 1];
-            colNames[0] = timeColName;
-            dataColNames.CopyTo(colNames, 1);
-            DataTable dt = sql.GetTable(shareCode, colNames);
-            shareData.DataTable2ShareData(dt, timeColName, dataColNames);
+            List<string> colNames = new();
+            colNames.Add(timeColName);
+            colNames.AddRange(dataColNames);
+            colNames.AddRange(stringColNames);
+            DataTable dt = sql.GetTable(shareCode, colNames.ToArray());
+            shareData.DataTable2ShareData(dt, timeColName, dataColNames, stringColNames);
 
             SetShareData(shareCode, shareData);
-        }
-
-        public void SetAllShareData(string timeColName, string[] dataColNames)
-        {
-            foreach (var code in sql.GetTableNames())
-                SetShareData(code, timeColName, dataColNames);
         }
     }
 }

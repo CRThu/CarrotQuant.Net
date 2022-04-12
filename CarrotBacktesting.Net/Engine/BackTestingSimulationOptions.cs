@@ -53,6 +53,20 @@ namespace CarrotBacktesting.Net.Engine
             }
         }
 
+        // TODO 未实现
+        /// <summary>
+        /// 是否导入股票交易状态, 例如停牌/休市
+        /// </summary>
+        public bool IsShareStatusImport { get; set; } = false;
+        /// <summary>
+        /// 当使能IsShareStatusImport时, 用于数据库中股票的交易状态列名
+        /// </summary>
+        public string ShareStatusColumnName { get; set; } = "交易状态";
+        /// <summary>
+        /// 当使能IsShareStatusImport时, 用于数据库中股票的交易状态列的可交易状态判断字符串
+        /// </summary>
+        public string ShareStatusCanTradeName { get; set; } = "正常交易";
+
         /// <summary>
         /// 模拟开始日期
         /// </summary>

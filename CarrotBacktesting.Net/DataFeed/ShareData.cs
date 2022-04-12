@@ -14,10 +14,21 @@ namespace CarrotBacktesting.Net.DataFeed
         /// <summary>
         /// key为数据列名(例如OHLC), Value为对应数据
         /// </summary>
-        public Dictionary<string, double[]> Data { get; set; }
+        public Dictionary<string, double[]> Data { get; set; } = new();
 
+        /// <summary>
+        /// key为数据列名(例如交易状态/是否ST), Value为对应数据, 不应将数据放入本字典
+        /// </summary>
+        public Dictionary<string, string[]> StringData { get; set; } = new();
+
+        /// <summary>
+        /// 时间显示列名
+        /// </summary>
         public string TimeDisplayName { get; set; }
-        public DateTime[] Time { get; set; }
+        /// <summary>
+        /// 交易时间数组
+        /// </summary>
+        public DateTime[] Time { get; set; } = Array.Empty<DateTime>();
 
         public int Count => Time.Length;
         public double[] this[string key] => Data[key];
@@ -28,8 +39,6 @@ namespace CarrotBacktesting.Net.DataFeed
 
         public ShareData()
         {
-            Data = new Dictionary<string, double[]>();
-            Time = Array.Empty<DateTime>();
         }
 
         public ShareData(DataTable dataTable, string timeColName, string[] dataColNames)
@@ -40,32 +49,43 @@ namespace CarrotBacktesting.Net.DataFeed
         /// <summary>
         /// 本实现仅支持DataTable内数据均为System.String类型, 且Time为正序排列
         /// </summary>
+        /// <param name="shareData"></param>
         /// <param name="dataTable"></param>
-        /// <param name="timeColName"></param>
-        /// <param name="dataColNames"></param>
-        /// <returns></returns>
-        public static void DataTable2ShareData(ShareData shareData, DataTable dataTable, string timeColName, string[] dataColNames)
+        /// <param name="timeColName">数据库表中时间列列名</param>
+        /// <param name="dataColNames">数据库表中数据列列名数组(例如OHLC)</param>
+        /// <param name="stringColNames">数据库表中字符串列列名数组(例如停牌/ST)</param>
+        public static void DataTable2ShareData(ShareData shareData, DataTable dataTable, string timeColName, string[] dataColNames, string[] stringColNames = null)
         {
             Console.WriteLine($"ShareData.DataTable2ShareData(...) called.");
             Stopwatch sw = new();
             sw.Start();
 
+            // 导入时间数据
             var timeArray = DataTableMisc.GetColumn<string>(dataTable, timeColName);
             shareData.Time = timeArray.Select(t => DateTimeMisc.Parse(t)).ToArray();
+            shareData.TimeDisplayName = timeColName;
 
-            shareData.Data = new Dictionary<string, double[]>();
+            // 导入股价数据
+            shareData.Data = new();
             foreach (var dataColName in dataColNames)
                 shareData.Data.Add(dataColName, DataTableMisc.GetColumn<string>(dataTable, dataColName)
                     .Select(s => Convert.ToDouble(s)).ToArray());
-            shareData.TimeDisplayName = timeColName;
+
+            // 导入字符串数据
+            if (stringColNames != null)
+            {
+                shareData.StringData = new();
+                foreach (var stringColName in stringColNames)
+                    shareData.StringData.Add(stringColName, DataTableMisc.GetColumn<string>(dataTable, stringColName).ToArray());
+            }
 
             sw.Stop();
             Console.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms.");
         }
 
-        public void DataTable2ShareData(DataTable dataTable, string timeColName, string[] dataColNames)
+        public void DataTable2ShareData(DataTable dataTable, string timeColName, string[] dataColNames, string[] stringColNames = null)
         {
-            DataTable2ShareData(this, dataTable, timeColName, dataColNames);
+            DataTable2ShareData(this, dataTable, timeColName, dataColNames, stringColNames);
         }
 
         public (double price, bool isActive) GetPrice(DateTime datetime, string key)
