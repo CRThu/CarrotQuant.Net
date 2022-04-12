@@ -46,49 +46,50 @@ namespace CarrotBacktesting.Net.Common
         /// <summary>
         /// 获取时间对应的索引号, 若没有匹配到精确日期, 则向前匹配最近的日期, ShareData中存储的时间必须为正序排列.
         /// </summary>
+        /// <param name="dateTimes"></param>
         /// <param name="dateTime"></param>
-        /// <returns></returns>
-        public static int GetTimeIndex(DateTime[] dateTimes, DateTime dateTime)
+        /// <returns>返回精确或模糊索引与精确/模糊标志位</returns>
+        public static (int index, bool isPrecise) GetTimeIndex(DateTime[] dateTimes, DateTime dateTime)
         {
             int index = Array.BinarySearch(dateTimes, dateTime);
             if (index >= 0)
                 // 匹配精确日期
-                return index;
+                return (index, true);
             else
             {
                 // 未匹配精确日期, 返回大于value的第一个元素, 若为最大则返回最大索引
                 //return (~index == dateTimes.Length) ? (~index - 1) : (~index);
                 // 未匹配精确日期, 返回小于value的第一个元素, 若为最小则返回最小索引
-                return (~index == 0) ? (~index) : (~index - 1);
+                return ((~index == 0) ? (~index) : (~index - 1), false);
             }
         }
 
-        public static int GetTimeIndex(DateTime[] dateTimes, int year, int month, int day)
+        public static (int index, bool isPrecise) GetTimeIndex(DateTime[] dateTimes, int year, int month, int day)
         {
             return GetTimeIndex(dateTimes, new DateTime(year, month, day));
         }
 
-        public static int GetTimeIndex(DateTime[] dateTimes, int year, int month, int day, int hour, int minute, int second)
+        public static (int index, bool isPrecise) GetTimeIndex(DateTime[] dateTimes, int year, int month, int day, int hour, int minute, int second)
         {
             return GetTimeIndex(dateTimes, new DateTime(year, month, day, hour, minute, second));
         }
 
         public static DateTime GetTime(DateTime[] dateTimes, DateTime first, int indexOffset)
         {
-            int firstIndex = GetTimeIndex(dateTimes, first);
+            (int firstIndex, _) = GetTimeIndex(dateTimes, first);
             return dateTimes[firstIndex + indexOffset];
         }
 
         public static DateTime[] GetTimes(DateTime[] dateTimes, DateTime first, int startIndexOffset, int endIndexOffset)
         {
-            int firstIndex = GetTimeIndex(dateTimes, first);
+            (int firstIndex, _) = GetTimeIndex(dateTimes, first);
             return dateTimes[(firstIndex + startIndexOffset)..(firstIndex + endIndexOffset + 1)];
         }
 
         public static DateTime[] GetTimes(DateTime[] dateTimes, DateTime start, DateTime end)
         {
-            int startIndex = GetTimeIndex(dateTimes, start);
-            int endIndex = GetTimeIndex(dateTimes, end);
+            (int startIndex, _) = GetTimeIndex(dateTimes, start);
+            (int endIndex, _) = GetTimeIndex(dateTimes, end);
             return dateTimes[startIndex..(endIndex + 1)];
         }
     }

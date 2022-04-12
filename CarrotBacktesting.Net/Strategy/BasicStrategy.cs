@@ -45,12 +45,15 @@ namespace CarrotBacktesting.Net.Strategy
         {
 #if DEBUG
             Console.WriteLine("BasicStrategy.Next()");
-            Console.WriteLine($"{strategyContext.MarketFrame.NowTime}| Price: {strategyContext.MarketFrame.NowPrice}.");
+            Console.WriteLine($"{strategyContext.MarketFrame.NowTime.ToShortDateString()}| Market {(strategyContext.MarketFrame.IsActive ? "Open" : "Close")} | Price: {strategyContext.MarketFrame.NowPrice}.");
 #endif
-            //if (strategyContext.MarketFrame.NowPrice <= 220 && strategyContext.MarketFrame.NowPrice > 205)
-            //    strategyContext.PortfolioManager.AddOrder("A", "001", 230, 100.0, OrderDirection.Long);
-            //if (strategyContext.MarketFrame.NowPrice >= 330)
-            //    strategyContext.PortfolioManager.AddOrder("A", "001", 320, 100.0, OrderDirection.Short);
+            if (strategyContext.MarketFrame.IsActive)
+            {
+                if (strategyContext.MarketFrame.NowPrice <= 220)
+                    strategyContext.PortfolioManager.AddOrder("A", "001", 230, 100.0, OrderDirection.Long);
+                if (strategyContext.MarketFrame.NowPrice >= 330)
+                    strategyContext.PortfolioManager.AddOrder("A", "001", 320, 100.0, OrderDirection.Short);
+            }
         }
     }
 }

@@ -33,8 +33,8 @@ namespace CarrotBacktesting.Net.Engine
             Console.WriteLine($"初始化数据库.");
             var options = new BackTestingSimulationOptions()
             {
-                SimulationStartDateTime = new DateTime(0001, 10, 1),
-                SimulationEndDateTime = new DateTime(9999, 11, 1),
+                SimulationStartDateTime = new DateTime(2021, 10, 1),
+                SimulationEndDateTime = new DateTime(2021, 11, 1),
                 ShareName = "sz.000422"
             };
             Simulation = new(@"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db", options);
@@ -51,7 +51,6 @@ namespace CarrotBacktesting.Net.Engine
         {
             Stopwatch stopwatch = new();
             stopwatch.Start();
-            int x = 0;
 
             Strategy.Start(StrategyContext);
             while (!Simulation.IsSimulationEnd)
@@ -62,12 +61,11 @@ namespace CarrotBacktesting.Net.Engine
                 OnTickChanged?.Invoke();
                 // 策略更新(更新策略,挂单 触发Next)
                 OnBarChanged?.Invoke();
-                x++;
             }
             Strategy.End(StrategyContext);
 
             stopwatch.Stop();
-            Console.WriteLine($"循环{x}次, 回测已完成,耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒.");
+            Console.WriteLine($"回测已完成,耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒.");
         }
 
         public void EventRegister()
