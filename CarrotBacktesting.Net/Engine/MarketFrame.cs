@@ -21,6 +21,7 @@ namespace CarrotBacktesting.Net.Engine
         public double NowPrice { get; set; }
         /// <summary>
         /// 是否开盘
+        /// TODO 停牌
         /// </summary>
         public bool IsActive { get; set; }
 

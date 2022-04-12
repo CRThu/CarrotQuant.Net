@@ -77,8 +77,8 @@ namespace CarrotBacktesting.Net.Engine
         public void UpdateFrame()
         {
             // 更新市场帧
-            double price = DataFeed.GetPrice(SimulationTime, SimulationOptions.ShareName, SimulationOptions.CloseColumnName);
-            SimulationMarketFrame.UpdateFrame(SimulationTime, price);
+            (double price,bool isActive) = DataFeed.GetPrice(SimulationTime, SimulationOptions.ShareName, SimulationOptions.CloseColumnName);
+            SimulationMarketFrame.UpdateFrame(SimulationTime, price, isActive);
 
             // 下一次更新时间并检测模拟是否结束
             SimulationTime += SimulationOptions.SimulationDuration;

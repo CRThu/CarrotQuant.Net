@@ -68,11 +68,10 @@ namespace CarrotBacktesting.Net.DataFeed
             DataTable2ShareData(this, dataTable, timeColName, dataColNames);
         }
 
-        // Get Price
-        public double GetPrice(DateTime datetime, string key)
+        public (double price, bool isActive) GetPrice(DateTime datetime, string key)
         {
-            int index = DateTimeMisc.GetTimeIndex(Time, datetime);
-            return GetPrice(index, key);
+            (int index, bool isPrecise) = DateTimeMisc.GetTimeIndex(Time, datetime);
+            return (GetPrice(index, key), isPrecise);
         }
 
         public double GetPrice(int index, string key)
@@ -82,15 +81,15 @@ namespace CarrotBacktesting.Net.DataFeed
 
         public double[] GetPrices(DateTime start, DateTime end, string key)
         {
-            int startIndex = DateTimeMisc.GetTimeIndex(Time, start);
-            int endIndex = DateTimeMisc.GetTimeIndex(Time, end);
+            (int startIndex, _) = DateTimeMisc.GetTimeIndex(Time, start);
+            (int endIndex, _) = DateTimeMisc.GetTimeIndex(Time, end);
             return Data[key][startIndex..(endIndex + 1)];
         }
 
         // Get DateTimeMisc
-        public int GetTimeIndex(DateTime dateTime) => DateTimeMisc.GetTimeIndex(Time, dateTime);
-        public int GetTimeIndex(int year, int month, int day) => DateTimeMisc.GetTimeIndex(Time, year, month, day);
-        public int GetTimeIndex(int year, int month, int day, int hour, int minute, int second) => DateTimeMisc.GetTimeIndex(Time, year, month, day, hour, minute, second);
+        public (int index, bool isPrecise) GetTimeIndex(DateTime dateTime) => DateTimeMisc.GetTimeIndex(Time, dateTime);
+        public (int index, bool isPrecise) GetTimeIndex(int year, int month, int day) => DateTimeMisc.GetTimeIndex(Time, year, month, day);
+        public (int index, bool isPrecise) GetTimeIndex(int year, int month, int day, int hour, int minute, int second) => DateTimeMisc.GetTimeIndex(Time, year, month, day, hour, minute, second);
         public DateTime GetTime(DateTime first, int indexOffset) => DateTimeMisc.GetTime(Time, first, indexOffset);
         public DateTime[] GetTimes(DateTime first, int startIndexOffset, int endIndexOffset) => DateTimeMisc.GetTimes(Time, first, startIndexOffset, endIndexOffset);
         public DateTime[] GetTimes(DateTime start, DateTime end) => DateTimeMisc.GetTimes(Time, start, end);

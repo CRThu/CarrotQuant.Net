@@ -69,7 +69,7 @@ namespace CarrotBacktesting.Net.DataFeed
             return (minStartDateTime, maxEndDateTime);
         }
 
-        public double GetPrice(DateTime time, string shareName, string key)
+        public (double price,bool isActive) GetPrice(DateTime time, string shareName, string key)
         {
             return MarketCache[shareName].GetPrice(time, key);
         }
