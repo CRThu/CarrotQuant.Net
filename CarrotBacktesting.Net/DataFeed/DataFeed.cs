@@ -36,15 +36,22 @@ namespace CarrotBacktesting.Net.DataFeed
             dataTable.Columns.Add(shareData.TimeDisplayName);
             foreach (var key in shareData.Keys)
                 dataTable.Columns.Add(key);
+            foreach (var key in shareData.StringData.Keys)
+                dataTable.Columns.Add(key);
 
             // Add Rows
             for (int i = 0; i < shareData.Count; i++)
             {
-                object[] row = new object[shareData.Keys.Length + 1];
+                object[] row = new object[shareData.Keys.Length + shareData.StringData.Keys.Count + 1];
                 string[] keysArray = shareData.Keys;
                 row[0] = shareData.Time[i];
-                for (int j = 0; j < shareData.Keys.Length; j++)
+                for (int j = 0; j < keysArray.Length; j++)
                     row[j + 1] = shareData[keysArray[j]][i];
+
+                // Add StringData
+                string[] stringKeysArray = shareData.StringData.Keys.ToArray();
+                for (int j = 0; j < stringKeysArray.Length; j++)
+                    row[keysArray.Length + j + 1] = shareData.StringData[stringKeysArray[j]][i];
 
                 dataTable.Rows.Add(row);
             }
@@ -69,7 +76,8 @@ namespace CarrotBacktesting.Net.DataFeed
             return (minStartDateTime, maxEndDateTime);
         }
 
-        public (double price,bool isActive) GetPrice(DateTime time, string shareName, string key)
+
+        public (double price, bool isActive) GetPrice(DateTime time, string shareName, string key)
         {
             return MarketCache[shareName].GetPrice(time, key);
         }
