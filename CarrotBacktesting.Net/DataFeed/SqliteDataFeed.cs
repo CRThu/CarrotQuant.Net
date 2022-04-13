@@ -36,14 +36,13 @@ namespace CarrotBacktesting.Net.DataFeed
         /// <param name="stringColNames"></param>
         public void SetShareData(string shareCode, string timeColName, string[] dataColNames, string[] stringColNames = null)
         {
-            if (stringColNames == null)
-                stringColNames = Array.Empty<string>();
 
             ShareData shareData = new();
             List<string> colNames = new();
             colNames.Add(timeColName);
             colNames.AddRange(dataColNames);
-            colNames.AddRange(stringColNames);
+            if (stringColNames != null)
+                colNames.AddRange(stringColNames);
             DataTable dt = sql.GetTable(shareCode, colNames.ToArray());
             shareData.DataTable2ShareData(dt, timeColName, dataColNames, stringColNames);
 

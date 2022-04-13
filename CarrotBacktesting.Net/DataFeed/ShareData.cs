@@ -90,7 +90,7 @@ namespace CarrotBacktesting.Net.DataFeed
 
         public (double price, bool isActive) GetPrice(DateTime datetime, string key)
         {
-            (int index, bool isPrecise) = DateTimeMisc.GetTimeIndex(Time, datetime);
+            (int index, bool isPrecise) = GetTimeIndex(datetime);
             return (GetPrice(index, key), isPrecise);
         }
 
@@ -99,10 +99,15 @@ namespace CarrotBacktesting.Net.DataFeed
             return Data[key][index];
         }
 
+        public string GetStringData(int index, string key)
+        {
+            return StringData[key][index];
+        }
+
         public double[] GetPrices(DateTime start, DateTime end, string key)
         {
-            (int startIndex, _) = DateTimeMisc.GetTimeIndex(Time, start);
-            (int endIndex, _) = DateTimeMisc.GetTimeIndex(Time, end);
+            (int startIndex, _) = GetTimeIndex(start);
+            (int endIndex, _) = GetTimeIndex(end);
             return Data[key][startIndex..(endIndex + 1)];
         }
 
