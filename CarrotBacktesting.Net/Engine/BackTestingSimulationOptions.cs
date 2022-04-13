@@ -53,11 +53,10 @@ namespace CarrotBacktesting.Net.Engine
             }
         }
 
-        // TODO 未实现
         /// <summary>
         /// 是否导入股票交易状态, 例如停牌/休市
         /// </summary>
-        public bool IsEnableShareStatusFlag { get; set; } = true;
+        public bool IsEnableShareStatusFlag { get; set; } = false;
         /// <summary>
         /// 当使能IsShareStatusImport时, 用于数据库中股票的交易状态列名
         /// </summary>
@@ -66,6 +65,11 @@ namespace CarrotBacktesting.Net.Engine
         /// 当使能IsShareStatusImport时, 用于数据库中股票的交易状态列的可交易状态判断字符串
         /// </summary>
         public string ShareStatusCanTradeName { get; set; } = "正常交易";
+
+        /// <summary>
+        /// 附加数据库读取的字符串数据列名数组
+        /// </summary>
+        public string[] AdditionalStringColumnNames { get; set; } = Array.Empty<string>();
 
         /// <summary>
         /// 从数据库读取的字符串数据名
@@ -77,7 +81,9 @@ namespace CarrotBacktesting.Net.Engine
                 List<string> cols = new();
                 if (IsEnableShareStatusFlag)
                     cols.Add(ShareStatusColumnName);
-                return cols.ToArray();
+                cols.AddRange(AdditionalStringColumnNames);
+                // 去重后输出数组
+                return cols.Distinct().ToArray();
             }
         }
 

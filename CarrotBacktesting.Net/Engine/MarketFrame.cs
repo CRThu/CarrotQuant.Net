@@ -8,6 +8,8 @@ namespace CarrotBacktesting.Net.Engine
 {
     /// <summary>
     /// 市场信息帧, 包含时间片内的价格信息
+    /// 目前只能存放一个时间帧内的单个股票信息
+    /// TODO待重构
     /// </summary>
     public class MarketFrame
     {
@@ -26,11 +28,21 @@ namespace CarrotBacktesting.Net.Engine
         public bool IsActive { get; set; }
 
         /// <summary>
+        /// 市场帧字符串数据
+        /// </summary>
+        public Dictionary<string, string> StringData { get; set; } = new();
+
+        /// <summary>
         /// 构造函数
         /// </summary>
-        public MarketFrame()
+        /// <param name="stringKeysName"></param>
+        public MarketFrame(string[] stringKeysName = null)
         {
-
+            if (stringKeysName != null)
+            {
+                foreach (var key in stringKeysName)
+                    StringData.Add(key, string.Empty);
+            }
         }
 
         /// <summary>
@@ -45,5 +57,9 @@ namespace CarrotBacktesting.Net.Engine
             IsActive = isActive;
         }
 
+        public void UpdateStringData(string key, string value)
+        {
+            StringData[key] = value;
+        }
     }
 }

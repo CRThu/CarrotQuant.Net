@@ -77,10 +77,14 @@ namespace CarrotBacktesting.Net.Engine
         public void UpdateFrame()
         {
             // 更新市场帧
-
-
-            (double price, bool isActive) = GetPrice(SimulationTime, Options.ShareName, Options.CloseColumnName);
+            (int index, bool isPrecise) = DataFeed.GetTimeIndex(Options.ShareName, SimulationTime);
+            (double price, bool isActive) = GetPrice(index, isPrecise, Options.ShareName, Options.CloseColumnName);
             SimulationMarketFrame.UpdateFrame(SimulationTime, price, isActive);
+            foreach (var additionalStringColumnName in Options.AdditionalStringColumnNames)
+            {
+                string val = DataFeed.GetStringData(Options.ShareName, index, additionalStringColumnName);
+                SimulationMarketFrame.UpdateStringData(additionalStringColumnName, val);
+            }
 
             // 下一次更新时间并检测模拟是否结束
             SimulationTime += Options.SimulationDuration;
@@ -95,9 +99,8 @@ namespace CarrotBacktesting.Net.Engine
         /// <param name="shareName"></param>
         /// <param name="key"></param>
         /// <returns></returns>
-        public (double price, bool isActive) GetPrice(DateTime dateTime, string shareName, string key)
+        public (double price, bool isActive) GetPrice(int index, bool isPrecise, string shareName, string key)
         {
-            (int index, bool isPrecise) = DataFeed.GetTimeIndex(shareName, dateTime);
             double price = DataFeed.GetPrice(shareName, index, key);
 
             // 若精确查找有具体日期, 则寻找是否存在停牌标志
