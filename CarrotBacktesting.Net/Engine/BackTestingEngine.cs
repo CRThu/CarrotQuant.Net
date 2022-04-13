@@ -19,10 +19,6 @@ namespace CarrotBacktesting.Net.Engine
         public BackTestingSimulation Simulation;
         public IStrategy Strategy;
 
-        // ex. From DataFeed
-        public double[] Price = new[] { 1.0, 2, 3, 4, 5, 6, 5, 5, 6, 6, 7, 6, 5, 4, 3 };
-        public DateTime BackTestingNowTime = new(2021, 1, 1);
-
         // 策略通用委托
         public delegate void FuncDelegate();
         public event FuncDelegate? OnTickChanged;
@@ -33,7 +29,7 @@ namespace CarrotBacktesting.Net.Engine
             Console.WriteLine($"初始化数据库.");
             var options = new BackTestingSimulationOptions()
             {
-                SimulationStartDateTime = new DateTime(2021, 10, 1),
+                SimulationStartDateTime = new DateTime(2021, 6, 1),
                 SimulationEndDateTime = new DateTime(2021, 11, 1),
                 ShareName = "sz.000422"
             };

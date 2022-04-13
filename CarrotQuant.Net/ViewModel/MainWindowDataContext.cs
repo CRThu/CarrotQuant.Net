@@ -111,7 +111,7 @@ namespace CarrotQuant.Net.ViewModel
                 //DataFeed dataFeed = new();
                 //dataFeed.SetShareData(SelectedDataBaseTable.TableName, shareData);
                 SqliteDataFeed df = new(DataBase.FileName);
-                df.SetShareData(SelectedDataBaseTableName, "交易日期", new string[] { "开盘价", "最低价" }, new string[] { "交易状态" });
+                df.SetShareData(SelectedDataBaseTableName, "交易日期", new string[] { "开盘价", "最低价" }, new string[] { "交易状态", "是否ST" });
                 SelectedDataBaseTable = df.GetShareDataTable(SelectedDataBaseTableName);
             }
             catch (Exception ex)

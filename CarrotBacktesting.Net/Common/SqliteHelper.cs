@@ -41,7 +41,7 @@ namespace CarrotBacktesting.Net.Common
         public DataTable Query(string query)
         {
 #if DEBUG
-            Debug.WriteLine($"SqliteHelper.Query({query}) called.");
+            Console.WriteLine($"SqliteHelper.Query({query}) called.");
             Stopwatch sw = new();
             sw.Start();
 #endif
@@ -50,7 +50,7 @@ namespace CarrotBacktesting.Net.Common
 
 #if DEBUG
             sw.Stop();
-            Debug.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms.");
+            Console.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms.");
 #endif
             return table;
         }

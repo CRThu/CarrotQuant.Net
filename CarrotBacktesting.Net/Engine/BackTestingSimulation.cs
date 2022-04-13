@@ -19,7 +19,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 回测模拟设置
         /// </summary>
-        public BackTestingSimulationOptions SimulationOptions { get; set; }
+        public BackTestingSimulationOptions Options { get; set; }
 
         /// <summary>
         /// 模拟时间
@@ -41,7 +41,7 @@ namespace CarrotBacktesting.Net.Engine
         {
             get
             {
-                return SimulationOptions.SimulationEndDateTime - SimulationOptions.SimulationStartDateTime;
+                return Options.SimulationEndDateTime - Options.SimulationStartDateTime;
             }
         }
 
@@ -52,21 +52,21 @@ namespace CarrotBacktesting.Net.Engine
         public BackTestingSimulation(string dbPath, BackTestingSimulationOptions options)
         {
             // 配置加载
-            SimulationOptions = options;
+            Options = options;
 
             // 数据库加载
             DataFeed = new(dbPath);
-            DataFeed.SetShareData(options.ShareName, SimulationOptions.DateTimeColumnName, SimulationOptions.OHLCColumnName);
+            DataFeed.SetShareData(options.ShareName, Options.DateTimeColumnName, Options.OHLCColumnName, Options.StringDataColumnNames);
 
             // 数据源时间范围计算
             (DateTime minStart, DateTime maxEnd) = DataFeed.GetDateTimeRange();
-            if (SimulationOptions.SimulationStartDateTime == DateTime.MinValue)
-                SimulationOptions.SimulationStartDateTime = minStart;
-            if (SimulationOptions.SimulationEndDateTime == DateTime.MaxValue)
-                SimulationOptions.SimulationEndDateTime = maxEnd;
+            if (Options.SimulationStartDateTime == DateTime.MinValue)
+                Options.SimulationStartDateTime = minStart;
+            if (Options.SimulationEndDateTime == DateTime.MaxValue)
+                Options.SimulationEndDateTime = maxEnd;
 
             // 初始化模拟属性
-            SimulationTime = SimulationOptions.SimulationStartDateTime;
+            SimulationTime = Options.SimulationStartDateTime;
             SimulationMarketFrame = new();
 
         }
@@ -77,13 +77,39 @@ namespace CarrotBacktesting.Net.Engine
         public void UpdateFrame()
         {
             // 更新市场帧
-            (double price,bool isActive) = DataFeed.GetPrice(SimulationTime, SimulationOptions.ShareName, SimulationOptions.CloseColumnName);
+
+
+            (double price, bool isActive) = GetPrice(SimulationTime, Options.ShareName, Options.CloseColumnName);
             SimulationMarketFrame.UpdateFrame(SimulationTime, price, isActive);
 
             // 下一次更新时间并检测模拟是否结束
-            SimulationTime += SimulationOptions.SimulationDuration;
-            if (SimulationTime >= SimulationOptions.SimulationEndDateTime)
+            SimulationTime += Options.SimulationDuration;
+            if (SimulationTime >= Options.SimulationEndDateTime)
                 IsSimulationEnd = true;
+        }
+
+        /// <summary>
+        /// 获取价格, 若使能停牌标志则判断是否停牌
+        /// </summary>
+        /// <param name="dateTime"></param>
+        /// <param name="shareName"></param>
+        /// <param name="key"></param>
+        /// <returns></returns>
+        public (double price, bool isActive) GetPrice(DateTime dateTime, string shareName, string key)
+        {
+            (int index, bool isPrecise) = DataFeed.GetTimeIndex(shareName, dateTime);
+            double price = DataFeed.GetPrice(shareName, index, key);
+
+            // 若精确查找有具体日期, 则寻找是否存在停牌标志
+            if (Options.IsEnableShareStatusFlag && isPrecise)
+            {
+                string shareStatus = DataFeed.GetStringData(shareName, index, Options.ShareStatusColumnName);
+                if (shareStatus != Options.ShareStatusCanTradeName)
+                {
+                    isPrecise = false;
+                }
+            }
+            return (price, isPrecise);
         }
     }
 }
