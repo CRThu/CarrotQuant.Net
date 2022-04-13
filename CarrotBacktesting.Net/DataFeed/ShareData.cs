@@ -9,6 +9,10 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.DataFeed
 {
+    /// <summary>
+    /// 股市历史数据存储结构
+    /// TODO待重构
+    /// </summary>
     public class ShareData
     {
         /// <summary>

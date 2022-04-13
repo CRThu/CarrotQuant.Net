@@ -45,7 +45,11 @@ namespace CarrotBacktesting.Net.Strategy
         {
 #if DEBUG
             Console.WriteLine("BasicStrategy.Next()");
-            Console.WriteLine($"{strategyContext.MarketFrame.NowTime.ToShortDateString()}| Market {(strategyContext.MarketFrame.IsActive ? "Open" : "Close")} | Price: {strategyContext.MarketFrame.NowPrice}.");
+            Console.WriteLine($"{strategyContext.MarketFrame.NowTime:d}" +
+                $"| Market {(strategyContext.MarketFrame.IsActive ? "Open" : "Close")} " +
+                $"| Price: {strategyContext.MarketFrame.NowPrice:F3} " +
+                $"| Status: {strategyContext.MarketFrame.StringData["交易状态"]} "+
+                $"| IsST: {strategyContext.MarketFrame.StringData["是否ST"]}.");
 #endif
             if (strategyContext.MarketFrame.IsActive) 
             {

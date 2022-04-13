@@ -31,7 +31,9 @@ namespace CarrotBacktesting.Net.Engine
             {
                 SimulationStartDateTime = new DateTime(2021, 6, 1),
                 SimulationEndDateTime = new DateTime(2021, 11, 1),
-                ShareName = "sz.000422"
+                ShareName = "sz.000422",
+                IsEnableShareStatusFlag = true,
+                AdditionalStringColumnNames = new string[] { "是否ST", "交易状态" }
             };
             Simulation = new(@"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db", options);
             Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
