@@ -1,5 +1,6 @@
 ﻿using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio;
+using CarrotBacktesting.Net.Portfolio.Analyzer;
 using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Portfolio.Position;
 using System;

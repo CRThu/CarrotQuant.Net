@@ -1,11 +1,12 @@
-﻿using CarrotBacktesting.Net.Shared;
+﻿using CarrotBacktesting.Net.Portfolio.Position;
+using CarrotBacktesting.Net.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.Portfolio.Position
+namespace CarrotBacktesting.Net.Portfolio.Analyzer
 {
     /// <summary>
     /// 交易记录器
