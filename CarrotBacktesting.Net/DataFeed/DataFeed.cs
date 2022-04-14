@@ -80,5 +80,6 @@ namespace CarrotBacktesting.Net.DataFeed
         public (int index, bool isPrecise) GetTimeIndex(string shareName, DateTime dateTime) => MarketCache[shareName].GetTimeIndex(dateTime);
         public double GetPrice(string shareName, int index, string key) => MarketCache[shareName].GetPrice(index, key);
         public string GetStringData(string shareName, int index, string key) => MarketCache[shareName].GetStringData(index, key);
+        public double GetData(string shareName, int index, string key) => MarketCache[shareName].GetData(index, key);
     }
 }

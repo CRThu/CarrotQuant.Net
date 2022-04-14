@@ -54,6 +54,12 @@ namespace CarrotBacktesting.Net.Engine
         }
 
         /// <summary>
+        /// 附加数据库读取的数据列名数组
+        /// </summary>
+        public string[] AdditionalDataColumnNames { get; set; } = Array.Empty<string>();
+
+
+        /// <summary>
         /// 是否导入股票交易状态, 例如停牌/休市
         /// </summary>
         public bool IsEnableShareStatusFlag { get; set; } = false;
@@ -70,6 +76,21 @@ namespace CarrotBacktesting.Net.Engine
         /// 附加数据库读取的字符串数据列名数组
         /// </summary>
         public string[] AdditionalStringColumnNames { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// 从数据库读取的浮点数据名
+        /// </summary>
+        public string[] DataColumnNames
+        {
+            get
+            {
+                List<string> cols = new();
+                cols.AddRange(OHLCColumnName);
+                cols.AddRange(AdditionalDataColumnNames);
+                // 去重后输出数组
+                return cols.Distinct().ToArray();
+            }
+        }
 
         /// <summary>
         /// 从数据库读取的字符串数据名
