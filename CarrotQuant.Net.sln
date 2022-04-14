@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBacktesting.Net", "Ca
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBackTesting.Net.UnitTest", "CarrotBackTesting.Net.UnitTest\CarrotBackTesting.Net.UnitTest.csproj", "{F30174DA-64CB-4836-BC37-46AD944300B2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotBacktesting.Net.Benchmark", "CarrotBacktesting.Net.Benchmark\CarrotBacktesting.Net.Benchmark.csproj", "{AB938D33-C542-4400-926B-795AE63AB9DA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{F30174DA-64CB-4836-BC37-46AD944300B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F30174DA-64CB-4836-BC37-46AD944300B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F30174DA-64CB-4836-BC37-46AD944300B2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AB938D33-C542-4400-926B-795AE63AB9DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AB938D33-C542-4400-926B-795AE63AB9DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AB938D33-C542-4400-926B-795AE63AB9DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AB938D33-C542-4400-926B-795AE63AB9DA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

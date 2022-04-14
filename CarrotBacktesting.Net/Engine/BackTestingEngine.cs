@@ -24,20 +24,14 @@ namespace CarrotBacktesting.Net.Engine
         public event FuncDelegate? OnTickChanged;
         public event FuncDelegate? OnBarChanged;
 
-        public BackTestingEngine(IStrategy strategy)
+        public BackTestingEngine(IStrategy strategy) : this(strategy, new BackTestingSimulationOptions())
+        {
+        }
+
+        public BackTestingEngine(IStrategy strategy, BackTestingSimulationOptions options)
         {
             Console.WriteLine($"初始化数据库.");
-            var options = new BackTestingSimulationOptions()
-            {
-                SimulationStartDateTime = new DateTime(2021, 6, 1),
-                SimulationEndDateTime = new DateTime(2021, 11, 1),
-                //SimulationDuration = new TimeSpan(0, 0, 1),
-                ShareName = "sz.000422",
-                IsEnableShareStatusFlag = true,
-                AdditionalStringColumnNames = new string[] { "是否ST", "交易状态" },
-                AdditionalDataColumnNames = new string[] { "滚动市盈率" }
-            };
-            Simulation = new(@"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db", options);
+            Simulation = new(options);
             Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
 
             StrategyContext = new(Simulation.SimulationMarketFrame);
