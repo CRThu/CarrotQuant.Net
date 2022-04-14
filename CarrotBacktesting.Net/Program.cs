@@ -4,5 +4,18 @@ using CarrotBacktesting.Net.Strategy;
 
 Console.WriteLine("Hello, World!");
 
-IEngine engine = new BackTestingEngine(new BasicStrategy());
+var options = new BackTestingSimulationOptions()
+{
+    IsSqliteDataFeed = true,
+    SqliteDatabasePath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
+    SimulationStartDateTime = new DateTime(2021, 6, 1),
+    SimulationEndDateTime = new DateTime(2021, 11, 1),
+    //SimulationDuration = new TimeSpan(0, 0, 1),
+    ShareName = "sz.000422",
+    IsEnableShareStatusFlag = true,
+    AdditionalStringColumnNames = new string[] { "是否ST", "交易状态" },
+    AdditionalDataColumnNames = new string[] { "滚动市盈率" }
+};
+
+IEngine engine = new BackTestingEngine(new BasicStrategy(), options);
 engine.Run();

@@ -45,17 +45,20 @@ namespace CarrotBacktesting.Net.Engine
             }
         }
 
-        public BackTestingSimulation(string dbPath) : this(dbPath, new BackTestingSimulationOptions())
+        public BackTestingSimulation() : this(new BackTestingSimulationOptions())
         {
         }
 
-        public BackTestingSimulation(string dbPath, BackTestingSimulationOptions options)
+        public BackTestingSimulation(BackTestingSimulationOptions options)
         {
             // 配置加载
             Options = options;
 
             // 数据库加载
-            DataFeed = new(dbPath);
+            if (options.IsSqliteDataFeed)
+                DataFeed = new SqliteDataFeed(options.SqliteDatabasePath);
+            else
+                throw new NotImplementedException("未实现非Sqlite数据库数据载入接口");
             DataFeed.SetShareData(options.ShareName, Options.DateTimeColumnName, Options.DataColumnNames, Options.StringDataColumnNames);
 
             // 数据源时间范围计算

@@ -15,6 +15,9 @@ namespace CarrotBacktesting.Net.Engine
         /// 是否为Sqlite数据
         /// </summary>
         public bool IsSqliteDataFeed { get; set; } = true;
+
+        public string SqliteDatabasePath { get; set; } = String.Empty;
+
         /// <summary>
         /// 数据库中表的交易时间列名
         /// </summary>
