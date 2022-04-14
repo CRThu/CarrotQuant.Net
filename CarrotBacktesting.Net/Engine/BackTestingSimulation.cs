@@ -56,7 +56,7 @@ namespace CarrotBacktesting.Net.Engine
 
             // 数据库加载
             DataFeed = new(dbPath);
-            DataFeed.SetShareData(options.ShareName, Options.DateTimeColumnName, Options.OHLCColumnName, Options.StringDataColumnNames);
+            DataFeed.SetShareData(options.ShareName, Options.DateTimeColumnName, Options.DataColumnNames, Options.StringDataColumnNames);
 
             // 数据源时间范围计算
             (DateTime minStart, DateTime maxEnd) = DataFeed.GetDateTimeRange();
@@ -82,8 +82,13 @@ namespace CarrotBacktesting.Net.Engine
             SimulationMarketFrame.UpdateFrame(SimulationTime, price, isActive);
             foreach (var additionalStringColumnName in Options.AdditionalStringColumnNames)
             {
-                string val = DataFeed.GetStringData(Options.ShareName, index, additionalStringColumnName);
+                var val = DataFeed.GetStringData(Options.ShareName, index, additionalStringColumnName);
                 SimulationMarketFrame.UpdateStringData(additionalStringColumnName, val);
+            }
+            foreach (var additionalDataColumnName in Options.AdditionalDataColumnNames)
+            {
+                var val = DataFeed.GetData(Options.ShareName, index, additionalDataColumnName);
+                SimulationMarketFrame.UpdateData(additionalDataColumnName, val);
             }
 
             // 下一次更新时间并检测模拟是否结束

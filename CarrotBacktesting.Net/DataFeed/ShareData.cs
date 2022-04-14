@@ -108,6 +108,11 @@ namespace CarrotBacktesting.Net.DataFeed
             return StringData[key][index];
         }
 
+        public double GetData(int index, string key)
+        {
+            return Data[key][index];
+        }
+
         public double[] GetPrices(DateTime start, DateTime end, string key)
         {
             (int startIndex, _) = GetTimeIndex(start);

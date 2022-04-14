@@ -28,21 +28,20 @@ namespace CarrotBacktesting.Net.Engine
         public bool IsActive { get; set; }
 
         /// <summary>
-        /// 市场帧字符串数据
+        /// 市场帧额外添加浮点数据
+        /// </summary>
+        public Dictionary<string, double> Data { get; set; } = new();
+
+        /// <summary>
+        /// 市场帧额外添加字符串数据
         /// </summary>
         public Dictionary<string, string> StringData { get; set; } = new();
 
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="stringKeysName"></param>
-        public MarketFrame(string[] stringKeysName = null)
+        public MarketFrame()
         {
-            if (stringKeysName != null)
-            {
-                foreach (var key in stringKeysName)
-                    StringData.Add(key, string.Empty);
-            }
         }
 
         /// <summary>
@@ -55,6 +54,11 @@ namespace CarrotBacktesting.Net.Engine
             NowTime = nowTime;
             NowPrice = nowPrice;
             IsActive = isActive;
+        }
+
+        public void UpdateData(string key, double value)
+        {
+            Data[key] = value;
         }
 
         public void UpdateStringData(string key, string value)
