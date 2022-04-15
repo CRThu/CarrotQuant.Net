@@ -17,53 +17,30 @@ namespace CarrotBacktesting.Net.Engine
         /// 当前日期
         /// </summary>
         public DateTime NowTime { get; set; }
-        /// <summary>
-        /// 当前价格
-        /// </summary>
-        public double NowPrice { get; set; }
-        /// <summary>
-        /// 是否开盘
-        /// TODO 停牌
-        /// </summary>
-        public bool IsActive { get; set; }
 
-        /// <summary>
-        /// 市场帧额外添加浮点数据
-        /// </summary>
-        public Dictionary<string, double> Data { get; set; } = new();
+        public Dictionary<string, ShareFrame> MarketFrameCache { get; set; } = new();
 
-        /// <summary>
-        /// 市场帧额外添加字符串数据
-        /// </summary>
-        public Dictionary<string, string> StringData { get; set; } = new();
+        public ShareFrame this[string shareName]
+        {
+            get
+            {
+                return MarketFrameCache[shareName];
+            }
+        }
 
         /// <summary>
         /// 构造函数
         /// </summary>
-        public MarketFrame()
+        /// <param name="shareNames"></param>
+        public MarketFrame(string[] shareNames)
         {
+            foreach (var shareName in shareNames)
+                MarketFrameCache.Add(shareName, new ShareFrame());
         }
 
-        /// <summary>
-        /// 更新帧
-        /// </summary>
-        /// <param name="nowTime"></param>
-        /// <param name="nowPrice"></param>
-        public void UpdateFrame(DateTime nowTime, double nowPrice, bool isActive = true)
+        public void UpdateTime(DateTime time)
         {
-            NowTime = nowTime;
-            NowPrice = nowPrice;
-            IsActive = isActive;
-        }
-
-        public void UpdateData(string key, double value)
-        {
-            Data[key] = value;
-        }
-
-        public void UpdateStringData(string key, string value)
-        {
-            StringData[key] = value;
+            NowTime = time;
         }
     }
 }

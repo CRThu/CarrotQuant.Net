@@ -125,8 +125,7 @@ namespace CarrotBacktesting.Net.Engine
         public TimeSpan SimulationDuration { get; set; } = new TimeSpan(1, 0, 0, 0);
         /// <summary>
         /// 模拟股票名称
-        /// TODO
         /// </summary>
-        public string ShareName { get; set; } = "sz.000422";
+        public string[] ShareNames { get; set; } = Array.Empty<string>();
     }
 }

@@ -59,7 +59,9 @@ namespace CarrotBacktesting.Net.Engine
                 DataFeed = new SqliteDataFeed(options.SqliteDatabasePath);
             else
                 throw new NotImplementedException("未实现非Sqlite数据库数据载入接口");
-            DataFeed.SetShareData(options.ShareName, Options.DateTimeColumnName, Options.DataColumnNames, Options.StringDataColumnNames);
+
+            foreach (var shareName in options.ShareNames)
+                DataFeed.SetShareData(shareName, Options.DateTimeColumnName, Options.DataColumnNames, Options.StringDataColumnNames);
 
             // 数据源时间范围计算
             (DateTime minStart, DateTime maxEnd) = DataFeed.GetDateTimeRange();
@@ -70,7 +72,7 @@ namespace CarrotBacktesting.Net.Engine
 
             // 初始化模拟属性
             SimulationTime = Options.SimulationStartDateTime;
-            SimulationMarketFrame = new();
+            SimulationMarketFrame = new(Options.ShareNames);
 
         }
 
@@ -80,18 +82,23 @@ namespace CarrotBacktesting.Net.Engine
         public void UpdateFrame()
         {
             // 更新市场帧
-            (int index, bool isPrecise) = DataFeed.GetTimeIndex(Options.ShareName, SimulationTime);
-            (double price, bool isActive) = GetPrice(index, isPrecise, Options.ShareName, Options.CloseColumnName);
-            SimulationMarketFrame.UpdateFrame(SimulationTime, price, isActive);
-            foreach (var additionalStringColumnName in Options.AdditionalStringColumnNames)
+            foreach (var shareName in Options.ShareNames)
             {
-                var val = DataFeed.GetStringData(Options.ShareName, index, additionalStringColumnName);
-                SimulationMarketFrame.UpdateStringData(additionalStringColumnName, val);
-            }
-            foreach (var additionalDataColumnName in Options.AdditionalDataColumnNames)
-            {
-                var val = DataFeed.GetData(Options.ShareName, index, additionalDataColumnName);
-                SimulationMarketFrame.UpdateData(additionalDataColumnName, val);
+                (int index, bool isPrecise) = DataFeed.GetTimeIndex(shareName, SimulationTime);
+                (double[] ohlc, bool isActive) = GetPrice(index, isPrecise, shareName);
+                SimulationMarketFrame.UpdateTime(SimulationTime);
+                SimulationMarketFrame.MarketFrameCache[shareName].UpdatePrice(ohlc, isActive);
+
+                foreach (var additionalStringColumnName in Options.AdditionalStringColumnNames)
+                {
+                    var val = DataFeed.GetStringData(shareName, index, additionalStringColumnName);
+                    SimulationMarketFrame.MarketFrameCache[shareName].UpdateAdditionalData(additionalStringColumnName, val);
+                }
+                foreach (var additionalDataColumnName in Options.AdditionalDataColumnNames)
+                {
+                    var val = DataFeed.GetData(shareName, index, additionalDataColumnName);
+                    SimulationMarketFrame.MarketFrameCache[shareName].UpdateAdditionalData(additionalDataColumnName, val);
+                }
             }
 
             // 下一次更新时间并检测模拟是否结束
@@ -101,15 +108,20 @@ namespace CarrotBacktesting.Net.Engine
         }
 
         /// <summary>
-        /// 获取价格, 若使能停牌标志则判断是否停牌
+        /// 获取OHLC价格, 若使能停牌标志则判断是否停牌
         /// </summary>
-        /// <param name="dateTime"></param>
+        /// <param name="index"></param>
+        /// <param name="isPrecise"></param>
         /// <param name="shareName"></param>
-        /// <param name="key"></param>
         /// <returns></returns>
-        public (double price, bool isActive) GetPrice(int index, bool isPrecise, string shareName, string key)
+        public (double[] ohlc, bool isActive) GetPrice(int index, bool isPrecise, string shareName)
         {
-            double price = DataFeed.GetPrice(shareName, index, key);
+            double[] ohlc = new[] {
+                DataFeed.GetPrice(shareName, index, Options.OpenColumnName),
+                DataFeed.GetPrice(shareName, index, Options.HighColumnName),
+                DataFeed.GetPrice(shareName, index, Options.LowColumnName),
+                DataFeed.GetPrice(shareName, index, Options.CloseColumnName),
+                };
 
             // 若精确查找有具体日期, 则寻找是否存在停牌标志
             if (Options.IsEnableShareStatusFlag && isPrecise)
@@ -120,7 +132,7 @@ namespace CarrotBacktesting.Net.Engine
                     isPrecise = false;
                 }
             }
-            return (price, isPrecise);
+            return (ohlc, isPrecise);
         }
     }
 }

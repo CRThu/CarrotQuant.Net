@@ -21,7 +21,7 @@ public class BackTestingEngineBenchmark
             SimulationStartDateTime = new DateTime(2021, 6, 1),
             SimulationEndDateTime = new DateTime(2021, 11, 1),
             SimulationDuration = new TimeSpan(0, 0, 1),
-            ShareName = "sz.000422",
+            ShareNames = new[] { "sz.000422" },
         };
 
         IEngine engine = new BackTestingEngine(new BasicStrategy(), options);
@@ -38,7 +38,7 @@ public class BackTestingEngineBenchmark
             SimulationStartDateTime = new DateTime(2021, 6, 1),
             SimulationEndDateTime = new DateTime(2021, 11, 1),
             SimulationDuration = new TimeSpan(0, 0, 1),
-            ShareName = "sz.000422",
+            ShareNames = new[] { "sz.000422" },
             AdditionalStringColumnNames = new string[] { "是否ST" },
         };
 
@@ -57,6 +57,7 @@ public class BackTestingEngineBenchmark
             SimulationEndDateTime = new DateTime(2021, 11, 1),
             SimulationDuration = new TimeSpan(0, 0, 1),
             IsEnableShareStatusFlag = true,
+            ShareNames = new[] { "sz.000422" },
             AdditionalDataColumnNames = new string[] { "滚动市盈率" }
         };
 
