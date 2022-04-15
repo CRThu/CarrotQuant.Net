@@ -39,14 +39,13 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <summary>
         /// 添加委托单
         /// </summary>
-        /// <param name="exchangeName"></param>
         /// <param name="shareName"></param>
         /// <param name="limitPrice"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public void AddOrder(string exchangeName, string shareName, double limitPrice, double size, OrderDirection direction)
+        public void AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
         {
-            Orders.Add(OrderIdGen, new GeneralOrder(exchangeName, shareName, limitPrice, size, direction));
+            Orders.Add(OrderIdGen, new GeneralOrder(shareName, limitPrice, size, direction));
         }
 
         /// <summary>
