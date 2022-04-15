@@ -20,7 +20,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 当前时间市场帧
         /// </summary>
-        public MarketFrame MarketFrame { get; set; } = new();
+        public MarketFrame MarketFrame { get; set; }
 
         /// <summary>
         /// 委托单管理器

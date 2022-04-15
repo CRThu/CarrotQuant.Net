@@ -52,19 +52,10 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         {
             DateTime = marketFrame.NowTime;
 
-            string[] shareNames = positionManager.Positions.Select(pos => pos.ShareName).ToArray();
-            // TODO MarketFrame
-            double priceCache = 0;
-            foreach (var shareName in shareNames)
-                if (shareName == "sz.000422")
-                    priceCache = marketFrame.NowPrice;
-            if (priceCache == 0)
-                throw new NotImplementedException();
-
             double shareValue = 0;
             foreach (var position in positionManager.Positions)
             {
-                shareValue += priceCache * position.Size;
+                shareValue += marketFrame[position.ShareName].NowPrice * position.Size;
             }
             ShareValue = shareValue;
 

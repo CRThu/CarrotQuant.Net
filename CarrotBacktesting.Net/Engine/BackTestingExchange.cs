@@ -54,10 +54,10 @@ namespace CarrotBacktesting.Net.Engine
         {
             foreach ((var orderId, var orderInfo) in Portfolio.OrderManager.Orders)
             {
-                if ((orderInfo.LimitPrice >= MarketFrame.NowPrice && orderInfo.Direction == OrderDirection.Long)
-                    || (orderInfo.LimitPrice <= MarketFrame.NowPrice && orderInfo.Direction == OrderDirection.Short))
+                if ((orderInfo.LimitPrice >= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Long)
+                    || (orderInfo.LimitPrice <= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Short))
                 {
-                    OrderDealEvent?.Invoke(orderId, MarketFrame.NowPrice, orderInfo.Size);
+                    OrderDealEvent?.Invoke(orderId, MarketFrame[orderInfo.ShareName].NowPrice, orderInfo.Size);
                 }
             }
         }

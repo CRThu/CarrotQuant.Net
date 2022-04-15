@@ -46,19 +46,25 @@ namespace CarrotBacktesting.Net.Strategy
 #if DEBUG
             Console.WriteLine("BasicStrategy.Next()");
             Console.WriteLine($"{strategyContext.MarketFrame.NowTime:d}" +
-                $"| Market {(strategyContext.MarketFrame.IsActive ? "Open" : "Close")} " +
-                $"| Price: {strategyContext.MarketFrame.NowPrice:F3} " +
-                $"| Status: {strategyContext.MarketFrame.StringData["交易状态"]} " +
-                $"| IsST: {strategyContext.MarketFrame.StringData["是否ST"]} " +
-                $"| PE: {strategyContext.MarketFrame.Data["滚动市盈率"]:F3}.");
+                $"| Market {(strategyContext.MarketFrame["sz.000422"].IsActive ? "Open" : "Close")} " +
+                $"| Price: {strategyContext.MarketFrame["sz.000422"].NowPrice:F3} " +
+                $"| Status: {strategyContext.MarketFrame["sz.000422"].StringData["交易状态"]} " +
+                $"| IsST: {strategyContext.MarketFrame["sz.000422"].StringData["是否ST"]} " +
+                $"| PE: {strategyContext.MarketFrame["sz.000422"].FloatData["滚动市盈率"]:F3}.");
+            Console.WriteLine($"{strategyContext.MarketFrame.NowTime:d}" +
+                $"| Market {(strategyContext.MarketFrame["sz.000423"].IsActive ? "Open" : "Close")} " +
+                $"| Price: {strategyContext.MarketFrame["sz.000423"].NowPrice:F3} " +
+                $"| Status: {strategyContext.MarketFrame["sz.000423"].StringData["交易状态"]} " +
+                $"| IsST: {strategyContext.MarketFrame["sz.000423"].StringData["是否ST"]} " +
+                $"| PE: {strategyContext.MarketFrame["sz.000423"].FloatData["滚动市盈率"]:F3}.");
 #endif
-            if (strategyContext.MarketFrame.IsActive)
-            {
-                if (strategyContext.MarketFrame.NowPrice <= 220)
-                    strategyContext.PortfolioManager.AddOrder("sz.000422", 230, 100.0, OrderDirection.Long);
-                if (strategyContext.MarketFrame.NowPrice >= 350)
-                    strategyContext.PortfolioManager.AddOrder("sz.000422", 320, 100.0, OrderDirection.Short);
-            }
+            //if (strategyContext.MarketFrame["sz.000422"].IsActive)
+            //{
+            //    if (strategyContext.MarketFrame["sz.000422"].NowPrice <= 220)
+            //        strategyContext.PortfolioManager.AddOrder("sz.000422", 230, 100.0, OrderDirection.Long);
+            //    if (strategyContext.MarketFrame["sz.000422"].NowPrice >= 350)
+            //        strategyContext.PortfolioManager.AddOrder("sz.000422", 320, 100.0, OrderDirection.Short);
+            //}
         }
     }
 }
