@@ -11,5 +11,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// </summary>
     public class PnlLogger
     {
+        public List<TransactionLog> Logs { get; set; } = new();
+
     }
 }

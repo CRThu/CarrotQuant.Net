@@ -8,7 +8,7 @@ var options = new BackTestingSimulationOptions()
 {
     IsSqliteDataFeed = true,
     SqliteDatabasePath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
-    SimulationStartDateTime = new DateTime(2021, 6, 1),
+    SimulationStartDateTime = new DateTime(2021, 10, 1),
     SimulationEndDateTime = new DateTime(2021, 11, 1),
     //SimulationDuration = new TimeSpan(0, 0, 1),
     ShareName = "sz.000422",

@@ -52,13 +52,13 @@ namespace CarrotBacktesting.Net.Strategy
                 $"| IsST: {strategyContext.MarketFrame.StringData["是否ST"]} "+
                 $"| PE: {strategyContext.MarketFrame.Data["滚动市盈率"]}.");
 #endif
-            //if (strategyContext.MarketFrame.IsActive) 
-            //{
-            //    if (strategyContext.MarketFrame.NowPrice <= 220)
-            //        strategyContext.PortfolioManager.AddOrder("A", "001", 230, 100.0, OrderDirection.Long);
-            //    if (strategyContext.MarketFrame.NowPrice >= 330)
-            //        strategyContext.PortfolioManager.AddOrder("A", "001", 320, 100.0, OrderDirection.Short);
-            //}
+            if (strategyContext.MarketFrame.IsActive)
+            {
+                if (strategyContext.MarketFrame.NowPrice <= 220)
+                    strategyContext.PortfolioManager.AddOrder("A", "sz.000422", 230, 100.0, OrderDirection.Long);
+                if (strategyContext.MarketFrame.NowPrice >= 350)
+                    strategyContext.PortfolioManager.AddOrder("A", "sz.000422", 320, 100.0, OrderDirection.Short);
+            }
         }
     }
 }

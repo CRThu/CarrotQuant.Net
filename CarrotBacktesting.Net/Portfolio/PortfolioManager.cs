@@ -37,6 +37,10 @@ namespace CarrotBacktesting.Net.Portfolio
         /// </summary>
         public TransactionLogger TransactionLogger { get; set; } = new();
 
+        /// <summary>
+        /// 损益记录器
+        /// </summary>
+        public PnlLogger PnlLogger { get; set; } = new();
 
         public delegate void SetCashDelegate(DateTime dateTime, double cash);
         public event SetCashDelegate? OnSetCashEvent;
@@ -64,6 +68,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// </summary>
         public void OnPriceUpdate()
         {
+
         }
 
         /// <summary>
