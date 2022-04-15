@@ -12,10 +12,6 @@ namespace CarrotBacktesting.Net.Portfolio.Order
     public class GeneralOrder
     {
         /// <summary>
-        /// 交易所名称
-        /// </summary>
-        public string ExchangeName { get; set; }
-        /// <summary>
         /// 股票名称
         /// </summary>
         public string ShareName { get; set; }
@@ -37,13 +33,11 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="exchangeName"></param>
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="position"></param>
-        public GeneralOrder(string exchangeName, string shareName, double price, double size, OrderDirection position)
+        public GeneralOrder(string shareName, double price, double size, OrderDirection position)
         {
-            ExchangeName = exchangeName;
             ShareName = shareName;
             LimitPrice = price;
             Size = size;

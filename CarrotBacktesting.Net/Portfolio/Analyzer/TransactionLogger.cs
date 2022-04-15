@@ -37,7 +37,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <param name="cash"></param>
         public void SetCash(DateTime transactionTime, double cash)
         {
-            Logs.Add(new TransactionLog(TransactionId, transactionTime, new GeneralPosition("$CASH$", "$CASH$", cash, 0)));
+            Logs.Add(new TransactionLog(TransactionId, transactionTime, new GeneralPosition("$CASH$", cash, 0)));
         }
 
         /// <summary>

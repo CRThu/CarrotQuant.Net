@@ -21,10 +21,6 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// </summary>
         public DateTime TransactionTime { get; set; }
         /// <summary>
-        /// 交易所信息
-        /// </summary>
-        public string ExchangeName { get; set; }
-        /// <summary>
         /// 股票信息
         /// </summary>
         public string ShareName { get; set; }
@@ -47,7 +43,6 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         {
             TransactionId = transactionId;
             TransactionTime = transactionTime;
-            ExchangeName = position.ExchangeName;
             ShareName = position.ShareName;
             Size = position.Size;
             Price = position.Cost;

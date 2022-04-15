@@ -14,10 +14,6 @@ namespace CarrotBacktesting.Net.Portfolio.Position
     public class GeneralPosition
     {
         /// <summary>
-        /// 交易所名称
-        /// </summary>
-        public string ExchangeName { get; set; }
-        /// <summary>
         /// 股票名称
         /// </summary>
         public string ShareName { get; set; }
@@ -33,13 +29,11 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="exchangeName"></param>
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public GeneralPosition(string exchangeName, string shareName, double size, double cost, OrderDirection direction = OrderDirection.Long)
+        public GeneralPosition(string shareName, double size, double cost, OrderDirection direction = OrderDirection.Long)
         {
-            ExchangeName = exchangeName;
             ShareName = shareName;
             Size = direction == OrderDirection.Long ? size : -size;
             Cost = cost;
@@ -51,7 +45,6 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <param name="generalOrder"></param>
         public GeneralPosition(GeneralOrder generalOrder, double price)
         {
-            ExchangeName = generalOrder.ExchangeName;
             ShareName = generalOrder.ShareName;
             Size = generalOrder.Direction == OrderDirection.Long ? generalOrder.Size : -generalOrder.Size;
             Cost = price;
@@ -65,8 +58,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <returns></returns>
         public static bool IsSameShare(GeneralPosition positionA, GeneralPosition positionB)
         {
-            return positionA.ExchangeName == positionB.ExchangeName
-            && positionA.ShareName == positionB.ShareName;
+            return positionA.ShareName == positionB.ShareName;
         }
 
         /// <summary>

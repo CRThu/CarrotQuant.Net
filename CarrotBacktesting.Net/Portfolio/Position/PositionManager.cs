@@ -14,9 +14,8 @@ namespace CarrotBacktesting.Net.Portfolio.Position
     /// </summary>
     public class PositionManager
     {
-        public const string RESERVED_SYMBOLS = "|";
         public const string DEFAULT_CASH_NAME = "$CASH$";
-        public const string DEFAULT_CASH_KEY = $"{DEFAULT_CASH_NAME}{RESERVED_SYMBOLS}{DEFAULT_CASH_NAME}";
+        public const string DEFAULT_CASH_KEY = DEFAULT_CASH_NAME;
 
         /// <summary>
         /// 头寸存储字典
@@ -43,8 +42,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             get
             {
                 return PositionsCache.Values
-                    .Where(pos => pos.ExchangeName != DEFAULT_CASH_NAME
-                    && pos.ShareName != DEFAULT_CASH_NAME).ToArray();
+                    .Where(pos => pos.ShareName != DEFAULT_CASH_NAME).ToArray();
             }
         }
 
@@ -95,16 +93,15 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <summary>
         /// 交易方法
         /// </summary>
-        /// <param name="exchangeName"></param>
         /// <param name="shareName"></param>
         /// <param name="price"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
         /// <returns>返回本次交易股权头寸类</returns>
-        public GeneralPosition Trade(string exchangeName, string shareName, double price, double size, OrderDirection direction)
+        public GeneralPosition Trade(string shareName, double price, double size, OrderDirection direction)
         {
             // 设置股权头寸
-            var tradePosition = new GeneralPosition(exchangeName, shareName, size, price, direction);
+            var tradePosition = new GeneralPosition(shareName, size, price, direction);
             SetPosition(tradePosition);
             // 计算现金剩余(Short股权时货币方向为Long)
             PositionsCache[DEFAULT_CASH_KEY].Size += direction == OrderDirection.Short ? price * size : -price * size;
@@ -119,7 +116,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <returns></returns>
         public static string GeneratePositionKey(GeneralPosition position)
         {
-            return $"{position.ExchangeName}|{position.ShareName}";
+            return $"{position.ShareName}";
         }
 
         /// <summary>
@@ -129,7 +126,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <returns></returns>
         public static GeneralPosition GenerateCashPosition(double cash)
         {
-            return new(DEFAULT_CASH_NAME, DEFAULT_CASH_NAME, cash, 1, OrderDirection.Long);
+            return new(DEFAULT_CASH_NAME, cash, 1, OrderDirection.Long);
         }
 
         public override string ToString()

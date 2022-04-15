@@ -74,15 +74,14 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 添加委托单
         /// </summary>
-        /// <param name="exchangeName"></param>
         /// <param name="shareName"></param>
         /// <param name="limitPrice"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public void AddOrder(string exchangeName, string shareName, double limitPrice, double size, OrderDirection direction)
+        public void AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
         {
             Console.WriteLine($"委托单已挂单, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
-            OrderManager.AddOrder(exchangeName, shareName, limitPrice, size, direction);
+            OrderManager.AddOrder(shareName, limitPrice, size, direction);
             AddOrderEvent?.Invoke();
         }
 
@@ -96,7 +95,7 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             var currentOrder = OrderManager.GetOrder(orderId);
             currentOrder.Size -= size;
-            var tradePosition = PositionManager.Trade(currentOrder.ExchangeName, currentOrder.ShareName, price, size, currentOrder.Direction);
+            var tradePosition = PositionManager.Trade(currentOrder.ShareName, price, size, currentOrder.Direction);
 
             Console.WriteLine($"委托单已被成交, 价格:{price}, 数量:{size}, 方向:{currentOrder.Direction}.");
 
