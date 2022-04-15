@@ -21,7 +21,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <summary>
         /// 头寸存储字典
         /// </summary>
-        public Dictionary<string, GeneralPosition> Positions { get; set; } = new();
+        public Dictionary<string, GeneralPosition> PositionsCache { get; set; } = new();
 
         /// <summary>
         /// 剩余现金
@@ -30,11 +30,21 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         {
             get
             {
-                return Positions[DEFAULT_CASH_KEY].Size;
+                return PositionsCache[DEFAULT_CASH_KEY].Size;
             }
             set
             {
                 SetCash(value);
+            }
+        }
+
+        public GeneralPosition[] Positions
+        {
+            get
+            {
+                return PositionsCache.Values
+                    .Where(pos => pos.ExchangeName != DEFAULT_CASH_NAME
+                    && pos.ShareName != DEFAULT_CASH_NAME).ToArray();
             }
         }
 
@@ -53,10 +63,10 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <param name="exchangeName"></param>
         public void SetCash(double cash)
         {
-            if (!Positions.ContainsKey(DEFAULT_CASH_KEY))
-                Positions.Add(DEFAULT_CASH_KEY, GenerateCashPosition(cash));
+            if (!PositionsCache.ContainsKey(DEFAULT_CASH_KEY))
+                PositionsCache.Add(DEFAULT_CASH_KEY, GenerateCashPosition(cash));
             else
-                Positions[DEFAULT_CASH_KEY].Size = cash;
+                PositionsCache[DEFAULT_CASH_KEY].Size = cash;
         }
 
         /// <summary>
@@ -67,19 +77,19 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         public void SetPosition(GeneralPosition value)
         {
             string key = GeneratePositionKey(value);
-            if (!Positions.ContainsKey(key))
-                Positions.Add(key, value);
-            else if (Positions[key].IsSameShare(value))
+            if (!PositionsCache.ContainsKey(key))
+                PositionsCache.Add(key, value);
+            else if (PositionsCache[key].IsSameShare(value))
             {
-                Positions[key].Cost = (Positions[key].Cost * Positions[key].Size + value.Cost * value.Size) / (Positions[key].Size + value.Size);
-                Positions[key].Size += value.Size;
+                PositionsCache[key].Cost = (PositionsCache[key].Cost * PositionsCache[key].Size + value.Cost * value.Size) / (PositionsCache[key].Size + value.Size);
+                PositionsCache[key].Size += value.Size;
             }
             else
                 throw new Exception($"PositionManager程序键缓存错误,Key={key},Value={value}.");
 
             // 若头寸为0,则移除头寸类
-            if (Positions[key].Size == 0)
-                Positions.Remove(key);
+            if (PositionsCache[key].Size == 0)
+                PositionsCache.Remove(key);
         }
 
         /// <summary>
@@ -97,7 +107,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             var tradePosition = new GeneralPosition(exchangeName, shareName, size, price, direction);
             SetPosition(tradePosition);
             // 计算现金剩余(Short股权时货币方向为Long)
-            Positions[DEFAULT_CASH_KEY].Size += direction == OrderDirection.Short ? price * size : -price * size;
+            PositionsCache[DEFAULT_CASH_KEY].Size += direction == OrderDirection.Short ? price * size : -price * size;
 
             return tradePosition;
         }
@@ -119,7 +129,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <returns></returns>
         public static GeneralPosition GenerateCashPosition(double cash)
         {
-            return new(DEFAULT_CASH_NAME, DEFAULT_CASH_NAME, cash, 0, OrderDirection.Long);
+            return new(DEFAULT_CASH_NAME, DEFAULT_CASH_NAME, cash, 1, OrderDirection.Long);
         }
 
         public override string ToString()
