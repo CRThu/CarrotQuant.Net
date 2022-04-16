@@ -30,9 +30,13 @@ namespace CarrotBacktesting.Net.Engine
 
         public BackTestingEngine(IStrategy strategy, BackTestingSimulationOptions options)
         {
+#if DEBUG
             Console.WriteLine($"初始化数据库.");
+#endif
             Simulation = new(options);
+#if DEBUG
             Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
+#endif
 
             StrategyContext = new(Simulation.SimulationMarketFrame);
             Strategy = strategy;
@@ -62,7 +66,7 @@ namespace CarrotBacktesting.Net.Engine
             Strategy.End(StrategyContext);
 
             stopwatch.Stop();
-            Console.WriteLine($"回测已完成, 共测试{loop}帧, 耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒.");
+            Console.WriteLine($"回测已完成, 共测试{loop}帧, 耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒, 回测速度{(double)loop / stopwatch.ElapsedMilliseconds * 1000:F3}帧/秒.");
         }
 
         public void EventRegister()

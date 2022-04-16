@@ -53,7 +53,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             DateTime = marketFrame.NowTime;
 
             double shareValue = 0;
-            foreach (var position in positionManager.Positions)
+            foreach (var position in positionManager.Positions.Values)
             {
                 shareValue += marketFrame[position.ShareName].NowPrice * position.Size;
             }
