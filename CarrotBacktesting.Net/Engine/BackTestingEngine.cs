@@ -71,12 +71,12 @@ namespace CarrotBacktesting.Net.Engine
 
         public void EventRegister()
         {
+            // 投资组合管理类价格更新
+            OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate();
+
             // 时间片触发策略更新
             OnTickChanged += () => Strategy.OnTick(StrategyContext);
             OnBarChanged += () => Strategy.OnNext(StrategyContext);
-
-            // 投资组合管理类价格更新
-            OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate();
 
             // 交易所类价格更新
             OnTickChanged += () => Exchange.OnPriceUpdate();

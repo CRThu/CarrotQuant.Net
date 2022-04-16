@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using CarrotBacktesting.Net.Portfolio.Order;
+using CarrotBacktesting.Net.Engine;
 
 namespace CarrotBacktesting.Net.Portfolio.Position
 {
@@ -19,6 +20,14 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// </summary>
         public Dictionary<string, GeneralPosition> Positions { get; set; } = new();
         /// <summary>
+        /// 未平仓头寸数组
+        /// </summary>
+        public GeneralPosition[] OpenedPositions => Positions.Values.Where(p => p.Size != 0).ToArray();
+        /// <summary>
+        /// 已平仓头寸数组
+        /// </summary>
+        public GeneralPosition[] ClosedPositions => Positions.Values.Where(p => p.Size == 0).ToArray();
+        /// <summary>
         /// 现金
         /// </summary>
         public double Cash { get; set; }
@@ -30,6 +39,15 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         {
         }
 
+        public void OnPriceUpdate(MarketFrame marketFrame)
+        {
+            // 更新未实现收益
+            foreach (var position in Positions.Values)
+            {
+                position.UnRealizedPnl = (marketFrame[position.ShareName].NowPrice - position.Cost) * position.Size;
+            }
+        }
+
         /// <summary>
         /// 添加头寸, 若存在则累加, 若不存在则创建
         /// </summary>
@@ -39,17 +57,8 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         {
             if (!Positions.ContainsKey(value.ShareName))
                 Positions.Add(value.ShareName, value);
-            else if (Positions[value.ShareName].IsSameShare(value))
-            {
-                Positions[value.ShareName].Cost = (Positions[value.ShareName].Cost * Positions[value.ShareName].Size + value.Cost * value.Size) / (Positions[value.ShareName].Size + value.Size);
-                Positions[value.ShareName].Size += value.Size;
-            }
             else
-                throw new Exception($"PositionManager程序键缓存错误, Key={value.ShareName}, Value={value}.");
-
-            // 若头寸为0,则移除头寸类
-            if (Positions[value.ShareName].Size == 0)
-                Positions.Remove(value.ShareName);
+                Positions[value.ShareName] += value;
         }
 
         /// <summary>
