@@ -60,10 +60,11 @@ namespace CarrotBacktesting.Net.DataFeed
         /// <param name="stringColNames">数据库表中字符串列列名数组(例如停牌/ST)</param>
         public static void DataTable2ShareData(ShareData shareData, DataTable dataTable, string timeColName, string[] dataColNames, string[] stringColNames = null)
         {
+#if DEBUG
             Console.WriteLine($"ShareData.DataTable2ShareData(...) called.");
             Stopwatch sw = new();
             sw.Start();
-
+#endif
             // 导入时间数据
             var timeArray = DataTableMisc.GetColumn<string>(dataTable, timeColName);
             shareData.Time = timeArray.Select(t => DateTimeMisc.Parse(t)).ToArray();
@@ -82,9 +83,10 @@ namespace CarrotBacktesting.Net.DataFeed
                 foreach (var stringColName in stringColNames)
                     shareData.StringData.Add(stringColName, DataTableMisc.GetColumn<string>(dataTable, stringColName).ToArray());
             }
-
+#if DEBUG
             sw.Stop();
             Console.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms.");
+#endif
         }
 
         public void DataTable2ShareData(DataTable dataTable, string timeColName, string[] dataColNames, string[] stringColNames = null)

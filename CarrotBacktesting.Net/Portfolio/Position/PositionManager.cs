@@ -14,57 +14,20 @@ namespace CarrotBacktesting.Net.Portfolio.Position
     /// </summary>
     public class PositionManager
     {
-        public const string DEFAULT_CASH_NAME = "$CASH$";
-        public const string DEFAULT_CASH_KEY = DEFAULT_CASH_NAME;
-
         /// <summary>
         /// 头寸存储字典
         /// </summary>
-        public Dictionary<string, GeneralPosition> PositionsCache { get; set; } = new();
-
+        public Dictionary<string, GeneralPosition> Positions { get; set; } = new();
         /// <summary>
-        /// 剩余现金
+        /// 现金
         /// </summary>
-        public double Cash
-        {
-            get
-            {
-                return PositionsCache[DEFAULT_CASH_KEY].Size;
-            }
-            set
-            {
-                SetCash(value);
-            }
-        }
-
-        public GeneralPosition[] Positions
-        {
-            get
-            {
-                return PositionsCache.Values
-                    .Where(pos => pos.ShareName != DEFAULT_CASH_NAME).ToArray();
-            }
-        }
+        public double Cash { get; set; }
 
         /// <summary>
         /// 构造函数
         /// </summary>
         public PositionManager()
         {
-            SetCash(0);
-        }
-
-        /// <summary>
-        /// 设置现金数量(使用特殊键存放与Position字典, Key:"$CASH$|$CASH$", Value.Size=1000)
-        /// </summary>
-        /// <param name="cash"></param>
-        /// <param name="exchangeName"></param>
-        public void SetCash(double cash)
-        {
-            if (!PositionsCache.ContainsKey(DEFAULT_CASH_KEY))
-                PositionsCache.Add(DEFAULT_CASH_KEY, GenerateCashPosition(cash));
-            else
-                PositionsCache[DEFAULT_CASH_KEY].Size = cash;
         }
 
         /// <summary>
@@ -74,20 +37,19 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <exception cref="Exception"></exception>
         public void SetPosition(GeneralPosition value)
         {
-            string key = GeneratePositionKey(value);
-            if (!PositionsCache.ContainsKey(key))
-                PositionsCache.Add(key, value);
-            else if (PositionsCache[key].IsSameShare(value))
+            if (!Positions.ContainsKey(value.ShareName))
+                Positions.Add(value.ShareName, value);
+            else if (Positions[value.ShareName].IsSameShare(value))
             {
-                PositionsCache[key].Cost = (PositionsCache[key].Cost * PositionsCache[key].Size + value.Cost * value.Size) / (PositionsCache[key].Size + value.Size);
-                PositionsCache[key].Size += value.Size;
+                Positions[value.ShareName].Cost = (Positions[value.ShareName].Cost * Positions[value.ShareName].Size + value.Cost * value.Size) / (Positions[value.ShareName].Size + value.Size);
+                Positions[value.ShareName].Size += value.Size;
             }
             else
-                throw new Exception($"PositionManager程序键缓存错误,Key={key},Value={value}.");
+                throw new Exception($"PositionManager程序键缓存错误, Key={value.ShareName}, Value={value}.");
 
             // 若头寸为0,则移除头寸类
-            if (PositionsCache[key].Size == 0)
-                PositionsCache.Remove(key);
+            if (Positions[value.ShareName].Size == 0)
+                Positions.Remove(value.ShareName);
         }
 
         /// <summary>
@@ -104,29 +66,9 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             var tradePosition = new GeneralPosition(shareName, size, price, direction);
             SetPosition(tradePosition);
             // 计算现金剩余(Short股权时货币方向为Long)
-            PositionsCache[DEFAULT_CASH_KEY].Size += direction == OrderDirection.Short ? price * size : -price * size;
+            Cash += direction == OrderDirection.Short ? price * size : -price * size;
 
             return tradePosition;
-        }
-
-        /// <summary>
-        /// 生成Position字典头寸存储键
-        /// </summary>
-        /// <param name="position"></param>
-        /// <returns></returns>
-        public static string GeneratePositionKey(GeneralPosition position)
-        {
-            return $"{position.ShareName}";
-        }
-
-        /// <summary>
-        /// 生成Position字典现金存储值, 返回现金的头寸类
-        /// </summary>
-        /// <param name="cash"></param>
-        /// <returns></returns>
-        public static GeneralPosition GenerateCashPosition(double cash)
-        {
-            return new(DEFAULT_CASH_NAME, cash, 1, OrderDirection.Long);
         }
 
         public override string ToString()

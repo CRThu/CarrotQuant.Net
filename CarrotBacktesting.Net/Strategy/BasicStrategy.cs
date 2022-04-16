@@ -58,13 +58,14 @@ namespace CarrotBacktesting.Net.Strategy
                 $"| IsST: {strategyContext.MarketFrame["sz.000423"].StringData["是否ST"]} " +
                 $"| PE: {strategyContext.MarketFrame["sz.000423"].FloatData["滚动市盈率"]:F3}.");
 #endif
-            //if (strategyContext.MarketFrame["sz.000422"].IsActive)
-            //{
-            //    if (strategyContext.MarketFrame["sz.000422"].NowPrice <= 220)
-            //        strategyContext.PortfolioManager.AddOrder("sz.000422", 230, 100.0, OrderDirection.Long);
-            //    if (strategyContext.MarketFrame["sz.000422"].NowPrice >= 350)
-            //        strategyContext.PortfolioManager.AddOrder("sz.000422", 320, 100.0, OrderDirection.Short);
-            //}
+
+            if (strategyContext.MarketFrame["sz.000422"].IsActive)
+            {
+                if (strategyContext.MarketFrame["sz.000422"].NowPrice <= 220)
+                    strategyContext.PortfolioManager.AddOrder("sz.000422", 230, 100.0, OrderDirection.Long);
+                if (strategyContext.MarketFrame["sz.000422"].NowPrice >= 350)
+                    strategyContext.PortfolioManager.AddOrder("sz.000422", 320, 100.0, OrderDirection.Short);
+            }
         }
     }
 }

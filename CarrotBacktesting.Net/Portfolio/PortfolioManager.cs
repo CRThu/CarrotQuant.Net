@@ -108,7 +108,7 @@ namespace CarrotBacktesting.Net.Portfolio
 
         public void SetCash(double cash = 100000)
         {
-            PositionManager.SetCash(cash);
+            PositionManager.Cash = cash;
             OnSetCashEvent?.Invoke(MarketFrame.NowTime, cash);
         }
     }

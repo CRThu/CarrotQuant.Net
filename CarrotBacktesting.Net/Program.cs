@@ -20,3 +20,7 @@ var options = new BackTestingSimulationOptions()
 
 IEngine engine = new BackTestingEngine(new BasicStrategy(), options);
 engine.Run();
+//engine = new BackTestingEngine(new BasicStrategy(), options);
+//engine.Run();
+//engine = new BackTestingEngine(new BasicStrategy(), options); 
+//engine.Run();
