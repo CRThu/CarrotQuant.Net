@@ -82,7 +82,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
 
         public override string ToString()
         {
-            return Serializer.Serialize(this);
+            return ClassFormatter.Formatter(Positions.Values);
         }
     }
 }

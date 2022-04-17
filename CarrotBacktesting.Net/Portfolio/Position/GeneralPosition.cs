@@ -114,10 +114,5 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         {
             return IsSameShare(this, position);
         }
-
-        public override string ToString()
-        {
-            return Serializer.Serialize(this);
-        }
     }
 }
