@@ -52,7 +52,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
 
         public override string ToString()
         {
-            return Serializer.Serialize(this);
+            return ClassFormatter.Formatter(Logs);
         }
     }
 }
