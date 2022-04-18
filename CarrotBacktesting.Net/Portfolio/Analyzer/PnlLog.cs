@@ -29,6 +29,11 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public double CashValue { get; set; }
 
         /// <summary>
+        /// 总价值
+        /// </summary>
+        public double TotalValue => ShareValue + CashValue;
+
+        /// <summary>
         /// 已实现损益
         /// </summary>
         public double RealizedPnl { get; set; }
@@ -39,30 +44,17 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public double UnRealizedPnl { get; set; }
 
         /// <summary>
-        /// 总价值
-        /// </summary>
-        public double TotalValue => ShareValue + CashValue;
-
-        /// <summary>
         /// 总损益
         /// </summary>
         public double TotalPnl => RealizedPnl + UnRealizedPnl;
 
-        public PnlLog(PositionManager positionManager, MarketFrame marketFrame)
+        public PnlLog(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
         {
-            DateTime = marketFrame.NowTime;
-
-            double shareValue = 0;
-            foreach (var position in positionManager.Positions.Values)
-            {
-                shareValue += marketFrame[position.ShareName].NowPrice * position.Size;
-            }
+            DateTime = dateTime;
             ShareValue = shareValue;
-
-            CashValue = positionManager.Cash;
-
-            // TODO PNL Log不应在此直接计算盈亏情况而应用实时价格驱动PositionManager并计算
-            // PNL Log 类应仅用于存放PNL信息与持仓变化快照
+            CashValue = cashValue;
+            RealizedPnl = realizedPnl;
+            UnRealizedPnl = unrealizedPnl;
         }
     }
 }
