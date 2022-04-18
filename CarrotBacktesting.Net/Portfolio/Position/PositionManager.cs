@@ -42,6 +42,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         public void OnPriceUpdate(MarketFrame marketFrame)
         {
             // 更新未实现收益
+            // TODO UnRealizedPnl更新移至Position类之内作为访问器
             foreach (var position in Positions.Values)
             {
                 position.UnRealizedPnl = (marketFrame[position.ShareName].NowPrice - position.Cost) * position.Size;
