@@ -51,9 +51,6 @@ namespace CarrotBacktesting.Net.Portfolio
         public delegate void AddOrderDelegate();
         public event AddOrderDelegate? AddOrderEvent;
 
-        public delegate void OnPriceUpdateDelegate();
-        public event OnPriceUpdateDelegate? OnPriceUpdateEvent;
-
         public PortfolioManager(MarketFrame marketFrame)
         {
             MarketFrame = marketFrame;
@@ -65,9 +62,6 @@ namespace CarrotBacktesting.Net.Portfolio
             //交割单记录器
             OnSetCashEvent += (t, v) => TransactionLogger.SetCash(t, v);
             OnOrderDealEvent += (t, v) => TransactionLogger.AddTransaction(t, v);
-
-            OnPriceUpdateEvent += () => PositionManager.OnPriceUpdate(MarketFrame);
-            OnPriceUpdateEvent += () => PnlLogger.AddPnlSnapshot(MarketFrame.NowTime, PositionManager);
         }
 
         /// <summary>
@@ -75,7 +69,8 @@ namespace CarrotBacktesting.Net.Portfolio
         /// </summary>
         public void OnPriceUpdate()
         {
-            OnPriceUpdateEvent?.Invoke();
+            PositionManager.OnPriceUpdate(MarketFrame);
+            PnlLogger.AddPnlSnapshot(MarketFrame.NowTime, PositionManager);
         }
 
         /// <summary>
