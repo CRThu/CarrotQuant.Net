@@ -16,7 +16,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 当前日期
         /// </summary>
-        public DateTime NowTime { get; set; }
+        public DateTime NowTime { get; set; }=new();
 
         public Dictionary<string, ShareFrame> MarketFrameCache { get; set; } = new();
 

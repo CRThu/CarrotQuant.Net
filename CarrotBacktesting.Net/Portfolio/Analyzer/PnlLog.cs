@@ -11,7 +11,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// <summary>
     /// 损益记录器
     /// </summary>
-    public class PnlLog
+    public struct PnlLog
     {
         /// <summary>
         /// 时间片

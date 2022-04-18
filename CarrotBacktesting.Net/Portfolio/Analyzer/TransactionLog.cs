@@ -10,7 +10,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// <summary>
     /// 交易记录
     /// </summary>
-    public class TransactionLog
+    public struct TransactionLog
     {
         /// <summary>
         /// 交易ID

@@ -22,5 +22,28 @@ IEngine engine = new BackTestingEngine(new BasicStrategy(), options);
 engine.Run();
 //engine = new BackTestingEngine(new BasicStrategy(), options);
 //engine.Run();
-//engine = new BackTestingEngine(new BasicStrategy(), options); 
+//engine = new BackTestingEngine(new BasicStrategy(), options);
 //engine.Run();
+
+#if RELEASE
+options = new BackTestingSimulationOptions()
+{
+    IsSqliteDataFeed = true,
+    SqliteDatabasePath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
+    SimulationStartDateTime = new DateTime(2021, 6, 1),
+    SimulationEndDateTime = new DateTime(2021, 11, 1),
+    SimulationDuration = new TimeSpan(0, 0, 1),
+    ShareNames = new[] { "sz.000422" },
+};
+
+engine = new BackTestingEngine(new BasicStrategy(), options);
+engine.Run();
+engine = new BackTestingEngine(new BasicStrategy(), options);
+engine.Run();
+engine = new BackTestingEngine(new BasicStrategy(), options);
+engine.Run();
+engine = new BackTestingEngine(new BasicStrategy(), options);
+engine.Run();
+engine = new BackTestingEngine(new BasicStrategy(), options);
+engine.Run();
+#endif
