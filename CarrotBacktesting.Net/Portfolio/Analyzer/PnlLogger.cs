@@ -1,4 +1,6 @@
-﻿using System;
+﻿using CarrotBacktesting.Net.Portfolio.Position;
+using CarrotBacktesting.Net.Shared;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,7 +13,29 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// </summary>
     public class PnlLogger
     {
-        public List<TransactionLog> Logs { get; set; } = new();
+        public List<PnlLog> Logs { get; set; } = new();
 
+        public void AddPnlSnapshot(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
+        {
+            Logs.Add(new PnlLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
+        }
+
+        public void AddPnlSnapshot(DateTime dateTime, PositionManager positionManager)
+        {
+            double shareValue = 0, cashValue = positionManager.Cash;
+            double realizedPnl = 0, unrealizedPnl = 0;
+            foreach (var position in positionManager.Positions.Values)
+            {
+                shareValue += position.Cost * position.Size + unrealizedPnl;
+                realizedPnl += position.RealizedPnl;
+                unrealizedPnl += position.UnRealizedPnl;
+            }
+            AddPnlSnapshot(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl);
+        }
+
+        public override string ToString()
+        {
+            return ClassFormatter.Formatter(Logs);
+        }
     }
 }

@@ -27,10 +27,13 @@ namespace CarrotBacktesting.Net.Strategy
         {
 #if DEBUG
             Console.WriteLine("BasicStrategy.End()");
+            Console.WriteLine();
             Console.WriteLine("PositionManager:");
             Console.WriteLine(strategyContext.PortfolioManager.PositionManager.ToString());
             Console.WriteLine("TransactionLogger:");
             Console.WriteLine(strategyContext.PortfolioManager.TransactionLogger.ToString());
+            Console.WriteLine("PnlLogger:");
+            Console.WriteLine(strategyContext.PortfolioManager.PnlLogger.ToString());
 #endif
         }
 

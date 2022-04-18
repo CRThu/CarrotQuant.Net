@@ -67,6 +67,7 @@ namespace CarrotBacktesting.Net.Portfolio
             OnOrderDealEvent += (t, v) => TransactionLogger.AddTransaction(t, v);
 
             OnPriceUpdateEvent += () => PositionManager.OnPriceUpdate(MarketFrame);
+            OnPriceUpdateEvent += () => PnlLogger.AddPnlSnapshot(MarketFrame.NowTime, PositionManager);
         }
 
         /// <summary>
