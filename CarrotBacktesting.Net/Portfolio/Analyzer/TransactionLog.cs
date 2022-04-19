@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Portfolio.Position;
+﻿using CarrotBacktesting.Net.Portfolio.Order;
+using CarrotBacktesting.Net.Portfolio.Position;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,13 +40,13 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <param name="transactionId"></param>
         /// <param name="transactionTime"></param>
         /// <param name="position"></param>
-        public TransactionLog(int transactionId, DateTime transactionTime, GeneralPosition position)
+        public TransactionLog(int transactionId, DateTime transactionTime, (string shareName, double cost, double size, OrderDirection direction) position)
         {
             TransactionId = transactionId;
             TransactionTime = transactionTime;
-            ShareName = position.ShareName;
-            Size = position.Size;
-            Price = position.Cost;
+            ShareName = position.shareName;
+            Size = position.direction == OrderDirection.Long ? position.size : -position.size;
+            Price = position.cost;
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Portfolio.Position;
+﻿using CarrotBacktesting.Net.Portfolio.Order;
+using CarrotBacktesting.Net.Portfolio.Position;
 using CarrotBacktesting.Net.Shared;
 using System;
 using System.Collections.Generic;
@@ -37,7 +38,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <param name="cash"></param>
         public void SetCash(DateTime transactionTime, double cash)
         {
-            Logs.Add(new TransactionLog(TransactionId, transactionTime, new GeneralPosition("$CASH$", cash, 0)));
+            Logs.Add(new TransactionLog(TransactionId, transactionTime, ("$CASH$", cash, 0, OrderDirection.Long)));
         }
 
         /// <summary>
@@ -45,7 +46,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// </summary>
         /// <param name="transactionTime"></param>
         /// <param name="position"></param>
-        public void AddTransaction(DateTime transactionTime, GeneralPosition position)
+        public void AddTransaction(DateTime transactionTime, (string shareName, double cost, double size, OrderDirection direction) position)
         {
             Logs.Add(new TransactionLog(TransactionId, transactionTime, position));
         }

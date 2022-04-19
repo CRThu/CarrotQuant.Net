@@ -45,40 +45,56 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             // TODO UnRealizedPnl更新移至Position类之内作为访问器
             foreach (var position in Positions.Values)
             {
-                position.UnRealizedPnl = (marketFrame[position.ShareName].NowPrice - position.Cost) * position.Size;
+                position.CurrentPrice = marketFrame[position.ShareName].NowPrice;
             }
         }
 
         /// <summary>
         /// 添加头寸, 若存在则累加, 若不存在则创建
+        /// TODO 代码整理
         /// </summary>
-        /// <param name="value"></param>
-        /// <exception cref="Exception"></exception>
-        public void SetPosition(GeneralPosition value)
+        /// <param name="shareName"></param>
+        /// <param name="size"></param>
+        /// <param name="cost"></param>
+        public void SetPosition(string shareName, double size, double cost)
         {
-            if (!Positions.ContainsKey(value.ShareName))
-                Positions.Add(value.ShareName, value);
+            if (!Positions.ContainsKey(shareName))
+                Positions.Add(shareName, new GeneralPosition(shareName, size, cost));
             else
-                Positions[value.ShareName] += value;
+            {
+                var currentPosition = Positions[shareName];
+                var size_out = currentPosition.Size + size;
+                var cost_out = size_out != 0 ? (currentPosition.Cost * currentPosition.Size + cost * size) / (currentPosition.Size + size) : 0;
+                double realizedPnl;
+                if (size_out == 0)
+                {
+                    // 平仓时PNL未实现损益移至已实现损益并清零未实现损益
+                    realizedPnl = currentPosition.UnRealizedPnl + currentPosition.RealizedPnl;
+                }
+                else
+                {
+                    realizedPnl = currentPosition.RealizedPnl;
+                }
+                currentPosition.Size = size_out;
+                currentPosition.Cost = cost_out;
+                currentPosition.RealizedPnl = realizedPnl;
+            }
+
         }
 
         /// <summary>
-        /// 交易方法
+        /// 交易
         /// </summary>
         /// <param name="shareName"></param>
         /// <param name="price"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        /// <returns>返回本次交易股权头寸类</returns>
-        public GeneralPosition Trade(string shareName, double price, double size, OrderDirection direction)
+        public void Trade(string shareName, double price, double size, OrderDirection direction)
         {
             // 设置股权头寸
-            var tradePosition = new GeneralPosition(shareName, size, price, direction);
-            SetPosition(tradePosition);
+            SetPosition(shareName, direction == OrderDirection.Long ? size : -size, price);
             // 计算现金剩余(Short股权时货币方向为Long)
             Cash += direction == OrderDirection.Short ? price * size : -price * size;
-
-            return tradePosition;
         }
 
         public override string ToString()
