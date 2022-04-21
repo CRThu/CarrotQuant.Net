@@ -34,6 +34,11 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public double TotalValue => ShareValue + CashValue;
 
         /// <summary>
+        /// 仓位占比
+        /// </summary>
+        public double PositionRatio => ShareValue / (ShareValue + CashValue);
+
+        /// <summary>
         /// 已实现损益
         /// </summary>
         public double RealizedPnl { get; set; }
@@ -47,6 +52,11 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// 总损益
         /// </summary>
         public double TotalPnl => RealizedPnl + UnRealizedPnl;
+
+        /// <summary>
+        /// 收益率
+        /// </summary>
+        public double RateOfReturn => TotalPnl / (TotalValue - TotalPnl);
 
         public PnlLog(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
         {

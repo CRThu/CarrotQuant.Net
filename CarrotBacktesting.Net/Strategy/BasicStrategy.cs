@@ -1,5 +1,6 @@
 ﻿using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio;
+using CarrotBacktesting.Net.Portfolio.Analyzer;
 using CarrotBacktesting.Net.Portfolio.Order;
 using System;
 using System.Collections.Generic;
@@ -34,6 +35,11 @@ namespace CarrotBacktesting.Net.Strategy
             Console.WriteLine(strategyContext.PortfolioManager.TransactionLogger.ToString());
             Console.WriteLine("PnlLogger:");
             Console.WriteLine(strategyContext.PortfolioManager.PnlLogger.ToString());
+            Console.WriteLine("Analyzer:");
+            var analyzer = new Analyzer();
+            analyzer.Update(strategyContext.PortfolioManager.PnlLogger);
+            Console.WriteLine(analyzer.ToString());
+
 #endif
         }
 
