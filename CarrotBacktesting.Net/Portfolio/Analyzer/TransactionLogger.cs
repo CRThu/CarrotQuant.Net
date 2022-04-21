@@ -38,7 +38,10 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <param name="cash"></param>
         public void SetCash(DateTime transactionTime, double cash)
         {
-            Logs.Add(new TransactionLog(TransactionId, transactionTime, ("$CASH$", cash, 0, OrderDirection.Long)));
+            Logs.Add(new TransactionLog(transactionTime, "$CASH$", cash, 0, OrderDirection.Long)
+            {
+                TransactionId = TransactionId
+            });
         }
 
         /// <summary>
@@ -46,9 +49,18 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// </summary>
         /// <param name="transactionTime"></param>
         /// <param name="position"></param>
-        public void AddTransaction(DateTime transactionTime, (string shareName, double cost, double size, OrderDirection direction) position)
+        public void AddTransaction(DateTime transactionTime, string shareName, double cost, double size, OrderDirection direction)
         {
-            Logs.Add(new TransactionLog(TransactionId, transactionTime, position));
+            Logs.Add(new TransactionLog(transactionTime, shareName, cost, size, direction)
+            {
+                TransactionId = TransactionId
+            });
+        }
+
+        public void AddTransaction(TransactionLog transaction)
+        {
+            transaction.TransactionId = TransactionId;
+            Logs.Add(transaction);
         }
 
         public override string ToString()

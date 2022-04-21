@@ -45,7 +45,7 @@ namespace CarrotBacktesting.Net.Portfolio
         public delegate void SetCashDelegate(DateTime dateTime, double cash);
         public event SetCashDelegate? OnSetCashEvent;
 
-        public delegate void OrderDealDelegate(DateTime dateTime, (string shareName, double cost, double size, OrderDirection direction) position);
+        public delegate void OrderDealDelegate(TransactionLog transaction);
         public event OrderDealDelegate? OnOrderDealEvent;
 
         public delegate void AddOrderDelegate();
@@ -61,7 +61,7 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             //交割单记录器
             OnSetCashEvent += (t, v) => TransactionLogger.SetCash(t, v);
-            OnOrderDealEvent += (t, v) => TransactionLogger.AddTransaction(t, v);
+            OnOrderDealEvent += (transaction) => TransactionLogger.AddTransaction(transaction);
         }
 
         /// <summary>
@@ -106,7 +106,8 @@ namespace CarrotBacktesting.Net.Portfolio
             if (currentOrder.Size == 0)
                 OrderManager.RemoveOrder(orderId);
 
-            OnOrderDealEvent?.Invoke(MarketFrame.NowTime, (currentOrder.ShareName, price, size, currentOrder.Direction));
+            TransactionLog transaction = new(MarketFrame.NowTime, currentOrder.ShareName, price, size, currentOrder.Direction);
+            OnOrderDealEvent?.Invoke(transaction);
         }
 
         public void SetCash(double cash = 100000)

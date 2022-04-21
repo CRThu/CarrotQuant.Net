@@ -16,7 +16,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <summary>
         /// 交易ID
         /// </summary>
-        public int TransactionId { get; set; }
+        public int TransactionId { get; set; } = 0;
         /// <summary>
         /// 交易时间
         /// </summary>
@@ -32,21 +32,23 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <summary>
         /// 交易成本
         /// </summary>
-        public double Price { get; set; }
+        public double Cost { get; set; }
 
         /// <summary>
-        /// 头寸信息转交易记录构造函数
+        /// 构造函数
         /// </summary>
         /// <param name="transactionId"></param>
         /// <param name="transactionTime"></param>
-        /// <param name="position"></param>
-        public TransactionLog(int transactionId, DateTime transactionTime, (string shareName, double cost, double size, OrderDirection direction) position)
+        /// <param name="shareName"></param>
+        /// <param name="cost"></param>
+        /// <param name="size"></param>
+        /// <param name="direction"></param>
+        public TransactionLog(DateTime transactionTime, string shareName, double cost, double size, OrderDirection direction)
         {
-            TransactionId = transactionId;
             TransactionTime = transactionTime;
-            ShareName = position.shareName;
-            Size = position.direction == OrderDirection.Long ? position.size : -position.size;
-            Price = position.cost;
+            ShareName = shareName;
+            Size = direction == OrderDirection.Long ? size : -size;
+            Cost = cost;
         }
     }
 }
