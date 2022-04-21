@@ -42,6 +42,10 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// </summary>
         public double TotalPnl => UnRealizedPnl + RealizedPnl;
         /// <summary>
+        /// 成本价值
+        /// </summary>
+        public double CostValue => Cost * Size;
+        /// <summary>
         /// 当前价值
         /// </summary>
         public double CurrentValue => CurrentPrice * Size;

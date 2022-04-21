@@ -63,7 +63,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             {
                 var currentPosition = Positions[shareName];
                 var size_out = currentPosition.Size + size;
-                var cost_out = size_out != 0 ? (currentPosition.Cost * currentPosition.Size + cost * size) / (currentPosition.Size + size) : 0;
+                var cost_out = size_out != 0 ? (currentPosition.CostValue + cost * size) / (currentPosition.Size + size) : 0;
                 double realizedPnl;
                 if (size_out == 0)
                 {
