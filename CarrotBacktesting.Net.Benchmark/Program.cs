@@ -12,56 +12,29 @@ BenchmarkRunner.Run<BackTestingEngineBenchmark>();
 public class BackTestingEngineBenchmark
 {
     [Benchmark(Baseline = true)]
-    public void StandardEngine()
+    public void a1()
     {
-        var options = new BackTestingSimulationOptions()
+        (double x, double v) x = (0, 0);
+        for (int i = 0; i < 10000; i++)
         {
-            IsSqliteDataFeed = true,
-            SqliteDatabasePath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
-            SimulationStartDateTime = new DateTime(2021, 6, 1),
-            SimulationEndDateTime = new DateTime(2021, 11, 1),
-            SimulationDuration = new TimeSpan(0, 0, 1),
-            ShareNames = new[] { "sz.000422" },
-        };
-
-        IEngine engine = new BackTestingEngine(new BasicStrategy(), options);
-        engine.Run();
+            x.x += i;
+            x.v += i * i;
+        }
     }
 
     [Benchmark]
-    public void StandardEngineWithImportingStringData()
+    public void a2()
     {
-        var options = new BackTestingSimulationOptions()
+        xv x = new() { x = 0, v = 0 };
+        for (int i = 0; i < 10000; i++)
         {
-            IsSqliteDataFeed = true,
-            SqliteDatabasePath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
-            SimulationStartDateTime = new DateTime(2021, 6, 1),
-            SimulationEndDateTime = new DateTime(2021, 11, 1),
-            SimulationDuration = new TimeSpan(0, 0, 1),
-            ShareNames = new[] { "sz.000422" },
-            AdditionalStringColumnNames = new string[] { "是否ST" },
-        };
-
-        IEngine engine = new BackTestingEngine(new BasicStrategy(), options);
-        engine.Run();
+            x.x += i;
+            x.v += i * i;
+        }
     }
-
-    [Benchmark]
-    public void StandardEngineWithImportingFloatData()
+    struct xv
     {
-        var options = new BackTestingSimulationOptions()
-        {
-            IsSqliteDataFeed = true,
-            SqliteDatabasePath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
-            SimulationStartDateTime = new DateTime(2021, 6, 1),
-            SimulationEndDateTime = new DateTime(2021, 11, 1),
-            SimulationDuration = new TimeSpan(0, 0, 1),
-            IsEnableShareStatusFlag = true,
-            ShareNames = new[] { "sz.000422" },
-            AdditionalDataColumnNames = new string[] { "滚动市盈率" }
-        };
-
-        IEngine engine = new BackTestingEngine(new BasicStrategy(), options);
-        engine.Run();
+        public double x;
+        public double v;
     }
 }

@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Shared;
+﻿using CarrotBacktesting.Net.Common;
+using CarrotBacktesting.Net.Shared;
 using MathNet.Numerics.Statistics;
 using System;
 using System.Collections.Generic;
@@ -71,6 +72,18 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         }
 
         /// <summary>
+        /// 计算每Tick收益并返回带时间的tuple数组
+        /// </summary>
+        /// <param name="pnlLogger"></param>
+        /// <returns></returns>
+        public static (DateTime dt, double val)[] GetTickReturn(PnlLogger pnlLogger)
+        {
+            var tickReturn = GetTickReturn(pnlLogger.Logs.Select(l => l.TotalPnl).ToArray());
+            var dts = pnlLogger.Logs.Select(l => l.DateTime).ToArray();
+            return dts.Zip(tickReturn).ToArray();
+        }
+
+        /// <summary>
         /// 计算每Tick收益率
         /// </summary>
         /// <param name="pnl">每Tick总损益</param>
@@ -127,7 +140,38 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             return GetSharpeRatio(pnlLogger.Logs.Select(l => l.TotalPnl).ToArray());
         }
 
-        public static (DateTime, double)[]
+        // TODO 重构以上代码
+
+        /// <summary>
+        /// 获取每日/月/年回报数据
+        /// </summary>
+        /// <param name="pnlLogger"></param>
+        /// <param name="dateSpan"></param>
+        /// <returns></returns>
+        public static DateRangeData<double>[] GetReturn(PnlLogger pnlLogger, DateSpan dateSpan)
+        {
+            DateTime minDateTime = pnlLogger.Logs.Min(l => l.DateTime);
+            DateTime maxDateTime = pnlLogger.Logs.Max(l => l.DateTime);
+
+            DateTime[] dts = DateTimeMisc.GetDateTimeSpan(minDateTime, maxDateTime, dateSpan);
+            DateRangeData<double>[] data = dts.Select(dt => new DateRangeData<double>(dt, dateSpan, 0)).ToArray();
+
+            (DateTime dt, double ret)[] tickReturn = GetTickReturn(pnlLogger);
+
+            for (int i = 0; i < tickReturn.Length; i++)
+            {
+                for (int j = 0; j < data.Length; j++)
+                {
+                    if (data[j].IsInRange(tickReturn[i].dt))
+                    {
+                        data[j].Value += tickReturn[i].ret;
+                        break;
+                    }
+                }
+            }
+
+            return data;
+        }
 
         /// <summary>
         /// 分析方法, 返回结果字典

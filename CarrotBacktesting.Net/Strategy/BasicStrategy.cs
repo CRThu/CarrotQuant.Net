@@ -38,6 +38,16 @@ namespace CarrotBacktesting.Net.Strategy
             Console.WriteLine(strategyContext.PortfolioManager.PnlLogger.ToString());
             Console.WriteLine("Analyzer:");
             Console.WriteLine(ClassFormatter.Formatter(strategyContext.PortfolioManager.PnlLogger.Analyze()));
+            
+            Console.WriteLine("TickReturn:");
+            foreach (var i in Analyzer.GetTickReturn(strategyContext.PortfolioManager.PnlLogger).Select(v => $"{v.dt}|{v.val}"))
+                Console.WriteLine(i);
+            Console.WriteLine("DailyReturn:");
+            Console.WriteLine(ClassFormatter.Formatter(Analyzer.GetReturn(strategyContext.PortfolioManager.PnlLogger, Common.DateSpan.Day)));
+            Console.WriteLine("MonthlyReturn:");
+            Console.WriteLine(ClassFormatter.Formatter(Analyzer.GetReturn(strategyContext.PortfolioManager.PnlLogger, Common.DateSpan.Month)));
+            Console.WriteLine("AnnuallyReturn:");
+            Console.WriteLine(ClassFormatter.Formatter(Analyzer.GetReturn(strategyContext.PortfolioManager.PnlLogger, Common.DateSpan.Year)));
 #endif
         }
 
