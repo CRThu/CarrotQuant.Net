@@ -57,7 +57,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// </summary>
         /// <param name="pnl">每Tick总损益</param>
         /// <returns></returns>
-        public static double[] GetReturn(double[] pnl)
+        public static double[] GetTickReturn(double[] pnl)
         {
             double[] tickReturn = new double[pnl.Length];
 
@@ -79,7 +79,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <returns></returns>
         public static double[] GetRateOfReturn(double[] pnl, double cost, double normalize = 1)
         {
-            return GetReturn(pnl).Select(r => r / cost * normalize).ToArray();
+            return GetTickReturn(pnl).Select(r => r / cost * normalize).ToArray();
         }
 
         /// <summary>
@@ -89,15 +89,13 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <returns></returns>
         public static double GetSharpeRatio(double[] pnl)
         {
-            double[] tickReturn = GetReturn(pnl);
+            double[] tickReturn = GetTickReturn(pnl);
 
             // https://numerics.mathdotnet.com/DescriptiveStatistics.html
             double mean = tickReturn.Mean();
             double stddev = tickReturn.PopulationStandardDeviation();
             return mean / stddev;
         }
-
-        // TODO 重构以下函数
 
         /// <summary>
         /// 获取回撤曲线
@@ -127,6 +125,22 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public static double GetSharpeRatio(PnlLogger pnlLogger)
         {
             return GetSharpeRatio(pnlLogger.Logs.Select(l => l.TotalPnl).ToArray());
+        }
+
+        public static (DateTime, double)[]
+
+        /// <summary>
+        /// 分析方法, 返回结果字典
+        /// 包含: 最大回撤率, 夏普比率
+        /// </summary>
+        /// <param name="pnlLogger"></param>
+        /// <returns></returns>
+        public static Dictionary<string, double> Analyze(PnlLogger pnlLogger)
+        {
+            Dictionary<string, double> analyzerResult = new();
+            analyzerResult.Add("MaxDrawdown", GetMaxDrawdown(pnlLogger));
+            analyzerResult.Add("SharpeRatio", GetSharpeRatio(pnlLogger));
+            return analyzerResult;
         }
     }
 }
