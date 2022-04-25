@@ -92,5 +92,55 @@ namespace CarrotBacktesting.Net.Common
             (int endIndex, _) = GetTimeIndex(dateTimes, end);
             return dateTimes[startIndex..(endIndex + 1)];
         }
+
+        /// <summary>
+        /// 获取start-end(包括start和end)的日期跨度
+        /// 例如start: 2022-1-20, end:2022-3-10, span:Month
+        /// 返回: [2022-1-1, 2022-2-1, 2022-3-1]
+        /// </summary>
+        /// <param name="start"></param>
+        /// <param name="end"></param>
+        /// <param name="span"></param>
+        /// <returns></returns>
+        public static DateTime[] GetDateTimeSpan(DateTime start, DateTime end, DateSpan span)
+        {
+            List<DateTime> dateTimes = new();
+            switch (span)
+            {
+                case DateSpan.Day:
+                    start = Parse(start.ToString("yyyy-MM-dd"));
+                    break;
+                case DateSpan.Month:
+                    start = Parse(start.ToString("yyyy-MM-01"));
+                    break;
+                case DateSpan.Year:
+                    start = Parse(start.ToString("yyyy-01-01"));
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            while (start <= end)
+            {
+                dateTimes.Add(start);
+
+                switch (span)
+                {
+                    case DateSpan.Day:
+                        start = start.AddDays(1);
+                        break;
+                    case DateSpan.Month:
+                        start = start.AddMonths(1);
+                        break;
+                    case DateSpan.Year:
+                        start = start.AddYears(1);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+            return dateTimes.ToArray();
+        }
+
     }
 }
