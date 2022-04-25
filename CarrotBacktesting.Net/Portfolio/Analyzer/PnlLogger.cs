@@ -33,9 +33,16 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             Logs.Add(new PnlLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
         }
 
+
         public override string ToString()
         {
             return ClassFormatter.Formatter(Logs);
         }
+
+        /// <summary>
+        /// 调用分析器
+        /// </summary>
+        /// <returns></returns>
+        public Dictionary<string, double> Analyze() => Analyzer.Analyze(this);
     }
 }
