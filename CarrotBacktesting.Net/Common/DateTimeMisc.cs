@@ -105,39 +105,24 @@ namespace CarrotBacktesting.Net.Common
         public static DateTime[] GetDateTimeSpan(DateTime start, DateTime end, DateSpan span)
         {
             List<DateTime> dateTimes = new();
-            switch (span)
+            start = span switch
             {
-                case DateSpan.Day:
-                    start = Parse(start.ToString("yyyy-MM-dd"));
-                    break;
-                case DateSpan.Month:
-                    start = Parse(start.ToString("yyyy-MM-01"));
-                    break;
-                case DateSpan.Year:
-                    start = Parse(start.ToString("yyyy-01-01"));
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
+                DateSpan.Day => Parse(start.ToString("yyyy-MM-dd")),
+                DateSpan.Month => Parse(start.ToString("yyyy-MM-01")),
+                DateSpan.Year => Parse(start.ToString("yyyy-01-01")),
+                _ => throw new ArgumentOutOfRangeException(),
+            };
             while (start <= end)
             {
                 dateTimes.Add(start);
 
-                switch (span)
+                start = span switch
                 {
-                    case DateSpan.Day:
-                        start = start.AddDays(1);
-                        break;
-                    case DateSpan.Month:
-                        start = start.AddMonths(1);
-                        break;
-                    case DateSpan.Year:
-                        start = start.AddYears(1);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+                    DateSpan.Day => start.AddDays(1),
+                    DateSpan.Month => start.AddMonths(1),
+                    DateSpan.Year => start.AddYears(1),
+                    _ => throw new ArgumentOutOfRangeException(),
+                };
             }
             return dateTimes.ToArray();
         }

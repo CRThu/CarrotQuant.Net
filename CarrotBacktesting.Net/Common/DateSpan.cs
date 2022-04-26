@@ -11,6 +11,7 @@ namespace CarrotBacktesting.Net.Common
     /// </summary>
     public enum DateSpan
     {
+        Tick,
         Day,
         Month,
         Year,
