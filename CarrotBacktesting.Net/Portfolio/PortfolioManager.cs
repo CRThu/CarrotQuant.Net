@@ -1,5 +1,4 @@
 ﻿using CarrotBacktesting.Net.Engine;
-using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Analyzer;
 using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Portfolio.Position;
@@ -42,6 +41,11 @@ namespace CarrotBacktesting.Net.Portfolio
         /// </summary>
         public PnlLogger PnlLogger { get; set; } = new();
 
+        /// <summary>
+        /// 投资组合分析器
+        /// </summary>
+        public Analyzer.Analyzer Analyzer { get; set; }
+
         public delegate void SetCashDelegate(DateTime dateTime, double cash);
         public event SetCashDelegate? OnSetCashEvent;
 
@@ -53,6 +57,7 @@ namespace CarrotBacktesting.Net.Portfolio
 
         public PortfolioManager(MarketFrame marketFrame)
         {
+            Analyzer = new Analyzer.Analyzer(TransactionLogger, PnlLogger);
             MarketFrame = marketFrame;
             EventRegister();
         }
