@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Engine;
+﻿using CarrotBacktesting.Net.Common;
+using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Analyzer;
 using CarrotBacktesting.Net.Portfolio.Order;
@@ -31,22 +32,22 @@ namespace CarrotBacktesting.Net.Strategy
             Console.WriteLine("BasicStrategy.End()");
             Console.WriteLine();
             Console.WriteLine("PositionManager:");
-            Console.WriteLine(strategyContext.PortfolioManager.PositionManager.ToString());
+            Console.WriteLine(strategyContext.PositionManager.ToString());
             Console.WriteLine("TransactionLogger:");
-            Console.WriteLine(strategyContext.PortfolioManager.TransactionLogger.ToString());
+            Console.WriteLine(strategyContext.TransactionLogger.ToString());
             Console.WriteLine("PnlLogger:");
-            Console.WriteLine(strategyContext.PortfolioManager.PnlLogger.ToString());
+            Console.WriteLine(strategyContext.PnlLogger.ToString());
             Console.WriteLine("Analyzer:");
-            Console.WriteLine(ClassFormatter.Formatter(strategyContext.PortfolioManager.PnlLogger.Analyze()));
-            
+            Console.WriteLine(ClassFormatter.Formatter(strategyContext.PnlLogger.Analyze()));
+
             Console.WriteLine("TickReturn:");
-            Console.WriteLine(ClassFormatter.Formatter(Analyzer.GetReturn(strategyContext.PortfolioManager.PnlLogger, Common.DateSpan.Tick)));
+            Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Tick)));
             Console.WriteLine("DailyReturn:");
-            Console.WriteLine(ClassFormatter.Formatter(Analyzer.GetReturn(strategyContext.PortfolioManager.PnlLogger, Common.DateSpan.Day)));
+            Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Day)));
             Console.WriteLine("MonthlyReturn:");
-            Console.WriteLine(ClassFormatter.Formatter(Analyzer.GetReturn(strategyContext.PortfolioManager.PnlLogger, Common.DateSpan.Month)));
+            Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Month)));
             Console.WriteLine("AnnuallyReturn:");
-            Console.WriteLine(ClassFormatter.Formatter(Analyzer.GetReturn(strategyContext.PortfolioManager.PnlLogger, Common.DateSpan.Year)));
+            Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Year)));
 #endif
         }
 

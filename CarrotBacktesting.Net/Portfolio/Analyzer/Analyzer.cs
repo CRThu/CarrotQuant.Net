@@ -14,11 +14,16 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// </summary>
     public class Analyzer
     {
+        public TransactionLogger TransactionLogger { get; set; }
+        public PnlLogger PnlLogger { get; set; }
+
         /// <summary>
         /// 构造函数
         /// </summary>
-        public Analyzer()
+        public Analyzer(TransactionLogger transactionLogger, PnlLogger pnlLogger)
         {
+            TransactionLogger = transactionLogger;
+            PnlLogger = pnlLogger;
         }
 
         /// <summary>
@@ -176,5 +181,19 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             //analyzerResult.Add("SharpeRatio", GetSharpeRatio(pnlLogger));
             return analyzerResult;
         }
+
+
+        /// <summary>
+        /// 获取每Tick/日/月/年回报数据
+        /// </summary>
+        /// <param name="dateSpan"></param>
+        /// <returns></returns>
+        public DateRangeData<double>[] GetReturn(DateSpan dateSpan) => GetReturn(PnlLogger, dateSpan);
+        /// <summary>
+        /// 分析方法, 返回结果字典
+        /// 包含: 最大回撤率, 夏普比率
+        /// </summary>
+        /// <returns></returns>
+        public Dictionary<string, double> Analyze() => Analyze(PnlLogger);
     }
 }
