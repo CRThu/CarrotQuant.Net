@@ -24,17 +24,14 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         {
             get
             {
-                switch (Span)
+                return Span switch
                 {
-                    case DateSpan.Day:
-                        return Start.AddDays(1).AddMilliseconds(-1);
-                    case DateSpan.Month:
-                        return Start.AddMonths(1).AddMilliseconds(-1);
-                    case DateSpan.Year:
-                        return Start.AddYears(1).AddMilliseconds(-1);
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+                    DateSpan.Tick => Start,
+                    DateSpan.Day => Start.AddDays(1).AddMilliseconds(-1),
+                    DateSpan.Month => Start.AddMonths(1).AddMilliseconds(-1),
+                    DateSpan.Year => Start.AddYears(1).AddMilliseconds(-1),
+                    _ => throw new ArgumentOutOfRangeException(),
+                };
             }
         }
         /// <summary>
@@ -61,6 +58,18 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// 构造函数
         /// </summary>
         /// <param name="start"></param>
+        /// <param name="value"></param>
+        public DateRangeData(DateTime start, T value)
+        {
+            Start = start;
+            Span = DateSpan.Tick;
+            Value = value;
+        }
+
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="start"></param>
         /// <param name="span"></param>
         /// <param name="value"></param>
         public DateRangeData(DateTime start, DateSpan span, T value)
@@ -73,6 +82,11 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public bool IsInRange(DateTime dateTime)
         {
             return dateTime >= Start && dateTime <= End;
+        }
+
+        public bool IsInRange(DateRangeData<T> data)
+        {
+            return data.Start >= Start && data.End <= End;
         }
     }
 }
