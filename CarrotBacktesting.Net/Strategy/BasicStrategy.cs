@@ -40,7 +40,7 @@ namespace CarrotBacktesting.Net.Strategy
             Console.WriteLine(strategyContext.PnlLogger.ToString());
 
             Console.WriteLine("Analyzer:");
-            Console.WriteLine(ClassFormatter.Formatter(strategyContext.PnlLogger.Analyze()));
+            Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.Analyze()));
 
             Console.WriteLine("MonthlyReturn:");
             Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Month)));
