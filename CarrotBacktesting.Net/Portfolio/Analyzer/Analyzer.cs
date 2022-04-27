@@ -27,97 +27,6 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         }
 
         /// <summary>
-        /// 获取回撤曲线
-        /// </summary>
-        /// <param name="value">总资产</param>
-        /// <returns></returns>
-        public static double[] GetDrawdown(double[] value)
-        {
-            double[] drawdown = new double[value.Length];
-
-            // 存储历史最高总资产用于计算回撤
-            double peakDrawdown = 0;
-
-            for (int i = 0; i < value.Length; i++)
-            {
-                // 回撤计算(恒定本金法)
-                if (value[i] > peakDrawdown)
-                    peakDrawdown = value[i];
-                drawdown[i] = 1 - value[i] / peakDrawdown;
-            }
-            return drawdown;
-        }
-
-        /// <summary>
-        /// 获取最大回撤率
-        /// </summary>
-        /// <param name="value">总资产</param>
-        /// <returns></returns>
-        public static double GetMaxDrawdown(double[] value)
-        {
-            return GetDrawdown(value).Max();
-        }
-
-        /// <summary>
-        /// 计算每Tick收益率
-        /// </summary>
-        /// <param name="pnl">每Tick总损益</param>
-        /// <param name="cost">成本</param>
-        /// <param name="normalize">归一化至单位收益</param>
-        /// <returns></returns>
-        //public static double[] GetRateOfReturn(double[] pnl, double cost, double normalize = 1)
-        //{
-        //    return GetTickReturn(pnl).Select(r => r / cost * normalize).ToArray();
-        //}
-
-        /// <summary>
-        /// 获取夏普比率(Tick单位)
-        /// </summary>
-        /// <param name="pnl">每Tick总损益</param>
-        /// <returns></returns>
-        //public static double GetSharpeRatio(double[] pnl)
-        //{
-        //    double[] tickReturn = GetTickReturn(pnl);
-
-        //    // https://numerics.mathdotnet.com/DescriptiveStatistics.html
-        //    double mean = tickReturn.Mean();
-        //    double stddev = tickReturn.PopulationStandardDeviation();
-        //    return mean / stddev;
-        //}
-
-        /// <summary>
-        /// 获取回撤曲线
-        /// </summary>
-        /// <param name="pnlLogger"></param>
-        /// <returns></returns>
-        public static double[] GetDrawdown(PnlLogger pnlLogger)
-        {
-            return GetDrawdown(pnlLogger.Logs.Select(l => l.TotalValue).ToArray());
-        }
-
-        /// <summary>
-        /// 获取最大回撤率
-        /// </summary>
-        /// <param name="value"></param>
-        /// <returns></returns>
-        public static double GetMaxDrawdown(PnlLogger pnlLogger)
-        {
-            return GetDrawdown(pnlLogger).Max();
-        }
-
-        /// <summary>
-        /// 获取夏普比率
-        /// </summary>
-        /// <param name="pnlLogger"></param>
-        /// <returns></returns>
-        //public static double GetSharpeRatio(PnlLogger pnlLogger)
-        //{
-        //    return GetSharpeRatio(pnlLogger.Logs.Select(l => l.TotalPnl).ToArray());
-        //}
-
-        // TODO 重构以上代码
-
-        /// <summary>
         /// 获取每Tick/日/月/年回报数据
         /// </summary>
         /// <param name="pnlLogger"></param>
@@ -169,6 +78,96 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         }
 
         /// <summary>
+        /// 获取每Tick/日/月/年回报率数据
+        /// </summary>
+        /// <param name="pnlLogger"></param>
+        /// <param name="dateSpan"></param>
+        /// <returns></returns>
+        public static DateRangeData<double>[] GetRateOfReturn(PnlLogger pnlLogger, DateSpan dateSpan)
+        {
+            DateRangeData<double>[] retValues = GetReturn(pnlLogger, dateSpan);
+            if (pnlLogger.Logs.Count > 0)
+            {
+                PnlLog firstLog = pnlLogger.Logs[0];
+                double cost = firstLog.TotalValue - firstLog.TotalPnl;
+                for (int i = 0; i < retValues.Length; i++)
+                    retValues[i].Value /= cost;
+            }
+            return retValues;
+        }
+
+        /// <summary>
+        /// 获取Tick/日/月/年夏普比率
+        /// </summary>
+        /// <param name="pnlLogger"></param>
+        /// <param name="dateSpan"></param>
+        /// <returns></returns>
+        public static double GetSharpeRatio(PnlLogger pnlLogger, DateSpan dateSpan)
+        {
+            DateRangeData<double>[] retValues = GetReturn(pnlLogger, dateSpan);
+
+            // https://numerics.mathdotnet.com/DescriptiveStatistics.html
+            double[] vals = retValues.Select(val => val.Value).ToArray();
+            double mean = vals.Mean();
+            double stddev = vals.PopulationStandardDeviation();
+            return mean / stddev;
+        }
+
+        /// <summary>
+        /// 获取每Tick回撤率
+        /// </summary>
+        /// <param name="pnlLogger"></param>
+        /// <returns></returns>
+        public static DateRangeData<double>[] GetDrawdown(PnlLogger pnlLogger)
+        {
+            DateRangeData<double>[] tickDrawdown = new DateRangeData<double>[pnlLogger.Logs.Count];
+
+            // 存储历史最高总资产用于计算回撤
+            double peakDrawdown = 0;
+
+            for (int i = 0; i < pnlLogger.Logs.Count; i++)
+            {
+                // 回撤计算(恒定本金法)
+                if (pnlLogger.Logs[i].TotalValue > peakDrawdown)
+                    peakDrawdown = pnlLogger.Logs[i].TotalValue;
+                tickDrawdown[i] = new(pnlLogger.Logs[i].DateTime, 1 - pnlLogger.Logs[i].TotalValue / peakDrawdown);
+            }
+            return tickDrawdown;
+        }
+
+        /// <summary>
+        /// 获取最大回撤率
+        /// </summary>
+        /// <param name="pnlLogger"></param>
+        /// <returns></returns>
+        public static double GetMaxDrawdown(PnlLogger pnlLogger)
+        {
+            return GetDrawdown(pnlLogger).Max(data => data.Value);
+        }
+
+        /// <summary>
+        /// 获取日/月/年化收益率
+        /// </summary>
+        /// <param name="pnlLogger"></param>
+        /// <param name="dateSpan"></param>
+        /// <returns></returns>
+        /// <exception cref="NotImplementedException"></exception>
+        public static double GetNormalizedRateOfReturn(PnlLogger pnlLogger, DateSpan dateSpan = DateSpan.Year)
+        {
+            double pnl = pnlLogger.Logs[^1].TotalPnl - pnlLogger.Logs[0].TotalPnl;
+            double cost = pnlLogger.Logs[0].TotalValue - pnlLogger.Logs[0].TotalPnl;
+            TimeSpan timeSpan = pnlLogger.Logs[^1].DateTime - pnlLogger.Logs[0].DateTime;
+
+            return dateSpan switch
+            {
+                DateSpan.Day => (pnl / cost) / (timeSpan / TimeSpan.FromDays(1)),
+                DateSpan.Month => (pnl / cost) / (timeSpan / TimeSpan.FromDays(30)),
+                DateSpan.Year => (pnl / cost) / (timeSpan / TimeSpan.FromDays(365)),
+                _ => throw new NotImplementedException(),
+            };
+        }
+
+        /// <summary>
         /// 分析方法, 返回结果字典
         /// 包含: 最大回撤率, 夏普比率
         /// </summary>
@@ -177,11 +176,12 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public static Dictionary<string, double> Analyze(PnlLogger pnlLogger)
         {
             Dictionary<string, double> analyzerResult = new();
-            analyzerResult.Add("MaxDrawdown", GetMaxDrawdown(pnlLogger));
-            //analyzerResult.Add("SharpeRatio", GetSharpeRatio(pnlLogger));
+            analyzerResult.Add("年化回报率", GetNormalizedRateOfReturn(pnlLogger));
+            analyzerResult.Add("最大回撤率", GetMaxDrawdown(pnlLogger));
+            analyzerResult.Add("日夏普比率", GetSharpeRatio(pnlLogger, DateSpan.Day));
+            analyzerResult.Add("月夏普比率", GetSharpeRatio(pnlLogger, DateSpan.Month));
             return analyzerResult;
         }
-
 
         /// <summary>
         /// 获取每Tick/日/月/年回报数据
@@ -189,6 +189,34 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <param name="dateSpan"></param>
         /// <returns></returns>
         public DateRangeData<double>[] GetReturn(DateSpan dateSpan) => GetReturn(PnlLogger, dateSpan);
+        /// <summary>
+        /// 获取每Tick/日/月/年回报率数据
+        /// </summary>
+        /// <param name="dateSpan"></param>
+        /// <returns></returns>
+        public DateRangeData<double>[] GetRateOfReturn(DateSpan dateSpan) => GetRateOfReturn(PnlLogger, dateSpan);
+        /// <summary>
+        /// 获取Tick/日/月/年夏普比率
+        /// </summary>
+        /// <param name="dateSpan"></param>
+        /// <returns></returns>
+        public double GetSharpeRatio(DateSpan dateSpan) => GetSharpeRatio(PnlLogger, dateSpan);
+        /// <summary>
+        /// 获取每Tick回撤率
+        /// </summary>
+        /// <returns></returns>
+        public DateRangeData<double>[] GetDrawdown() => GetDrawdown(PnlLogger);
+        /// <summary>
+        /// 获取最大回撤率
+        /// </summary>
+        /// <returns></returns>
+        public double GetMaxDrawdown() => GetMaxDrawdown(PnlLogger);
+        /// <summary>
+        /// 获取日/月/年化收益率
+        /// </summary>
+        /// <param name="dateSpan"></param>
+        /// <returns></returns>
+        public double GetNormalizedRateOfReturn(DateSpan dateSpan = DateSpan.Year) => GetNormalizedRateOfReturn(dateSpan);
         /// <summary>
         /// 分析方法, 返回结果字典
         /// 包含: 最大回撤率, 夏普比率
