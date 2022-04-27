@@ -31,23 +31,19 @@ namespace CarrotBacktesting.Net.Strategy
 #if DEBUG
             Console.WriteLine("BasicStrategy.End()");
             Console.WriteLine();
+
             Console.WriteLine("PositionManager:");
             Console.WriteLine(strategyContext.PositionManager.ToString());
             Console.WriteLine("TransactionLogger:");
             Console.WriteLine(strategyContext.TransactionLogger.ToString());
             Console.WriteLine("PnlLogger:");
             Console.WriteLine(strategyContext.PnlLogger.ToString());
+
             Console.WriteLine("Analyzer:");
             Console.WriteLine(ClassFormatter.Formatter(strategyContext.PnlLogger.Analyze()));
 
-            Console.WriteLine("TickReturn:");
-            Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Tick)));
-            Console.WriteLine("DailyReturn:");
-            Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Day)));
             Console.WriteLine("MonthlyReturn:");
             Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Month)));
-            Console.WriteLine("AnnuallyReturn:");
-            Console.WriteLine(ClassFormatter.Formatter(strategyContext.Analyzer.GetReturn(DateSpan.Year)));
 #endif
         }
 
