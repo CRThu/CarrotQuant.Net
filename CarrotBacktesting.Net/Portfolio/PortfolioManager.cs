@@ -52,9 +52,6 @@ namespace CarrotBacktesting.Net.Portfolio
         public delegate void OrderDealDelegate(TransactionLog transaction);
         public event OrderDealDelegate? OnOrderDealEvent;
 
-        public delegate void AddOrderDelegate();
-        public event AddOrderDelegate? AddOrderEvent;
-
         public PortfolioManager(MarketFrame marketFrame)
         {
             Analyzer = new Analyzer.Analyzer(TransactionLogger, PnlLogger);
@@ -87,9 +84,8 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="direction"></param>
         public void AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
         {
-            Console.WriteLine($"委托单已挂单, 股票名称:{shareName}, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
+            Console.WriteLine($"{MarketFrame.NowTime:d}:委托单已挂单, 股票名称:{shareName}, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
             OrderManager.AddOrder(shareName, limitPrice, size, direction);
-            AddOrderEvent?.Invoke();
         }
 
         /// <summary>
@@ -101,18 +97,13 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="size"></param>
         public void OnExchangeOrderDealUpdate(int orderId, double price, double size)
         {
-            var currentOrder = OrderManager.GetOrder(orderId);
-            currentOrder.Size -= size;
-            PositionManager.Trade(currentOrder.ShareName, price, size, currentOrder.Direction);
+            // TODO 重构
+            //PositionManager.Trade(currentOrder.ShareName, price, size, currentOrder.Direction);
 
-            Console.WriteLine($"委托单已被成交, 股票名称:{currentOrder.ShareName}, 价格:{price}, 数量:{size}, 方向:{currentOrder.Direction}.");
+            //Console.WriteLine($"{MarketFrame.NowTime:d}:委托单已被成交, 股票名称:{currentOrder.ShareName}, 价格:{price}, 数量:{size}, 方向:{currentOrder.Direction}.");
 
-            //若全部成交, 则删除委托单
-            if (currentOrder.Size == 0)
-                OrderManager.RemoveOrder(orderId);
-
-            TransactionLog transaction = new(MarketFrame.NowTime, currentOrder.ShareName, price, size, currentOrder.Direction);
-            OnOrderDealEvent?.Invoke(transaction);
+            //TransactionLog transaction = new(MarketFrame.NowTime, currentOrder.ShareName, price, size, currentOrder.Direction);
+            //OnOrderDealEvent?.Invoke(transaction);
         }
 
         public void SetCash(double cash = 100000)

@@ -9,7 +9,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
     /// <summary>
     /// 常规委托
     /// </summary>
-    public class GeneralOrder
+    public struct GeneralOrder
     {
         /// <summary>
         /// 股票名称

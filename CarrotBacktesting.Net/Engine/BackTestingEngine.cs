@@ -19,11 +19,6 @@ namespace CarrotBacktesting.Net.Engine
         public BackTestingSimulation Simulation;
         public IStrategy Strategy;
 
-        // 策略通用委托
-        public delegate void FuncDelegate();
-        public event FuncDelegate? OnTickChanged;
-        public event FuncDelegate? OnBarChanged;
-
         public BackTestingEngine(IStrategy strategy) : this(strategy, new BackTestingSimulationOptions())
         {
         }
@@ -41,8 +36,6 @@ namespace CarrotBacktesting.Net.Engine
             StrategyContext = new(Simulation.SimulationMarketFrame);
             Strategy = strategy;
             Exchange = new(StrategyContext.PortfolioManager, Simulation.SimulationMarketFrame);
-
-            EventRegister();
         }
 
         public void Run()
@@ -54,12 +47,20 @@ namespace CarrotBacktesting.Net.Engine
             Strategy.Start(StrategyContext);
             while (!Simulation.IsSimulationEnd)
             {
+                // 市场价格更新
                 Simulation.UpdateFrame();
 
-                // 时间片更新(更新指标等数据 触发PreNext)
-                OnTickChanged?.Invoke();
-                // 策略更新(更新策略,挂单 触发Next)
-                OnBarChanged?.Invoke();
+                // 交易所订单更新
+                Exchange.OnPriceUpdate();
+
+                // 投资组合PNL信息更新
+                StrategyContext.PortfolioManager.OnPriceUpdate();
+
+                // 时间片更新(用于更新Tick生成指标等数据)
+                Strategy.OnTick(StrategyContext);
+
+                // 策略更新(更新策略, 挂单)
+                Strategy.OnNext(StrategyContext);
 
                 loop++;
             }
@@ -67,19 +68,6 @@ namespace CarrotBacktesting.Net.Engine
 
             stopwatch.Stop();
             Console.WriteLine($"回测已完成, 共测试{loop}帧, 耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒, 回测速度{(double)loop / stopwatch.ElapsedMilliseconds * 1000:F3}帧/秒.");
-        }
-
-        public void EventRegister()
-        {
-            // 投资组合管理类价格更新
-            OnTickChanged += () => StrategyContext.PortfolioManager.OnPriceUpdate();
-
-            // 时间片触发策略更新
-            OnTickChanged += () => Strategy.OnTick(StrategyContext);
-            OnBarChanged += () => Strategy.OnNext(StrategyContext);
-
-            // 交易所类价格更新
-            OnTickChanged += () => Exchange.OnPriceUpdate();
         }
     }
 }
