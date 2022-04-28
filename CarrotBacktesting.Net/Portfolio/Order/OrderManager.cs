@@ -6,6 +6,13 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Portfolio.Order
 {
+    public enum OrderUpdatedEventOperation
+    {
+        AddOrder,
+        RemoveOrder,
+        UpdateOrder
+    }
+
     /// <summary>
     /// 委托单管理器
     /// </summary>
@@ -17,24 +24,15 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public Dictionary<int, GeneralOrder> Orders { get; set; } = new();
 
         /// <summary>
-        /// 委托单数量
+        /// 委托单字典自增键生成
         /// </summary>
-        public int OrderCount => Orders.Count;
+        private int OrderIdGen = 0;
 
+        public delegate void OrderUpdatedDelegate(int orderId, GeneralOrder order, OrderUpdatedEventOperation operation);
         /// <summary>
-        /// 委托单字典自增键生成
+        /// 委托单更新事件
         /// </summary>
-        private int orderIdGen;
-        /// <summary>
-        /// 委托单字典自增键生成
-        /// </summary>
-        public int OrderIdGen
-        {
-            get
-            {
-                return orderIdGen++;
-            }
-        }
+        public event OrderUpdatedDelegate? OrderUpdateEvent;
 
         /// <summary>
         /// 添加委托单
@@ -43,30 +41,53 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <param name="limitPrice"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public void AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
+        /// <returns>返回委托单号</returns>
+        public int AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
         {
             Orders.Add(OrderIdGen, new GeneralOrder(shareName, limitPrice, size, direction));
+            OrderUpdateEvent?.Invoke(OrderIdGen, GetOrder(OrderIdGen), OrderUpdatedEventOperation.AddOrder);
+            return OrderIdGen++;
         }
 
         /// <summary>
         /// 移除委托单
         /// </summary>
         /// <param name="orderId"></param>
-        /// <exception cref="Exception"></exception>
-        public void RemoveOrder(int orderId)
+        /// <returns></returns>
+        public bool RemoveOrder(int orderId)
         {
-            if (Orders.ContainsKey(orderId))
-                Orders.Remove(orderId);
-            else
-                throw new Exception($"找不到自增键{orderId}, 无法删除委托单.");
+            OrderUpdateEvent?.Invoke(orderId, GetOrder(orderId), OrderUpdatedEventOperation.RemoveOrder);
+            return Orders.Remove(orderId);
         }
 
+        /// <summary>
+        /// 获取委托单
+        /// </summary>
+        /// <param name="orderId"></param>
+        /// <returns>返回委托单, 若不存在则为null</returns>
         public GeneralOrder GetOrder(int orderId)
         {
             if (Orders.ContainsKey(orderId))
                 return Orders[orderId];
             else
-                throw new Exception($"找不到自增键{orderId}, 委托单不存在或已销毁.");
+                throw new Exception($"找不到委托单, OrderId={orderId}.");
+        }
+
+        public void OnTradeUpdate(int orderId, GeneralOrder order, (double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
+        {
+            Console.WriteLine($"委托单管理器:委托单已更新({operation}).\t股票名称:{order.ShareName}, 剩余数量:{order.Size}, 方向:{order.Direction}.");
+
+            switch (operation)
+            {
+                case OrderUpdatedEventOperation.RemoveOrder:
+                    Orders.Remove(orderId);
+                    break;
+                case OrderUpdatedEventOperation.UpdateOrder:
+                    Orders[orderId] = order;
+                    break;
+                default:
+                    throw new Exception($"OnTradeUpdate(): operation={operation}, OrderId={orderId}.");
+            }
         }
     }
 }

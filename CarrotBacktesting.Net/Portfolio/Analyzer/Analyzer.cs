@@ -176,7 +176,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public static Dictionary<string, double> Analyze(PnlLogger pnlLogger)
         {
             Dictionary<string, double> analyzerResult = new();
-            analyzerResult.Add("年化回报率", GetNormalizedRateOfReturn(pnlLogger));
+            analyzerResult.Add("年化收益率", GetNormalizedRateOfReturn(pnlLogger));
             analyzerResult.Add("最大回撤率", GetMaxDrawdown(pnlLogger));
             analyzerResult.Add("日夏普比率", GetSharpeRatio(pnlLogger, DateSpan.Day));
             analyzerResult.Add("月夏普比率", GetSharpeRatio(pnlLogger, DateSpan.Month));
