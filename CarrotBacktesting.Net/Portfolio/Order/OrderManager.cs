@@ -73,7 +73,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
                 throw new Exception($"找不到委托单, OrderId={orderId}.");
         }
 
-        public void OnTradeUpdate(int orderId, GeneralOrder order, (double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
+        public void OnTradeUpdate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
         {
             Console.WriteLine($"委托单管理器:委托单已更新({operation}).\t股票名称:{order.ShareName}, 剩余数量:{order.Size}, 方向:{order.Direction}.");
 

@@ -49,9 +49,6 @@ namespace CarrotBacktesting.Net.Portfolio
         public delegate void SetCashDelegate(DateTime dateTime, double cash);
         public event SetCashDelegate? OnSetCashEvent;
 
-        public delegate void OrderDealDelegate(TransactionLog transaction);
-        public event OrderDealDelegate? OnOrderDealEvent;
-
         public PortfolioManager(MarketFrame marketFrame)
         {
             Analyzer = new Analyzer.Analyzer(TransactionLogger, PnlLogger);
@@ -63,7 +60,6 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             //交割单记录器
             OnSetCashEvent += (t, v) => TransactionLogger.SetCash(t, v);
-            OnOrderDealEvent += (transaction) => TransactionLogger.AddTransaction(transaction);
         }
 
         /// <summary>
@@ -86,24 +82,6 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             Console.WriteLine($"{MarketFrame.NowTime:d}:委托单已挂单, 股票名称:{shareName}, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
             OrderManager.AddOrder(shareName, limitPrice, size, direction);
-        }
-
-        /// <summary>
-        /// 交易所更新委托单成交
-        /// TODO 代码整理
-        /// </summary>
-        /// <param name="orderId"></param>
-        /// <param name="price"></param>
-        /// <param name="size"></param>
-        public void OnExchangeOrderDealUpdate(int orderId, double price, double size)
-        {
-            // TODO 重构
-            //PositionManager.Trade(currentOrder.ShareName, price, size, currentOrder.Direction);
-
-            //Console.WriteLine($"{MarketFrame.NowTime:d}:委托单已被成交, 股票名称:{currentOrder.ShareName}, 价格:{price}, 数量:{size}, 方向:{currentOrder.Direction}.");
-
-            //TransactionLog transaction = new(MarketFrame.NowTime, currentOrder.ShareName, price, size, currentOrder.Direction);
-            //OnOrderDealEvent?.Invoke(transaction);
         }
 
         public void SetCash(double cash = 100000)
