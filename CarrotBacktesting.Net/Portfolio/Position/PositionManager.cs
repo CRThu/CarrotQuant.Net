@@ -16,6 +16,11 @@ namespace CarrotBacktesting.Net.Portfolio.Position
     public class PositionManager
     {
         /// <summary>
+        /// 日期(临时)
+        /// </summary>
+        public DateTime NowTime { get; set; }
+
+        /// <summary>
         /// 头寸存储字典
         /// </summary>
         public Dictionary<string, GeneralPosition> Positions { get; set; } = new();
@@ -32,6 +37,12 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// </summary>
         public double Cash { get; set; }
 
+        public delegate void CashUpdateDelegate(DateTime time, double cash);
+        public event CashUpdateDelegate? CashUpdateEvent;
+
+        public delegate void PositionUpdateDelegate(DateTime time, string shareName, double cost, double size, OrderDirection direction);
+        public event PositionUpdateDelegate? PositionUpdateEvent;
+
         /// <summary>
         /// 构造函数
         /// </summary>
@@ -39,8 +50,14 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         {
         }
 
+        /// <summary>
+        /// 市场价格更新
+        /// </summary>
+        /// <param name="marketFrame"></param>
         public void OnPriceUpdate(MarketFrame marketFrame)
         {
+            // 更新日期
+            NowTime = marketFrame.NowTime;
             // 更新未实现收益
             foreach (var position in Positions.Values)
             {
@@ -48,11 +65,33 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             }
         }
 
+        /// <summary>
+        /// 头寸更新
+        /// </summary>
+        /// <param name="orderId"></param>
+        /// <param name="order"></param>
+        /// <param name="tradeInfo"></param>
+        /// <param name="operation"></param>
         internal void OnTradeUpdate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
         {
             Console.WriteLine($"头寸管理器:头寸已更新.\t股票名称:{order.ShareName}, 价格:{tradeInfo.tradePrice}, 数量:{tradeInfo.tradeVolume}, 方向:{order.Direction}.");
 
-            Trade(order.ShareName, tradeInfo.tradePrice, tradeInfo.tradeVolume, order.Direction);
+            // 设置股权头寸
+            SetPosition(order.ShareName, order.Direction == OrderDirection.Long ? tradeInfo.tradeVolume : -tradeInfo.tradeVolume, tradeInfo.tradePrice);
+            // 计算现金剩余(Short股权时货币方向为Long)
+            Cash += order.Direction == OrderDirection.Short ? tradeInfo.tradePrice * tradeInfo.tradeVolume : -tradeInfo.tradePrice * tradeInfo.tradeVolume;
+
+            PositionUpdateEvent?.Invoke(tradeInfo.time, order.ShareName, tradeInfo.tradePrice, tradeInfo.tradeVolume, order.Direction);
+        }
+
+        /// <summary>
+        /// 设置资金
+        /// </summary>
+        /// <param name="cash"></param>
+        public void SetCash(double cash)
+        {
+            Cash += cash;
+            CashUpdateEvent?.Invoke(NowTime, cash);
         }
 
         /// <summary>
@@ -85,21 +124,6 @@ namespace CarrotBacktesting.Net.Portfolio.Position
                 currentPosition.RealizedPnl = realizedPnl;
             }
 
-        }
-
-        /// <summary>
-        /// 交易
-        /// </summary>
-        /// <param name="shareName"></param>
-        /// <param name="price"></param>
-        /// <param name="size"></param>
-        /// <param name="direction"></param>
-        public void Trade(string shareName, double price, double size, OrderDirection direction)
-        {
-            // 设置股权头寸
-            SetPosition(shareName, direction == OrderDirection.Long ? size : -size, price);
-            // 计算现金剩余(Short股权时货币方向为Long)
-            Cash += direction == OrderDirection.Short ? price * size : -price * size;
         }
 
         public override string ToString()
