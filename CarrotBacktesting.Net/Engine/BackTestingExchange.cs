@@ -21,7 +21,7 @@ namespace CarrotBacktesting.Net.Engine
         public MarketFrame MarketFrame;
         public PortfolioManager Portfolio;
 
-        public delegate void OrderDealDelegate(int orderId, GeneralOrder order, (double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation);
+        public delegate void OrderDealDelegate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation);
         /// <summary>
         /// 交易所更新委托单成交事件
         /// </summary>
@@ -36,6 +36,10 @@ namespace CarrotBacktesting.Net.Engine
             Portfolio.OrderManager.OrderUpdateEvent += OnOrderUpdate;
             // 委托单成交事件监听
             OrderDealEvent += Portfolio.OrderManager.OnTradeUpdate;
+            // 头寸管理器更新
+            OrderDealEvent += Portfolio.PositionManager.OnTradeUpdate;
+            // 头寸记录器更新
+            OrderDealEvent += Portfolio.TransactionLogger.OnTradeUpdate;
         }
 
         /// <summary>
@@ -76,21 +80,20 @@ namespace CarrotBacktesting.Net.Engine
             foreach (var orderId in Orders.Keys)
             {
                 var orderInfo = Orders[orderId];
-
-                if ((orderInfo.LimitPrice >= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Long)
-                    || (orderInfo.LimitPrice <= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Short))
+                if(MarketFrame[orderInfo.ShareName].IsActive)
                 {
-                    // 模拟委托单全部成交状态
-                    Console.WriteLine($"交易所:委托单已被成交.\t时间:{MarketFrame.NowTime:d}, 股票名称:{orderInfo.ShareName}, 价格:{MarketFrame[orderInfo.ShareName].NowPrice}, 数量:{orderInfo.Size}, 方向:{orderInfo.Direction}.");
-                    orderInfo.Size = 0;
-                    OrderDealEvent?.Invoke(orderId, orderInfo,
-                        (MarketFrame[orderInfo.ShareName].NowPrice, orderInfo.Size),
-                        OrderUpdatedEventOperation.RemoveOrder);
-                    Orders.Remove(orderId);
-
-                    // TODO 仓位管理器更新
-                    // TODO 投资组合类中交割单记录器更新
-                    //OrderDealEvent?.Invoke(orderId, MarketFrame[orderInfo.ShareName].NowPrice, orderInfo.Size);
+                    if ((orderInfo.LimitPrice >= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Long)
+                        || (orderInfo.LimitPrice <= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Short))
+                    {
+                        // 模拟委托单全部成交状态
+                        Console.WriteLine($"交易所({MarketFrame.NowTime:d}):委托单已被成交.\t股票名称:{orderInfo.ShareName}, 价格:{MarketFrame[orderInfo.ShareName].NowPrice}, 数量:{orderInfo.Size}, 方向:{orderInfo.Direction}.");
+                        double tradeSize = orderInfo.Size;
+                        orderInfo.Size = 0;
+                        OrderDealEvent?.Invoke(orderId, orderInfo,
+                            (MarketFrame.NowTime, MarketFrame[orderInfo.ShareName].NowPrice, tradeSize),
+                            OrderUpdatedEventOperation.RemoveOrder);
+                        Orders.Remove(orderId);
+                    }
                 }
             }
         }

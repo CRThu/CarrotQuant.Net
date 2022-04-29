@@ -48,9 +48,15 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             }
         }
 
+        internal void OnTradeUpdate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
+        {
+            Console.WriteLine($"头寸管理器:头寸已更新.\t股票名称:{order.ShareName}, 价格:{tradeInfo.tradePrice}, 数量:{tradeInfo.tradeVolume}, 方向:{order.Direction}.");
+
+            Trade(order.ShareName, tradeInfo.tradePrice, tradeInfo.tradeVolume, order.Direction);
+        }
+
         /// <summary>
         /// 添加头寸, 若存在则累加, 若不存在则创建
-        /// TODO 代码整理
         /// </summary>
         /// <param name="shareName"></param>
         /// <param name="size"></param>

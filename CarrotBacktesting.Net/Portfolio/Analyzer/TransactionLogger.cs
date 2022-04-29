@@ -32,6 +32,11 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             }
         }
 
+        internal void OnTradeUpdate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
+        {
+            AddTransaction(tradeInfo.time, order.ShareName, tradeInfo.tradePrice, tradeInfo.tradeVolume, order.Direction);
+        }
+
         /// <summary>
         /// 添加设置现金记录
         /// </summary>
@@ -55,12 +60,6 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             {
                 TransactionId = TransactionId
             });
-        }
-
-        public void AddTransaction(TransactionLog transaction)
-        {
-            transaction.TransactionId = TransactionId;
-            Logs.Add(transaction);
         }
 
         public override string ToString()
