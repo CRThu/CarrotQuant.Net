@@ -46,9 +46,6 @@ namespace CarrotBacktesting.Net.Portfolio
         /// </summary>
         public Analyzer.Analyzer Analyzer { get; set; }
 
-        public delegate void SetCashDelegate(DateTime dateTime, double cash);
-        public event SetCashDelegate? OnSetCashEvent;
-
         public PortfolioManager(MarketFrame marketFrame)
         {
             Analyzer = new Analyzer.Analyzer(TransactionLogger, PnlLogger);
@@ -58,8 +55,9 @@ namespace CarrotBacktesting.Net.Portfolio
 
         public void EventRegister()
         {
-            //交割单记录器
-            OnSetCashEvent += (t, v) => TransactionLogger.SetCash(t, v);
+            //交割单记录器事件
+            PositionManager.CashUpdateEvent += TransactionLogger.SetCash;
+            PositionManager.PositionUpdateEvent += TransactionLogger.AddTransaction;
         }
 
         /// <summary>
@@ -84,10 +82,6 @@ namespace CarrotBacktesting.Net.Portfolio
             OrderManager.AddOrder(shareName, limitPrice, size, direction);
         }
 
-        public void SetCash(double cash = 100000)
-        {
-            PositionManager.Cash = cash;
-            OnSetCashEvent?.Invoke(MarketFrame.NowTime, cash);
-        }
+        public void SetCash(double cash = 100000) => PositionManager.SetCash(cash);
     }
 }

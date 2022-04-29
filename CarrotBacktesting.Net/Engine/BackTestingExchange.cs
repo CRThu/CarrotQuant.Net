@@ -38,8 +38,6 @@ namespace CarrotBacktesting.Net.Engine
             OrderDealEvent += Portfolio.OrderManager.OnTradeUpdate;
             // 头寸管理器更新
             OrderDealEvent += Portfolio.PositionManager.OnTradeUpdate;
-            // 头寸记录器更新
-            OrderDealEvent += Portfolio.TransactionLogger.OnTradeUpdate;
         }
 
         /// <summary>
