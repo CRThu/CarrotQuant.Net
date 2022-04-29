@@ -55,7 +55,7 @@ namespace CarrotBacktesting.Net.Portfolio
 
         public void EventRegister()
         {
-            //交割单记录器事件
+            // 交割单记录器事件
             PositionManager.CashUpdateEvent += TransactionLogger.SetCash;
             PositionManager.PositionUpdateEvent += TransactionLogger.AddTransaction;
         }
@@ -82,6 +82,10 @@ namespace CarrotBacktesting.Net.Portfolio
             OrderManager.AddOrder(shareName, limitPrice, size, direction);
         }
 
+        /// <summary>
+        /// 添加资金
+        /// </summary>
+        /// <param name="cash"></param>
         public void SetCash(double cash = 100000) => PositionManager.SetCash(cash);
     }
 }
