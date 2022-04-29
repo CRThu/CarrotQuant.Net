@@ -31,7 +31,11 @@ namespace CarrotBacktesting.Net.Engine
         {
             Portfolio = portfolio;
             MarketFrame = marketFrame;
+            EventRegister();
+        }
 
+        public void EventRegister()
+        {
             // 委托单更新事件监听
             Portfolio.OrderManager.OrderUpdateEvent += OnOrderUpdate;
             // 委托单成交事件监听
@@ -78,7 +82,7 @@ namespace CarrotBacktesting.Net.Engine
             foreach (var orderId in Orders.Keys)
             {
                 var orderInfo = Orders[orderId];
-                if(MarketFrame[orderInfo.ShareName].IsActive)
+                if (MarketFrame[orderInfo.ShareName].IsActive)
                 {
                     if ((orderInfo.LimitPrice >= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Long)
                         || (orderInfo.LimitPrice <= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Short))

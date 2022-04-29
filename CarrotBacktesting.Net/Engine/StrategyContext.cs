@@ -1,5 +1,6 @@
 ﻿using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Analyzer;
+using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Portfolio.Position;
 using System;
 using System.Collections.Generic;
@@ -24,7 +25,10 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public MarketFrame MarketFrame { get; set; }
 
-
+        /// <summary>
+        /// 委托管理器
+        /// </summary>
+        public OrderManager OrderManager => PortfolioManager.OrderManager;
         /// <summary>
         /// 头寸管理器
         /// </summary>
@@ -36,7 +40,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 损益记录器
         /// </summary>
-        public PnlLogger PnlLogger=> PortfolioManager.PnlLogger;
+        public PnlLogger PnlLogger => PortfolioManager.PnlLogger;
         /// <summary>
         /// 投资组合分析器
         /// </summary>
