@@ -34,19 +34,23 @@ namespace CarrotBacktesting.Net.DataFeed
         /// <param name="timeColName"></param>
         /// <param name="dataColNames"></param>
         /// <param name="stringColNames"></param>
-        public void SetShareData(string shareCode, string timeColName, string[] dataColNames, string[] stringColNames = null)
+        public void SetShareData(string shareCode, string timeColName, string[] dataColNames, string[] stringColNames)
         {
+            throw new NotImplementedException();
 
-            ShareData shareData = new();
-            List<string> colNames = new();
-            colNames.Add(timeColName);
-            colNames.AddRange(dataColNames);
-            if (stringColNames != null)
-                colNames.AddRange(stringColNames);
-            DataTable dt = sql.GetTable(shareCode, colNames.ToArray());
-            shareData.DataTable2ShareData(dt, timeColName, dataColNames, stringColNames);
+            //ShareData shareData = new();
 
-            SetShareData(shareCode, shareData);
+            //ArrayMisc.ArrayCombine(new string[]{timeColName},dataColNames,stringColNames);
+            //List<string> colNames = new();
+            //colNames.Add(timeColName);
+            //colNames.AddRange(dataColNames);
+            //if (stringColNames != null)
+            //    colNames.AddRange(stringColNames);
+
+            //DataTable dt = sql.GetTable(shareCode, colNames.ToArray());
+            //shareData.DataTable2ShareData(dt, timeColName, dataColNames, stringColNames);
+
+            //SetShareData(shareCode, shareData);
         }
     }
 }

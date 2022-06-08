@@ -15,60 +15,96 @@ namespace CarrotBacktesting.Net.Common
         private IDbConnection connection;
         public string FileName { get; set; }
 
-
-        public SqliteHelper()
-        {
-        }
-
-        public SqliteHelper(string fileName) : this()
-        {
-            FileName = fileName;
-        }
-
+        /// <summary>
+        /// 打开Sqlite数据库
+        /// </summary>
+        /// <param name="fileName">数据库文件路径</param>
         public void Open(string fileName)
         {
             FileName = fileName;
-            Open();
-        }
-
-        public void Open()
-        {
             connection = new SqliteConnection(
                new SqliteConnectionStringBuilder() { DataSource = FileName }.ToString()
                );
         }
 
-        public DataTable Query(string query)
+        /// <summary>
+        /// 查询语句，返回首个T类型数据
+        /// </summary>
+        /// <typeparam name="T">返回数据类型</typeparam>
+        /// <param name="query">查询语句</param>
+        /// <returns>返回T类型查询结果</returns>
+        public T Query<T>(string query)
         {
-#if DEBUG
-            Console.WriteLine($"SqliteHelper.Query({query}) called.");
-            Stopwatch sw = new();
-            sw.Start();
-#endif
+            //Console.WriteLine($"SqliteHelper.Query({query}) called.");
+            return connection.ExecuteScalar<T>(query);
+        }
+
+        /// <summary>
+        /// 查询语句，返回DataTable类型数据
+        /// </summary>
+        /// <param name="query"></param>
+        /// <returns>返回DataTable类型查询结果</returns>
+        public DataTable QueryDataTable(string query)
+        {
+            //Console.WriteLine($"SqliteHelper.QueryDataTable({query}) called.");
             DataTable table = new();
             table.Load(connection.ExecuteReader(query));
-
-#if DEBUG
-            sw.Stop();
-            Console.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms.");
-#endif
             return table;
         }
 
+        /// <summary>
+        /// 查询数据库所有表名并返回
+        /// </summary>
+        /// <returns>返回数据库所有表名</returns>
         public IEnumerable<string> GetTableNames()
         {
-            DataTable tbs = Query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
+            DataTable tbs = QueryDataTable("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
             return DataTableMisc.GetColumn<string>(tbs, "name");
         }
 
-        public DataTable GetTable(string tableName, string[]? columnNames = null)
+        /// <summary>
+        /// 查询数据库并返回
+        /// TODO: 过滤器优化
+        /// </summary>
+        /// <param name="tableName">表名</param>
+        /// <param name="columnNames">字段名数组</param>
+        /// <param name="filter">过滤器, (过滤字段名, a, b, 过滤条件)</param>
+        /// <returns>返回DataTable类型查询结果</returns>
+        public DataTable GetTable(string tableName, string[]? columnNames = null,
+            (string columnName, string a, string b, FilterCondition fd)? filter = null)
         {
-            string joinColumns = columnNames != null ? string.Join(',', columnNames) : "*";
-            string queryCmd = $"SELECT {joinColumns} FROM '{tableName}'";
+            string selectStatement;
+            if (columnNames != null)
+                selectStatement = string.Join(',', columnNames);
+            else
+                selectStatement = "*";
 
-            DataTable dataTable = Query(queryCmd);
+            string whereStatement;
+            if (filter != null)
+            {
+                whereStatement = " WHERE";
+                whereStatement += $" {filter.Value.columnName} >= \"{filter.Value.a}\" AND {filter.Value.columnName} <= \"{filter.Value.b}\"";
+            }
+            else
+                whereStatement = string.Empty;
+
+            string queryCmd = $"SELECT {selectStatement} FROM '{tableName}'{whereStatement};";
+
+            Console.WriteLine($"SqliteHelper.QueryDataTable({queryCmd}) called.");
+            DataTable dataTable = QueryDataTable(queryCmd);
 
             return dataTable;
         }
+    }
+
+    /// <summary>
+    /// SQL语句WHERE条件枚举
+    /// </summary>
+    public enum FilterCondition
+    {
+        /// <summary>
+        /// X >= A AND X <= B
+        /// </summary>
+        BigEqualAndSmallEqual
     }
 }

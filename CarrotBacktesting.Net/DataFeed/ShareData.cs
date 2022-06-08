@@ -41,14 +41,14 @@ namespace CarrotBacktesting.Net.DataFeed
         public DateTime StartTime => Time.First();
         public DateTime EndTime => Time.Last();
 
-        public ShareData()
-        {
-        }
+        //public ShareData()
+        //{
+        //}
 
-        public ShareData(DataTable dataTable, string timeColName, string[] dataColNames)
-        {
-            DataTable2ShareData(dataTable, timeColName, dataColNames);
-        }
+        //public ShareData(DataTable dataTable, string timeColName, string[] dataColNames)
+        //{
+        //    DataTable2ShareData(dataTable, timeColName, dataColNames);
+        //}
 
         /// <summary>
         /// 本实现仅支持DataTable内数据均为System.String类型, 且Time为正序排列
@@ -60,45 +60,46 @@ namespace CarrotBacktesting.Net.DataFeed
         /// <param name="stringColNames">数据库表中字符串列列名数组(例如停牌/ST)</param>
         public static void DataTable2ShareData(ShareData shareData, DataTable dataTable, string timeColName, string[] dataColNames, string[] stringColNames = null)
         {
-#if DEBUG
-            Console.WriteLine($"ShareData.DataTable2ShareData(...) called.");
-            Stopwatch sw = new();
-            sw.Start();
-#endif
-            // 导入时间数据
-            var timeArray = DataTableMisc.GetColumn<string>(dataTable, timeColName);
-            shareData.Time = timeArray.Select(t => DateTimeMisc.Parse(t)).ToArray();
-            shareData.TimeDisplayName = timeColName;
+            throw new NotImplementedException();
+            //#if DEBUG
+            //            Console.WriteLine($"ShareData.DataTable2ShareData(...) called.");
+            //            Stopwatch sw = new();
+            //            sw.Start();
+            //#endif
+            //            // 导入时间数据
+            //            var timeArray = DataTableMisc.GetColumn<string>(dataTable, timeColName);
+            //            shareData.Time = timeArray.Select(t => DateTimeMisc.Parse(t)).ToArray();
+            //            shareData.TimeDisplayName = timeColName;
 
-            // 导入股价数据
-            shareData.Data = new();
-            foreach (var dataColName in dataColNames)
-                shareData.Data.Add(dataColName, DataTableMisc.GetColumn<string>(dataTable, dataColName)
-                    .Select(s => Convert.ToDouble(s)).ToArray());
+            //            // 导入股价数据
+            //            shareData.Data = new();
+            //            foreach (var dataColName in dataColNames)
+            //                shareData.Data.Add(dataColName, DataTableMisc.GetColumn<string>(dataTable, dataColName)
+            //                    .Select(s => Convert.ToDouble(s)).ToArray());
 
-            // 导入字符串数据
-            if (stringColNames != null)
-            {
-                shareData.StringData = new();
-                foreach (var stringColName in stringColNames)
-                    shareData.StringData.Add(stringColName, DataTableMisc.GetColumn<string>(dataTable, stringColName).ToArray());
-            }
-#if DEBUG
-            sw.Stop();
-            Console.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms.");
-#endif
+            //            // 导入字符串数据
+            //            if (stringColNames != null)
+            //            {
+            //                shareData.StringData = new();
+            //                foreach (var stringColName in stringColNames)
+            //                    shareData.StringData.Add(stringColName, DataTableMisc.GetColumn<string>(dataTable, stringColName).ToArray());
+            //            }
+            //#if DEBUG
+            //            sw.Stop();
+            //            Console.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms.");
+            //#endif
         }
 
-        public void DataTable2ShareData(DataTable dataTable, string timeColName, string[] dataColNames, string[] stringColNames = null)
-        {
-            DataTable2ShareData(this, dataTable, timeColName, dataColNames, stringColNames);
-        }
+        //public void DataTable2ShareData(DataTable dataTable, string timeColName, string[] dataColNames, string[] stringColNames = null)
+        //{
+        //    DataTable2ShareData(this, dataTable, timeColName, dataColNames, stringColNames);
+        //}
 
-        public (double price, bool isActive) GetPrice(DateTime datetime, string key)
-        {
-            (int index, bool isPrecise) = GetTimeIndex(datetime);
-            return (GetPrice(index, key), isPrecise);
-        }
+        //public (double price, bool isActive) GetPrice(DateTime datetime, string key)
+        //{
+        //    (int index, bool isPrecise) = GetTimeIndex(datetime);
+        //    return (GetPrice(index, key), isPrecise);
+        //}
 
         public double GetPrice(int index, string key)
         {
@@ -115,19 +116,19 @@ namespace CarrotBacktesting.Net.DataFeed
             return Data[key][index];
         }
 
-        public double[] GetPrices(DateTime start, DateTime end, string key)
-        {
-            (int startIndex, _) = GetTimeIndex(start);
-            (int endIndex, _) = GetTimeIndex(end);
-            return Data[key][startIndex..(endIndex + 1)];
-        }
+        //public double[] GetPrices(DateTime start, DateTime end, string key)
+        //{
+        //    (int startIndex, _) = GetTimeIndex(start);
+        //    (int endIndex, _) = GetTimeIndex(end);
+        //    return Data[key][startIndex..(endIndex + 1)];
+        //}
 
         // Get DateTimeMisc
         public (int index, bool isPrecise) GetTimeIndex(DateTime dateTime) => DateTimeMisc.GetTimeIndex(Time, dateTime);
-        public (int index, bool isPrecise) GetTimeIndex(int year, int month, int day) => DateTimeMisc.GetTimeIndex(Time, year, month, day);
-        public (int index, bool isPrecise) GetTimeIndex(int year, int month, int day, int hour, int minute, int second) => DateTimeMisc.GetTimeIndex(Time, year, month, day, hour, minute, second);
-        public DateTime GetTime(DateTime first, int indexOffset) => DateTimeMisc.GetTime(Time, first, indexOffset);
-        public DateTime[] GetTimes(DateTime first, int startIndexOffset, int endIndexOffset) => DateTimeMisc.GetTimes(Time, first, startIndexOffset, endIndexOffset);
-        public DateTime[] GetTimes(DateTime start, DateTime end) => DateTimeMisc.GetTimes(Time, start, end);
+        //public (int index, bool isPrecise) GetTimeIndex(int year, int month, int day) => DateTimeMisc.GetTimeIndex(Time, year, month, day);
+        //public (int index, bool isPrecise) GetTimeIndex(int year, int month, int day, int hour, int minute, int second) => DateTimeMisc.GetTimeIndex(Time, year, month, day, hour, minute, second);
+        //public DateTime GetTime(DateTime first, int indexOffset) => DateTimeMisc.GetTime(Time, first, indexOffset);
+        //public DateTime[] GetTimes(DateTime first, int startIndexOffset, int endIndexOffset) => DateTimeMisc.GetTimes(Time, first, startIndexOffset, endIndexOffset);
+        //public DateTime[] GetTimes(DateTime start, DateTime end) => DateTimeMisc.GetTimes(Time, start, end);
     }
 }
