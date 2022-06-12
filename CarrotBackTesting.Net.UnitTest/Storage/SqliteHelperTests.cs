@@ -1,13 +1,13 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using CarrotBacktesting.Net.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Data;
+using CarrotBacktesting.Net.Storage;
 
-namespace CarrotBacktesting.Net.Common.Tests
+namespace CarrotBackTesting.Net.UnitTest.Storage
 {
     [TestClass()]
     public class SqliteHelperTests
