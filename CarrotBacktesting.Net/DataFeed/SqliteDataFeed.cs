@@ -1,4 +1,4 @@
-﻿using CarrotBacktesting.Net.Common;
+﻿using CarrotBacktesting.Net.Storage;
 using System;
 using System.Collections.Generic;
 using System.Data;

@@ -7,8 +7,9 @@ using System.Text;
 using System.Threading.Tasks;
 using Dapper;
 using System.Diagnostics;
+using CarrotBacktesting.Net.Common;
 
-namespace CarrotBacktesting.Net.Common
+namespace CarrotBacktesting.Net.Storage
 {
     public class SqliteHelper
     {
@@ -25,6 +26,7 @@ namespace CarrotBacktesting.Net.Common
             connection = new SqliteConnection(
                new SqliteConnectionStringBuilder() { DataSource = FileName }.ToString()
                );
+            connection.Open();
         }
 
         /// <summary>
@@ -90,7 +92,7 @@ namespace CarrotBacktesting.Net.Common
 
             string queryCmd = $"SELECT {selectStatement} FROM '{tableName}'{whereStatement};";
 
-            Console.WriteLine($"SqliteHelper.QueryDataTable({queryCmd}) called.");
+            //Console.WriteLine($"SqliteHelper.QueryDataTable({queryCmd}) called.");
             DataTable dataTable = QueryDataTable(queryCmd);
 
             return dataTable;

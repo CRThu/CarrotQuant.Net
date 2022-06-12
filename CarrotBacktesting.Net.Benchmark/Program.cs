@@ -19,12 +19,10 @@ public class BackTestingEngineBenchmark
     [Benchmark(Baseline = true)]
     public void a1()
     {
-        ArrayMisc.ArrayCombine(a, b, c, a, b, c);
     }
 
     [Benchmark]
     public void a2()
     {
-        ArrayMisc.ArrayCombine2(a, b, c, a, b, c);
     }
 }
