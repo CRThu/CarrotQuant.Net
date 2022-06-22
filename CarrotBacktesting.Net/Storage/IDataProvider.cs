@@ -22,7 +22,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <param name="startTime">开始时间</param>
         /// <param name="endTime">结束时间</param>
         /// <returns>存放历史数据的<see cref="ShareData"/>类</returns>
-        public NewShareData GetShareHistoryData(string shareCode,
+        public NewMarketData GetShareHistoryData(string shareCode,
             string timeCol, string[]? dataCols = null, string[]? stringCols = null,
             DateTime? startTime = null, DateTime? endTime = null);
     }

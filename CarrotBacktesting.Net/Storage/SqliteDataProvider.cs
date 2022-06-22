@@ -27,7 +27,7 @@ namespace CarrotBacktesting.Net.Storage
             sqliteHelper.Open(dbPath);
         }
 
-        public NewShareData GetShareHistoryData(string shareCode, string timeCol, string[]? dataCols = null, string[]? strCols = null, DateTime? startTime = null, DateTime? endTime = null)
+        public NewMarketData GetShareHistoryData(string shareCode, string timeCol, string[]? dataCols = null, string[]? strCols = null, DateTime? startTime = null, DateTime? endTime = null)
         {
             // 所需所有字段
             string[] cols = ArrayMisc.ArrayCombine(new string[] { timeCol }, dataCols, strCols);
@@ -44,7 +44,7 @@ namespace CarrotBacktesting.Net.Storage
 
             // TODO
             // DATATABLE 2 SHAREDATA
-            return new NewShareData();
+            return new NewMarketData();
         }
     }
 }
