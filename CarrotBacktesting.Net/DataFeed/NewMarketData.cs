@@ -15,8 +15,6 @@ namespace CarrotBacktesting.Net.DataFeed
         /// key: 市场信息帧日期
         /// value: 市场信息帧数据
         /// </summary>
-        public Dictionary<DateTime, NewMarketFrame> MarketFrames { get; set; } = new();
-
-        // TODO
+        public List<NewMarketFrame> MarketFrames { get; set; } = new();
     }
 }

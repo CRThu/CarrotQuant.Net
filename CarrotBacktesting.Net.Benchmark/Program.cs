@@ -12,9 +12,10 @@ BenchmarkRunner.Run<BackTestingEngineBenchmark>();
 [MemoryDiagnoser]
 public class BackTestingEngineBenchmark
 {
-    public static string[] a = new string[] { "a", "bb", "ccc", "dddd" };
-    public static string[] b = new string[] { "1", "22", "333", "4444" };
-    public static string[] c = new string[] { "!", "@@", "###", "$$$$" };
+
+    public BackTestingEngineBenchmark()
+    {
+    }
 
     [Benchmark(Baseline = true)]
     public void a1()
@@ -23,6 +24,11 @@ public class BackTestingEngineBenchmark
 
     [Benchmark]
     public void a2()
+    {
+    }
+
+    [Benchmark]
+    public void a3()
     {
     }
 }
