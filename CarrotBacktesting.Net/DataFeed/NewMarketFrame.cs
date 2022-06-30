@@ -9,7 +9,7 @@ namespace CarrotBacktesting.Net.DataFeed
     /// <summary>
     /// 市场信息帧类
     /// </summary>
-    public class NewMarketFrame
+    public struct NewMarketFrame
     {
         /// <summary>
         /// 帧日期
@@ -21,6 +21,6 @@ namespace CarrotBacktesting.Net.DataFeed
         /// key: 股票代码
         /// value: 股票帧
         /// </summary>
-        public Dictionary<string, NewShareFrame> MarketFrame { get; set; } = new();
+        public Dictionary<string, NewShareFrame> MarketFrame { get; set; }
     }
 }
