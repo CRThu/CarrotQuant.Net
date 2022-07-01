@@ -4,17 +4,16 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.DataFeed
+namespace CarrotBacktesting.Net.DataModel
 {
     /// <summary>
     /// 市场信息类
     /// </summary>
-    public class NewMarketData
+    public class MarketData
     {
         /// <summary>
-        /// key: 市场信息帧日期
-        /// value: 市场信息帧数据
+        /// 市场帧集合
         /// </summary>
-        public List<NewMarketFrame> MarketFrames { get; set; } = new();
+        public List<MarketFrame> MarketFrames { get; set; } = new();
     }
 }
