@@ -7,14 +7,20 @@ using System.Threading.Tasks;
 namespace CarrotBacktesting.Net.DataModel
 {
     /// <summary>
-    /// 股票某一时间帧信息
+    /// 股票信息帧类
     /// </summary>
     public struct ShareFrame
     {
         /// <summary>
+        /// 股票代码
+        /// </summary>
+        public string StockCode { get; set; }
+
+        /// <summary>
         /// 日期/时间
         /// </summary>
         public DateTime DateTime { get; set; }
+
         /// <summary>
         /// 开盘价
         /// </summary>
@@ -51,7 +57,7 @@ namespace CarrotBacktesting.Net.DataModel
         public Dictionary<string, dynamic> Data { get; set; }
 
         /// <summary>
-        /// 操作<see cref="ShareFrame"/>中的元素
+        /// 写入或读取<see cref="ShareFrame"/>中的元素
         /// </summary>
         /// <param name="key">key, 若不存在则创建, 若存在则覆盖</param>
         /// <returns>value, 若key不存在则返回null</returns>
@@ -70,6 +76,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 构造函数
         /// </summary>
+        /// <param name="stockCode">股票代码</param>
         /// <param name="dateTime">日期/时间</param>
         /// <param name="openPrice">开盘价</param>
         /// <param name="highPrice">最高价</param>
@@ -77,8 +84,9 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="closePrice">收盘价</param>
         /// <param name="volume">成交量</param>
         /// <param name="isTrading">是否正常交易, 默认为true</param>
-        public ShareFrame(DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading = true)
+        public ShareFrame(string stockCode, DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading = true)
         {
+            StockCode = stockCode;
             DateTime = dateTime;
             OpenPrice = openPrice;
             HighPrice = highPrice;
@@ -86,12 +94,13 @@ namespace CarrotBacktesting.Net.DataModel
             ClosePrice = closePrice;
             Volume = volume;
             IsTrading = isTrading;
-            Data = new Dictionary<string, dynamic>();
+            Data = new();
         }
 
         /// <summary>
         /// 构造函数
-        /// </summary>
+        /// </summary>        
+        /// <param name="stockCode">股票代码</param>
         /// <param name="dateTime">日期/时间</param>
         /// <param name="openPrice">开盘价</param>
         /// <param name="highPrice">最高价</param>
@@ -100,8 +109,9 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="volume">成交量</param>
         /// <param name="isTrading">是否正常交易</param>
         /// <param name="kv">其他数据键值对</param>
-        public ShareFrame(DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading, Dictionary<string, dynamic> kv)
+        public ShareFrame(string stockCode, DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading, Dictionary<string, dynamic> kv)
         {
+            StockCode = stockCode;
             DateTime = dateTime;
             OpenPrice = openPrice;
             HighPrice = highPrice;
@@ -144,6 +154,7 @@ namespace CarrotBacktesting.Net.DataModel
         {
             switch (key)
             {
+                case "Code" or "StockCode": StockCode = val; break;
                 case "Date" or "Time" or "DateTime": DateTime = val; break;
                 case "Open" or "OpenPrice": OpenPrice = val; break;
                 case "High" or "HighPrice": HighPrice = val; break;
@@ -164,6 +175,7 @@ namespace CarrotBacktesting.Net.DataModel
         {
             return key switch
             {
+                "Code" or "StockCode" => StockCode,
                 "Date" or "Time" or "DateTime" => DateTime,
                 "Open" or "OpenPrice" => OpenPrice,
                 "High" or "HighPrice" => HighPrice,
