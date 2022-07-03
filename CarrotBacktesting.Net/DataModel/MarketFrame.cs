@@ -21,7 +21,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// key: 股票代码
         /// value: 股票帧
         /// </summary>
-        public Dictionary<string, ShareFrame> Frame { get; set; }
+        private Dictionary<string, ShareFrame> Frame { get; set; }
 
         /// <summary>
         /// 写入或读取股票在<see cref="DateTime"/>时间的信息帧

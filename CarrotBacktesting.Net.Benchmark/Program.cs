@@ -12,23 +12,39 @@ BenchmarkRunner.Run<BackTestingEngineBenchmark>();
 [MemoryDiagnoser]
 public class BackTestingEngineBenchmark
 {
+    public bool a = false;
+    public double b = 0;
+    public (bool a, double b) ab;
+    public (bool a, double b) test;
+
+    public (bool a, double b) TestMethodUseTuple()
+    {
+        ab.a = !ab.a;
+        ab.b++;
+        return ab;
+    }
+
+    public void TestMethodUseOut(out bool x, out double y)
+    {
+        a = !a;
+        b++;
+        x = a;
+        y = b;
+    }
 
     public BackTestingEngineBenchmark()
     {
     }
 
     [Benchmark(Baseline = true)]
-    public void a1()
+    public void UseTuple()
     {
+        test = TestMethodUseTuple();
     }
 
     [Benchmark]
-    public void a2()
+    public void UseOut()
     {
-    }
-
-    [Benchmark]
-    public void a3()
-    {
+        TestMethodUseOut(out bool a, out double b);
     }
 }
