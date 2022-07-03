@@ -54,7 +54,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 其他数据键值对
         /// </summary>
-        public Dictionary<string, dynamic> Data { get; set; }
+        private Dictionary<string, dynamic> Data { get; set; }
 
         /// <summary>
         /// 写入或读取<see cref="ShareFrame"/>中的元素
