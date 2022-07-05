@@ -59,20 +59,34 @@ namespace CarrotBacktesting.Net.DataModel
         {
             IsCacheDirty = true;
 
-            throw new NotImplementedException();
+            if(frame.DateTime is null)
+                throw new InvalidOperationException();
+
+            // 添加数据
+            MarketFrames[frame.DateTime.Value] = frame;
         }
 
         /// <summary>
         /// 获取帧
         /// </summary>
         /// <param name="dateTime">帧时间</param>
+        /// <param name="isExist">是否存在此时间帧</param>
         /// <returns>返回帧, 若此时间帧不存在则返回向前搜索最近的时间帧, 若向前搜索不存在帧则返回null</returns>
-        public MarketFrame Get(DateTime dateTime)
+        public MarketFrame? Get(DateTime dateTime, out bool isExist)
         {
             if (IsCacheDirty)
                 UpdateCache();
 
-            throw new NotImplementedException();
+            if (MarketFrames.TryGetValue(dateTime, out MarketFrame? v))
+            {
+                isExist = true;
+                return v;
+            }
+            else
+            {
+                isExist = false;
+                return null;
+            }
         }
     }
 }

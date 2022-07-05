@@ -4,12 +4,18 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+
+// TODO
+// Reference:
+// https://docs.microsoft.com/zh-cn/dotnet/csharp/write-safe-efficient-code#the-out-ref-and-in-keywords
+
 namespace CarrotBacktesting.Net.DataModel
 {
     /// <summary>
     /// 股票信息帧类
+    /// TODO 改为struct优化性能
     /// </summary>
-    public struct ShareFrame
+    public class ShareFrame
     {
         /// <summary>
         /// 股票代码

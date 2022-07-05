@@ -9,7 +9,7 @@ namespace CarrotBacktesting.Net.DataModel
     /// <summary>
     /// 市场信息帧类
     /// </summary>
-    public struct MarketFrame
+    public class MarketFrame
     {
         /// <summary>
         /// 帧日期
@@ -21,7 +21,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// key: 股票代码
         /// value: 股票帧
         /// </summary>
-        private Dictionary<string, ShareFrame> Frame { get; set; }
+        private Dictionary<string, ShareFrame> ShareFrames { get; set; }
 
         /// <summary>
         /// 写入或读取股票在<see cref="DateTime"/>时间的信息帧
@@ -40,10 +40,10 @@ namespace CarrotBacktesting.Net.DataModel
             {
                 if(value == null)
                     throw new ArgumentNullException(nameof(value));
-                if (stockCode != value.Value.StockCode)
+                if (stockCode != value.StockCode)
                     throw new InvalidOperationException();
 
-                Set((ShareFrame)value);
+                Set(value);
             }
         }
 
@@ -53,7 +53,7 @@ namespace CarrotBacktesting.Net.DataModel
         public MarketFrame()
         {
             DateTime = null;
-            Frame = new();
+            ShareFrames = new();
         }
 
         /// <summary>
@@ -63,18 +63,18 @@ namespace CarrotBacktesting.Net.DataModel
         public MarketFrame(DateTime dateTime)
         {
             DateTime = dateTime;
-            Frame = new();
+            ShareFrames = new();
         }
 
         /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="dateTime">市场帧日期/时间</param>
-        /// <param name="frame">市场帧数据字典</param>
-        public MarketFrame(DateTime dateTime, Dictionary<string, ShareFrame> frame)
+        /// <param name="frames">市场帧数据字典</param>
+        public MarketFrame(DateTime dateTime, Dictionary<string, ShareFrame> frames)
         {
             DateTime = dateTime;
-            Frame = frame;
+            ShareFrames = frames;
         }
 
         /// <summary>
@@ -90,7 +90,7 @@ namespace CarrotBacktesting.Net.DataModel
                 // 新增数据与现有数据时间不符时抛出异常
                 throw new InvalidOperationException();
             // 添加数据
-            Frame[shareFrame.StockCode] = shareFrame;
+            ShareFrames[shareFrame.StockCode] = shareFrame;
         }
 
         /// <summary>
@@ -100,7 +100,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <returns>返回stockCode对应帧, 若stockCode不存在则返回null</returns>
         public ShareFrame? Get(string stockCode)
         {
-            if (Frame.TryGetValue(stockCode, out ShareFrame v))
+            if (ShareFrames.TryGetValue(stockCode, out ShareFrame? v))
                 return v;
             else
                 return null;
