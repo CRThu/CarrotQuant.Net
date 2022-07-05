@@ -9,18 +9,24 @@ namespace CarrotBacktesting.Net.Common
 {
     public static class DateTimeMisc
     {
+        // ---------- NEW METHOD START ----------
         /// <summary>
-        /// 字符串解析为DateTime
+        /// 日期时间字符串解析为DateTime<br/>
+        /// 标准解析格式如下:<br/>
+        /// "yyyy-MM-dd" : "2022-01-01"<br/>
+        /// "yyyy-MM-dd HH:mm:ss" : "2022-01-01 23:59:59"<br/>
+        /// "yyyy-MM-dd HH:mm:ss.FFF" : "2022-01-01 23:59:59.999"<br/>
+        /// "yyyyMMdd" : "20220101"<br/>
+        /// "yyyyMMddHHmmss" : "20220101235959"<br/>
+        /// "yyyyMMddHHmmssFFF" : "20220101235959999"<br/>
+        /// 格式化字符串见：<seealso cref="FormatDateTime(DateTime, bool)"/>
         /// </summary>
-        /// <param name="dateTimeString"></param>
-        /// <returns></returns>
-        /// <exception cref="FormatException"></exception>
-        public static DateTime Parse(string dateTimeString)
+        /// <param name="dateTimeString">待解析的日期时间字符串</param>
+        /// <returns>解析的日期时间</returns>
+        public static DateTime ParseDateTime(this string dateTimeString)
         {
-            DateTime dateTime = new();
-
             // 常用转换, 例如 2021-01-01 / 2021-01-01 01:02:03.456
-            if (DateTime.TryParse(dateTimeString, out dateTime))
+            if (DateTime.TryParse(dateTimeString, out DateTime dateTime))
                 return dateTime;
 
             // 常用转换, 例如 20210101 20050104095500000
@@ -29,19 +35,67 @@ namespace CarrotBacktesting.Net.Common
             if (DateTime.TryParseExact(dateTimeString, formats, provider, DateTimeStyles.AllowWhiteSpaces, out dateTime))
                 return dateTime;
 
-            throw new FormatException("该字符串未被识别为有效的 DateTime");
+            throw new ArgumentException("该字符串未被识别为有效的 DateTime");
         }
 
         /// <summary>
-        /// DateTime格式化为字符串
+        /// DateTime格式化为字符串<br/>
+        /// 格式化格式如下:<br/>
+        /// <c>isDisplayTime = true</c> : "yyyy-MM-dd HH:mm:ss" : "2022-01-01 23:59:59"<br/>
+        /// <c>isDisplayTime = false</c> : "yyyy-MM-dd" : "2022-01-01"<br/>
+        /// 解析字符串见：<seealso cref="ParseDateTime(string)"/>
         /// </summary>
-        /// <param name="dateTime"></param>
-        /// <param name="isDisplayTime"></param>
-        /// <returns></returns>
-        public static string Format(DateTime dateTime, bool isDisplayTime = false)
+        /// <param name="dateTime">待格式化的日期时间</param>
+        /// <param name="isDisplayTime">是否格式化时间</param>
+        /// <returns>格式化的日期与时间字符串</returns>
+        public static string FormatDateTime(this DateTime dateTime, bool isDisplayTime = false)
         {
             return dateTime.ToString(isDisplayTime ? "yyyy-MM-dd HH:mm:ss" : "yyyy-MM-dd");
         }
+
+        /// <summary>
+        /// 二分法搜索<see cref="DateTime"/>数组内所在或向前最近的索引号<br/>
+        /// 数组内存储的时间必须为正序排列
+        /// </summary>
+        /// <param name="dateTimes">DateTime数组, 数组内存储的时间必须为正序排列</param>
+        /// <param name="dateTime">查找的时间</param>
+        /// <param name="isExist">输出是否存在此DateTime</param>
+        /// <returns>数组内所在或向前最近的索引号</returns>
+        public static int GetTimeIndex(this DateTime[] dateTimes, in DateTime dateTime, out bool isExist)
+        {
+            int index = Array.BinarySearch(dateTimes, dateTime);
+            if (index >= 0)
+            {
+                // 匹配精确日期
+                isExist = true;
+                return index;
+            }
+            else
+            {
+                isExist = false;
+                // 未匹配精确日期, 返回大于value的第一个元素, 若为最大则返回最大索引
+                //return (~index == dateTimes.Length) ? (~index - 1) : (~index);
+                // 未匹配精确日期, 返回小于value的第一个元素, 若为最小则返回最小索引
+                return (~index == 0) ? (~index) : (~index - 1);
+            }
+        }
+
+        /// <summary>
+        /// 二分法搜索<see cref="DateTime"/>数组内所在或向前最近的时间<br/>
+        /// 数组内存储的时间必须为正序排列
+        /// </summary>
+        /// <param name="dateTimes">DateTime数组, 数组内存储的时间必须为正序排列</param>
+        /// <param name="dateTime">查找的时间</param>
+        /// <returns>数组内所在或向前最近的时间</returns>
+        public static ref DateTime GetTimeNearby(this DateTime[] dateTimes, in DateTime dateTime)
+        {
+            return ref dateTimes[dateTimes.GetTimeIndex(dateTime, out _)];
+        }
+
+        // ---------- NEW METHOD END ----------
+
+        // ---------- TO BE MODIFY START ----------
+        #region TO BE MODIFY START
 
         /// <summary>
         /// 获取时间对应的索引号, 若没有匹配到精确日期, 则向前匹配最近的日期, ShareData中存储的时间必须为正序排列.
@@ -64,35 +118,6 @@ namespace CarrotBacktesting.Net.Common
             }
         }
 
-        public static (int index, bool isPrecise) GetTimeIndex(DateTime[] dateTimes, int year, int month, int day)
-        {
-            return GetTimeIndex(dateTimes, new DateTime(year, month, day));
-        }
-
-        public static (int index, bool isPrecise) GetTimeIndex(DateTime[] dateTimes, int year, int month, int day, int hour, int minute, int second)
-        {
-            return GetTimeIndex(dateTimes, new DateTime(year, month, day, hour, minute, second));
-        }
-
-        public static DateTime GetTime(DateTime[] dateTimes, DateTime first, int indexOffset)
-        {
-            (int firstIndex, _) = GetTimeIndex(dateTimes, first);
-            return dateTimes[firstIndex + indexOffset];
-        }
-
-        public static DateTime[] GetTimes(DateTime[] dateTimes, DateTime first, int startIndexOffset, int endIndexOffset)
-        {
-            (int firstIndex, _) = GetTimeIndex(dateTimes, first);
-            return dateTimes[(firstIndex + startIndexOffset)..(firstIndex + endIndexOffset + 1)];
-        }
-
-        public static DateTime[] GetTimes(DateTime[] dateTimes, DateTime start, DateTime end)
-        {
-            (int startIndex, _) = GetTimeIndex(dateTimes, start);
-            (int endIndex, _) = GetTimeIndex(dateTimes, end);
-            return dateTimes[startIndex..(endIndex + 1)];
-        }
-
         /// <summary>
         /// 获取start-end(包括start和end)的日期跨度
         /// 例如start: 2022-1-20, end:2022-3-10, span:Month
@@ -107,9 +132,9 @@ namespace CarrotBacktesting.Net.Common
             List<DateTime> dateTimes = new();
             start = span switch
             {
-                DateSpan.Day => Parse(start.ToString("yyyy-MM-dd")),
-                DateSpan.Month => Parse(start.ToString("yyyy-MM-01")),
-                DateSpan.Year => Parse(start.ToString("yyyy-01-01")),
+                DateSpan.Day => start.ToString("yyyy-MM-dd").ParseDateTime(),
+                DateSpan.Month => start.ToString("yyyy-MM-01").ParseDateTime(),
+                DateSpan.Year => start.ToString("yyyy-01-01").ParseDateTime(),
                 _ => throw new ArgumentOutOfRangeException(),
             };
             while (start <= end)
@@ -127,5 +152,7 @@ namespace CarrotBacktesting.Net.Common
             return dateTimes.ToArray();
         }
 
+        #endregion
+        // ---------- TO BE MODIFY END ----------
     }
 }
