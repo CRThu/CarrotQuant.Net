@@ -62,6 +62,12 @@ namespace CarrotBackTesting.Net.UnitTest.Storage
             Assert.IsTrue(dt1.Rows.Count == 5954);
             Assert.IsTrue(dt2.Rows.Count == 5954 && dt2.Columns.Count == 3);
             Assert.IsTrue(dt3.Rows.Count == 446);
+
+            List<string> colNames = dt3.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
+            Console.WriteLine("Column Names: "+string.Join('|', colNames));
+            Console.WriteLine("Rows: " + dt3.Rows.Count);
+
+            Assert.IsTrue(colNames.Count == 3);
         }
     }
 }
