@@ -14,7 +14,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 帧日期
         /// </summary>
-        public DateTime? DateTime { get; set; }
+        public DateTime DateTime { get; set; }
 
         /// <summary>
         /// 存放一帧市场信息
@@ -24,36 +24,16 @@ namespace CarrotBacktesting.Net.DataModel
         private Dictionary<string, ShareFrame> ShareFrames { get; set; }
 
         /// <summary>
-        /// 写入或读取股票在<see cref="DateTime"/>时间的信息帧
+        /// 读取股票在<see cref="DateTime"/>时间的信息帧
         /// </summary>
         /// <param name="stockCode">股票代码</param>
         /// <returns>返回stockCode对应帧, 若stockCode不存在则返回null</returns>
-        /// <exception cref="ArgumentNullException">传入<see cref="ShareFrame"/>为空时抛出异常</exception>
-        /// <exception cref="InvalidOperationException">传入stockCode与<see cref="ShareFrame.StockCode"/>不一致时抛出异常</exception>
-        public ShareFrame? this[string stockCode]
+        public ShareFrame this[string stockCode]
         {
             get
             {
                 return Get(stockCode);
             }
-            set
-            {
-                if(value == null)
-                    throw new ArgumentNullException(nameof(value));
-                if (stockCode != value.StockCode)
-                    throw new InvalidOperationException();
-
-                Set(value);
-            }
-        }
-
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        public MarketFrame()
-        {
-            DateTime = null;
-            ShareFrames = new();
         }
 
         /// <summary>
@@ -78,19 +58,28 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
+        /// 是否存在此时间的股票信息帧
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <returns>存在则返回true, 否则返回false</returns>
+        public bool Contains(string stockCode)
+        {
+            return ShareFrames.ContainsKey(stockCode);
+        }
+
+        /// <summary>
         /// 添加帧
         /// </summary>
-        /// <param name="shareFrame">股票帧, 若已添加相同的股票代码则覆盖</param>
+        /// <param name="shareFrame">股票帧</param>
         /// <exception cref="InvalidOperationException">新增数据帧与现有数据帧时间不符时抛出异常</exception>
-        public void Set(ShareFrame shareFrame)
+        public void Add(ShareFrame shareFrame)
         {
-            if (DateTime is null)
-                DateTime = shareFrame.DateTime;
-            else if (shareFrame.DateTime != DateTime)
-                // 新增数据与现有数据时间不符时抛出异常
+            // 新增数据与帧时间不符时抛出异常
+            if (shareFrame.DateTime != DateTime)
                 throw new InvalidOperationException();
+
             // 添加数据
-            ShareFrames[shareFrame.StockCode] = shareFrame;
+            ShareFrames.Add(shareFrame.StockCode, shareFrame);
         }
 
         /// <summary>
