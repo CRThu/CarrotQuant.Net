@@ -3,7 +3,9 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using CarrotBacktesting.Net.Common;
 using CarrotBacktesting.Net.Engine;
+using CarrotBacktesting.Net.Storage;
 using CarrotBacktesting.Net.Strategy;
+using System.Data;
 
 Console.WriteLine("Hello, World!");
 
@@ -12,39 +14,26 @@ BenchmarkRunner.Run<BackTestingEngineBenchmark>();
 [MemoryDiagnoser]
 public class BackTestingEngineBenchmark
 {
-    public bool a = false;
-    public double b = 0;
-    public (bool a, double b) ab;
-    public (bool a, double b) test;
-
-    public (bool a, double b) TestMethodUseTuple()
-    {
-        ab.a = !ab.a;
-        ab.b++;
-        return ab;
-    }
-
-    public void TestMethodUseOut(out bool x, out double y)
-    {
-        a = !a;
-        b++;
-        x = a;
-        y = b;
-    }
+    public const string SqliteDatabasePath = "../../../../../../../../Data/sz.000400-sz.000499_1d_baostock.db";
+    SqliteHelper sqliteHelper;
 
     public BackTestingEngineBenchmark()
     {
+        sqliteHelper = new();
+        sqliteHelper.Open(SqliteDatabasePath);
     }
 
     [Benchmark(Baseline = true)]
-    public void UseTuple()
+    public int UseDataTable()
     {
-        test = TestMethodUseTuple();
+        DataTable dt = sqliteHelper.QueryAsDataTable("SELECT * FROM 'sz.000400';");
+        return dt.Rows.Count;
     }
 
     [Benchmark]
-    public void UseOut()
+    public int voidUseDictionaryList()
     {
-        TestMethodUseOut(out bool a, out double b);
+        IEnumerable<IDictionary<string,object>> rows = sqliteHelper.QueryAsDictionaryList("SELECT * FROM 'sz.000400';");
+        return rows.Count();
     }
 }

@@ -25,13 +25,22 @@ namespace CarrotBackTesting.Net.UnitTest.Storage
         }
 
         [TestMethod()]
-        public void QueryDataTableTest()
+        public void QueryAsDataTableTest()
         {
             SqliteHelper sqliteHelper = new();
             sqliteHelper.Open(SqliteDatabasePath);
-            DataTable dt = sqliteHelper.QueryDataTable("SELECT * FROM 'sz.000400';");
+            DataTable dt = sqliteHelper.QueryAsDataTable("SELECT * FROM 'sz.000400';");
             Console.WriteLine($"Call: \"SELECT * FROM 'sz.000400';\"\nReturn: {dt.Rows.Count} rows DataTable.");
             Assert.IsTrue(dt.Rows.Count == 5954);
+        }
+
+        [TestMethod()]
+        public void QueryAsDictionaryListTest()
+        {
+            SqliteHelper sqliteHelper = new();
+            sqliteHelper.Open(SqliteDatabasePath);
+            var rows = sqliteHelper.QueryAsDictionaryList("SELECT * FROM 'sz.000400';");
+            Assert.IsTrue(rows.Count() == 5954);
         }
 
         [TestMethod()]
@@ -42,6 +51,7 @@ namespace CarrotBackTesting.Net.UnitTest.Storage
             string[] names = sqliteHelper.GetTableNames().ToArray();
             Console.WriteLine($"Return: {names.Length} table names.");
             Assert.IsTrue(names.Length == 30);
+            Console.WriteLine(string.Join('|', names.Take(5)));
         }
 
         [TestMethod()]
@@ -64,7 +74,7 @@ namespace CarrotBackTesting.Net.UnitTest.Storage
             Assert.IsTrue(dt3.Rows.Count == 446);
 
             List<string> colNames = dt3.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
-            Console.WriteLine("Column Names: "+string.Join('|', colNames));
+            Console.WriteLine("Column Names: " + string.Join('|', colNames));
             Console.WriteLine("Rows: " + dt3.Rows.Count);
 
             Assert.IsTrue(colNames.Count == 3);
