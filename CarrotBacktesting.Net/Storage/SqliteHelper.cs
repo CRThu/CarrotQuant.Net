@@ -30,7 +30,7 @@ namespace CarrotBacktesting.Net.Storage
         }
 
         /// <summary>
-        /// 查询语句，返回首个T类型数据
+        /// 查询语句, 返回首个T类型数据
         /// </summary>
         /// <typeparam name="T">返回数据类型</typeparam>
         /// <param name="query">查询语句</param>
@@ -42,11 +42,11 @@ namespace CarrotBacktesting.Net.Storage
         }
 
         /// <summary>
-        /// 查询语句，返回DataTable类型数据
+        /// 查询语句, 返回DataTable类型数据
         /// </summary>
         /// <param name="query"></param>
         /// <returns>返回DataTable类型查询结果</returns>
-        public DataTable QueryDataTable(string query)
+        public DataTable QueryAsDataTable(string query)
         {
             //Console.WriteLine($"SqliteHelper.QueryDataTable({query}) called.");
             DataTable table = new();
@@ -55,13 +55,23 @@ namespace CarrotBacktesting.Net.Storage
         }
 
         /// <summary>
+        /// 查询语句, 返回多行字典数据
+        /// </summary>
+        /// <param name="query"></param>
+        /// <returns>返回多行字典数据</returns>
+        public IEnumerable<IDictionary<string, object>> QueryAsDictionaryList(string query)
+        {
+            return connection.Query(query).Cast<IDictionary<string, object>>();
+        }
+
+        /// <summary>
         /// 查询数据库所有表名并返回
         /// </summary>
         /// <returns>返回数据库所有表名</returns>
         public IEnumerable<string> GetTableNames()
         {
-            DataTable tbs = QueryDataTable("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
-            return DataTableMisc.GetColumn<string>(tbs, "name");
+            var rows = QueryAsDictionaryList("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
+            return rows.Select(kv => (string)kv["name"]);
         }
 
         /// <summary>
@@ -93,7 +103,7 @@ namespace CarrotBacktesting.Net.Storage
             string queryCmd = $"SELECT {selectStatement} FROM '{tableName}'{whereStatement};";
 
             //Console.WriteLine($"SqliteHelper.QueryDataTable({queryCmd}) called.");
-            DataTable dataTable = QueryDataTable(queryCmd);
+            DataTable dataTable = QueryAsDataTable(queryCmd);
 
             return dataTable;
         }
