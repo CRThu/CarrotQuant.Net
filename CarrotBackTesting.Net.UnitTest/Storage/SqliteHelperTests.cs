@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Data;
 using CarrotBacktesting.Net.Storage;
+using CarrotBacktesting.Net.DataModel;
 
 namespace CarrotBackTesting.Net.UnitTest.Storage
 {
@@ -41,6 +42,8 @@ namespace CarrotBackTesting.Net.UnitTest.Storage
             sqliteHelper.Open(SqliteDatabasePath);
             var rows = sqliteHelper.QueryAsDictionaryList("SELECT * FROM 'sz.000400';");
             Assert.IsTrue(rows.Count() == 5954);
+            var types = rows.First().Select(kv => kv.Key + "|" + kv.Value.GetType().FullName);
+            Console.WriteLine(string.Join('\n', types));
         }
 
         [TestMethod()]
@@ -59,25 +62,37 @@ namespace CarrotBackTesting.Net.UnitTest.Storage
         {
             SqliteHelper sqliteHelper = new();
             sqliteHelper.Open(SqliteDatabasePath);
-            DataTable dt1 = sqliteHelper.GetTable("sz.000400");
-            DataTable dt2 = sqliteHelper.GetTable("sz.000400",
+            var dt1 = sqliteHelper.GetTable("sz.000400");
+            var dt2 = sqliteHelper.GetTable("sz.000400",
                 new string[] { "[index]", "交易日期", "收盘价" });
-            DataTable dt3 = sqliteHelper.GetTable("sz.000400",
+            var dt3 = sqliteHelper.GetTable("sz.000400",
                 new string[] { "[index]", "交易日期", "收盘价" },
                 ("交易日期", "2020-01-01", "2022-12-31", FilterCondition.BigEqualAndSmallEqual));
+            var dt4 = sqliteHelper.GetTable("sz.000400",
+                new string[] { "[index]", "交易日期", "收盘价" },
+                shareFrameMapper: new ShareFrameMapper()
+                {
+                    ["[index]"] = "[index]",
+                    ["交易日期"] = "DateTime",
+                    ["收盘价"] = "close"
+                });
 
             // SELECT * FROM 'sz.000400';
             // SELECT [index],交易日期,收盘价 FROM 'sz.000400';
             // SELECT [index],交易日期,收盘价 FROM 'sz.000400' WHERE 交易日期 >= '2020-01-01' AND 交易日期 <= '2022-12-31';
-            Assert.IsTrue(dt1.Rows.Count == 5954);
-            Assert.IsTrue(dt2.Rows.Count == 5954 && dt2.Columns.Count == 3);
-            Assert.IsTrue(dt3.Rows.Count == 446);
+            Assert.IsTrue(dt1.Count() == 5954);
+            Assert.IsTrue(dt2.Count() == 5954 && dt2.First().Count == 3);
+            Assert.IsTrue(dt3.Count() == 446);
 
-            List<string> colNames = dt3.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
+            List<string> colNames = dt2.First().Keys.ToList();
             Console.WriteLine("Column Names: " + string.Join('|', colNames));
-            Console.WriteLine("Rows: " + dt3.Rows.Count);
+            Console.WriteLine("Rows: " + dt3.Count());
 
             Assert.IsTrue(colNames.Count == 3);
+
+
+            List<string> colNames2 = dt4.First().Keys.ToList();
+            Console.WriteLine("Column Names: " + string.Join('|', colNames2));
         }
     }
 }

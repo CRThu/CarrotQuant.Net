@@ -128,6 +128,20 @@ namespace CarrotBacktesting.Net.DataModel
             Data = kv;
         }
 
+        //public ShareFrame(IDictionary<string, object> frameDictionary)
+        //{
+        //    StockCode = Set();
+        //    DateTime = dateTime;
+        //    OpenPrice = openPrice;
+        //    HighPrice = highPrice;
+        //    LowPrice = lowPrice;
+        //    ClosePrice = closePrice;
+        //    Volume = volume;
+        //    IsTrading = isTrading;
+        //    Data = kv;
+
+        //}
+
         /// <summary>
         /// 新增数据键值对
         /// </summary>

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Dapper;
 using System.Diagnostics;
 using CarrotBacktesting.Net.Common;
+using CarrotBacktesting.Net.DataModel;
 
 namespace CarrotBacktesting.Net.Storage
 {
@@ -44,7 +45,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 查询语句, 返回DataTable类型数据
         /// </summary>
-        /// <param name="query"></param>
+        /// <param name="query">查询语句</param>
         /// <returns>返回DataTable类型查询结果</returns>
         public DataTable QueryAsDataTable(string query)
         {
@@ -57,7 +58,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 查询语句, 返回多行字典数据
         /// </summary>
-        /// <param name="query"></param>
+        /// <param name="query">查询语句</param>
         /// <returns>返回多行字典数据</returns>
         public IEnumerable<IDictionary<string, object>> QueryAsDictionaryList(string query)
         {
@@ -75,19 +76,32 @@ namespace CarrotBacktesting.Net.Storage
         }
 
         /// <summary>
-        /// 查询数据库并返回
+        /// 查询数据表并返回
         /// TODO: 过滤器优化
         /// </summary>
         /// <param name="tableName">表名</param>
         /// <param name="columnNames">字段名数组</param>
         /// <param name="filter">过滤器, (过滤字段名, a, b, 过滤条件)</param>
-        /// <returns>返回DataTable类型查询结果</returns>
-        public DataTable GetTable(string tableName, string[]? columnNames = null,
-            (string columnName, string a, string b, FilterCondition fd)? filter = null)
+        /// <param name="shareFrameMapper">字段映射信息存储类</param>
+        /// <returns>返回表查询结果</returns>
+        public IEnumerable<IDictionary<string, object>> GetTable(string tableName, string[]? columnNames = null,
+            (string columnName, string a, string b, FilterCondition fd)? filter = null, ShareFrameMapper? shareFrameMapper = null)
         {
+
             string selectStatement;
             if (columnNames != null)
-                selectStatement = string.Join(',', columnNames);
+            {
+                List<string> fields = new(columnNames);
+                // SELECT 开盘价 as open,最高价 as high,最低价 as 最低价,收盘价 as close FROM 'sz.000400'
+                if (shareFrameMapper != null)
+                {
+                    for (int i = 0; i < fields.Count; i++)
+                    {
+                        fields[i] = fields[i] + " as " + shareFrameMapper[fields[i]];
+                    }
+                }
+                selectStatement = string.Join(',', fields);
+            }
             else
                 selectStatement = "*";
 
@@ -103,9 +117,9 @@ namespace CarrotBacktesting.Net.Storage
             string queryCmd = $"SELECT {selectStatement} FROM '{tableName}'{whereStatement};";
 
             //Console.WriteLine($"SqliteHelper.QueryDataTable({queryCmd}) called.");
-            DataTable dataTable = QueryAsDataTable(queryCmd);
+            var table = QueryAsDictionaryList(queryCmd);
 
-            return dataTable;
+            return table;
         }
     }
 
