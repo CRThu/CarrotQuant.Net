@@ -36,5 +36,14 @@ namespace CarrotBacktesting.Net.DataModel
 
             Data[shareFrame.DateTime].Add(shareFrame);
         }
+
+        /// <summary>
+        /// 添加股票数据字典集合
+        /// </summary>
+        /// <param name="shareFrames"></param>
+        public void AddRange(IEnumerable<IDictionary<string, object>> shareFrames)
+        {
+            // TODO
+        }
     }
 }

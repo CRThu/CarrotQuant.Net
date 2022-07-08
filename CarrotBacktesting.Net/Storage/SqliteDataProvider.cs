@@ -32,7 +32,7 @@ namespace CarrotBacktesting.Net.Storage
             // 所需所有字段
             string[] cols = ArrayMisc.ArrayCombine(new string[] { timeCol }, dataCols, strCols);
 
-            DataTable table = new();
+            IEnumerable<IDictionary<string, object>> table;
             if (startTime is null && endTime is null)
             {
                 table = sqliteHelper.GetTable(shareCode, cols);
@@ -43,7 +43,7 @@ namespace CarrotBacktesting.Net.Storage
             }
 
             // TODO
-            // DATATABLE 2 SHAREDATA
+            // IEnumerable<IDictionary<string, object>> 2 SHAREDATA
             return new MarketData();
         }
     }
