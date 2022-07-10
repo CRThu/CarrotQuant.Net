@@ -93,6 +93,7 @@ namespace CarrotBacktesting.Net.Storage
             {
                 List<string> fields = new(columnNames);
                 // SELECT 开盘价 as open,最高价 as high,最低价 as 最低价,收盘价 as close FROM 'sz.000400'
+                // SELECT 交易日期 as DateTime,收盘价 as close FROM 'sz.000400' WHERE DateTime >= '2020-01-01' AND DateTime <= '2022-12-31';
                 if (shareFrameMapper != null)
                 {
                     for (int i = 0; i < fields.Count; i++)

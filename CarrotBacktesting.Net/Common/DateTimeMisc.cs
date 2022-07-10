@@ -48,7 +48,7 @@ namespace CarrotBacktesting.Net.Common
         /// <param name="dateTime">待格式化的日期时间</param>
         /// <param name="isDisplayTime">是否格式化时间</param>
         /// <returns>格式化的日期与时间字符串</returns>
-        public static string FormatDateTime(this DateTime dateTime, bool isDisplayTime = false)
+        public static string FormatDateTime(this DateTime dateTime, bool isDisplayTime = true)
         {
             return dateTime.ToString(isDisplayTime ? "yyyy-MM-dd HH:mm:ss" : "yyyy-MM-dd");
         }

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CarrotBacktesting.Net.Common;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -128,19 +129,24 @@ namespace CarrotBacktesting.Net.DataModel
             Data = kv;
         }
 
-        //public ShareFrame(IDictionary<string, object> frameDictionary)
-        //{
-        //    StockCode = Set();
-        //    DateTime = dateTime;
-        //    OpenPrice = openPrice;
-        //    HighPrice = highPrice;
-        //    LowPrice = lowPrice;
-        //    ClosePrice = closePrice;
-        //    Volume = volume;
-        //    IsTrading = isTrading;
-        //    Data = kv;
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="frameDictionary">字典接口导入数据</param>
+        /// <param name="stockCode">股票代码</param>
+        public ShareFrame(IDictionary<string, object> frameDictionary, string? stockCode = null)
+        {
+            StockCode = "";
+            Data = new();
 
-        //}
+            if (stockCode is not null)
+                StockCode = stockCode;
+
+            foreach (var kv in frameDictionary)
+            {
+                Set(kv.Key, kv.Value);
+            }
+        }
 
         /// <summary>
         /// 新增数据键值对
@@ -174,14 +180,14 @@ namespace CarrotBacktesting.Net.DataModel
         {
             switch (key)
             {
-                case "Code" or "StockCode": StockCode = val; break;
-                case "Date" or "Time" or "DateTime": DateTime = val; break;
-                case "Open" or "OpenPrice": OpenPrice = val; break;
-                case "High" or "HighPrice": HighPrice = val; break;
-                case "Low" or "LowPrice": LowPrice = val; break;
-                case "Close" or "ClosePrice": ClosePrice = val; break;
-                case "Volume": Volume = val; break;
-                case "IsTrading": IsTrading = val; break;
+                case "StockCode": StockCode = DynamicConverter.GetValue<string>(val); break;
+                case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(val); break;
+                case "OpenPrice": OpenPrice = DynamicConverter.GetValue<double>(val); break;
+                case "HighPrice": HighPrice = DynamicConverter.GetValue<double>(val); break;
+                case "LowPrice": LowPrice = DynamicConverter.GetValue<double>(val); break;
+                case "ClosePrice": ClosePrice = DynamicConverter.GetValue<double>(val); break;
+                case "Volume": Volume = DynamicConverter.GetValue<double>(val); break;
+                case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(val); break;
                 default: SetKv(key, val); break;
             };
         }
