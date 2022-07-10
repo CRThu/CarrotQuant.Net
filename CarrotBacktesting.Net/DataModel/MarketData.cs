@@ -117,6 +117,10 @@ namespace CarrotBacktesting.Net.DataModel
         /// <returns>返回帧, 若此时间帧不存在则返回向前搜索最近的时间帧, 若向前搜索不存在帧则返回最早时间</returns>
         public MarketFrame GetNearby(DateTime dateTime)
         {
+            // 若存在则直接返回
+            if (TryGet(dateTime, out MarketFrame? marketFrame))
+                return marketFrame!;
+
             // 若时间缓存不是最新的则刷新
             RefrehCache();
 

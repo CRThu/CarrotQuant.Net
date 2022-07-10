@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBackTesting.Net.UnitTest.Common
+namespace CarrotBackTesting.Net.Common
 {
     public static class CollectionVerify
     {
