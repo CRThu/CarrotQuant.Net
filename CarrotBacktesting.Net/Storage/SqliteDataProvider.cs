@@ -27,24 +27,21 @@ namespace CarrotBacktesting.Net.Storage
             sqliteHelper.Open(dbPath);
         }
 
-        public MarketData GetShareHistoryData(string shareCode, string timeCol, string[]? dataCols = null, string[]? strCols = null, DateTime? startTime = null, DateTime? endTime = null)
+        public MarketData GetShareHistoryData(string stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
         {
-            // 所需所有字段
-            string[] cols = ArrayMisc.ArrayCombine(new string[] { timeCol }, dataCols, strCols);
-
             IEnumerable<IDictionary<string, object>> table;
             if (startTime is null && endTime is null)
             {
-                table = sqliteHelper.GetTable(shareCode, cols);
+                table = sqliteHelper.GetTable(stockCode, fields);
             }
             else
             {
-                table = sqliteHelper.GetTable(shareCode, cols, (timeCol, startTime.ToString(), endTime.ToString(), FilterCondition.BigEqualAndSmallEqual)!);
+                table = sqliteHelper.GetTable(stockCode, fields, ("DateTime", startTime.ToString(), endTime.ToString(), FilterCondition.BigEqualAndSmallEqual)!);
             }
 
-            // TODO
-            // IEnumerable<IDictionary<string, object>> 2 SHAREDATA
-            return new MarketData();
+            MarketDataBuilder marketDataBuilder = new();
+            marketDataBuilder.AddRange(stockCode, table);
+            return marketDataBuilder.Data;
         }
     }
 }
