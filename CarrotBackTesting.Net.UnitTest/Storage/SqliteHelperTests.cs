@@ -8,7 +8,7 @@ using System.Data;
 using CarrotBacktesting.Net.Storage;
 using CarrotBacktesting.Net.DataModel;
 
-namespace CarrotBackTesting.Net.UnitTest.Storage
+namespace CarrotBacktesting.Net.Storage.Tests
 {
     [TestClass()]
     public class SqliteHelperTests

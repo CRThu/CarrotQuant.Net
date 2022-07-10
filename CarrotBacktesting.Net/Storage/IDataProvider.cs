@@ -16,14 +16,11 @@ namespace CarrotBacktesting.Net.Storage
         /// 获取历史股票数据
         /// </summary>
         /// <param name="shareCode">股票代码</param>
-        /// <param name="timeCol">时间列名</param>
-        /// <param name="dataCols">数据列名</param>
-        /// <param name="stringCols">字符串列名</param>
+        /// <param name="fields">字段名</param>
         /// <param name="startTime">开始时间</param>
         /// <param name="endTime">结束时间</param>
         /// <returns>存放历史数据的<see cref="ShareData"/>类</returns>
-        public MarketData GetShareHistoryData(string shareCode,
-            string timeCol, string[]? dataCols = null, string[]? stringCols = null,
+        public MarketData GetShareHistoryData(string shareCode, string[] fields,
             DateTime? startTime = null, DateTime? endTime = null);
     }
 }

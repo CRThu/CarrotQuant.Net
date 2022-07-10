@@ -1,17 +1,16 @@
 ﻿#define TA_SAR_LOOSE
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using CarrotBacktesting.NET.Indicator;
+using CarrotBacktesting.Net.Indicator;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
-using CarrotBackTesting.Net.UnitTest.Common;
-using CarrotBacktesting.Net.Indicator;
+using CarrotBackTesting.Net.Common;
 
-namespace CarrotBacktesting.NET.Indicator.Tests
+namespace CarrotBacktesting.Net.Indicator.Tests
 {
     [TestClass()]
     public class TechnicalIndicatorTests
