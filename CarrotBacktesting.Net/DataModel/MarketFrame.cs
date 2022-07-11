@@ -37,6 +37,11 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
+        /// 获取帧存储的股票代码
+        /// </summary>
+        public string[] StockCodes => ShareFrames.Keys.ToArray();
+
+        /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="dateTime">市场帧日期/时间</param>

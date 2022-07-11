@@ -1,9 +1,4 @@
 ﻿using CarrotBacktesting.Net.Common;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.DataModel
 {
@@ -28,7 +23,24 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// MarketFrames Keys时间集合缓存
         /// </summary>
-        private DateTime[] DateTimesCache { get; set; }
+        private DateTime[] dateTimesCache;
+        /// <summary>
+        /// MarketFrames Keys时间集合缓存访问器
+        /// </summary>
+        private DateTime[] DateTimesCache
+        {
+            get
+            {
+                // 若时间缓存不是最新的则刷新
+                RefrehCache();
+                return dateTimesCache;
+            }
+            set
+            {
+                dateTimesCache = value;
+
+            }
+        }
 
         /// <summary>
         /// 读取时间的市场信息, 若时间不存在则返回向前搜索最近的时间帧, 若向前搜索不存在帧则返回最早时间
@@ -42,6 +54,29 @@ namespace CarrotBacktesting.Net.DataModel
                 return Get(dateTime);
             }
         }
+
+        /// <summary>
+        /// 获取时间索引对应的MarketFrame, 顺序为时间升序
+        /// </summary>
+        /// <param name="index">索引号</param>
+        /// <returns>返回时间索引对应的MarketFrame</returns>
+        public MarketFrame this[int index]
+        {
+            get
+            {
+                return Get(index);
+            }
+        }
+
+        /// <summary>
+        /// 获取存放时间帧数量
+        /// </summary>
+        public int Count => MarketFrames.Count;
+
+        /// <summary>
+        /// 获取时间列表
+        /// </summary>
+        public DateTime[] Times => DateTimesCache;
 
         /// <summary>
         /// 构造函数
@@ -100,6 +135,16 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
+        /// 获取时间索引对应的MarketFrame, 顺序为时间升序
+        /// </summary>
+        /// <param name="index">索引号</param>
+        /// <returns>返回时间索引对应的MarketFrame</returns>
+        public MarketFrame Get(int index)
+        {
+            return MarketFrames[DateTimesCache[index]];
+        }
+
+        /// <summary>
         /// 获取此时间对应的市场信息帧
         /// </summary>
         /// <param name="dateTime">时间</param>
@@ -120,9 +165,6 @@ namespace CarrotBacktesting.Net.DataModel
             // 若存在则直接返回
             if (TryGet(dateTime, out MarketFrame? marketFrame))
                 return marketFrame!;
-
-            // 若时间缓存不是最新的则刷新
-            RefrehCache();
 
             // 二分法查找最新时间, 若不存在则向前模糊时间查找
             var dtnb = DateTimesCache.GetTimeNearby(dateTime);
