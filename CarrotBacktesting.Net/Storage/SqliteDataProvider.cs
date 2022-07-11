@@ -41,7 +41,7 @@ namespace CarrotBacktesting.Net.Storage
 
             MarketDataBuilder marketDataBuilder = new();
             marketDataBuilder.AddRange(stockCode, table);
-            return marketDataBuilder.Data;
+            return marketDataBuilder.ToMarketData();
         }
     }
 }

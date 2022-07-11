@@ -14,14 +14,14 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 市场数据实例
         /// </summary>
-        public MarketData Data { get; set; }
+        private MarketData marketData { get; set; }
 
         /// <summary>
         /// 构造函数
         /// </summary>
         public MarketDataBuilder()
         {
-            Data = new();
+            marketData = new();
         }
 
         /// <summary>
@@ -31,10 +31,10 @@ namespace CarrotBacktesting.Net.DataModel
         public void Add(ShareFrame shareFrame)
         {
             // 若Data不包含此日期的市场信息帧则新建一帧
-            if (!Data.Contains(shareFrame.DateTime))
-                Data.Add(new MarketFrame(shareFrame.DateTime));
+            if (!marketData.Contains(shareFrame.DateTime))
+                marketData.Add(new MarketFrame(shareFrame.DateTime));
 
-            Data[shareFrame.DateTime].Add(shareFrame);
+            marketData[shareFrame.DateTime].Add(shareFrame);
         }
 
         /// <summary>
@@ -43,11 +43,20 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="shareFramesData"></param>
         public void AddRange(string stockCode, IEnumerable<IDictionary<string, object>> shareFramesData)
         {
-            foreach(var shareFrameData in shareFramesData)
+            foreach (var shareFrameData in shareFramesData)
             {
                 ShareFrame frame = new(shareFrameData, stockCode);
                 Add(frame);
             }
+        }
+
+        /// <summary>
+        /// 返回市场数据实例
+        /// </summary>
+        /// <returns>市场数据实例</returns>
+        public MarketData ToMarketData()
+        {
+            return marketData;
         }
     }
 }
