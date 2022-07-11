@@ -19,8 +19,8 @@ namespace CarrotBacktesting.Net.Storage
         /// <param name="fields">字段名</param>
         /// <param name="startTime">开始时间</param>
         /// <param name="endTime">结束时间</param>
-        /// <returns>存放历史数据的<see cref="ShareData"/>类</returns>
-        public MarketData GetShareHistoryData(string shareCode, string[] fields,
+        /// <returns>存放历史数据的<see cref="ShareFrame"/>集合</returns>
+        public ShareFrame[] GetShareHistoryData(string shareCode, string[] fields,
             DateTime? startTime = null, DateTime? endTime = null);
     }
 }

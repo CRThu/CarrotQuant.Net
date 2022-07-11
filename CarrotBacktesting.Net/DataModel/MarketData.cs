@@ -79,6 +79,11 @@ namespace CarrotBacktesting.Net.DataModel
         public DateTime[] Times => DateTimesCache;
 
         /// <summary>
+        /// 获取市场帧
+        /// </summary>
+        public IEnumerable<MarketFrame> Frames => MarketFrames.Values;
+
+        /// <summary>
         /// 构造函数
         /// </summary>
         public MarketData()

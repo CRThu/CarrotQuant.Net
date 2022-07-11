@@ -27,7 +27,7 @@ namespace CarrotBacktesting.Net.Storage
             sqliteHelper.Open(dbPath);
         }
 
-        public MarketData GetShareHistoryData(string stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
+        public ShareFrame[] GetShareHistoryData(string stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
         {
             IEnumerable<IDictionary<string, object>> table;
             if (startTime is null && endTime is null)
@@ -39,9 +39,12 @@ namespace CarrotBacktesting.Net.Storage
                 table = sqliteHelper.GetTable(stockCode, fields, ("DateTime", startTime.ToString(), endTime.ToString(), FilterCondition.BigEqualAndSmallEqual)!);
             }
 
-            MarketDataBuilder marketDataBuilder = new();
-            marketDataBuilder.AddRange(stockCode, table);
-            return marketDataBuilder.ToMarketData();
+            List<ShareFrame> frames = new();
+            foreach (var frameInfo in table)
+            {
+                frames.Add(new(frameInfo, stockCode));
+            }
+            return frames.ToArray();
         }
     }
 }
