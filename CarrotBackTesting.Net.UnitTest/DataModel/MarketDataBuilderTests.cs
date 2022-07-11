@@ -12,35 +12,26 @@ namespace CarrotBacktesting.Net.DataModel.Tests
     [TestClass()]
     public class MarketDataBuilderTests
     {
-        Dictionary<string, List<Dictionary<string, object>>> stockDict = new();
+        List<ShareFrame> frames = new();
 
         public MarketDataBuilderTests()
         {
-            List<Dictionary<string, object>> c1 = new();
-            List<Dictionary<string, object>> c2 = new();
-            List<Dictionary<string, object>> c3 = new();
-            List<Dictionary<string, object>> c4 = new();
-            c1.Add(new() { { "DateTime", "2022-01-01 09:00:00" }, { "ClosePrice", "123.456" }, { "IsTrading", "false" } });
-            c1.Add(new() { { "DateTime", "2022-01-02 09:00:00" }, { "ClosePrice", "234.456" }, { "IsTrading", "true" } });
-            c1.Add(new() { { "DateTime", "2022-01-03 09:00:00" }, { "ClosePrice", "345.456" }, { "IsTrading", "true" } });
-            stockDict.Add("code.001", c1);
-            c2.Add(new() { { "DateTime", "2022-01-03 09:00:00" }, { "ClosePrice", "456.567" }, { "IsTrading", "true" } });
-            stockDict.Add("code.002", c2);
-            c3.Add(new() { { "DateTime", "2022-01-03 09:00:00" }, { "ClosePrice", "999.999" }, { "IsTrading", "false" } });
-            c3.Add(new() { { "DateTime", "2022-01-04" }, { "ClosePrice", "999.999" }, { "IsTrading", "false" } });
-            c3.Add(new() { { "DateTime", "2022-01-05" }, { "ClosePrice", "999.999" }, { "IsTrading", "false" } });
-            stockDict.Add("code.003", c3);
-            c4.Add(new() { { "DateTime", "2022-01-04" }, { "ClosePrice", "888.888" }, { "IsTrading", "true" } });
-            c4.Add(new() { { "DateTime", "2022-01-05" }, { "ClosePrice", "888.888" }, { "IsTrading", "true" } });
-            stockDict.Add("code.004", c4);
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-01 09:00:00" }, { "ClosePrice", "123.456" }, { "IsTrading", "false" } }, "code.001"));
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-02 09:00:00" }, { "ClosePrice", "234.456" }, { "IsTrading", "true" } }, "code.001"));
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-03 09:00:00" }, { "ClosePrice", "345.456" }, { "IsTrading", "true" } }, "code.001"));
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-03 09:00:00" }, { "ClosePrice", "456.567" }, { "IsTrading", "true" } }, "code.002"));
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-03 09:00:00" }, { "ClosePrice", "999.999" }, { "IsTrading", "false" } }, "code.003"));
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-04" }, { "ClosePrice", "999.999" }, { "IsTrading", "false" } }, "code.003"));
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-05" }, { "ClosePrice", "999.999" }, { "IsTrading", "false" } }, "code.003"));
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-04" }, { "ClosePrice", "888.888" }, { "IsTrading", "true" } }, "code.004"));
+            frames.Add(new(new Dictionary<string, object>() { { "DateTime", "2022-01-05" }, { "ClosePrice", "888.888" }, { "IsTrading", "true" } }, "code.004"));
         }
 
         [TestMethod()]
         public void AddRangeTest()
         {
             MarketDataBuilder builder = new();
-            foreach (var stock in stockDict)
-                builder.AddRange(stock.Key, stock.Value);
+            builder.AddRange(frames);
 
             MarketData data = builder.ToMarketData();
 

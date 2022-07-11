@@ -28,7 +28,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         /// <param name="stockCode">股票代码</param>
         /// <returns>返回stockCode对应帧, 若stockCode不存在则返回null</returns>
-        public ShareFrame this[string stockCode]
+        public ShareFrame? this[string stockCode]
         {
             get
             {
@@ -40,6 +40,11 @@ namespace CarrotBacktesting.Net.DataModel
         /// 获取帧存储的股票代码
         /// </summary>
         public string[] StockCodes => ShareFrames.Keys.ToArray();
+
+        /// <summary>
+        /// 获取股票帧
+        /// </summary>
+        public IEnumerable<ShareFrame> Frames => ShareFrames.Values;
 
         /// <summary>
         /// 构造函数
