@@ -33,18 +33,38 @@ namespace CarrotBacktesting.Net.DataModel
             // 若Data不包含此日期的市场信息帧则新建一帧
             if (!marketData.Contains(shareFrame.DateTime))
                 marketData.Add(new MarketFrame(shareFrame.DateTime));
-
             marketData[shareFrame.DateTime].Add(shareFrame);
+        }
+
+        /// <summary>
+        /// 添加一帧股票数据
+        /// </summary>
+        /// <param name="frameDictionary">字典接口导入数据</param>
+        /// <param name="stockCode">股票代码</param>
+        public void Add(IDictionary<string, object> frameDictionary, string? stockCode = null)
+        {
+            Add(new ShareFrame(frameDictionary, stockCode));
         }
 
         /// <summary>
         /// 添加股票帧集合
         /// </summary>
-        /// <param name="shareFrame"></param>
+        /// <param name="shareFrames">帧集合</param>
         public void AddRange(IEnumerable<ShareFrame> shareFrames)
         {
             foreach (var sf in shareFrames)
                 Add(sf);
+        }
+
+        /// <summary>
+        /// 添加股票帧集合
+        /// </summary>
+        /// <param name="shareFrameDicts">帧字典信息集合</param>
+        /// <param name="stockCode">股票代码</param>
+        public void AddRange(IEnumerable<IDictionary<string, object>> shareFrameDicts, string? stockCode = null)
+        {
+            foreach (var sf in shareFrameDicts)
+                Add(new(sf, stockCode));
         }
 
         /// <summary>

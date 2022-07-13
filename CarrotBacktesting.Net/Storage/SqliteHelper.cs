@@ -12,22 +12,42 @@ using CarrotBacktesting.Net.DataModel;
 
 namespace CarrotBacktesting.Net.Storage
 {
+    /// <summary>
+    /// Sqlite操作类
+    /// </summary>
     public class SqliteHelper
     {
-        private IDbConnection connection;
         public string FileName { get; set; }
+
+        private IDbConnection Connection { get; set; }
+
+        /// <summary>
+        /// 字段映射表, 格式如下
+        /// <code>
+        /// new ShareFrameMapper()
+        /// {
+        ///     ["[index]"] = "[index]",
+        ///     ["交易日期"] = "DateTime",
+        ///     ["收盘价"] = "close"
+        /// }
+        ///  </code>
+        /// </summary>
+        private ShareFrameMapper? Mapper { get; set; }
 
         /// <summary>
         /// 打开Sqlite数据库
         /// </summary>
         /// <param name="fileName">数据库文件路径</param>
-        public void Open(string fileName)
+        /// <param name="mapper">字段映射信息存储类</param>
+        public void Open(string fileName, ShareFrameMapper? mapper = null)
         {
             FileName = fileName;
-            connection = new SqliteConnection(
+            Connection = new SqliteConnection(
                new SqliteConnectionStringBuilder() { DataSource = FileName }.ToString()
                );
-            connection.Open();
+            Connection.Open();
+
+            this.Mapper = mapper;
         }
 
         /// <summary>
@@ -39,7 +59,7 @@ namespace CarrotBacktesting.Net.Storage
         public T Query<T>(string query)
         {
             //Console.WriteLine($"SqliteHelper.Query({query}) called.");
-            return connection.ExecuteScalar<T>(query);
+            return Connection.ExecuteScalar<T>(query);
         }
 
         /// <summary>
@@ -51,7 +71,7 @@ namespace CarrotBacktesting.Net.Storage
         {
             //Console.WriteLine($"SqliteHelper.QueryDataTable({query}) called.");
             DataTable table = new();
-            table.Load(connection.ExecuteReader(query));
+            table.Load(Connection.ExecuteReader(query));
             return table;
         }
 
@@ -62,7 +82,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <returns>返回多行字典数据</returns>
         public IEnumerable<IDictionary<string, object>> QueryAsDictionaryList(string query)
         {
-            return connection.Query(query).Cast<IDictionary<string, object>>();
+            return Connection.Query(query).Cast<IDictionary<string, object>>();
         }
 
         /// <summary>
@@ -82,10 +102,9 @@ namespace CarrotBacktesting.Net.Storage
         /// <param name="tableName">表名</param>
         /// <param name="columnNames">字段名数组</param>
         /// <param name="filter">过滤器, (过滤字段名, a, b, 过滤条件)</param>
-        /// <param name="shareFrameMapper">字段映射信息存储类</param>
         /// <returns>返回表查询结果</returns>
         public IEnumerable<IDictionary<string, object>> GetTable(string tableName, string[]? columnNames = null,
-            (string columnName, string a, string b, FilterCondition fd)? filter = null, ShareFrameMapper? shareFrameMapper = null)
+            (string columnName, string a, string b, FilterCondition fd)? filter = null)
         {
 
             string selectStatement;
@@ -94,11 +113,11 @@ namespace CarrotBacktesting.Net.Storage
                 List<string> fields = new(columnNames);
                 // SELECT 开盘价 as open,最高价 as high,最低价 as 最低价,收盘价 as close FROM 'sz.000400'
                 // SELECT 交易日期 as DateTime,收盘价 as close FROM 'sz.000400' WHERE DateTime >= '2020-01-01' AND DateTime <= '2022-12-31';
-                if (shareFrameMapper != null)
+                if (Mapper != null)
                 {
                     for (int i = 0; i < fields.Count; i++)
                     {
-                        fields[i] = fields[i] + " as " + shareFrameMapper[fields[i]];
+                        fields[i] = fields[i] + " as " + Mapper[fields[i]];
                     }
                 }
                 selectStatement = string.Join(',', fields);
@@ -110,14 +129,14 @@ namespace CarrotBacktesting.Net.Storage
             if (filter != null)
             {
                 whereStatement = " WHERE";
-                whereStatement += $" {filter.Value.columnName} >= \"{filter.Value.a}\" AND {filter.Value.columnName} <= \"{filter.Value.b}\"";
+                whereStatement += $" {filter.Value.columnName} >= \'{filter.Value.a}\' AND {filter.Value.columnName} <= \'{filter.Value.b}\'";
             }
             else
                 whereStatement = string.Empty;
 
             string queryCmd = $"SELECT {selectStatement} FROM '{tableName}'{whereStatement};";
 
-            //Console.WriteLine($"SqliteHelper.QueryDataTable({queryCmd}) called.");
+            // Console.WriteLine($"SqliteHelper.QueryDataTable({queryCmd}) called.");
             var table = QueryAsDictionaryList(queryCmd);
 
             return table;

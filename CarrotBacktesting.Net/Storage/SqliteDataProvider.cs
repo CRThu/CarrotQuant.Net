@@ -20,23 +20,41 @@ namespace CarrotBacktesting.Net.Storage
     /// </summary>
     public class SqliteDataProvider : IDataProvider
     {
-        private SqliteHelper sqliteHelper = new();
+        /// <summary>
+        /// Sqlite操作类实例
+        /// </summary>
+        private SqliteHelper SqliteHelper { get; set; }
 
-        public SqliteDataProvider(string dbPath)
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="dbPath">数据库文件路径</param>
+        /// <param name="mapper">字段映射信息存储类</param>
+        public SqliteDataProvider(string dbPath, ShareFrameMapper? mapper = null)
         {
-            sqliteHelper.Open(dbPath);
+            SqliteHelper = new();
+            SqliteHelper.Open(dbPath, mapper);
         }
 
-        public ShareFrame[] GetShareHistoryData(string stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
+        /// <summary>
+        /// 获取某支股票数据
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="fields">字段集合</param>
+        /// <param name="startTime">开始时间</param>
+        /// <param name="endTime">结束时间</param>
+        /// <returns>股票数据帧集合</returns>
+        public IEnumerable<ShareFrame> GetShareData(string stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
         {
             IEnumerable<IDictionary<string, object>> table;
-            if (startTime is null && endTime is null)
+            // TODO startTime or endTime其中一个为null
+            if (startTime is null || endTime is null)
             {
-                table = sqliteHelper.GetTable(stockCode, fields);
+                table = SqliteHelper.GetTable(stockCode, fields);
             }
             else
             {
-                table = sqliteHelper.GetTable(stockCode, fields, ("DateTime", startTime.ToString(), endTime.ToString(), FilterCondition.BigEqualAndSmallEqual)!);
+                table = SqliteHelper.GetTable(stockCode, fields, ("DateTime", ((DateTime)startTime).FormatDateTime(), ((DateTime)endTime).FormatDateTime(), FilterCondition.BigEqualAndSmallEqual)!);
             }
 
             List<ShareFrame> frames = new();
@@ -44,7 +62,27 @@ namespace CarrotBacktesting.Net.Storage
             {
                 frames.Add(new(frameInfo, stockCode));
             }
-            return frames.ToArray();
+            return frames;
+        }
+
+
+        /// <summary>
+        /// 获取多支股票数据
+        /// </summary>
+        /// <param name="stockCode">股票代码集合</param>
+        /// <param name="fields">字段集合</param>
+        /// <param name="startTime">开始时间</param>
+        /// <param name="endTime">结束时间</param>
+        /// <returns>股票数据帧集合</returns>
+        public IEnumerable<ShareFrame> GetShareData(string[] stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
+        {
+            List<ShareFrame> frames = new();
+            for (int i = 0; i < stockCode.Length; i++)
+            {
+                var shareframes = GetShareData(stockCode[i], fields, startTime, endTime);
+                frames.AddRange(shareframes);
+            }
+            return frames;
         }
     }
 }
