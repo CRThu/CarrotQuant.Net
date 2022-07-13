@@ -7,19 +7,19 @@ using System.Threading.Tasks;
 using System.Data;
 using CarrotBacktesting.Net.Storage;
 using CarrotBacktesting.Net.DataModel;
+using CarrotBackTesting.Net.UnitTest.Common;
 
 namespace CarrotBacktesting.Net.Storage.Tests
 {
     [TestClass()]
     public class SqliteHelperTests
     {
-        public const string SqliteDatabasePath = "../../../../Data/sz.000400-sz.000499_1d_baostock.db";
 
         [TestMethod()]
         public void QueryTest()
         {
             SqliteHelper sqliteHelper = new();
-            sqliteHelper.Open(SqliteDatabasePath);
+            sqliteHelper.Open(UnitTestFilePath.SqliteDatabasePath);
             int d = sqliteHelper.Query<int>("SELECT COUNT(*) FROM 'sz.000400';");
             Console.WriteLine($"Call: \"SELECT COUNT(*) FROM 'sz.000400';\"\nReturn: {d}.");
             Assert.IsTrue(d == 5954);
@@ -29,7 +29,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
         public void QueryAsDataTableTest()
         {
             SqliteHelper sqliteHelper = new();
-            sqliteHelper.Open(SqliteDatabasePath);
+            sqliteHelper.Open(UnitTestFilePath.SqliteDatabasePath);
             DataTable dt = sqliteHelper.QueryAsDataTable("SELECT * FROM 'sz.000400';");
             Console.WriteLine($"Call: \"SELECT * FROM 'sz.000400';\"\nReturn: {dt.Rows.Count} rows DataTable.");
             Assert.IsTrue(dt.Rows.Count == 5954);
@@ -39,7 +39,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
         public void QueryAsDictionaryListTest()
         {
             SqliteHelper sqliteHelper = new();
-            sqliteHelper.Open(SqliteDatabasePath);
+            sqliteHelper.Open(UnitTestFilePath.SqliteDatabasePath);
             var rows = sqliteHelper.QueryAsDictionaryList("SELECT * FROM 'sz.000400';");
             Assert.IsTrue(rows.Count() == 5954);
             var types = rows.First().Select(kv => kv.Key + "|" + kv.Value.GetType().FullName);
@@ -50,7 +50,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
         public void GetTableNamesTest()
         {
             SqliteHelper sqliteHelper = new();
-            sqliteHelper.Open(SqliteDatabasePath);
+            sqliteHelper.Open(UnitTestFilePath.SqliteDatabasePath);
             string[] names = sqliteHelper.GetTableNames().ToArray();
             Console.WriteLine($"Return: {names.Length} table names.");
             Assert.IsTrue(names.Length == 30);
@@ -61,21 +61,25 @@ namespace CarrotBacktesting.Net.Storage.Tests
         public void GetTableTest()
         {
             SqliteHelper sqliteHelper = new();
-            sqliteHelper.Open(SqliteDatabasePath);
+            sqliteHelper.Open(UnitTestFilePath.SqliteDatabasePath);
             var dt1 = sqliteHelper.GetTable("sz.000400");
             var dt2 = sqliteHelper.GetTable("sz.000400",
                 new string[] { "[index]", "交易日期", "收盘价" });
             var dt3 = sqliteHelper.GetTable("sz.000400",
                 new string[] { "[index]", "交易日期", "收盘价" },
                 ("交易日期", "2020-01-01", "2022-12-31", FilterCondition.BigEqualAndSmallEqual));
-            var dt4 = sqliteHelper.GetTable("sz.000400",
-                new string[] { "[index]", "交易日期", "收盘价" },
-                shareFrameMapper: new ShareFrameMapper()
+
+
+            SqliteHelper sqliteHelper2 = new();
+            sqliteHelper2.Open(UnitTestFilePath.SqliteDatabasePath,
+                new ShareFrameMapper()
                 {
                     ["[index]"] = "[index]",
                     ["交易日期"] = "DateTime",
                     ["收盘价"] = "close"
                 });
+            var dt4 = sqliteHelper2.GetTable("sz.000400",
+                new string[] { "[index]", "交易日期", "收盘价" });
 
             // SELECT * FROM 'sz.000400';
             // SELECT [index],交易日期,收盘价 FROM 'sz.000400';
@@ -89,10 +93,16 @@ namespace CarrotBacktesting.Net.Storage.Tests
             Console.WriteLine("Rows: " + dt3.Count());
 
             Assert.IsTrue(colNames.Count == 3);
-
+            Assert.IsTrue(colNames[0] == "index");
+            Assert.IsTrue(colNames[1] == "交易日期");
+            Assert.IsTrue(colNames[2] == "收盘价");
 
             List<string> colNames2 = dt4.First().Keys.ToList();
             Console.WriteLine("Column Names: " + string.Join('|', colNames2));
+            Assert.IsTrue(colNames2.Count == 3);
+            Assert.IsTrue(colNames2[0] == "index");
+            Assert.IsTrue(colNames2[1] == "DateTime");
+            Assert.IsTrue(colNames2[2] == "close");
         }
     }
 }
