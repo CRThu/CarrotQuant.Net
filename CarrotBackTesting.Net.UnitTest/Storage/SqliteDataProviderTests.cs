@@ -34,7 +34,11 @@ namespace CarrotBacktesting.Net.Storage.Tests
             // LINES IN DATABASE: 446*5=2230
             Console.WriteLine($"Frames Count: {frames.Count()}");
             Assert.IsTrue(frames.Count() == 2230);
-            // TODO CHECK 446 5
+            foreach(var stockInfo in frames.GroupBy(f => f.StockCode))
+            {
+                Console.WriteLine($"{stockInfo.Key}:{stockInfo.Count()}");
+                Assert.IsTrue(stockInfo.Count() == 446);
+            }
         }
     }
 }
