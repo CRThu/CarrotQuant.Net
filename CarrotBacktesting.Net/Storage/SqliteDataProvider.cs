@@ -14,8 +14,8 @@ namespace CarrotBacktesting.Net.Storage
     /// 要求数据结构:<br/>
     /// 表名为股票代码<br/>
     /// 字段类型全部为TEXT<br/>
-    /// 日期字段格式为 2021-01-01 / 20210101<br/>
-    /// 时间字段格式为 2021-01-01 01:02:03.456 / 20050104095500000<br/>
+    /// 日期字段格式为 2021-01-01<br/>
+    /// 时间字段格式为 2021-01-01 01:02:03.456<br/>
     /// 表每条数据按时间正序排列
     /// </summary>
     public class SqliteDataProvider : IDataProvider
