@@ -1,4 +1,4 @@
-﻿using CarrotBacktesting.Net.DataFeed;
+﻿using CarrotBacktesting.Net.Storage;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,7 +15,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 从数据库提供数据
         /// </summary>
-        public SqliteDataFeed DataFeed { get; set; }
+        public DataFeed DataFeed { get; set; }
         /// <summary>
         /// 回测模拟设置
         /// </summary>
@@ -56,12 +56,12 @@ namespace CarrotBacktesting.Net.Engine
 
             // 数据库加载
             if (options.IsSqliteDataFeed)
-                DataFeed = new SqliteDataFeed(options.SqliteDatabasePath);
+                DataFeed = new DataFeed(options.SqliteDatabasePath);
             else
                 throw new NotImplementedException("未实现非Sqlite数据库数据载入接口");
 
             foreach (var shareName in options.ShareNames)
-                DataFeed.SetShareData(shareName, Options.DateTimeColumnName, Options.DataColumnNames, Options.StringDataColumnNames);
+                DataFeed.AddShareData(shareName, Options.DateTimeColumnName, Options.DataColumnNames, Options.StringDataColumnNames);
 
             // 数据源时间范围计算
             (DateTime minStart, DateTime maxEnd) = DataFeed.GetDateTimeRange();

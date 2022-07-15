@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CarrotBacktesting.Net.DataModel;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,6 +18,18 @@ namespace CarrotBacktesting.Net.Engine
         public bool IsSqliteDataFeed { get; set; } = true;
 
         public string SqliteDatabasePath { get; set; } = String.Empty;
+
+        /// <summary>
+        /// 字段映射信息存储类
+        /// TODO NEW
+        /// </summary>
+        public ShareFrameMapper FieldsMapper { get; set; } =
+            new ShareFrameMapper()
+            {
+                ["[index]"] = "[index]",
+                ["交易日期"] = "DateTime",
+                ["收盘价"] = "close"
+            };
 
         /// <summary>
         /// 数据库中表的交易时间列名
