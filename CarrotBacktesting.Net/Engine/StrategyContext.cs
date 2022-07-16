@@ -23,7 +23,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 市场信息帧
         /// </summary>
-        public MarketFrame MarketFrame { get; set; }
+        public OldMarketFrame MarketFrame { get; set; }
 
         /// <summary>
         /// 委托管理器
@@ -48,7 +48,7 @@ namespace CarrotBacktesting.Net.Engine
 
 
 
-        public StrategyContext(MarketFrame marketFrame)
+        public StrategyContext(OldMarketFrame marketFrame)
         {
             PortfolioManager = new PortfolioManager(marketFrame);
             MarketFrame = marketFrame;

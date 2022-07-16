@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Engine
 {
-    public class ShareFrame
+    public class OldShareFrame
     {
         /// <summary>
         /// 开盘价

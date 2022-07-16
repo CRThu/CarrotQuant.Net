@@ -11,16 +11,16 @@ namespace CarrotBacktesting.Net.Engine
     /// 目前只能存放一个时间帧内的单个股票信息
     /// TODO待重构
     /// </summary>
-    public class MarketFrame
+    public class OldMarketFrame
     {
         /// <summary>
         /// 当前日期
         /// </summary>
         public DateTime NowTime { get; set; }=new();
 
-        public Dictionary<string, ShareFrame> MarketFrameCache { get; set; } = new();
+        public Dictionary<string, OldShareFrame> MarketFrameCache { get; set; } = new();
 
-        public ShareFrame this[string shareName]
+        public OldShareFrame this[string shareName]
         {
             get
             {
@@ -32,10 +32,10 @@ namespace CarrotBacktesting.Net.Engine
         /// 构造函数
         /// </summary>
         /// <param name="shareNames"></param>
-        public MarketFrame(string[] shareNames)
+        public OldMarketFrame(string[] shareNames)
         {
             foreach (var shareName in shareNames)
-                MarketFrameCache.Add(shareName, new ShareFrame());
+                MarketFrameCache.Add(shareName, new OldShareFrame());
         }
 
         public void UpdateTime(DateTime time)

@@ -54,7 +54,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// 市场价格更新
         /// </summary>
         /// <param name="marketFrame"></param>
-        public void OnPriceUpdate(MarketFrame marketFrame)
+        public void OnPriceUpdate(OldMarketFrame marketFrame)
         {
             // 更新日期
             NowTime = marketFrame.NowTime;

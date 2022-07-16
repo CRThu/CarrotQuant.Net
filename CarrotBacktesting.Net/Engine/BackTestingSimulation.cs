@@ -28,7 +28,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 模拟市场帧
         /// </summary>
-        public MarketFrame SimulationMarketFrame { get; set; }
+        public OldMarketFrame SimulationMarketFrame { get; set; }
         /// <summary>
         /// 是否模拟结束Flag
         /// </summary>
@@ -56,7 +56,6 @@ namespace CarrotBacktesting.Net.Engine
 
             // 数据库加载
             DataFeed = new DataFeed(options);
-            DataFeed.AddShareData();
 
             // 数据源时间范围计算
             if (Options.SimulationStartDateTime == DateTime.MinValue)
