@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Engine;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -27,7 +28,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 回测配置类
         /// </summary>
-        private Engine.BackTestingSimulationOptions Options { get; set; }
+        private BackTestingSimulationOptions Options { get; set; }
 
         /// <summary>
         /// 数据存储类开始日期
@@ -43,22 +44,15 @@ namespace CarrotBacktesting.Net.Storage
         /// </summary>
         /// <param name="options"></param>
         /// <exception cref="NotImplementedException"></exception>
-        public DataFeed(Engine.BackTestingSimulationOptions options)
+        public DataFeed(BackTestingSimulationOptions options)
         {
             if (!options.IsSqliteDataFeed)
                 throw new NotImplementedException("暂不支持该格式数据源");
 
             Options = options;
             MarketDataBuilder = new();
-            IDataProvider = new SqliteDataProvider(Options.SqliteDatabasePath, Options.FieldsMapper);
             MarketData = MarketDataBuilder.ToMarketData();
-        }
-
-        /// <summary>
-        /// 载入股票数据
-        /// </summary>
-        public void AddShareData()
-        {
+            IDataProvider = new SqliteDataProvider(Options.SqliteDatabasePath, Options.FieldsMapper);
             IDataProvider.GetShareData(Options.ShareNames, Options.Fields, Options.SimulationStartDateTime, Options.SimulationEndDateTime);
         }
 

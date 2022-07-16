@@ -19,7 +19,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 当前时间市场帧
         /// </summary>
-        public MarketFrame MarketFrame { get; set; }
+        public OldMarketFrame MarketFrame { get; set; }
 
         /// <summary>
         /// 委托单管理器
@@ -46,7 +46,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// </summary>
         public Analyzer.Analyzer Analyzer { get; set; }
 
-        public PortfolioManager(MarketFrame marketFrame)
+        public PortfolioManager(OldMarketFrame marketFrame)
         {
             Analyzer = new Analyzer.Analyzer(TransactionLogger, PnlLogger);
             MarketFrame = marketFrame;

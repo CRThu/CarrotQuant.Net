@@ -18,7 +18,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 当前时间市场帧
         /// </summary>
-        public MarketFrame MarketFrame;
+        public OldMarketFrame MarketFrame;
         public PortfolioManager Portfolio;
 
         public delegate void OrderDealDelegate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation);
@@ -27,7 +27,7 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public event OrderDealDelegate? OrderDealEvent;
 
-        public BackTestingExchange(PortfolioManager portfolio, MarketFrame marketFrame)
+        public BackTestingExchange(PortfolioManager portfolio, OldMarketFrame marketFrame)
         {
             Portfolio = portfolio;
             MarketFrame = marketFrame;
