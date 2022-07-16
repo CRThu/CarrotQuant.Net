@@ -55,20 +55,14 @@ namespace CarrotBacktesting.Net.Engine
             Options = options;
 
             // 数据库加载
-            if (options.IsSqliteDataFeed)
-                DataFeed = new DataFeed(options.SqliteDatabasePath);
-            else
-                throw new NotImplementedException("未实现非Sqlite数据库数据载入接口");
-
-            foreach (var shareName in options.ShareNames)
-                DataFeed.AddShareData(shareName, Options.DateTimeColumnName, Options.DataColumnNames, Options.StringDataColumnNames);
+            DataFeed = new DataFeed(options);
+            DataFeed.AddShareData();
 
             // 数据源时间范围计算
-            (DateTime minStart, DateTime maxEnd) = DataFeed.GetDateTimeRange();
             if (Options.SimulationStartDateTime == DateTime.MinValue)
-                Options.SimulationStartDateTime = minStart;
+                Options.SimulationStartDateTime = DataFeed.StartTime;
             if (Options.SimulationEndDateTime == DateTime.MaxValue)
-                Options.SimulationEndDateTime = maxEnd;
+                Options.SimulationEndDateTime = DataFeed.EndTime;
 
             // 初始化模拟属性
             SimulationTime = Options.SimulationStartDateTime;
@@ -81,58 +75,15 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public void UpdateFrame()
         {
-            // 更新市场帧
-            foreach (var shareName in Options.ShareNames)
-            {
-                (int index, bool isPrecise) = DataFeed.GetTimeIndex(shareName, SimulationTime);
-                (double[] ohlc, bool isActive) = GetPrice(index, isPrecise, shareName);
-                SimulationMarketFrame.UpdateTime(SimulationTime);
-                SimulationMarketFrame.MarketFrameCache[shareName].UpdatePrice(ohlc, isActive);
-
-                foreach (var additionalStringColumnName in Options.AdditionalStringColumnNames)
-                {
-                    var val = DataFeed.GetStringData(shareName, index, additionalStringColumnName);
-                    SimulationMarketFrame.MarketFrameCache[shareName].UpdateAdditionalData(additionalStringColumnName, val);
-                }
-                foreach (var additionalDataColumnName in Options.AdditionalDataColumnNames)
-                {
-                    var val = DataFeed.GetData(shareName, index, additionalDataColumnName);
-                    SimulationMarketFrame.MarketFrameCache[shareName].UpdateAdditionalData(additionalDataColumnName, val);
-                }
-            }
+            // TODO
+            bool isExist = DataFeed.GetMarketData(SimulationTime, out DataModel.MarketFrame frame);
+            SimulationMarketFrame = new(new string[] { });
+            throw new NotImplementedException();
 
             // 下一次更新时间并检测模拟是否结束
             SimulationTime += Options.SimulationDuration;
             if (SimulationTime >= Options.SimulationEndDateTime)
                 IsSimulationEnd = true;
-        }
-
-        /// <summary>
-        /// 获取OHLC价格, 若使能停牌标志则判断是否停牌
-        /// </summary>
-        /// <param name="index"></param>
-        /// <param name="isPrecise"></param>
-        /// <param name="shareName"></param>
-        /// <returns></returns>
-        public (double[] ohlc, bool isActive) GetPrice(int index, bool isPrecise, string shareName)
-        {
-            double[] ohlc = new[] {
-                DataFeed.GetPrice(shareName, index, Options.OpenColumnName),
-                DataFeed.GetPrice(shareName, index, Options.HighColumnName),
-                DataFeed.GetPrice(shareName, index, Options.LowColumnName),
-                DataFeed.GetPrice(shareName, index, Options.CloseColumnName),
-                };
-
-            // 若精确查找有具体日期, 则寻找是否存在停牌标志
-            if (Options.IsEnableShareStatusFlag && isPrecise)
-            {
-                string shareStatus = DataFeed.GetStringData(shareName, index, Options.ShareStatusColumnName);
-                if (shareStatus != Options.ShareStatusCanTradeName)
-                {
-                    isPrecise = false;
-                }
-            }
-            return (ohlc, isPrecise);
         }
     }
 }

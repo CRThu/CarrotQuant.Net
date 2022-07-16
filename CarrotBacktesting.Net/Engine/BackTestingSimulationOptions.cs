@@ -32,6 +32,22 @@ namespace CarrotBacktesting.Net.Engine
             };
 
         /// <summary>
+        /// 字段信息集合
+        /// TODO NEW
+        /// </summary>
+        public string[] Fields
+        {
+            get
+            {
+                List<string> fieldList = new();
+                fieldList.Add(DateTimeColumnName);
+                fieldList.AddRange(DataColumnNames);
+                fieldList.AddRange(StringDataColumnNames);
+                return fieldList.ToArray();
+            }
+        }
+
+        /// <summary>
         /// 数据库中表的交易时间列名
         /// </summary>
         public string DateTimeColumnName { get; set; } = "交易日期";

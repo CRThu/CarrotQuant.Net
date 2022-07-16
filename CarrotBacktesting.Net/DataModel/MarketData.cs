@@ -23,7 +23,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// MarketFrames Keys时间集合缓存
         /// </summary>
-        private DateTime[] dateTimesCache;
+        private DateTime[] dateTimesCache = Array.Empty<DateTime>();
         /// <summary>
         /// MarketFrames Keys时间集合缓存访问器
         /// </summary>
@@ -38,7 +38,6 @@ namespace CarrotBacktesting.Net.DataModel
             set
             {
                 dateTimesCache = value;
-
             }
         }
 
@@ -69,14 +68,24 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
-        /// 获取存放时间帧数量
+        /// 时间帧数量
         /// </summary>
         public int Count => MarketFrames.Count;
 
         /// <summary>
-        /// 获取时间列表
+        /// 时间帧列表
         /// </summary>
         public DateTime[] Times => DateTimesCache;
+
+        /// <summary>
+        /// 开始时间
+        /// </summary>
+        public DateTime StartTime => Times.First();
+
+        /// <summary>
+        /// 结束时间
+        /// </summary>
+        public DateTime EndTime => Times.Last();
 
         /// <summary>
         /// 获取市场帧
@@ -89,7 +98,6 @@ namespace CarrotBacktesting.Net.DataModel
         public MarketData()
         {
             MarketFrames = new();
-            DateTimesCache = Array.Empty<DateTime>();
         }
 
         /// <summary>
@@ -164,16 +172,21 @@ namespace CarrotBacktesting.Net.DataModel
         /// 获取此时间对应或相近的市场信息帧
         /// </summary>
         /// <param name="dateTime">时间</param>
-        /// <returns>返回帧, 若此时间帧不存在则返回向前搜索最近的时间帧, 若向前搜索不存在帧则返回最早时间</returns>
-        public MarketFrame GetNearby(DateTime dateTime)
+        /// <param name="frame">返回帧, 若此时间帧不存在则返回向前搜索最近的时间帧, 若向前搜索不存在帧则返回最早时间</param>
+        /// <returns>是否为此时间对应市场信息帧</returns>
+        public bool GetNearby(DateTime dateTime, out MarketFrame frame)
         {
             // 若存在则直接返回
             if (TryGet(dateTime, out MarketFrame? marketFrame))
-                return marketFrame!;
+            {
+                frame = marketFrame!;
+                return true;
+            }
 
             // 二分法查找最新时间, 若不存在则向前模糊时间查找
             var dtnb = DateTimesCache.GetTimeNearby(dateTime);
-            return MarketFrames[dtnb];
+            frame = MarketFrames[dtnb];
+            return false;
         }
     }
 }
