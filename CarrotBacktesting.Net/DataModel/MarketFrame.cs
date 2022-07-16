@@ -27,8 +27,8 @@ namespace CarrotBacktesting.Net.DataModel
         /// 读取股票在<see cref="DateTime"/>时间的信息帧
         /// </summary>
         /// <param name="stockCode">股票代码</param>
-        /// <returns>返回stockCode对应帧, 若stockCode不存在则返回null</returns>
-        public ShareFrame? this[string stockCode]
+        /// <returns>返回stockCode对应帧</returns>
+        public ShareFrame this[string stockCode]
         {
             get
             {
@@ -96,13 +96,10 @@ namespace CarrotBacktesting.Net.DataModel
         /// 获取帧
         /// </summary>
         /// <param name="stockCode">股票代码</param>
-        /// <returns>返回stockCode对应帧, 若stockCode不存在则返回null</returns>
-        public ShareFrame? Get(string stockCode)
+        /// <returns>返回stockCode对应帧</returns>
+        public ShareFrame Get(string stockCode)
         {
-            if (ShareFrames.TryGetValue(stockCode, out ShareFrame? v))
-                return v;
-            else
-                return null;
+            return ShareFrames[stockCode];
         }
     }
 }
