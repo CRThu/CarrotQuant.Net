@@ -17,7 +17,7 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public bool IsSqliteDataFeed { get; set; } = true;
 
-        public string SqliteDatabasePath { get; set; } = String.Empty;
+        public string SqliteDatabasePath { get; set; } = string.Empty;
 
         /// <summary>
         /// 字段映射信息存储类

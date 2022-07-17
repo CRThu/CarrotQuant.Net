@@ -40,6 +40,11 @@ namespace CarrotBacktesting.Net.Storage
         public DateTime EndTime => MarketData.EndTime;
 
         /// <summary>
+        /// 时间帧数量
+        /// </summary>
+        public int Count => MarketData.Count;
+
+        /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="options"></param>
@@ -53,7 +58,8 @@ namespace CarrotBacktesting.Net.Storage
             MarketDataBuilder = new();
             MarketData = MarketDataBuilder.ToMarketData();
             IDataProvider = new SqliteDataProvider(Options.SqliteDatabasePath, Options.FieldsMapper);
-            IDataProvider.GetShareData(Options.ShareNames, Options.Fields, Options.SimulationStartDateTime, Options.SimulationEndDateTime);
+            var frames = IDataProvider.GetShareData(Options.ShareNames, Options.Fields, Options.SimulationStartDateTime, Options.SimulationEndDateTime);
+            MarketDataBuilder.AddRange(frames);
         }
 
         /// <summary>

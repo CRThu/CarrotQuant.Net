@@ -1,5 +1,4 @@
-﻿using CarrotBacktesting.Net.DataFeed;
-using CarrotQuant.Net.Model;
+﻿using CarrotQuant.Net.Model;
 using CarrotQuant.Net.Model.Common;
 using CarrotQuant.Net.Model.EChartsData;
 using CarrotQuant.Net.Model.IO;
@@ -110,9 +109,10 @@ namespace CarrotQuant.Net.ViewModel
                 //ShareData shareData = new(SelectedDataBaseTable, "交易日期", new string[] { "开盘价", "最低价" });
                 //DataFeed dataFeed = new();
                 //dataFeed.SetShareData(SelectedDataBaseTable.TableName, shareData);
-                SqliteDataFeed df = new(DataBase.FileName);
-                df.SetShareData(SelectedDataBaseTableName, "交易日期", new string[] { "开盘价", "最低价" }, new string[] { "交易状态", "是否ST" });
-                SelectedDataBaseTable = df.GetShareDataTable(SelectedDataBaseTableName);
+
+                //SqliteDataFeed df = new(DataBase.FileName);
+                //df.SetShareData(SelectedDataBaseTableName, "交易日期", new string[] { "开盘价", "最低价" }, new string[] { "交易状态", "是否ST" });
+                //SelectedDataBaseTable = df.GetShareDataTable(SelectedDataBaseTableName);
             }
             catch (Exception ex)
             {
