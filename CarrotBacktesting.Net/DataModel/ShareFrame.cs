@@ -182,10 +182,10 @@ namespace CarrotBacktesting.Net.DataModel
             {
                 case "StockCode": StockCode = DynamicConverter.GetValue<string>(val); break;
                 case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(val); break;
-                case "OpenPrice": OpenPrice = DynamicConverter.GetValue<double>(val); break;
-                case "HighPrice": HighPrice = DynamicConverter.GetValue<double>(val); break;
-                case "LowPrice": LowPrice = DynamicConverter.GetValue<double>(val); break;
-                case "ClosePrice": ClosePrice = DynamicConverter.GetValue<double>(val); break;
+                case "Open": OpenPrice = DynamicConverter.GetValue<double>(val); break;
+                case "High": HighPrice = DynamicConverter.GetValue<double>(val); break;
+                case "Low": LowPrice = DynamicConverter.GetValue<double>(val); break;
+                case "Close": ClosePrice = DynamicConverter.GetValue<double>(val); break;
                 case "Volume": Volume = DynamicConverter.GetValue<double>(val); break;
                 case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(val); break;
                 default: SetKv(key, val); break;
@@ -201,12 +201,12 @@ namespace CarrotBacktesting.Net.DataModel
         {
             return key switch
             {
-                "Code" or "StockCode" => StockCode,
-                "Date" or "Time" or "DateTime" => DateTime,
-                "Open" or "OpenPrice" => OpenPrice,
-                "High" or "HighPrice" => HighPrice,
-                "Low" or "LowPrice" => LowPrice,
-                "Close" or "ClosePrice" => ClosePrice,
+                "StockCode" => StockCode,
+                "DateTime" => DateTime,
+                "Open" => OpenPrice,
+                "High" => HighPrice,
+                "Low" => LowPrice,
+                "Close" => ClosePrice,
                 "Volume" => Volume,
                 "IsTrading" => IsTrading,
                 _ => GetKv(key),
