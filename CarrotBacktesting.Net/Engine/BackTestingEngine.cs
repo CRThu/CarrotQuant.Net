@@ -19,23 +19,26 @@ namespace CarrotBacktesting.Net.Engine
         public BackTestingSimulation Simulation;
         public IStrategy Strategy;
 
-        public BackTestingEngine(IStrategy strategy) : this(strategy, new BackTestingSimulationOptions())
+        public BackTestingEngine(IStrategy strategy) : this(strategy, new SimulationOptions())
         {
         }
 
-        public BackTestingEngine(IStrategy strategy, BackTestingSimulationOptions options)
+        public BackTestingEngine(IStrategy strategy, SimulationOptions options)
         {
 #if DEBUG
             Console.WriteLine($"初始化数据库.");
 #endif
             Simulation = new(options);
 #if DEBUG
-            Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
+            throw new NotImplementedException();
+            //Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
 #endif
 
-            StrategyContext = new(Simulation.SimulationMarketFrame);
+            throw new NotImplementedException();
+            //StrategyContext = new(Simulation.SimulationMarketFrame);
             Strategy = strategy;
-            Exchange = new(StrategyContext.PortfolioManager, Simulation.SimulationMarketFrame);
+            throw new NotImplementedException();
+            //Exchange = new(StrategyContext.PortfolioManager, Simulation.SimulationMarketFrame);
         }
 
         public void Run()
@@ -45,7 +48,7 @@ namespace CarrotBacktesting.Net.Engine
             int loop = 0;
 
             Strategy.Start(StrategyContext);
-            while (!Simulation.IsSimulationEnd)
+            while (Simulation.IsSimulating)
             {
                 // 市场价格更新
                 Simulation.UpdateFrame();

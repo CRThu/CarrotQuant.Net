@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Storage;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,13 +11,16 @@ namespace CarrotBacktesting.Net.Engine
     /// <summary>
     /// 回测系统模拟设置
     /// </summary>
-    public class BackTestingSimulationOptions
+    public class SimulationOptions
     {
         /// <summary>
-        /// 是否为Sqlite数据
+        /// 是数据源
         /// </summary>
-        public bool IsSqliteDataFeed { get; set; } = true;
+        public DataFeedSource DataFeedSource { get; set; } = DataFeedSource.Sqlite;
 
+        /// <summary>
+        /// 数据源路径
+        /// </summary>
         public string SqliteDatabasePath { get; set; } = string.Empty;
 
         /// <summary>

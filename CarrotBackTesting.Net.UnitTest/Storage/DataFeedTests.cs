@@ -15,9 +15,9 @@ namespace CarrotBacktesting.Net.Storage.Tests
         [TestMethod()]
         public void GetMarketDataTest()
         {
-            DataFeed dataFeed = new(new Engine.BackTestingSimulationOptions()
+            DataFeed dataFeed = new(new Engine.SimulationOptions()
             {
-                IsSqliteDataFeed = true,
+                DataFeedSource = DataFeedSource.Sqlite,
                 SqliteDatabasePath = UnitTestFilePath.SqliteDatabasePath,
 
                 ShareNames = UnitTestFilePath.StockCodes,
@@ -31,7 +31,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
 
                     ["滚动市盈率"] = "PE",
                 },
-                AdditionalStringColumnNames = new string[] { "滚动市盈率", "是否ST" },
+                AdditionalFields = new string[] { "滚动市盈率", "是否ST" },
                 SimulationStartTime = new DateTime(2020, 01, 01),
                 SimulationEndTime = new DateTime(2020, 05, 01),
             });

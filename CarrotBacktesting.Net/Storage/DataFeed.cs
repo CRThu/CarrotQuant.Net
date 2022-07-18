@@ -23,12 +23,12 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 市场数据存储类访问器
         /// </summary>
-        private MarketData MarketData { get; }
+        public MarketData MarketData { get; }
 
         /// <summary>
         /// 回测配置类
         /// </summary>
-        private BackTestingSimulationOptions Options { get; set; }
+        private SimulationOptions Options { get; set; }
 
         /// <summary>
         /// 数据存储类开始日期
@@ -49,9 +49,9 @@ namespace CarrotBacktesting.Net.Storage
         /// </summary>
         /// <param name="options"></param>
         /// <exception cref="NotImplementedException"></exception>
-        public DataFeed(BackTestingSimulationOptions options)
+        public DataFeed(SimulationOptions options)
         {
-            if (!options.IsSqliteDataFeed)
+            if (options.DataFeedSource != DataFeedSource.Sqlite)
                 throw new NotImplementedException("暂不支持该格式数据源");
 
             Options = options;
