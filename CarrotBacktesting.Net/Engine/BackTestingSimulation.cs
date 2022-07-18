@@ -41,7 +41,7 @@ namespace CarrotBacktesting.Net.Engine
         {
             get
             {
-                return Options.SimulationEndDateTime - Options.SimulationStartDateTime;
+                return Options.SimulationEndTime - Options.SimulationStartTime;
             }
         }
 
@@ -58,13 +58,13 @@ namespace CarrotBacktesting.Net.Engine
             DataFeed = new DataFeed(options);
 
             // 数据源时间范围计算
-            if (Options.SimulationStartDateTime == DateTime.MinValue)
-                Options.SimulationStartDateTime = DataFeed.StartTime;
-            if (Options.SimulationEndDateTime == DateTime.MaxValue)
-                Options.SimulationEndDateTime = DataFeed.EndTime;
+            if (Options.SimulationStartTime == DateTime.MinValue)
+                Options.SimulationStartTime = DataFeed.StartTime;
+            if (Options.SimulationEndTime == DateTime.MaxValue)
+                Options.SimulationEndTime = DataFeed.EndTime;
 
             // 初始化模拟属性
-            SimulationTime = Options.SimulationStartDateTime;
+            SimulationTime = Options.SimulationStartTime;
             SimulationMarketFrame = new(Options.ShareNames);
 
         }
@@ -80,8 +80,9 @@ namespace CarrotBacktesting.Net.Engine
             throw new NotImplementedException();
 
             // 下一次更新时间并检测模拟是否结束
-            SimulationTime += Options.SimulationDuration;
-            if (SimulationTime >= Options.SimulationEndDateTime)
+            //SimulationTime += Options.SimulationDuration;
+            throw new NotImplementedException();
+            if (SimulationTime >= Options.SimulationEndTime)
                 IsSimulationEnd = true;
         }
     }

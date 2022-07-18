@@ -58,7 +58,7 @@ namespace CarrotBacktesting.Net.Storage
             MarketDataBuilder = new();
             MarketData = MarketDataBuilder.ToMarketData();
             IDataProvider = new SqliteDataProvider(Options.SqliteDatabasePath, Options.FieldsMapper);
-            var frames = IDataProvider.GetShareData(Options.ShareNames, Options.Fields, Options.SimulationStartDateTime, Options.SimulationEndDateTime);
+            var frames = IDataProvider.GetShareData(Options.ShareNames, Options.Fields, Options.SimulationStartTime, Options.SimulationEndTime);
             MarketDataBuilder.AddRange(frames);
         }
 
