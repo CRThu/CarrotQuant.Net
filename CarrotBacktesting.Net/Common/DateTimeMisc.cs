@@ -60,8 +60,9 @@ namespace CarrotBacktesting.Net.Common
         /// <param name="dateTimes">DateTime数组, 数组内存储的时间必须为正序排列</param>
         /// <param name="dateTime">查找的时间</param>
         /// <param name="isExist">输出是否存在此DateTime</param>
+        /// <param name="dir">选择向前或向后靠近的索引</param>
         /// <returns>数组内所在或向前最近的索引号</returns>
-        public static int GetTimeIndex(this DateTime[] dateTimes, in DateTime dateTime, out bool isExist)
+        public static int GetTimeIndex(this DateTime[] dateTimes, in DateTime dateTime, out bool isExist, BinarySearchDirection dir = BinarySearchDirection.Forward)
         {
             int index = Array.BinarySearch(dateTimes, dateTime);
             if (index >= 0)
@@ -73,10 +74,12 @@ namespace CarrotBacktesting.Net.Common
             else
             {
                 isExist = false;
-                // 未匹配精确日期, 返回大于value的第一个元素, 若为最大则返回最大索引
-                //return (~index == dateTimes.Length) ? (~index - 1) : (~index);
-                // 未匹配精确日期, 返回小于value的第一个元素, 若为最小则返回最小索引
-                return (~index == 0) ? (~index) : (~index - 1);
+                if (dir == BinarySearchDirection.Backward)
+                    // 未匹配精确日期, 返回大于value的第一个元素, 若为最大则返回最大索引
+                    return (~index == dateTimes.Length) ? (~index - 1) : (~index);
+                else
+                    // 未匹配精确日期, 返回小于value的第一个元素, 若为最小则返回最小索引
+                    return (~index == 0) ? (~index) : (~index - 1);
             }
         }
 
@@ -86,10 +89,11 @@ namespace CarrotBacktesting.Net.Common
         /// </summary>
         /// <param name="dateTimes">DateTime数组, 数组内存储的时间必须为正序排列</param>
         /// <param name="dateTime">查找的时间</param>
+        /// <param name="dir">选择向前或向后靠近的索引</param>
         /// <returns>数组内所在或向前最近的时间</returns>
-        public static ref DateTime GetTimeNearby(this DateTime[] dateTimes, in DateTime dateTime)
+        public static DateTime GetTimeNearby(this DateTime[] dateTimes, in DateTime dateTime, BinarySearchDirection dir = BinarySearchDirection.Forward)
         {
-            return ref dateTimes[dateTimes.GetTimeIndex(dateTime, out _)];
+            return dateTimes[dateTimes.GetTimeIndex(dateTime, out _, dir)];
         }
 
         // ---------- NEW METHOD END ----------
@@ -154,5 +158,14 @@ namespace CarrotBacktesting.Net.Common
 
         #endregion
         // ---------- TO BE MODIFY END ----------
+    }
+
+    /// <summary>
+    /// 二分法搜索靠近方向:向前或向后
+    /// </summary>
+    public enum BinarySearchDirection
+    {
+        Forward,
+        Backward,
     }
 }

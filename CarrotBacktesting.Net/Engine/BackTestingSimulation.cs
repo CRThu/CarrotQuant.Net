@@ -1,4 +1,6 @@
-﻿using CarrotBacktesting.Net.Storage;
+﻿using CarrotBacktesting.Net.Common;
+using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Storage;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,57 +18,102 @@ namespace CarrotBacktesting.Net.Engine
         /// 从数据库提供数据
         /// </summary>
         public DataFeed DataFeed { get; set; }
+
         /// <summary>
         /// 回测模拟设置
         /// </summary>
-        public BackTestingSimulationOptions Options { get; set; }
+        public SimulationOptions Options { get; set; }
 
         /// <summary>
-        /// 模拟时间
+        /// 模拟开始时间
         /// </summary>
-        public DateTime SimulationTime { get; set; }
+        public DateTime StartTime { get; set; }
+
         /// <summary>
-        /// 模拟市场帧
+        /// 模拟结束时间
         /// </summary>
-        public OldMarketFrame SimulationMarketFrame { get; set; }
-        /// <summary>
-        /// 是否模拟结束Flag
-        /// </summary>
-        public bool IsSimulationEnd { get; set; }
+        public DateTime EndTime { get; set; }
 
         /// <summary>
         /// 计算模拟时长
         /// </summary>
-        public TimeSpan SimulationDuration
+        public TimeSpan Duration
         {
             get
             {
-                return Options.SimulationEndTime - Options.SimulationStartTime;
+                return EndTime - StartTime;
             }
         }
 
-        public BackTestingSimulation() : this(new BackTestingSimulationOptions())
-        {
-        }
+        /// <summary>
+        /// 当前时间索引
+        /// </summary>
+        private int CurrentTimeIndex { get; set; }
 
-        public BackTestingSimulation(BackTestingSimulationOptions options)
+        /// <summary>
+        /// 模拟时间列表
+        /// </summary>
+        public DateTime[] SimulateTimes { get; set; }
+
+        /// <summary>
+        /// 是否正在模拟
+        /// </summary>
+        public bool IsSimulating { get; set; }
+
+        /// <summary>
+        /// 当前时间
+        /// </summary>
+        public DateTime CurrentTime { get; set; }
+
+        /// <summary>
+        /// 当前市场帧
+        /// </summary>
+        private MarketFrame currentMarket;
+
+        /// <summary>
+        /// 当前市场帧
+        /// </summary>
+        public MarketFrame CurrentMarket => currentMarket;
+
+
+        public BackTestingSimulation(SimulationOptions options)
         {
             // 配置加载
             Options = options;
 
             // 数据库加载
             DataFeed = new DataFeed(options);
+            SimulateTimes = DataFeed.MarketData.Times;
 
             // 数据源时间范围计算
-            if (Options.SimulationStartTime == DateTime.MinValue)
-                Options.SimulationStartTime = DataFeed.StartTime;
-            if (Options.SimulationEndTime == DateTime.MaxValue)
-                Options.SimulationEndTime = DataFeed.EndTime;
+            if (Options.SimulationStartTime is not null)
+            {
+                StartTime = (DateTime)Options.SimulationStartTime;
+            }
+            else
+            {
+                StartTime = DataFeed.StartTime;
+            }
 
-            // 初始化模拟属性
-            SimulationTime = Options.SimulationStartTime;
-            SimulationMarketFrame = new(Options.ShareNames);
+            if (Options.SimulationEndTime is not null)
+            {
+                EndTime = (DateTime)Options.SimulationEndTime;
+            }
+            else
+            {
+                EndTime = DataFeed.EndTime;
+            }
 
+            // 模拟器初始化
+            CurrentTimeIndex = SimulateTimes.GetTimeIndex(StartTime, out _, BinarySearchDirection.Backward);
+            CurrentTime = SimulateTimes[CurrentTimeIndex];
+            bool isExist = DataFeed.GetMarketData(CurrentTime, out currentMarket);
+            if (isExist)
+            {
+                throw new InvalidOperationException($"MarketFrame at {CurrentTime} is not Exist, may be error?");
+            }
+
+            IsSimulating = true;
         }
 
         /// <summary>
@@ -74,16 +121,19 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public void UpdateFrame()
         {
-            // TODO
-            bool isExist = DataFeed.GetMarketData(SimulationTime, out DataModel.MarketFrame frame);
-            SimulationMarketFrame = new(new string[] { });
-            throw new NotImplementedException();
-
             // 下一次更新时间并检测模拟是否结束
-            //SimulationTime += Options.SimulationDuration;
-            throw new NotImplementedException();
-            if (SimulationTime >= Options.SimulationEndTime)
-                IsSimulationEnd = true;
+            CurrentTimeIndex++;
+            CurrentTime = SimulateTimes[CurrentTimeIndex];
+
+            if (CurrentTime >= Options.SimulationEndTime)
+                IsSimulating = false;
+
+            // 市场数据更新
+            bool isExist = DataFeed.GetMarketData(CurrentTime, out currentMarket);
+            if (isExist)
+            {
+                throw new InvalidOperationException($"MarketFrame at {CurrentTime} is not Exist, may be error?");
+            }
         }
     }
 }
