@@ -8,14 +8,14 @@ var options = new BackTestingSimulationOptions()
 {
     IsSqliteDataFeed = true,
     SqliteDatabasePath = @"D:\Projects\CarrotQuant.Net\Data\sz.000400-sz.000499_1d_baostock.db",
-    SimulationStartDateTime = new DateTime(2021, 10, 1),
-    SimulationEndDateTime = new DateTime(2021, 11, 1),
+    SimulationStartTime = new DateTime(2021, 10, 1),
+    SimulationEndTime = new DateTime(2021, 11, 1),
     //SimulationDuration = new TimeSpan(0, 0, 1),
     //ShareNames = new[] { "sz.000422" },
     ShareNames = new[] { "sz.000422", "sz.000423" },
     IsEnableShareStatusFlag = true,
     AdditionalStringColumnNames = new string[] { "是否ST", "交易状态" },
-    AdditionalDataColumnNames = new string[] { "滚动市盈率" }
+    AdditionalFields = new string[] { "滚动市盈率" }
 };
 
 IEngine engine = new BackTestingEngine(new BasicStrategy(), options);

@@ -32,8 +32,8 @@ namespace CarrotBacktesting.Net.Storage.Tests
                     ["滚动市盈率"] = "PE",
                 },
                 AdditionalStringColumnNames = new string[] { "滚动市盈率", "是否ST" },
-                SimulationStartDateTime = new DateTime(2020, 01, 01),
-                SimulationEndDateTime = new DateTime(2020, 05, 01),
+                SimulationStartTime = new DateTime(2020, 01, 01),
+                SimulationEndTime = new DateTime(2020, 05, 01),
             });
 
             // 载入市场数据天数验证

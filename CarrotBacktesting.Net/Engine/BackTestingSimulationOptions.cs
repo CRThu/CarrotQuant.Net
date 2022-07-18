@@ -21,140 +21,130 @@ namespace CarrotBacktesting.Net.Engine
 
         /// <summary>
         /// 字段映射信息存储类
-        /// TODO NEW
         /// </summary>
         public ShareFrameMapper FieldsMapper { get; set; } =
             new ShareFrameMapper()
             {
-                ["[index]"] = "[index]",
                 ["交易日期"] = "DateTime",
-                ["收盘价"] = "close"
+                ["开盘价"] = "Open",
+                ["最高价"] = "High",
+                ["最低价"] = "Low",
+                ["收盘价"] = "Close",
+
+                ["滚动市盈率"] = "PE",
             };
 
         /// <summary>
-        /// 字段信息集合
-        /// TODO NEW
+        /// 字段集合
         /// </summary>
         public string[] Fields
         {
             get
             {
                 List<string> fieldList = new();
-                fieldList.Add(DateTimeColumnName);
-                fieldList.AddRange(DataColumnNames);
-                fieldList.AddRange(StringDataColumnNames);
-                return fieldList.ToArray();
-            }
-        }
-
-        /// <summary>
-        /// 数据库中表的交易时间列名
-        /// </summary>
-        public string DateTimeColumnName { get; set; } = "交易日期";
-        /// <summary>
-        /// 数据库中表的开盘价列名
-        /// </summary>
-        public string OpenColumnName { get; set; } = "开盘价";
-        /// <summary>
-        /// 数据库中表的最高价列名
-        /// </summary>
-        public string HighColumnName { get; set; } = "最高价";
-        /// <summary>
-        /// 数据库中表的最低价列名
-        /// </summary>
-        public string LowColumnName { get; set; } = "最低价";
-        /// <summary>
-        /// 数据库中表的收盘价列名
-        /// </summary>
-        public string CloseColumnName { get; set; } = "收盘价";
-        /// <summary>
-        /// 数据库中表的OHLC各对应的列名数组
-        /// </summary>
-        public string[] OHLCColumnName
-        {
-            get
-            {
-                return new[] { OpenColumnName, HighColumnName, LowColumnName, CloseColumnName };
-            }
-            set
-            {
-                OpenColumnName = value[0];
-                HighColumnName = value[1];
-                LowColumnName = value[2];
-                CloseColumnName = value[3];
-            }
-        }
-
-        /// <summary>
-        /// 附加数据库读取的数据列名数组
-        /// </summary>
-        public string[] AdditionalDataColumnNames { get; set; } = Array.Empty<string>();
-
-
-        /// <summary>
-        /// 是否导入股票交易状态, 例如停牌/休市
-        /// </summary>
-        public bool IsEnableShareStatusFlag { get; set; } = false;
-        /// <summary>
-        /// 当使能IsShareStatusImport时, 用于数据库中股票的交易状态列名
-        /// </summary>
-        public string ShareStatusColumnName { get; set; } = "交易状态";
-        /// <summary>
-        /// 当使能IsShareStatusImport时, 用于数据库中股票的交易状态列的可交易状态判断字符串
-        /// </summary>
-        public string ShareStatusCanTradeName { get; set; } = "正常交易";
-
-        /// <summary>
-        /// 附加数据库读取的字符串数据列名数组
-        /// </summary>
-        public string[] AdditionalStringColumnNames { get; set; } = Array.Empty<string>();
-
-        /// <summary>
-        /// 从数据库读取的浮点数据名
-        /// </summary>
-        public string[] DataColumnNames
-        {
-            get
-            {
-                List<string> cols = new();
-                cols.AddRange(OHLCColumnName);
-                cols.AddRange(AdditionalDataColumnNames);
+                fieldList.AddRange(BasicFields.ToArray());
+                fieldList.AddRange(AdditionalFields);
                 // 去重后输出数组
-                return cols.Distinct().ToArray();
+                return fieldList.Distinct().ToArray();
             }
         }
 
         /// <summary>
-        /// 从数据库读取的字符串数据名
+        /// 基础字段数组(交易日期, 开盘价, 收盘价, 最高价, 最低价, 成交量)
         /// </summary>
-        public string[] StringDataColumnNames
+        public BasicFields BasicFields { get; set; } = new BasicFields()
         {
-            get
-            {
-                List<string> cols = new();
-                if (IsEnableShareStatusFlag)
-                    cols.Add(ShareStatusColumnName);
-                cols.AddRange(AdditionalStringColumnNames);
-                // 去重后输出数组
-                return cols.Distinct().ToArray();
-            }
-        }
+            Time = "交易日期",
+            Open = "开盘价",
+            High = "最高价",
+            Low = "最低价",
+            Close = "收盘价",
+            Volume = "成交量"
+        };
+
+        /// <summary>
+        /// 额外字段数组
+        /// </summary>
+        public string[] AdditionalFields { get; set; } = Array.Empty<string>();
+
+        // TODO 
+        ///// <summary>
+        ///// 是否导入股票交易状态, 例如停牌/休市
+        ///// </summary>
+        //public bool IsEnableShareStatusFlag { get; set; } = false;
+        ///// <summary>
+        ///// 当使能IsShareStatusImport时, 用于数据库中股票的交易状态列名
+        ///// </summary>
+        //public string ShareStatusColumnName { get; set; } = "交易状态";
+        ///// <summary>
+        ///// 当使能IsShareStatusImport时, 用于数据库中股票的交易状态列的可交易状态判断字符串
+        ///// </summary>
+        //public string ShareStatusCanTradeName { get; set; } = "正常交易";
 
         /// <summary>
         /// 模拟开始日期
         /// </summary>
-        public DateTime SimulationStartDateTime { get; set; } = DateTime.MinValue;
+        public DateTime? SimulationStartTime { get; set; }
+
         /// <summary>
         /// 模拟结束日期
         /// </summary>
-        public DateTime SimulationEndDateTime { get; set; } = DateTime.MaxValue;
+        public DateTime? SimulationEndTime { get; set; }
+
         /// <summary>
-        /// 模拟日期间隔
-        /// </summary>
-        public TimeSpan SimulationDuration { get; set; } = new TimeSpan(1, 0, 0, 0);
-        /// <summary>
-        /// 模拟股票名称
+        /// 模拟股票名称数组
         /// </summary>
         public string[] ShareNames { get; set; } = Array.Empty<string>();
+    }
+
+    public struct BasicFields
+    {
+        /// <summary>
+        /// 时间
+        /// </summary>
+        public string? Time { get; set; }
+
+        /// <summary>
+        /// 开盘价
+        /// </summary>
+        public string? Open { get; set; }
+
+        /// <summary>
+        /// 最高价
+        /// </summary>
+        public string? High { get; set; }
+
+        /// <summary>
+        /// 最低价
+        /// </summary>
+        public string? Low { get; set; }
+
+        /// <summary>
+        /// 收盘价
+        /// </summary>
+        public string? Close { get; set; }
+
+        /// <summary>
+        /// 成交量
+        /// </summary>
+        public string? Volume { get; set; }
+
+        public string[] ToArray()
+        {
+            List<string> l = new();
+            if (Time is not null)
+                l.Add(Time);
+            if (Open is not null)
+                l.Add(Open);
+            if (High is not null)
+                l.Add(High);
+            if (Low is not null)
+                l.Add(Low);
+            if (Close is not null)
+                l.Add(Close);
+            if (Volume is not null)
+                l.Add(Volume);
+            return l.ToArray();
+        }
     }
 }
