@@ -48,7 +48,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 当前时间索引
         /// </summary>
-        private int CurrentTimeIndex { get; set; }
+        private int NextTimeIndex { get; set; }
 
         /// <summary>
         /// 模拟时间列表
@@ -75,7 +75,11 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public MarketFrame CurrentMarket => currentMarket;
 
-
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="options">配置</param>
+        /// <exception cref="InvalidOperationException">MarketData日期序列异常</exception>
         public BackTestingSimulation(SimulationOptions options)
         {
             // 配置加载
@@ -105,35 +109,38 @@ namespace CarrotBacktesting.Net.Engine
             }
 
             // 模拟器初始化
-            CurrentTimeIndex = SimulateTimes.GetTimeIndex(StartTime, out _, BinarySearchDirection.Backward);
-            CurrentTime = SimulateTimes[CurrentTimeIndex];
+            NextTimeIndex = 0;
+            CurrentTime = SimulateTimes[NextTimeIndex];
             bool isExist = DataFeed.GetMarketData(CurrentTime, out currentMarket);
-            if (isExist)
+            if (!isExist)
             {
                 throw new InvalidOperationException($"MarketFrame at {CurrentTime} is not Exist, may be error?");
             }
 
+            NextTimeIndex++;
             IsSimulating = true;
         }
 
         /// <summary>
         /// 市场帧更新
         /// </summary>
+        /// <exception cref="InvalidOperationException">MarketData日期序列异常</exception>
         public void UpdateFrame()
         {
-            // 下一次更新时间并检测模拟是否结束
-            CurrentTimeIndex++;
-            CurrentTime = SimulateTimes[CurrentTimeIndex];
-
-            if (CurrentTime >= Options.SimulationEndTime)
-                IsSimulating = false;
+            CurrentTime = SimulateTimes[NextTimeIndex];
 
             // 市场数据更新
             bool isExist = DataFeed.GetMarketData(CurrentTime, out currentMarket);
-            if (isExist)
+            if (!isExist)
             {
                 throw new InvalidOperationException($"MarketFrame at {CurrentTime} is not Exist, may be error?");
             }
+
+            // 下一次更新时间并检测模拟是否结束
+            NextTimeIndex++;
+
+            if (NextTimeIndex >= SimulateTimes.Length)
+                IsSimulating = false;
         }
     }
 }
