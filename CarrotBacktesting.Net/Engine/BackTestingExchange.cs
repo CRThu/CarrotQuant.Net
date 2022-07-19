@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Portfolio;
+﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Order;
 using System;
 using System.Collections.Generic;
@@ -18,8 +19,13 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 当前时间市场帧
         /// </summary>
-        public OldMarketFrame MarketFrame;
-        public PortfolioManager Portfolio;
+        public MarketFrame MarketFrame { get; set; }
+
+        /// <summary>
+        /// 当前交易信息
+        /// TODO
+        /// </summary>
+        public PortfolioManager Portfolio { get; set; }
 
         public delegate void OrderDealDelegate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation);
         /// <summary>
@@ -27,13 +33,17 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public event OrderDealDelegate? OrderDealEvent;
 
-        public BackTestingExchange(PortfolioManager portfolio, OldMarketFrame marketFrame)
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        public BackTestingExchange()
         {
-            Portfolio = portfolio;
-            MarketFrame = marketFrame;
             EventRegister();
         }
 
+        /// <summary>
+        /// 事件监听
+        /// </summary>
         public void EventRegister()
         {
             // 委托单更新事件监听
@@ -42,6 +52,15 @@ namespace CarrotBacktesting.Net.Engine
             OrderDealEvent += Portfolio.OrderManager.OnTradeUpdate;
             // 头寸管理器更新
             OrderDealEvent += Portfolio.PositionManager.OnTradeUpdate;
+        }
+
+        /// <summary>
+        /// 交易信息同步
+        /// </summary>
+        /// <param name="portfolio"></param>
+        public void SyncTradeInfo(PortfolioManager portfolio)
+        {
+            Portfolio = portfolio;
         }
 
         /// <summary>
@@ -82,17 +101,18 @@ namespace CarrotBacktesting.Net.Engine
             foreach (var orderId in Orders.Keys)
             {
                 var orderInfo = Orders[orderId];
-                if (MarketFrame[orderInfo.ShareName].IsActive)
+                if (MarketFrame[orderInfo.ShareName].IsTrading)
                 {
-                    if ((orderInfo.LimitPrice >= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Long)
-                        || (orderInfo.LimitPrice <= MarketFrame[orderInfo.ShareName].NowPrice && orderInfo.Direction == OrderDirection.Short))
+                    // TODO
+                    if ((orderInfo.LimitPrice >= MarketFrame[orderInfo.ShareName].ClosePrice && orderInfo.Direction == OrderDirection.Long)
+                        || (orderInfo.LimitPrice <= MarketFrame[orderInfo.ShareName].ClosePrice && orderInfo.Direction == OrderDirection.Short))
                     {
                         // 模拟委托单全部成交状态
-                        Console.WriteLine($"交易所({MarketFrame.NowTime:d}):委托单已被成交.\t股票名称:{orderInfo.ShareName}, 价格:{MarketFrame[orderInfo.ShareName].NowPrice}, 数量:{orderInfo.Size}, 方向:{orderInfo.Direction}.");
+                        // Console.WriteLine($"交易所({MarketFrame.DateTime:d}):委托单已被成交.\t股票名称:{orderInfo.ShareName}, 价格:{MarketFrame[orderInfo.ShareName].ClosePrice}, 数量:{orderInfo.Size}, 方向:{orderInfo.Direction}.");
                         double tradeSize = orderInfo.Size;
                         orderInfo.Size = 0;
                         OrderDealEvent?.Invoke(orderId, orderInfo,
-                            (MarketFrame.NowTime, MarketFrame[orderInfo.ShareName].NowPrice, tradeSize),
+                            (MarketFrame.DateTime, MarketFrame[orderInfo.ShareName].ClosePrice, tradeSize),
                             OrderUpdatedEventOperation.RemoveOrder);
                         Orders.Remove(orderId);
                     }

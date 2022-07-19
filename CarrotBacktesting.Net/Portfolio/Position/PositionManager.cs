@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Engine;
+using CarrotBacktesting.Net.DataModel;
 
 namespace CarrotBacktesting.Net.Portfolio.Position
 {
@@ -54,14 +55,15 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// 市场价格更新
         /// </summary>
         /// <param name="marketFrame"></param>
-        public void OnPriceUpdate(OldMarketFrame marketFrame)
+        public void OnPriceUpdate(MarketFrame marketFrame)
         {
             // 更新日期
-            NowTime = marketFrame.NowTime;
+            NowTime = marketFrame.DateTime;
             // 更新未实现收益
             foreach (var position in Positions.Values)
             {
-                position.CurrentPrice = marketFrame[position.ShareName].NowPrice;
+                // TODO
+                position.CurrentPrice = marketFrame[position.ShareName].ClosePrice;
             }
         }
 
