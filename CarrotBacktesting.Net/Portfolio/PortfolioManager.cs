@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Engine;
+﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio.Analyzer;
 using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Portfolio.Position;
@@ -19,7 +20,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 当前时间市场帧
         /// </summary>
-        public OldMarketFrame MarketFrame { get; set; }
+        public MarketFrame MarketFrame { get; set; }
 
         /// <summary>
         /// 委托单管理器
@@ -46,10 +47,16 @@ namespace CarrotBacktesting.Net.Portfolio
         /// </summary>
         public Analyzer.Analyzer Analyzer { get; set; }
 
-        public PortfolioManager(OldMarketFrame marketFrame)
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <exception cref="NotImplementedException"></exception>
+        public PortfolioManager()
         {
             Analyzer = new Analyzer.Analyzer(TransactionLogger, PnlLogger);
-            MarketFrame = marketFrame;
+
+            throw new NotImplementedException();
+            //MarketFrame = marketFrame;
             EventRegister();
         }
 
@@ -66,7 +73,7 @@ namespace CarrotBacktesting.Net.Portfolio
         public void OnPriceUpdate()
         {
             PositionManager.OnPriceUpdate(MarketFrame);
-            PnlLogger.AddPnlSnapshot(MarketFrame.NowTime, PositionManager);
+            PnlLogger.AddPnlSnapshot(MarketFrame.DateTime, PositionManager);
         }
 
         /// <summary>
@@ -78,7 +85,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="direction"></param>
         public void AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
         {
-            Console.WriteLine($"{MarketFrame.NowTime:d}:委托单已挂单, 股票名称:{shareName}, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
+            Console.WriteLine($"{MarketFrame.DateTime:d}:委托单已挂单, 股票名称:{shareName}, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
             OrderManager.AddOrder(shareName, limitPrice, size, direction);
         }
 

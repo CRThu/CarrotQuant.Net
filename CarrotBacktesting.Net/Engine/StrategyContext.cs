@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Portfolio;
+﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Analyzer;
 using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Portfolio.Position;
@@ -23,7 +24,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 市场信息帧
         /// </summary>
-        public OldMarketFrame MarketFrame { get; set; }
+        public MarketFrame MarketFrame { get; set; }
 
         /// <summary>
         /// 委托管理器
@@ -48,9 +49,9 @@ namespace CarrotBacktesting.Net.Engine
 
 
 
-        public StrategyContext(OldMarketFrame marketFrame)
+        public StrategyContext(MarketFrame marketFrame)
         {
-            PortfolioManager = new PortfolioManager(marketFrame);
+            PortfolioManager = new PortfolioManager();
             MarketFrame = marketFrame;
         }
     }

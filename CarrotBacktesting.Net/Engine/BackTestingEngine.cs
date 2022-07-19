@@ -14,28 +14,33 @@ namespace CarrotBacktesting.Net.Engine
     /// </summary>
     public class BackTestingEngine : IEngine
     {
-        public StrategyContext StrategyContext;
-        public BackTestingExchange Exchange;
-        public BackTestingSimulation Simulation;
-        public IStrategy Strategy;
+        // TODO
+        public StrategyContext StrategyContext { get; set; }
 
-        public BackTestingEngine(IStrategy strategy) : this(strategy, new SimulationOptions())
-        {
-        }
+        /// <summary>
+        /// 回测交易所
+        /// </summary>
+        public BackTestingExchange Exchange { get; set; }
+
+        /// <summary>
+        /// 回测模拟器
+        /// </summary>
+        public BackTestingSimulation Simulation { get; set; }
+
+        /// <summary>
+        /// 策略
+        /// </summary>
+        public IStrategy Strategy { get; set; }
 
         public BackTestingEngine(IStrategy strategy, SimulationOptions options)
         {
-#if DEBUG
-            Console.WriteLine($"初始化数据库.");
-#endif
+            // Console.WriteLine($"初始化数据库.");
             Simulation = new(options);
-#if DEBUG
-            throw new NotImplementedException();
-            //Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
-#endif
+            // Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
 
             throw new NotImplementedException();
             //StrategyContext = new(Simulation.SimulationMarketFrame);
+
             Strategy = strategy;
             throw new NotImplementedException();
             //Exchange = new(StrategyContext.PortfolioManager, Simulation.SimulationMarketFrame);
@@ -43,9 +48,9 @@ namespace CarrotBacktesting.Net.Engine
 
         public void Run()
         {
-            Stopwatch stopwatch = new();
-            stopwatch.Start();
-            int loop = 0;
+            // Stopwatch stopwatch = new();
+            // stopwatch.Start();
+            // int loop = 0;
 
             Strategy.Start(StrategyContext);
             while (Simulation.IsSimulating)
@@ -65,12 +70,12 @@ namespace CarrotBacktesting.Net.Engine
                 // 策略更新(更新策略, 挂单)
                 Strategy.OnNext(StrategyContext);
 
-                loop++;
+                // loop++;
             }
             Strategy.End(StrategyContext);
 
-            stopwatch.Stop();
-            Console.WriteLine($"回测已完成, 共测试{loop}帧, 耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒, 回测速度{(double)loop / stopwatch.ElapsedMilliseconds * 1000:F3}帧/秒.");
+            // stopwatch.Stop();
+            // Console.WriteLine($"回测已完成, 共测试{loop}帧, 耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒, 回测速度{(double)loop / stopwatch.ElapsedMilliseconds * 1000:F3}帧/秒.");
         }
     }
 }
