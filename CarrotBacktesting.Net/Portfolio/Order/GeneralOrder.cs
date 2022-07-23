@@ -9,8 +9,18 @@ namespace CarrotBacktesting.Net.Portfolio.Order
     /// <summary>
     /// 常规委托
     /// </summary>
-    public struct GeneralOrder
+    public class GeneralOrder
     {
+        /// <summary>
+        /// 委托单自增id
+        /// </summary>
+        public int Id { get; set; }
+
+        /// <summary>
+        /// 委托单状态
+        /// </summary>
+        public GeneralOrderStatus Status { get; set; }
+
         /// <summary>
         /// 股票名称
         /// </summary>
@@ -49,5 +59,15 @@ namespace CarrotBacktesting.Net.Portfolio.Order
                 Direction = Direction == OrderDirection.Long ? OrderDirection.Short : OrderDirection.Long;
             }
         }
+    }
+
+    /// <summary>
+    /// 委托单状态
+    /// </summary>
+    public enum GeneralOrderStatus
+    {
+        Pending,    // 待成交/部分成交
+        Deal,       // 已成交
+        Cancelled   // 已取消
     }
 }
