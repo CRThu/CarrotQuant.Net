@@ -47,7 +47,8 @@ namespace CarrotBacktesting.Net.Engine
         public void EventRegister()
         {
             // 委托单更新事件监听
-            Portfolio.OrderManager.OrderUpdateEvent += OnOrderUpdate;
+            //Portfolio.OrderManager.OnOrderUpdated += OnOrderUpdate;
+            throw new NotImplementedException();
             // 委托单成交事件监听
             OrderDealEvent += Portfolio.OrderManager.OnTradeUpdate;
             // 头寸管理器更新
@@ -61,6 +62,15 @@ namespace CarrotBacktesting.Net.Engine
         public void SyncTradeInfo(PortfolioManager portfolio)
         {
             Portfolio = portfolio;
+        }
+
+        /// <summary>
+        /// 市场信息同步
+        /// </summary>
+        /// <param name="marketFrame"></param>
+        public void SyncMarketInfo(MarketFrame marketFrame)
+        {
+            MarketFrame = marketFrame;
         }
 
         /// <summary>
