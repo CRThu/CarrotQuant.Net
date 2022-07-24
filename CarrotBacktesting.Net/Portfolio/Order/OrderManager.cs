@@ -76,23 +76,58 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public event OrderUpdatedHandler? OnOrderUpdated;
 
         /// <summary>
-        /// 内部新增委托方法
+        /// 创建委托单
         /// </summary>
-        /// <param name="order">委托单信息</param>
-        /// <returns>委托单id</returns>
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="price">委托限价/市价</param>
+        /// <param name="size">头寸大小</param>
+        /// <param name="direction">头寸方向(买入/卖出)</param>
+        /// <param name="type">头寸类型(限价/市价)</param>
+        /// <returns>委托单id号</returns>
         /// <exception cref="InvalidOperationException"></exception>
-        private int Add(GeneralOrder order)
+        private int CreateOrder(string stockCode, double price, double size, OrderDirection direction, OrderType type)
         {
-            int id = OrderIdGen;
-            order.Id = id;
-            if (OrdersStorage.ContainsKey(id))
+            int orderId = OrderIdGen;
+            GeneralOrder order = new()
             {
-                throw new InvalidOperationException($"待添加委托单键相同,Id:{id}.");
+                OrderId = orderId,
+                Status = GeneralOrderStatus.Pending,
+                Direction = direction,
+                Type = type,
+                StockCode = stockCode,
+                Size = size,
+                Price = price,
+            };
+            if (!OrdersStorage.ContainsKey(orderId))
+            {
+                OrdersStorage.Add(orderId, order);
             }
             else
             {
-                OrdersStorage.Add(id, order);
-                return id;
+                throw new InvalidOperationException($"待添加委托单键相同, Id:{orderId}.");
+            }
+            OnOrderUpdated?.Invoke(new OrderEventArgs()
+            {
+
+            });
+            return orderId;
+        }
+
+        /// <summary>
+        /// 内部获取委托单方法
+        /// </summary>
+        /// <param name="orderId">委托单id</param>
+        /// <returns>查询到的委托单</returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        public GeneralOrder GetStorage(int orderId)
+        {
+            if (OrdersStorage.ContainsKey(orderId))
+            {
+                return OrdersStorage[orderId];
+            }
+            else
+            {
+                throw new InvalidOperationException($"不存在此键委托单, Id:{orderId}.");
             }
         }
 
@@ -161,5 +196,6 @@ namespace CarrotBacktesting.Net.Portfolio.Order
                     throw new Exception($"OnTradeUpdate(): operation={operation}, OrderId={orderId}.");
             }
         }
+
     }
 }

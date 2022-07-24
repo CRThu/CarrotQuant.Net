@@ -92,7 +92,7 @@ namespace CarrotBacktesting.Net.Engine
         {
             switch (operation)
             {
-                case OrderUpdatedEventOperation.AddOrder:
+                case OrderUpdatedEventOperation.CreateOrder:
                     Orders.Add(orderId, order);
                     break;
                 case OrderUpdatedEventOperation.RemoveOrder:
@@ -114,8 +114,8 @@ namespace CarrotBacktesting.Net.Engine
                 if (MarketFrame[orderInfo.ShareName].IsTrading)
                 {
                     // TODO
-                    if ((orderInfo.LimitPrice >= MarketFrame[orderInfo.ShareName].ClosePrice && orderInfo.Direction == OrderDirection.Long)
-                        || (orderInfo.LimitPrice <= MarketFrame[orderInfo.ShareName].ClosePrice && orderInfo.Direction == OrderDirection.Short))
+                    if ((orderInfo.Price >= MarketFrame[orderInfo.ShareName].ClosePrice && orderInfo.Direction == OrderDirection.Buy)
+                        || (orderInfo.Price <= MarketFrame[orderInfo.ShareName].ClosePrice && orderInfo.Direction == OrderDirection.Sell))
                     {
                         // 模拟委托单全部成交状态
                         // Console.WriteLine($"交易所({MarketFrame.DateTime:d}):委托单已被成交.\t股票名称:{orderInfo.ShareName}, 价格:{MarketFrame[orderInfo.ShareName].ClosePrice}, 数量:{orderInfo.Size}, 方向:{orderInfo.Direction}.");

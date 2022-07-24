@@ -57,10 +57,10 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <param name="shareName"></param>
         /// <param name="size"></param>
         /// <param name="direction"></param>
-        public GeneralPosition(string shareName, double size, double cost, OrderDirection direction = OrderDirection.Long)
+        public GeneralPosition(string shareName, double size, double cost, OrderDirection direction = OrderDirection.Buy)
         {
             ShareName = shareName;
-            Size = direction == OrderDirection.Long ? size : -size;
+            Size = direction == OrderDirection.Buy ? size : -size;
             Cost = cost;
         }
 
@@ -71,7 +71,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         public GeneralPosition(GeneralOrder generalOrder, double price)
         {
             ShareName = generalOrder.ShareName;
-            Size = generalOrder.Direction == OrderDirection.Long ? generalOrder.Size : -generalOrder.Size;
+            Size = generalOrder.Direction == OrderDirection.Buy ? generalOrder.Size : -generalOrder.Size;
             Cost = price;
         }
 

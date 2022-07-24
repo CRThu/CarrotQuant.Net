@@ -47,7 +47,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         {
             TransactionTime = transactionTime;
             ShareName = shareName;
-            Size = direction == OrderDirection.Long ? size : -size;
+            Size = direction == OrderDirection.Buy ? size : -size;
             Cost = cost;
         }
     }
