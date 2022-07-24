@@ -14,9 +14,12 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         // int orderId, GeneralOrder order, OrderUpdatedEventOperation operation
     }
 
+    /// <summary>
+    /// 
+    /// </summary>
     public enum OrderUpdatedEventOperation
     {
-        AddOrder,
+        CreateOrder,
         RemoveOrder,
         UpdateOrder
     }

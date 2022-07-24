@@ -79,9 +79,9 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             Console.WriteLine($"头寸管理器:头寸已更新.\t股票名称:{order.ShareName}, 价格:{tradeInfo.tradePrice}, 数量:{tradeInfo.tradeVolume}, 方向:{order.Direction}.");
 
             // 设置股权头寸
-            SetPosition(order.ShareName, order.Direction == OrderDirection.Long ? tradeInfo.tradeVolume : -tradeInfo.tradeVolume, tradeInfo.tradePrice);
+            SetPosition(order.ShareName, order.Direction == OrderDirection.Buy ? tradeInfo.tradeVolume : -tradeInfo.tradeVolume, tradeInfo.tradePrice);
             // 计算现金剩余(Short股权时货币方向为Long)
-            Cash += order.Direction == OrderDirection.Short ? tradeInfo.tradePrice * tradeInfo.tradeVolume : -tradeInfo.tradePrice * tradeInfo.tradeVolume;
+            Cash += order.Direction == OrderDirection.Sell ? tradeInfo.tradePrice * tradeInfo.tradeVolume : -tradeInfo.tradePrice * tradeInfo.tradeVolume;
 
             PositionUpdateEvent?.Invoke(tradeInfo.time, order.ShareName, tradeInfo.tradePrice, tradeInfo.tradeVolume, order.Direction);
         }
