@@ -70,8 +70,8 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <param name="generalOrder"></param>
         public GeneralPosition(GeneralOrder generalOrder, double price)
         {
-            ShareName = generalOrder.ShareName;
-            Size = generalOrder.Direction == OrderDirection.Buy ? generalOrder.Size : -generalOrder.Size;
+            ShareName = generalOrder.StockCode;
+            Size = generalOrder.Direction == OrderDirection.Buy ? generalOrder.OrderSize : -generalOrder.OrderSize;
             Cost = price;
         }
 
