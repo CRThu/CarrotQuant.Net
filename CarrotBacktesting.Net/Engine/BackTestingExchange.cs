@@ -90,14 +90,15 @@ namespace CarrotBacktesting.Net.Engine
         /// <exception cref="Exception"></exception>
         public void OnOrderUpdate(int orderId, GeneralOrder order, OrderUpdatedEventOperation operation)
         {
+            throw new NotImplementedException();
             switch (operation)
             {
                 case OrderUpdatedEventOperation.CreateOrder:
                     Orders.Add(orderId, order);
                     break;
-                case OrderUpdatedEventOperation.RemoveOrder:
-                    Orders.Remove(orderId);
-                    break;
+                //case OrderUpdatedEventOperation.RemoveOrder:
+                //    Orders.Remove(orderId);
+                //    break;
                 default:
                     throw new Exception($"OnTradeUpdate(): operation={operation}, OrderId={orderId}.");
             }
@@ -111,19 +112,20 @@ namespace CarrotBacktesting.Net.Engine
             foreach (var orderId in Orders.Keys)
             {
                 var orderInfo = Orders[orderId];
-                if (MarketFrame[orderInfo.ShareName].IsTrading)
+                if (MarketFrame[orderInfo.StockCode].IsTrading)
                 {
                     // TODO
-                    if ((orderInfo.Price >= MarketFrame[orderInfo.ShareName].ClosePrice && orderInfo.Direction == OrderDirection.Buy)
-                        || (orderInfo.Price <= MarketFrame[orderInfo.ShareName].ClosePrice && orderInfo.Direction == OrderDirection.Sell))
+                    if ((orderInfo.Price >= MarketFrame[orderInfo.StockCode].ClosePrice && orderInfo.Direction == OrderDirection.Buy)
+                        || (orderInfo.Price <= MarketFrame[orderInfo.StockCode].ClosePrice && orderInfo.Direction == OrderDirection.Sell))
                     {
                         // 模拟委托单全部成交状态
                         // Console.WriteLine($"交易所({MarketFrame.DateTime:d}):委托单已被成交.\t股票名称:{orderInfo.ShareName}, 价格:{MarketFrame[orderInfo.ShareName].ClosePrice}, 数量:{orderInfo.Size}, 方向:{orderInfo.Direction}.");
-                        double tradeSize = orderInfo.Size;
-                        orderInfo.Size = 0;
-                        OrderDealEvent?.Invoke(orderId, orderInfo,
-                            (MarketFrame.DateTime, MarketFrame[orderInfo.ShareName].ClosePrice, tradeSize),
-                            OrderUpdatedEventOperation.RemoveOrder);
+                        double tradeSize = orderInfo.OrderSize;
+                        orderInfo.OrderSize = 0;
+                        throw new NotImplementedException();
+                        //OrderDealEvent?.Invoke(orderId, orderInfo,
+                        //    (MarketFrame.DateTime, MarketFrame[orderInfo.StockCode].ClosePrice, tradeSize),
+                        //    OrderUpdatedEventOperation.RemoveOrder);
                         Orders.Remove(orderId);
                     }
                 }

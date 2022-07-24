@@ -64,6 +64,14 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             }
         }
 
+        public GeneralOrder this[int orderId]
+        {
+            get
+            {
+                return GetOrder(orderId);
+            }
+        }
+
         /// <summary>
         /// 委托单更新委托
         /// </summary>
@@ -76,50 +84,12 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public event OrderUpdatedHandler? OnOrderUpdated;
 
         /// <summary>
-        /// 创建委托单
-        /// </summary>
-        /// <param name="stockCode">股票代码</param>
-        /// <param name="price">委托限价/市价</param>
-        /// <param name="size">头寸大小</param>
-        /// <param name="direction">头寸方向(买入/卖出)</param>
-        /// <param name="type">头寸类型(限价/市价)</param>
-        /// <returns>委托单id号</returns>
-        /// <exception cref="InvalidOperationException"></exception>
-        private int CreateOrder(string stockCode, double price, double size, OrderDirection direction, OrderType type)
-        {
-            int orderId = OrderIdGen;
-            GeneralOrder order = new()
-            {
-                OrderId = orderId,
-                Status = GeneralOrderStatus.Pending,
-                Direction = direction,
-                Type = type,
-                StockCode = stockCode,
-                Size = size,
-                Price = price,
-            };
-            if (!OrdersStorage.ContainsKey(orderId))
-            {
-                OrdersStorage.Add(orderId, order);
-            }
-            else
-            {
-                throw new InvalidOperationException($"待添加委托单键相同, Id:{orderId}.");
-            }
-            OnOrderUpdated?.Invoke(new OrderEventArgs()
-            {
-
-            });
-            return orderId;
-        }
-
-        /// <summary>
-        /// 内部获取委托单方法
+        /// 获取委托单
         /// </summary>
         /// <param name="orderId">委托单id</param>
         /// <returns>查询到的委托单</returns>
         /// <exception cref="InvalidOperationException"></exception>
-        public GeneralOrder GetStorage(int orderId)
+        public GeneralOrder GetOrder(int orderId)
         {
             if (OrdersStorage.ContainsKey(orderId))
             {
@@ -132,48 +102,43 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         }
 
         /// <summary>
-        /// 添加委托单
+        /// 创建委托单
         /// </summary>
-        /// <param name="shareName"></param>
-        /// <param name="limitPrice"></param>
-        /// <param name="size"></param>
-        /// <param name="direction"></param>
-        /// <returns>返回委托单号</returns>
-        public int AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="price">委托限价(委托单类型为市价时此属性无效)</param>
+        /// <param name="size">头寸大小</param>
+        /// <param name="direction">头寸方向(买入/卖出)</param>
+        /// <param name="type">头寸类型(限价/市价)</param>
+        /// <returns>委托单id号</returns>
+        public int CreateOrder(string stockCode, OrderDirection direction, double size, OrderType type, double price = 0)
         {
-            OrdersStorage.Add(OrderIdGen, new GeneralOrder(shareName, limitPrice, size, direction));
-            //OnOrderUpdated?.Invoke(OrderIdGen, GetOrder(OrderIdGen), OrderUpdatedEventOperation.AddOrder);
-            //return OrderIdGen++;
-            throw new NotImplementedException();
+            int orderId = OrderIdGen;
+            GeneralOrder order = new(orderId, stockCode, direction, size, type, price);
+            OrdersStorage.Add(orderId, order);
+
+            OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.CreateOrder);
+            OnOrderUpdated?.Invoke(orderEventArgs);
+            return orderId;
         }
 
         /// <summary>
-        /// 移除委托单
+        /// 取消委托单
         /// </summary>
-        /// <param name="orderId"></param>
-        /// <returns></returns>
-        public bool RemoveOrder(int orderId)
+        /// <param name="orderId">委托单id</param>
+        /// <exception cref="InvalidOperationException"></exception>
+        public void CancelOrder(int orderId)
         {
-            //OnOrderUpdated?.Invoke(orderId, GetOrder(orderId), OrderUpdatedEventOperation.RemoveOrder);
-            throw new NotImplementedException();
-            return OrdersStorage.Remove(orderId);
-        }
-
-        /// <summary>
-        /// 获取委托单
-        /// </summary>
-        /// <param name="orderId"></param>
-        /// <returns>返回委托单, 若不存在则为null</returns>
-        public GeneralOrder GetOrder(int orderId)
-        {
-            if (OrdersStorage.ContainsKey(orderId))
-                return OrdersStorage[orderId];
-            else
-                throw new Exception($"找不到委托单, OrderId={orderId}.");
+            GeneralOrder order = GetOrder(orderId);
+            if (order.Status != GeneralOrderStatus.Pending)
+            {
+                throw new InvalidOperationException($"委托单不能被取消, Status = {order.Status}.");
+            }
+            order.Status = GeneralOrderStatus.Cancelled;
         }
 
         /// <summary>
         /// 委托单成交更新
+        /// TODO
         /// </summary>
         /// <param name="orderId"></param>
         /// <param name="order"></param>
@@ -182,13 +147,14 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <exception cref="Exception"></exception>
         public void OnTradeUpdate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
         {
-            Console.WriteLine($"委托单管理器:委托单已更新({operation}).\t股票名称:{order.ShareName}, 剩余数量:{order.Size}, 方向:{order.Direction}.");
+            Console.WriteLine($"委托单管理器:委托单已更新({operation}).\t股票名称:{order.StockCode}, 剩余数量:{order.OrderSize}, 方向:{order.Direction}.");
 
+            throw new NotImplementedException();
             switch (operation)
             {
-                case OrderUpdatedEventOperation.RemoveOrder:
-                    OrdersStorage.Remove(orderId);
-                    break;
+                //case OrderUpdatedEventOperation.RemoveOrder:
+                //    OrdersStorage.Remove(orderId);
+                //    break;
                 case OrderUpdatedEventOperation.UpdateOrder:
                     OrdersStorage[orderId] = order;
                     break;
