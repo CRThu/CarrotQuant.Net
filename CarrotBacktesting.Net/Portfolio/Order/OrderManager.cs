@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CarrotBacktesting.Net.Engine;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -152,30 +153,13 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         }
 
         /// <summary>
-        /// 委托单成交更新
-        /// TODO
+        /// 交易所成交更新事件订阅回调函数
         /// </summary>
-        /// <param name="orderId"></param>
-        /// <param name="order"></param>
-        /// <param name="tradeInfo"></param>
-        /// <param name="operation"></param>
-        /// <exception cref="Exception"></exception>
-        public void OnTradeUpdate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
+        /// <param name="sender"></param>
+        /// <param name="tradeEventArgs"></param>
+        public void OnTradeUpdate(BackTestingExchange sender, TradeEventArgs tradeEventArgs)
         {
-            Console.WriteLine($"委托单管理器:委托单已更新({operation}).\t股票名称:{order.StockCode}, 剩余数量:{order.OrderSize}, 方向:{order.Direction}.");
-
-            throw new NotImplementedException();
-            switch (operation)
-            {
-                //case OrderUpdatedEventOperation.RemoveOrder:
-                //    OrdersStorage.Remove(orderId);
-                //    break;
-                case OrderUpdatedEventOperation.UpdateOrder:
-                    OrdersStorage[orderId] = order;
-                    break;
-                default:
-                    throw new Exception($"OnTradeUpdate(): operation={operation}, OrderId={orderId}.");
-            }
+            // TODO
         }
 
     }

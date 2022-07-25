@@ -27,11 +27,17 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public PortfolioManager Portfolio { get; set; }
 
-        public delegate void OrderDealDelegate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation);
         /// <summary>
-        /// 交易所更新委托单成交事件
+        /// 交易所成交更新委托
         /// </summary>
-        public event OrderDealDelegate? OrderDealEvent;
+        /// <param name="sender"></param>
+        /// <param name="tradeEventArgs"></param>
+        public delegate void TradeUpdatedHandler(BackTestingExchange sender, TradeEventArgs tradeEventArgs);
+
+        /// <summary>
+        /// 交易所成交更新事件
+        /// </summary>
+        public event TradeUpdatedHandler? OnTradeUpdated;
 
         /// <summary>
         /// 构造函数
@@ -49,10 +55,11 @@ namespace CarrotBacktesting.Net.Engine
             // 委托单更新事件监听
             //Portfolio.OrderManager.OnOrderUpdated += OnOrderUpdate;
             throw new NotImplementedException();
-            // 委托单成交事件监听
-            OrderDealEvent += Portfolio.OrderManager.OnTradeUpdate;
+            // 交易所成交更新事件订阅
+            OnTradeUpdated += Portfolio.OrderManager.OnTradeUpdate;
             // 头寸管理器更新
-            OrderDealEvent += Portfolio.PositionManager.OnTradeUpdate;
+            //OnTradeUpdated += Portfolio.PositionManager.OnTradeUpdate;
+            throw new NotImplementedException();
         }
 
         /// <summary>
