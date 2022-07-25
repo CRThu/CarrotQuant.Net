@@ -75,8 +75,9 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <summary>
         /// 委托单更新委托
         /// </summary>
+        /// <param name="sender"></param>
         /// <param name="operation"></param>
-        public delegate void OrderUpdatedHandler(OrderEventArgs operation);
+        public delegate void OrderUpdatedHandler(OrderManager sender, OrderEventArgs operation);
 
         /// <summary>
         /// 委托单更新事件
@@ -117,7 +118,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             OrdersStorage.Add(orderId, order);
 
             OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.CreateOrder);
-            OnOrderUpdated?.Invoke(orderEventArgs);
+            OnOrderUpdated?.Invoke(this, orderEventArgs);
             return orderId;
         }
 
@@ -129,11 +130,25 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public void CancelOrder(int orderId)
         {
             GeneralOrder order = GetOrder(orderId);
-            if (order.Status != GeneralOrderStatus.Pending)
-            {
-                throw new InvalidOperationException($"委托单不能被取消, Status = {order.Status}.");
-            }
-            order.Status = GeneralOrderStatus.Cancelled;
+            order.Cancel();
+
+            OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.CancelOrder);
+            OnOrderUpdated?.Invoke(this, orderEventArgs);
+        }
+
+        /// <summary>
+        /// 委托单交易更新
+        /// </summary>
+        /// <param name="orderId">委托单id</param>
+        /// <param name="size">成交头寸</param>
+        /// <param name="price">成交价格</param>
+        public void TradeOrder(int orderId, double size, double price)
+        {
+            GeneralOrder order = GetOrder(orderId);
+            order.Trade(size, price);
+
+            OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.UpdateOrder);
+            OnOrderUpdated?.Invoke(this, orderEventArgs);
         }
 
         /// <summary>
