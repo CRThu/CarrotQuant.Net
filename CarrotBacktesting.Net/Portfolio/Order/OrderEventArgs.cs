@@ -38,8 +38,9 @@ namespace CarrotBacktesting.Net.Portfolio.Order
     /// </summary>
     public enum OrderUpdatedEventOperation
     {
-        CreateOrder,
-        UpdateOrder
+        CreateOrder,    // 创建委托
+        UpdateOrder,    // 更新委托(交易)
+        CancelOrder     // 删除委托
     }
 
 }
