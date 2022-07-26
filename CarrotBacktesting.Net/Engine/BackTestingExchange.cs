@@ -9,6 +9,9 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Engine
 {
+    /// <summary>
+    /// 回测交易所
+    /// </summary>
     public class BackTestingExchange
     {
         /// <summary>

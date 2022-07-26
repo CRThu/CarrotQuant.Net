@@ -15,8 +15,8 @@ namespace CarrotBacktesting.Net.Engine.Tests
         [TestMethod()]
         public void RunTest()
         {
-            IEngine engine = new BackTestingEngine(new BasicStrategy());
-            engine.Run();
+            //IEngine engine = new BackTestingEngine(new BasicStrategy());
+            //engine.Run();
         }
     }
 }

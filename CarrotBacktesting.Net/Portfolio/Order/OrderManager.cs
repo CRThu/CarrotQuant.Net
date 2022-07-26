@@ -155,12 +155,11 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <summary>
         /// 交易所成交更新事件订阅回调函数
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="tradeEventArgs"></param>
+        /// <param name="sender">回测交易所实例</param>
+        /// <param name="tradeEventArgs">成交事件参数</param>
         public void OnTradeUpdate(BackTestingExchange sender, TradeEventArgs tradeEventArgs)
         {
-            // TODO
+            TradeOrder(tradeEventArgs.OrderId, tradeEventArgs.Volume, tradeEventArgs.Price);
         }
-
     }
 }
