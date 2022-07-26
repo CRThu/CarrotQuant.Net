@@ -76,14 +76,14 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <summary>
         /// 委托单更新委托
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="operation"></param>
-        public delegate void OrderUpdatedHandler(OrderManager sender, OrderEventArgs operation);
+        /// <param name="sender">委托单管理器</param>
+        /// <param name="operation">委托单事件参数</param>
+        public delegate void OrderUpdateHandler(OrderManager sender, OrderEventArgs operation);
 
         /// <summary>
         /// 委托单更新事件
         /// </summary>
-        public event OrderUpdatedHandler? OnOrderUpdated;
+        public event OrderUpdateHandler? OnOrderUpdate;
 
         /// <summary>
         /// 获取委托单
@@ -119,7 +119,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             OrdersStorage.Add(orderId, order);
 
             OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.CreateOrder);
-            OnOrderUpdated?.Invoke(this, orderEventArgs);
+            OnOrderUpdate?.Invoke(this, orderEventArgs);
             return orderId;
         }
 
@@ -134,7 +134,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             order.Cancel();
 
             OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.CancelOrder);
-            OnOrderUpdated?.Invoke(this, orderEventArgs);
+            OnOrderUpdate?.Invoke(this, orderEventArgs);
         }
 
         /// <summary>
@@ -149,11 +149,11 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             order.Trade(size, price);
 
             OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.UpdateOrder);
-            OnOrderUpdated?.Invoke(this, orderEventArgs);
+            OnOrderUpdate?.Invoke(this, orderEventArgs);
         }
 
         /// <summary>
-        /// 交易所成交更新事件订阅回调函数
+        /// 交易所成交更新事件订阅方法
         /// </summary>
         /// <param name="sender">回测交易所实例</param>
         /// <param name="tradeEventArgs">成交事件参数</param>

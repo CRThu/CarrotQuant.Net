@@ -28,90 +28,74 @@ namespace CarrotBacktesting.Net.Engine
         /// 当前交易信息
         /// TODO
         /// </summary>
-        public PortfolioManager Portfolio { get; set; }
+        //public PortfolioManager Portfolio { get; set; }
 
         /// <summary>
         /// 交易所成交更新委托
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="tradeEventArgs"></param>
-        public delegate void TradeUpdatedHandler(BackTestingExchange sender, TradeEventArgs tradeEventArgs);
+        public delegate void TradeUpdateHandler(BackTestingExchange sender, TradeEventArgs tradeEventArgs);
 
         /// <summary>
         /// 交易所成交更新事件
         /// </summary>
-        public event TradeUpdatedHandler? OnTradeUpdated;
+        public event TradeUpdateHandler? OnTradeUpdate;
 
         /// <summary>
         /// 构造函数
         /// </summary>
         public BackTestingExchange()
         {
-            EventRegister();
+            //EventRegister();
         }
 
+        ///// <summary>
+        ///// 事件监听
+        ///// </summary>
+        //public void EventRegister()
+        //{
+        //    // 委托单更新事件监听
+        //    //Portfolio.OrderManager.OnOrderUpdated += OnOrderUpdate;
+        //    throw new NotImplementedException();
+        //    // 交易所成交更新事件订阅
+        //    //OnTradeUpdated += Portfolio.OrderManager.OnTradeUpdate;
+        //    // 头寸管理器更新
+        //    //OnTradeUpdated += Portfolio.PositionManager.OnTradeUpdate;
+        //    throw new NotImplementedException();
+        //}
+
         /// <summary>
-        /// 事件监听
+        /// 委托单更新事件订阅方法
         /// </summary>
-        public void EventRegister()
+        /// <param name="sender">委托单管理器</param>
+        /// <param name="operation">委托单事件参数</param>
+        public void OnOrderUpdate(OrderManager sender, OrderEventArgs operation)
         {
-            // 委托单更新事件监听
-            //Portfolio.OrderManager.OnOrderUpdated += OnOrderUpdate;
             throw new NotImplementedException();
-            // 交易所成交更新事件订阅
-            OnTradeUpdated += Portfolio.OrderManager.OnTradeUpdate;
-            // 头寸管理器更新
-            //OnTradeUpdated += Portfolio.PositionManager.OnTradeUpdate;
-            throw new NotImplementedException();
+
+            //switch (operation)
+            //{
+            //    case OrderUpdatedEventOperation.CreateOrder:
+            //        Orders.Add(orderId, order);
+            //        break;
+            //    //case OrderUpdatedEventOperation.RemoveOrder:
+            //    //    Orders.Remove(orderId);
+            //    //    break;
+            //    default:
+            //        throw new Exception($"OnTradeUpdate(): operation={operation}, OrderId={orderId}.");
+            //}
         }
 
         /// <summary>
-        /// 交易信息同步
-        /// </summary>
-        /// <param name="portfolio"></param>
-        public void SyncTradeInfo(PortfolioManager portfolio)
-        {
-            Portfolio = portfolio;
-        }
-
-        /// <summary>
-        /// 市场信息同步
+        /// 市场信息更新事件订阅方法
+        /// TODO UPDATE
         /// </summary>
         /// <param name="marketFrame"></param>
-        public void SyncMarketInfo(MarketFrame marketFrame)
+        public void OnMarketUpdate(MarketFrame marketFrame)
         {
             MarketFrame = marketFrame;
-        }
-
-        /// <summary>
-        /// 市场价格更新
-        /// </summary>
-        public void OnPriceUpdate()
-        {
-            CheckOrder();
-        }
-
-        /// <summary>
-        /// 同步交易所的委托单
-        /// </summary>
-        /// <param name="orderId"></param>
-        /// <param name="order"></param>
-        /// <param name="operation"></param>
-        /// <exception cref="Exception"></exception>
-        public void OnOrderUpdate(int orderId, GeneralOrder order, OrderUpdatedEventOperation operation)
-        {
             throw new NotImplementedException();
-            switch (operation)
-            {
-                case OrderUpdatedEventOperation.CreateOrder:
-                    Orders.Add(orderId, order);
-                    break;
-                //case OrderUpdatedEventOperation.RemoveOrder:
-                //    Orders.Remove(orderId);
-                //    break;
-                default:
-                    throw new Exception($"OnTradeUpdate(): operation={operation}, OrderId={orderId}.");
-            }
         }
 
         /// <summary>
