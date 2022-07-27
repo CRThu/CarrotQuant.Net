@@ -59,7 +59,8 @@ namespace CarrotBacktesting.Net.Engine
                 Simulation.UpdateFrame();
 
                 // 交易所订单更新
-                Exchange.OnPriceUpdate();
+                throw new NotImplementedException();
+                //Exchange.OnPriceUpdate();
 
                 // 投资组合PNL信息更新
                 StrategyContext.PortfolioManager.OnPriceUpdate();
