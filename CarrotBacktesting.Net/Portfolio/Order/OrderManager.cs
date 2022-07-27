@@ -99,7 +99,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             }
             else
             {
-                throw new InvalidOperationException($"不存在此键委托单, Id:{orderId}.");
+                throw new InvalidOperationException($"委托单中不存在此委托, Id:{orderId}.");
             }
         }
 

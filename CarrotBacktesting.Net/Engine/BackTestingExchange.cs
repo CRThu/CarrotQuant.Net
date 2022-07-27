@@ -72,34 +72,40 @@ namespace CarrotBacktesting.Net.Engine
         /// <param name="operation">委托单事件参数</param>
         public void OnOrderUpdate(OrderManager sender, OrderEventArgs operation)
         {
-            throw new NotImplementedException();
-
-            //switch (operation)
-            //{
-            //    case OrderUpdatedEventOperation.CreateOrder:
-            //        Orders.Add(orderId, order);
-            //        break;
-            //    //case OrderUpdatedEventOperation.RemoveOrder:
-            //    //    Orders.Remove(orderId);
-            //    //    break;
-            //    default:
-            //        throw new Exception($"OnTradeUpdate(): operation={operation}, OrderId={orderId}.");
-            //}
+            switch (operation.Operation)
+            {
+                case OrderUpdatedEventOperation.CreateOrder:
+                    Orders.Add(operation.OrderId, sender[operation.OrderId]);
+                    break;
+                case OrderUpdatedEventOperation.CancelOrder:
+                    Orders.Remove(operation.OrderId);
+                    break;
+                case OrderUpdatedEventOperation.UpdateOrder:
+                    if (Orders.ContainsKey(operation.OrderId))
+                    {
+                        Orders[operation.OrderId] = sender[operation.OrderId];
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"交易所委托单中不存在此委托, Id:{operation.OrderId}.");
+                    }
+                    break;
+            }
         }
 
         /// <summary>
         /// 市场信息更新事件订阅方法
-        /// TODO UPDATE
         /// </summary>
-        /// <param name="marketFrame"></param>
-        public void OnMarketUpdate(MarketFrame marketFrame)
+        /// <param name="marketFrame">市场时间</param>
+        /// <param name="marketEventArgs">市场是否开盘</param>
+        public void OnMarketUpdate(MarketFrame marketFrame, MarketEventArgs marketEventArgs)
         {
             MarketFrame = marketFrame;
-            throw new NotImplementedException();
         }
 
         /// <summary>
         /// 检查委托单是否成交
+        /// TODO
         /// </summary>
         public void CheckOrder()
         {
