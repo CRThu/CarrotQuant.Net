@@ -63,7 +63,8 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             foreach (var position in Positions.Values)
             {
                 // TODO
-                position.CurrentPrice = marketFrame[position.ShareName].ClosePrice;
+                throw new NotImplementedException();
+                //position.CurrentPrice = marketFrame[position.StockName].ClosePrice;
             }
         }
 
@@ -115,15 +116,18 @@ namespace CarrotBacktesting.Net.Portfolio.Position
                 if (size_out == 0)
                 {
                     // 平仓时PNL未实现损益移至已实现损益并清零未实现损益
-                    realizedPnl = currentPosition.UnRealizedPnl + currentPosition.RealizedPnl;
+                    throw new NotImplementedException();
+                    //realizedPnl = currentPosition.UnRealizedPnl + currentPosition.RealizedPnl;
                 }
                 else
                 {
-                    realizedPnl = currentPosition.RealizedPnl;
+                    throw new NotImplementedException();
+                    //realizedPnl = currentPosition.RealizedPnl;
                 }
                 currentPosition.Size = size_out;
                 currentPosition.Cost = cost_out;
-                currentPosition.RealizedPnl = realizedPnl;
+                throw new NotImplementedException();
+                //currentPosition.RealizedPnl = realizedPnl;
             }
 
         }
