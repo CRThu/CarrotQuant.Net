@@ -26,9 +26,10 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             double realizedPnl = 0, unrealizedPnl = 0;
             foreach (var position in positionManager.Positions.Values)
             {
-                shareValue += position.CurrentValue;
-                realizedPnl += position.RealizedPnl;
-                unrealizedPnl += position.UnRealizedPnl;
+                throw new NotImplementedException();
+                //shareValue += position.CurrentValue;
+                //realizedPnl += position.RealizedPnl;
+                //unrealizedPnl += position.UnRealizedPnl;
             }
             Logs.Add(new PnlLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
         }
