@@ -20,9 +20,9 @@ namespace CarrotBacktesting.Net.Engine
         public DataFeed DataFeed { get; set; }
 
         /// <summary>
-        /// 回测模拟设置
+        /// 回测设置
         /// </summary>
-        public SimulationOptions Options { get; set; }
+        private SimulationOptions Options { get; set; }
 
         /// <summary>
         /// 模拟开始时间
