@@ -99,6 +99,21 @@ namespace CarrotBacktesting.Net.Engine
         /// 模拟股票名称数组
         /// </summary>
         public string[] ShareNames { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// 回测交易流动性估计(实际成交量与Tick总成交量比值)
+        /// </summary>
+        public double ExchangeEstimateLiquidityRatio { get; set; } = 0.2;
+
+        /// <summary>
+        /// 回测交易滑点
+        /// </summary>
+        public double ExchangePriceSlippage { get; set; } = 0.02;
+
+        /// <summary>
+        /// 初始资金
+        /// </summary>
+        public double InitialCash { get; set; } = 100000;
     }
 
     public struct BasicFields
