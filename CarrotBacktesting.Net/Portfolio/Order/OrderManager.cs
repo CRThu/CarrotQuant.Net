@@ -141,9 +141,9 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// 委托单交易更新
         /// </summary>
         /// <param name="orderId">委托单id</param>
-        /// <param name="size">成交头寸</param>
         /// <param name="price">成交价格</param>
-        public void TradeOrder(int orderId, double size, double price)
+        /// <param name="size">成交头寸</param>
+        public void TradeOrder(int orderId, double price, double size)
         {
             GeneralOrder order = GetOrder(orderId);
             order.Trade(size, price);
@@ -159,7 +159,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <param name="tradeEventArgs">成交事件参数</param>
         public void OnTradeUpdate(BackTestingExchange sender, TradeEventArgs tradeEventArgs)
         {
-            TradeOrder(tradeEventArgs.OrderId, tradeEventArgs.Volume, tradeEventArgs.Price);
+            TradeOrder(tradeEventArgs.OrderId, tradeEventArgs.Price, tradeEventArgs.Volume);
         }
     }
 }

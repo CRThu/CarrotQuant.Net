@@ -26,12 +26,12 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <summary>
         /// 头寸平均持仓成本
         /// </summary>
-        public double Cost { get; set; }
+        public double Cost => CostValue / Size;
 
         /// <summary>
         /// 头寸持仓成本总价值
         /// </summary>
-        public double CostValue => Cost * Size;
+        public double CostValue { get; set; }
 
         ///// <summary>
         ///// 当前价格
@@ -58,29 +58,27 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         ///// </summary>
         //public double CurrentValue => CurrentPrice * Size;
 
-
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="shareName"></param>
-        /// <param name="size"></param>
-        /// <param name="direction"></param>
-        public GeneralPosition(string shareName, double size, double cost, OrderDirection direction = OrderDirection.Buy)
+        /// <param name="stockName">股票代码</param>
+        /// <param name="size">头寸大小</param>
+        /// <param name="cost">股票单价</param>
+        public GeneralPosition(string stockName, double size, double cost)
         {
-            StockName = shareName;
-            Size = direction == OrderDirection.Buy ? size : -size;
-            Cost = cost;
+            StockName = stockName;
+            Trade(size, cost);
         }
 
         /// <summary>
-        /// 构造函数
+        /// 交易
         /// </summary>
-        /// <param name="generalOrder"></param>
-        public GeneralPosition(GeneralOrder generalOrder, double price)
+        /// <param name="size">头寸大小</param>
+        /// <param name="cost">股票单价</param>
+        public void Trade(double size, double cost)
         {
-            StockName = generalOrder.StockCode;
-            Size = generalOrder.Direction == OrderDirection.Buy ? generalOrder.OrderSize : -generalOrder.OrderSize;
-            Cost = price;
+            Size += size;
+            CostValue += cost * size;
         }
     }
 }
