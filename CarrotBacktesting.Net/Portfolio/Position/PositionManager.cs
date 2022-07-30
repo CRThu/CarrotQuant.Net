@@ -19,24 +19,27 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <summary>
         /// 日期(临时)
         /// </summary>
-        public DateTime NowTime { get; set; }
+        //public DateTime NowTime { get; set; }
 
         /// <summary>
         /// 头寸存储字典
         /// </summary>
-        public Dictionary<string, GeneralPosition> Positions { get; set; } = new();
-        /// <summary>
-        /// 未平仓头寸数组
-        /// </summary>
-        public GeneralPosition[] OpenedPositions => Positions.Values.Where(p => p.Size != 0).ToArray();
-        /// <summary>
-        /// 已平仓头寸数组
-        /// </summary>
-        public GeneralPosition[] ClosedPositions => Positions.Values.Where(p => p.Size == 0).ToArray();
+        public Dictionary<string, GeneralPosition> PositionsStorage { get; set; } = new();
+
         /// <summary>
         /// 现金
         /// </summary>
         public double Cash { get; set; }
+
+        /// <summary>
+        /// 未平仓头寸数组
+        /// </summary>
+        //public GeneralPosition[] OpenedPositions => Positions.Values.Where(p => p.Size != 0).ToArray();
+        /// <summary>
+        /// 已平仓头寸数组
+        /// </summary>
+        //public GeneralPosition[] ClosedPositions => Positions.Values.Where(p => p.Size == 0).ToArray();
+
 
         public delegate void CashUpdateDelegate(DateTime time, double cash);
         public event CashUpdateDelegate? CashUpdateEvent;
@@ -52,15 +55,86 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         }
 
         /// <summary>
+        /// 获取头寸信息
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <returns>头寸信息类</returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        public GeneralPosition GetPosition(string stockCode)
+        {
+            if (PositionsStorage.ContainsKey(stockCode))
+            {
+                return PositionsStorage[stockCode];
+            }
+            else
+            {
+                throw new InvalidOperationException($"不存在此头寸, StockCode:{stockCode}.");
+            }
+        }
+
+        /// <summary>
+        /// 获取头寸信息
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="position">头寸信息类, 不存在则返回null</param>
+        /// <returns>是否存在</returns>
+        public bool TryGetPosition(string stockCode, out GeneralPosition? position)
+        {
+            return PositionsStorage.TryGetValue(stockCode, out position);
+        }
+
+        /// <summary>
+        /// 获取头寸持仓成本
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <returns>头寸持仓成本</returns>
+        public double GetPositionCost(string stockCode)
+        {
+            bool hasPosition = TryGetPosition(stockCode, out GeneralPosition? position);
+            if (hasPosition)
+            {
+                return position!.Cost;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// 获取头寸持仓量
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <returns>头寸持仓量</returns>
+        public double GetPositionSize(string stockCode)
+        {
+            bool hasPosition = TryGetPosition(stockCode, out GeneralPosition? position);
+            if (hasPosition)
+            {
+                return position!.Size;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+
+
+        public void UpdatePosition(string stockCode, double price, double size)
+        {
+            throw new NotImplementedException();
+        }
+
+        /// <summary>
         /// 市场价格更新
         /// </summary>
         /// <param name="marketFrame"></param>
         public void OnPriceUpdate(MarketFrame marketFrame)
         {
             // 更新日期
-            NowTime = marketFrame.DateTime;
+            //NowTime = marketFrame.DateTime;
             // 更新未实现收益
-            foreach (var position in Positions.Values)
+            foreach (var position in PositionsStorage.Values)
             {
                 // TODO
                 throw new NotImplementedException();
@@ -94,7 +168,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         public void SetCash(double cash)
         {
             Cash += cash;
-            CashUpdateEvent?.Invoke(NowTime, cash);
+            //CashUpdateEvent?.Invoke(NowTime, cash);
         }
 
         /// <summary>
@@ -105,11 +179,11 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <param name="cost"></param>
         public void SetPosition(string shareName, double size, double cost)
         {
-            if (!Positions.ContainsKey(shareName))
-                Positions.Add(shareName, new GeneralPosition(shareName, size, cost));
+            if (!PositionsStorage.ContainsKey(shareName))
+                PositionsStorage.Add(shareName, new GeneralPosition(shareName, size, cost));
             else
             {
-                var currentPosition = Positions[shareName];
+                var currentPosition = PositionsStorage[shareName];
                 var size_out = currentPosition.Size + size;
                 var cost_out = size_out != 0 ? (currentPosition.CostValue + cost * size) / (currentPosition.Size + size) : 0;
                 double realizedPnl;
@@ -124,8 +198,8 @@ namespace CarrotBacktesting.Net.Portfolio.Position
                     throw new NotImplementedException();
                     //realizedPnl = currentPosition.RealizedPnl;
                 }
-                currentPosition.Size = size_out;
-                currentPosition.Cost = cost_out;
+                //currentPosition.Size = size_out;
+                //currentPosition.Cost = cost_out;
                 throw new NotImplementedException();
                 //currentPosition.RealizedPnl = realizedPnl;
             }
@@ -134,7 +208,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
 
         public override string ToString()
         {
-            return ClassFormatter.Formatter(Positions.Values);
+            return ClassFormatter.Formatter(PositionsStorage.Values);
         }
     }
 }
