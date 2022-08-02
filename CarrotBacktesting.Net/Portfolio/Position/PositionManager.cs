@@ -119,10 +119,37 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             }
         }
 
+        /// <summary>
+        /// 新建头寸
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="price">成交价</param>
+        /// <param name="size">成交数量</param>
+        public void CreatePosition(string stockCode, double price, double size)
+        {
+            var position = new GeneralPosition(stockCode, price, size);
+            PositionsStorage.Add(stockCode, position);
+        }
 
+        /// <summary>
+        /// 更新头寸(若不存在则创建, 若清仓则删除)
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="price">成交价</param>
+        /// <param name="size">成交数量</param>
         public void UpdatePosition(string stockCode, double price, double size)
         {
-            throw new NotImplementedException();
+            if (TryGetPosition(stockCode, out GeneralPosition? position))
+            {
+                position!.Trade(size, price);
+                // 若清仓则删除持仓头寸数据
+                if (position!.Size == 0)
+                    PositionsStorage.Remove(stockCode);
+            }
+            else
+            {
+                CreatePosition(stockCode, price, size);
+            }
         }
 
         /// <summary>
