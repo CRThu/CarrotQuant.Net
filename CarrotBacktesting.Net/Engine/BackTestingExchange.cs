@@ -53,7 +53,6 @@ namespace CarrotBacktesting.Net.Engine
         public BackTestingExchange(SimulationOptions options)
         {
             Options = options;
-            Cash = options.InitialCash;
             //EventRegister();
         }
 

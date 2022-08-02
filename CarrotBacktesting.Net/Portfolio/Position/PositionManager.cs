@@ -17,11 +17,6 @@ namespace CarrotBacktesting.Net.Portfolio.Position
     public class PositionManager
     {
         /// <summary>
-        /// 日期(临时)
-        /// </summary>
-        //public DateTime NowTime { get; set; }
-
-        /// <summary>
         /// 头寸存储字典
         /// </summary>
         public Dictionary<string, GeneralPosition> PositionsStorage { get; set; } = new();
@@ -32,26 +27,40 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         public double Cash { get; set; }
 
         /// <summary>
-        /// 未平仓头寸数组
+        /// 全部持仓头寸集合
         /// </summary>
-        //public GeneralPosition[] OpenedPositions => Positions.Values.Where(p => p.Size != 0).ToArray();
+        public IEnumerable<GeneralPosition> Positions
+        {
+            get
+            {
+                return PositionsStorage.Values;
+            }
+        }
+
         /// <summary>
-        /// 已平仓头寸数组
+        /// 持仓头寸数量
         /// </summary>
-        //public GeneralPosition[] ClosedPositions => Positions.Values.Where(p => p.Size == 0).ToArray();
+        public int Count => PositionsStorage.Count;
 
+        /// <summary>
+        /// 回测设置
+        /// </summary>
+        private SimulationOptions Options { get; set; }
 
-        public delegate void CashUpdateDelegate(DateTime time, double cash);
+        public delegate void CashUpdateDelegate(double cash);
         public event CashUpdateDelegate? CashUpdateEvent;
 
-        public delegate void PositionUpdateDelegate(DateTime time, string shareName, double cost, double size, OrderDirection direction);
+        public delegate void PositionUpdateDelegate(PositionEventArgs positionEventArgs);
         public event PositionUpdateDelegate? PositionUpdateEvent;
 
         /// <summary>
         /// 构造函数
         /// </summary>
-        public PositionManager()
+        public PositionManager(SimulationOptions options)
         {
+            Options = options;
+            //EventRegister();
+            UpdateCash(options.InitialCash);
         }
 
         /// <summary>
@@ -150,92 +159,32 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             {
                 CreatePosition(stockCode, price, size);
             }
+
+            PositionEventArgs positionEventArgs = new(stockCode, price, size);
+            PositionUpdateEvent?.Invoke(positionEventArgs);
+
+            // 计算现金剩余
+            UpdateCash(Cash - price * size);
         }
 
         /// <summary>
-        /// 市场价格更新
-        /// </summary>
-        /// <param name="marketFrame"></param>
-        public void OnPriceUpdate(MarketFrame marketFrame)
-        {
-            // 更新日期
-            //NowTime = marketFrame.DateTime;
-            // 更新未实现收益
-            foreach (var position in PositionsStorage.Values)
-            {
-                // TODO
-                throw new NotImplementedException();
-                //position.CurrentPrice = marketFrame[position.StockName].ClosePrice;
-            }
-        }
-
-        /// <summary>
-        /// 头寸更新
-        /// </summary>
-        /// <param name="orderId"></param>
-        /// <param name="order"></param>
-        /// <param name="tradeInfo"></param>
-        /// <param name="operation"></param>
-        internal void OnTradeUpdate(int orderId, GeneralOrder order, (DateTime time, double tradePrice, double tradeVolume) tradeInfo, OrderUpdatedEventOperation operation)
-        {
-            Console.WriteLine($"头寸管理器:头寸已更新.\t股票名称:{order.StockCode}, 价格:{tradeInfo.tradePrice}, 数量:{tradeInfo.tradeVolume}, 方向:{order.Direction}.");
-
-            // 设置股权头寸
-            SetPosition(order.StockCode, order.Direction == OrderDirection.Buy ? tradeInfo.tradeVolume : -tradeInfo.tradeVolume, tradeInfo.tradePrice);
-            // 计算现金剩余(Short股权时货币方向为Long)
-            Cash += order.Direction == OrderDirection.Sell ? tradeInfo.tradePrice * tradeInfo.tradeVolume : -tradeInfo.tradePrice * tradeInfo.tradeVolume;
-
-            PositionUpdateEvent?.Invoke(tradeInfo.time, order.StockCode, tradeInfo.tradePrice, tradeInfo.tradeVolume, order.Direction);
-        }
-
-        /// <summary>
-        /// 设置资金
+        /// 更新Cash
         /// </summary>
         /// <param name="cash"></param>
-        public void SetCash(double cash)
+        public void UpdateCash(double cash)
         {
-            Cash += cash;
-            //CashUpdateEvent?.Invoke(NowTime, cash);
+            Cash = cash;
+            CashUpdateEvent?.Invoke(cash);
         }
 
         /// <summary>
-        /// 添加头寸, 若存在则累加, 若不存在则创建
+        /// 交易所成交更新事件回调
         /// </summary>
-        /// <param name="shareName"></param>
-        /// <param name="size"></param>
-        /// <param name="cost"></param>
-        public void SetPosition(string shareName, double size, double cost)
+        /// <param name="sender"></param>
+        /// <param name="tradeEventArgs"></param>
+        public void OnTradeUpdate(BackTestingExchange sender, TradeEventArgs tradeEventArgs)
         {
-            if (!PositionsStorage.ContainsKey(shareName))
-                PositionsStorage.Add(shareName, new GeneralPosition(shareName, size, cost));
-            else
-            {
-                var currentPosition = PositionsStorage[shareName];
-                var size_out = currentPosition.Size + size;
-                var cost_out = size_out != 0 ? (currentPosition.CostValue + cost * size) / (currentPosition.Size + size) : 0;
-                double realizedPnl;
-                if (size_out == 0)
-                {
-                    // 平仓时PNL未实现损益移至已实现损益并清零未实现损益
-                    throw new NotImplementedException();
-                    //realizedPnl = currentPosition.UnRealizedPnl + currentPosition.RealizedPnl;
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                    //realizedPnl = currentPosition.RealizedPnl;
-                }
-                //currentPosition.Size = size_out;
-                //currentPosition.Cost = cost_out;
-                throw new NotImplementedException();
-                //currentPosition.RealizedPnl = realizedPnl;
-            }
-
-        }
-
-        public override string ToString()
-        {
-            return ClassFormatter.Formatter(PositionsStorage.Values);
+            UpdatePosition(tradeEventArgs.StockCode, tradeEventArgs.Price, tradeEventArgs.Volume);
         }
     }
 }

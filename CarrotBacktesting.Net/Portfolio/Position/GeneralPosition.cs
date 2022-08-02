@@ -14,9 +14,9 @@ namespace CarrotBacktesting.Net.Portfolio.Position
     public class GeneralPosition
     {
         /// <summary>
-        /// 股票名称
+        /// 股票代码
         /// </summary>
-        public string StockName { get; set; }
+        public string StockCode { get; set; }
 
         /// <summary>
         /// 头寸大小
@@ -61,12 +61,12 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="stockName">股票代码</param>
+        /// <param name="stockCode">股票代码</param>
         /// <param name="size">头寸大小</param>
         /// <param name="cost">股票单价</param>
-        public GeneralPosition(string stockName, double size, double cost)
+        public GeneralPosition(string stockCode, double size, double cost)
         {
-            StockName = stockName;
+            StockCode = stockCode;
             Trade(size, cost);
         }
 
