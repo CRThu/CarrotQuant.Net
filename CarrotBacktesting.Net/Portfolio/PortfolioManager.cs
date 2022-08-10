@@ -30,7 +30,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 头寸管理器
         /// </summary>
-        public PositionManager PositionManager { get; set; } = new();
+        //public PositionManager PositionManager { get; set; } = new();
 
         /// <summary>
         /// 交易记录器
@@ -57,23 +57,23 @@ namespace CarrotBacktesting.Net.Portfolio
 
             throw new NotImplementedException();
             //MarketFrame = marketFrame;
-            EventRegister();
+            //EventRegister();
         }
 
-        public void EventRegister()
-        {
-            // 交割单记录器事件
-            PositionManager.CashUpdateEvent += TransactionLogger.SetCash;
-            PositionManager.PositionUpdateEvent += TransactionLogger.AddTransaction;
-        }
+        //public void EventRegister()
+        //{
+        //    // 交割单记录器事件
+        //    PositionManager.CashUpdateEvent += TransactionLogger.SetCash;
+        //    PositionManager.PositionUpdateEvent += TransactionLogger.AddTransaction;
+        //}
 
         /// <summary>
         /// 实时股价更新
         /// </summary>
         public void OnPriceUpdate()
         {
-            PositionManager.OnPriceUpdate(MarketFrame);
-            PnlLogger.AddPnlSnapshot(MarketFrame.DateTime, PositionManager);
+            //PositionManager.OnPriceUpdate(MarketFrame);
+            //PnlLogger.AddPnlSnapshot(MarketFrame.DateTime, PositionManager);
         }
 
         /// <summary>
@@ -94,6 +94,6 @@ namespace CarrotBacktesting.Net.Portfolio
         /// 添加资金
         /// </summary>
         /// <param name="cash"></param>
-        public void SetCash(double cash = 100000) => PositionManager.SetCash(cash);
+        //public void SetCash(double cash = 100000) => PositionManager.SetCash(cash);
     }
 }

@@ -33,7 +33,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 头寸管理器
         /// </summary>
-        public PositionManager PositionManager => PortfolioManager.PositionManager;
+        //public PositionManager PositionManager => PortfolioManager.PositionManager;
         /// <summary>
         /// 交易记录器
         /// </summary>

@@ -23,7 +23,8 @@ namespace CarrotBacktesting.Net.Strategy
             Console.WriteLine("BasicStrategy.Start()");
             Console.WriteLine("SetCash:100000.");
 #endif
-            context.PortfolioManager.SetCash(100000);
+            //context.PortfolioManager.SetCash(100000);
+            throw new NotImplementedException();
         }
 
         public void End(StrategyContext strategyContext)
@@ -33,7 +34,9 @@ namespace CarrotBacktesting.Net.Strategy
             Console.WriteLine();
 
             Console.WriteLine("PositionManager:");
-            Console.WriteLine(strategyContext.PositionManager.ToString());
+            //Console.WriteLine(strategyContext.PositionManager.ToString());
+            throw new NotImplementedException();
+
             Console.WriteLine("TransactionLogger:");
             Console.WriteLine(strategyContext.TransactionLogger.ToString());
             Console.WriteLine("PnlLogger:");
