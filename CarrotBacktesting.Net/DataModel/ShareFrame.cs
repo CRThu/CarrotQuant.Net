@@ -5,63 +5,57 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-
-// TODO
-// Reference:
-// https://docs.microsoft.com/zh-cn/dotnet/csharp/write-safe-efficient-code#the-out-ref-and-in-keywords
-
 namespace CarrotBacktesting.Net.DataModel
 {
     /// <summary>
     /// 股票信息帧类
-    /// TODO 改为struct优化性能
     /// </summary>
-    public class ShareFrame
+    public readonly struct ShareFrame
     {
         /// <summary>
         /// 股票代码
         /// </summary>
-        public string StockCode { get; set; }
+        public readonly string StockCode { get; init; }
 
         /// <summary>
         /// 日期/时间
         /// </summary>
-        public DateTime DateTime { get; set; }
+        public readonly DateTime DateTime { get; init; }
 
         /// <summary>
         /// 开盘价
         /// </summary>
-        public double OpenPrice { get; set; }
+        public readonly double OpenPrice { get; init; }
 
         /// <summary>
         /// 最高价
         /// </summary>
-        public double HighPrice { get; set; }
+        public readonly double HighPrice { get; init; }
 
         /// <summary>
         /// 最低价
         /// </summary>
-        public double LowPrice { get; set; }
+        public readonly double LowPrice { get; init; }
 
         /// <summary>
         /// 收盘价
         /// </summary>
-        public double ClosePrice { get; set; }
+        public readonly double ClosePrice { get; init; }
 
         /// <summary>
         /// 成交量
         /// </summary>
-        public double Volume { get; set; }
+        public readonly double Volume { get; init; }
 
         /// <summary>
         /// 是否正常交易
         /// </summary>
-        public bool IsTrading { get; set; }
+        public readonly bool IsTrading { get; init; }
 
         /// <summary>
-        /// 其他数据键值对
+        /// 其他数据键值对(必须为值类型)
         /// </summary>
-        private Dictionary<string, dynamic> Data { get; set; }
+        public readonly Dictionary<string, dynamic>? Params { get; init; }
 
         /// <summary>
         /// 写入或读取<see cref="ShareFrame"/>中的元素
@@ -74,34 +68,6 @@ namespace CarrotBacktesting.Net.DataModel
             {
                 return Get(key);
             }
-            set
-            {
-                Set(key, value);
-            }
-        }
-
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        /// <param name="stockCode">股票代码</param>
-        /// <param name="dateTime">日期/时间</param>
-        /// <param name="openPrice">开盘价</param>
-        /// <param name="highPrice">最高价</param>
-        /// <param name="lowPrice">最低价</param>
-        /// <param name="closePrice">收盘价</param>
-        /// <param name="volume">成交量</param>
-        /// <param name="isTrading">是否正常交易, 默认为true</param>
-        public ShareFrame(string stockCode, DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading = true)
-        {
-            StockCode = stockCode;
-            DateTime = dateTime;
-            OpenPrice = openPrice;
-            HighPrice = highPrice;
-            LowPrice = lowPrice;
-            ClosePrice = closePrice;
-            Volume = volume;
-            IsTrading = isTrading;
-            Data = new();
         }
 
         /// <summary>
@@ -116,7 +82,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="volume">成交量</param>
         /// <param name="isTrading">是否正常交易</param>
         /// <param name="kv">其他数据键值对</param>
-        public ShareFrame(string stockCode, DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading, Dictionary<string, dynamic> kv)
+        public ShareFrame(string stockCode, DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading, Dictionary<string, dynamic>? kv = null)
         {
             StockCode = stockCode;
             DateTime = dateTime;
@@ -126,7 +92,7 @@ namespace CarrotBacktesting.Net.DataModel
             ClosePrice = closePrice;
             Volume = volume;
             IsTrading = isTrading;
-            Data = kv;
+            Params = kv == null ? null : new(kv);
         }
 
         /// <summary>
@@ -136,26 +102,30 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="stockCode">股票代码</param>
         public ShareFrame(IDictionary<string, object> frameDictionary, string? stockCode = null)
         {
-            StockCode = "";
-            Data = new();
+            foreach (var kv in frameDictionary)
+            {
+                switch (kv.Key)
+                {
+                    case "StockCode": StockCode = DynamicConverter.GetValue<string>(kv.Value); break;
+                    case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(kv.Value); break;
+                    case "Open": OpenPrice = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "High": HighPrice = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "Low": LowPrice = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "Close": ClosePrice = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "Volume": Volume = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(kv.Value); break;
+                    default:
+                        Params ??= new();
+                        Params[kv.Key] = kv.Value;
+                        break;
+                };
+            }
 
             if (stockCode is not null)
                 StockCode = stockCode;
 
-            foreach (var kv in frameDictionary)
-            {
-                Set(kv.Key, kv.Value);
-            }
-        }
-
-        /// <summary>
-        /// 新增数据键值对
-        /// </summary>
-        /// <param name="key">key, 若key存在则覆盖</param>
-        /// <param name="val">value</param>
-        public void SetKv(string key, dynamic val)
-        {
-            Data[key] = val;
+            if (StockCode == null)
+                throw new NotImplementedException("StockCode == null");
         }
 
         /// <summary>
@@ -165,31 +135,10 @@ namespace CarrotBacktesting.Net.DataModel
         /// <returns>key对应的value, 若key不存在则返回null</returns>
         public dynamic? GetKv(string key)
         {
-            if (Data.TryGetValue(key, out dynamic? v))
+            if (Params != null && Params.TryGetValue(key, out dynamic? v))
                 return v;
             else
                 return null;
-        }
-
-        /// <summary>
-        /// 写入<see cref="ShareFrame"/>中的元素
-        /// </summary>
-        /// <param name="key">key, 若key存在则覆盖</param>
-        /// <param name="val">value</param>
-        public void Set(string key, dynamic val)
-        {
-            switch (key)
-            {
-                case "StockCode": StockCode = DynamicConverter.GetValue<string>(val); break;
-                case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(val); break;
-                case "Open": OpenPrice = DynamicConverter.GetValue<double>(val); break;
-                case "High": HighPrice = DynamicConverter.GetValue<double>(val); break;
-                case "Low": LowPrice = DynamicConverter.GetValue<double>(val); break;
-                case "Close": ClosePrice = DynamicConverter.GetValue<double>(val); break;
-                case "Volume": Volume = DynamicConverter.GetValue<double>(val); break;
-                case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(val); break;
-                default: SetKv(key, val); break;
-            };
         }
 
         /// <summary>
