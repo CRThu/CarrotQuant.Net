@@ -10,52 +10,52 @@ namespace CarrotBacktesting.Net.DataModel
     /// <summary>
     /// 股票信息帧类
     /// </summary>
-    public readonly struct ShareFrame
+    public class ShareFrame
     {
         /// <summary>
         /// 股票代码
         /// </summary>
-        public readonly string StockCode { get; init; }
+        public string StockCode { get; init; }
 
         /// <summary>
-        /// 日期/时间
+        /// 时间
         /// </summary>
-        public readonly DateTime DateTime { get; init; }
+        public DateTime DateTime { get; init; }
 
         /// <summary>
         /// 开盘价
         /// </summary>
-        public readonly double OpenPrice { get; init; }
+        public double OpenPrice { get; init; }
 
         /// <summary>
         /// 最高价
         /// </summary>
-        public readonly double HighPrice { get; init; }
+        public double HighPrice { get; init; }
 
         /// <summary>
         /// 最低价
         /// </summary>
-        public readonly double LowPrice { get; init; }
+        public double LowPrice { get; init; }
 
         /// <summary>
         /// 收盘价
         /// </summary>
-        public readonly double ClosePrice { get; init; }
+        public double ClosePrice { get; init; }
 
         /// <summary>
         /// 成交量
         /// </summary>
-        public readonly double Volume { get; init; }
+        public double Volume { get; init; }
 
         /// <summary>
         /// 是否正常交易
         /// </summary>
-        public readonly bool IsTrading { get; init; }
+        public bool IsTrading { get; init; }
 
         /// <summary>
         /// 其他数据键值对(必须为值类型)
         /// </summary>
-        public readonly Dictionary<string, dynamic>? Params { get; init; }
+        public Dictionary<string, dynamic>? Params { get; init; }
 
         /// <summary>
         /// 写入或读取<see cref="ShareFrame"/>中的元素
@@ -74,7 +74,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// 构造函数
         /// </summary>        
         /// <param name="stockCode">股票代码</param>
-        /// <param name="dateTime">日期/时间</param>
+        /// <param name="dateTime">时间</param>
         /// <param name="openPrice">开盘价</param>
         /// <param name="highPrice">最高价</param>
         /// <param name="lowPrice">最低价</param>
@@ -82,7 +82,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="volume">成交量</param>
         /// <param name="isTrading">是否正常交易</param>
         /// <param name="kv">其他数据键值对</param>
-        public ShareFrame(string stockCode, DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading, Dictionary<string, dynamic>? kv = null)
+        public ShareFrame(string stockCode, DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading, IDictionary<string, dynamic>? kv = null)
         {
             StockCode = stockCode;
             DateTime = dateTime;
@@ -93,6 +93,23 @@ namespace CarrotBacktesting.Net.DataModel
             Volume = volume;
             IsTrading = isTrading;
             Params = kv == null ? null : new(kv);
+        }
+
+        /// <summary>
+        /// 信息帧生成新实例,数据为传入实例的副本
+        /// </summary>
+        /// <param name="frame">信息帧</param>
+        public ShareFrame(ShareFrame frame) : this(
+            stockCode: frame.StockCode,
+            dateTime: frame.DateTime,
+            openPrice: frame.OpenPrice,
+            highPrice: frame.HighPrice,
+            lowPrice: frame.LowPrice,
+            closePrice: frame.ClosePrice,
+            volume: frame.Volume,
+            isTrading: frame.IsTrading,
+            kv: frame.Params)
+        {
         }
 
         /// <summary>
@@ -133,7 +150,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         /// <param name="key">key</param>
         /// <returns>key对应的value, 若key不存在则返回null</returns>
-        public dynamic? GetKv(string key)
+        private dynamic? GetKv(string key)
         {
             if (Params != null && Params.TryGetValue(key, out dynamic? v))
                 return v;
@@ -146,7 +163,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         /// <param name="key">key</param>
         /// <returns>key对应的value, 若key不存在则返回null</returns>
-        public dynamic? Get(string key)
+        private dynamic? Get(string key)
         {
             return key switch
             {

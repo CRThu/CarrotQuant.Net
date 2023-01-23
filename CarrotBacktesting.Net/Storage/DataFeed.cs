@@ -83,7 +83,7 @@ namespace CarrotBacktesting.Net.Storage
         public bool GetShareData(DateTime dateTime, string stockCode, out ShareFrame? frame)
         {
             bool isExist = MarketData.GetNearby(dateTime, out MarketFrame marketFrame);
-            if (marketFrame.Contains(stockCode))
+            if (marketFrame[stockCode] is not null)
             {
                 frame = marketFrame[stockCode];
                 return isExist;
