@@ -25,6 +25,7 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             Assert.AreEqual(2.0, shareFrame1.ClosePrice);
             Assert.AreEqual(30000, shareFrame1.Volume);
             Assert.AreEqual(true, shareFrame1.IsTrading);
+            Assert.IsTrue(shareFrame1.Params is null);
 
             Assert.AreEqual("SH.000001", shareFrame1["StockCode"]);
             Assert.AreEqual(new DateTime(2022, 01, 01, 11, 22, 33), shareFrame1["DateTime"]);
@@ -58,7 +59,27 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             ShareFrame shareFrame1 = new(sharedict1, "code.001");
             ShareFrame shareFrame2 = new(sharedict2);
 
-            // TODO
+            Assert.AreEqual("code.001", shareFrame1.StockCode);
+            Assert.AreEqual(new DateTime(2022, 01, 01, 09, 00, 00), shareFrame1.DateTime);
+            Assert.AreEqual(0, shareFrame1.OpenPrice);
+            Assert.AreEqual(0, shareFrame1.HighPrice);
+            Assert.AreEqual(0, shareFrame1.LowPrice);
+            Assert.AreEqual(123.456, shareFrame1.ClosePrice);
+            Assert.AreEqual(0, shareFrame1.Volume);
+            Assert.AreEqual(false, shareFrame1.IsTrading);
+            Assert.IsTrue(shareFrame1.Params is null);
+
+            Assert.AreEqual("code.001", shareFrame2.StockCode);
+            Assert.AreEqual(new DateTime(2022, 01, 01, 09, 00, 00), shareFrame2.DateTime);
+            Assert.AreEqual(0, shareFrame2.OpenPrice);
+            Assert.AreEqual(0, shareFrame2.HighPrice);
+            Assert.AreEqual(0, shareFrame2.LowPrice);
+            Assert.AreEqual(123.456, shareFrame2.ClosePrice);
+            Assert.AreEqual(0, shareFrame2.Volume);
+            Assert.AreEqual(false, shareFrame2.IsTrading);
+            Assert.IsTrue(shareFrame2.Params!.Count == 1);
+            Assert.IsTrue(shareFrame2["PE"] == 333);
+            Assert.IsTrue(shareFrame2["PB"] is null);
         }
     }
 }
