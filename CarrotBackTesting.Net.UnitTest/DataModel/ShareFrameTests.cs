@@ -52,7 +52,9 @@ namespace CarrotBacktesting.Net.DataModel.Tests
                 { "StockCode", "code.001" },
                 { "DateTime", "2022-01-01 09:00:00" },
                 { "Close", "123.456" },
-                { "PE", "333" },
+                { "PEInt", 333 },
+                { "PEStr", "333" },
+                { "CODE", "CODE.001" },
                 { "IsTrading", "false" } };
 
 
@@ -77,8 +79,44 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             Assert.AreEqual(123.456, shareFrame2.ClosePrice);
             Assert.AreEqual(0, shareFrame2.Volume);
             Assert.AreEqual(false, shareFrame2.IsTrading);
-            Assert.IsTrue(shareFrame2.Params!.Count == 1);
-            Assert.IsTrue(shareFrame2["PE"] == 333);
+            Assert.IsTrue(shareFrame2.Params!.Count == 3);
+            Assert.AreEqual(333, shareFrame2["PEInt"]);
+            Assert.AreEqual("333", shareFrame2["PEStr"]);
+            Assert.AreEqual("Int32", shareFrame2["PEInt"]!.GetType().Name);
+            Assert.AreEqual("String", shareFrame2["PEStr"]!.GetType().Name);
+            Assert.AreEqual("CODE.001", shareFrame2["CODE"]);
+            Assert.IsTrue(shareFrame2["PB"] is null);
+        }
+
+        [TestMethod()]
+        public void ShareFrameTest3()
+        {
+            var sharedict = new Dictionary<string, object>() {
+                { "StockCode", "code.001" },
+                { "DateTime", "2022-01-01 09:00:00" },
+                { "Close", "123.456" },
+                { "PEInt", 333 },
+                { "PEStr", "333" },
+                { "CODE", "CODE.001" },
+                { "IsTrading", "false" } };
+            ShareFrame? shareFrame1 = new(sharedict);
+            ShareFrame shareFrame2 = new(shareFrame1!);
+            shareFrame1 = null;
+
+            Assert.AreEqual("code.001", shareFrame2.StockCode);
+            Assert.AreEqual(new DateTime(2022, 01, 01, 09, 00, 00), shareFrame2.DateTime);
+            Assert.AreEqual(0, shareFrame2.OpenPrice);
+            Assert.AreEqual(0, shareFrame2.HighPrice);
+            Assert.AreEqual(0, shareFrame2.LowPrice);
+            Assert.AreEqual(123.456, shareFrame2.ClosePrice);
+            Assert.AreEqual(0, shareFrame2.Volume);
+            Assert.AreEqual(false, shareFrame2.IsTrading);
+            Assert.IsTrue(shareFrame2.Params!.Count == 3);
+            Assert.AreEqual(333, shareFrame2["PEInt"]);
+            Assert.AreEqual("333", shareFrame2["PEStr"]);
+            Assert.AreEqual("Int32", shareFrame2["PEInt"]!.GetType().Name);
+            Assert.AreEqual("String", shareFrame2["PEStr"]!.GetType().Name);
+            Assert.AreEqual("CODE.001", shareFrame2["CODE"]);
             Assert.IsTrue(shareFrame2["PB"] is null);
         }
     }
