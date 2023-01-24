@@ -7,13 +7,12 @@ namespace CarrotBacktesting.Net.DataModel
     /// </summary>
     public class MarketData
     {
-
         /// <summary>
         /// 包含多个时间与多支股票信息的市场帧集合
         /// key: 时间
         /// value: 市场帧
         /// </summary>
-        private Dictionary<DateTime, MarketFrame> MarketFrames { get; set; }
+        private Dictionary<DateTime, MarketFrame> MarketFrames { get; init; }
 
         /// <summary>
         /// 当<see cref="MarketFrames"/>新增新数据未更新<see cref="DateTimesCache"/>时则置true
@@ -32,7 +31,7 @@ namespace CarrotBacktesting.Net.DataModel
             get
             {
                 // 若时间缓存不是最新的则刷新
-                RefrehCache();
+                RefreshCache();
                 return dateTimesCache;
             }
             set
@@ -103,7 +102,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 更新日期缓存
         /// </summary>
-        public void RefrehCache()
+        public void RefreshCache()
         {
             if (IsCacheDirty)
             {
@@ -174,7 +173,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="dateTime">时间</param>
         /// <param name="frame">返回帧, 若此时间帧不存在则返回向前搜索最近的时间帧, 若向前搜索不存在帧则返回最早时间</param>
         /// <returns>是否为此时间对应市场信息帧</returns>
-        public bool GetNearby(DateTime dateTime, out MarketFrame frame)
+        public bool TryGetNearby(DateTime dateTime, out MarketFrame frame)
         {
             // 若存在则直接返回
             if (TryGet(dateTime, out MarketFrame? marketFrame))

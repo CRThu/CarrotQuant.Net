@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -32,7 +33,7 @@ namespace CarrotBacktesting.Net.DataModel
         {
             get
             {
-                if (ShareFrames.TryGetValue(stockCode, out ShareFrame? f))
+                if (TryGet(stockCode, out ShareFrame? f))
                     return f;
                 else
                     return null;
@@ -88,6 +89,17 @@ namespace CarrotBacktesting.Net.DataModel
 
             // 添加数据
             ShareFrames.Add(shareFrame.StockCode, new(shareFrame));
+        }
+
+        /// <summary>
+        /// 读取股票在<see cref="DateTime"/>时间的信息帧
+        /// </summary>
+        /// <param name="key">股票代码</param>
+        /// <param name="value">stockCode对应帧,若不存在则返回null</param>
+        /// <returns>存在返回true,若不存在则返回false</returns>
+        public bool TryGet(string key, out ShareFrame? value)
+        {
+            return ShareFrames.TryGetValue(key, out value);
         }
     }
 }

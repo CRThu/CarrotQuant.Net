@@ -70,7 +70,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <returns>是否为此时间对应市场信息帧</returns>
         public bool GetMarketData(DateTime dateTime, out MarketFrame frame)
         {
-            return MarketData.GetNearby(dateTime, out frame);
+            return MarketData.TryGetNearby(dateTime, out frame);
         }
 
         /// <summary>
@@ -82,7 +82,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <returns>是否为此时间此股票对应市场信息帧</returns>
         public bool GetShareData(DateTime dateTime, string stockCode, out ShareFrame? frame)
         {
-            bool isExist = MarketData.GetNearby(dateTime, out MarketFrame marketFrame);
+            bool isExist = MarketData.TryGetNearby(dateTime, out MarketFrame marketFrame);
             if (marketFrame[stockCode] is not null)
             {
                 frame = marketFrame[stockCode];
