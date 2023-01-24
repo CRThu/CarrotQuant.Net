@@ -31,9 +31,7 @@ namespace CarrotBacktesting.Net.DataModel
         public void Add(ShareFrame shareFrame)
         {
             // 若Data不包含此日期的市场信息帧则新建一帧
-            if (!MarketData.Contains(shareFrame.DateTime))
-                MarketData.Add(new MarketFrame(shareFrame.DateTime));
-            MarketData[shareFrame.DateTime].Add(shareFrame);
+            MarketData.Add(shareFrame);
         }
 
         /// <summary>

@@ -114,9 +114,9 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
-        /// 添加帧
+        /// 添加市场帧的引用
         /// </summary>
-        /// <param name="frame">市场信息帧, 若已添加相同时间的帧则覆盖</param>
+        /// <param name="frame">市场信息帧</param>
         public void Add(MarketFrame frame)
         {
             IsCacheDirty = true;
@@ -126,13 +126,17 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
-        /// 是否存在此时间的市场信息帧
+        /// 添加股票信息帧的引用
         /// </summary>
-        /// <param name="dateTime">时间</param>
-        /// <returns>存在则返回true, 否则返回false</returns>
-        public bool Contains(DateTime dateTime)
+        /// <param name="frame">股票信息帧</param>
+        public void Add(ShareFrame frame)
         {
-            return MarketFrames.ContainsKey(dateTime);
+            if (!TryGet(frame.DateTime, out MarketFrame? mf))
+            {
+                mf = new MarketFrame(frame.DateTime);
+                Add(mf);
+            }
+            mf!.Add(frame);
         }
 
         /// <summary>
