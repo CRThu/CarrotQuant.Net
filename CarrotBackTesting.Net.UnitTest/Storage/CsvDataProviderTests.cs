@@ -18,13 +18,13 @@ namespace CarrotBacktesting.Net.Storage.Tests
         }
 
         [TestMethod()]
-        public void GetShareDataTest()
+        public void GetShareDataTest1()
         {
 
         }
 
         [TestMethod()]
-        public void GetShareDataTest1()
+        public void GetShareDataTest2()
         {
 
         }

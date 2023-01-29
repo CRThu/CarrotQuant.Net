@@ -10,8 +10,6 @@ namespace CarrotBacktesting.Net.Storage
 {
     public class CsvHelper
     {
-        public string FileName { get; set; }
-
         /// <summary>
         /// 字段映射表
         /// </summary>
@@ -20,26 +18,25 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="fileName"></param>
         /// <param name="mapper"></param>
-        public CsvHelper(string fileName, ShareFrameMapper? mapper = null)
+        public CsvHelper(ShareFrameMapper? mapper = null)
         {
-            FileName = fileName;
             Mapper = mapper;
         }
 
         /// <summary>
         /// 读取历史数据
         /// </summary>
+        /// <param name="fileName">文件名</param>
         /// <returns>ShareFrame[]</returns>
         /// <exception cref="InvalidOperationException"></exception>
-        public ShareFrame[] Read()
+        public ShareFrame[] Read(string fileName)
         {
 
-            string[] content = File.ReadAllLines(FileName);
+            string[] content = File.ReadAllLines(fileName);
             if (content.Length == 0)
             {
-                throw new InvalidOperationException($"文件:{FileName}为空");
+                throw new InvalidOperationException($"文件:{fileName}为空");
             }
 
             // 映射
