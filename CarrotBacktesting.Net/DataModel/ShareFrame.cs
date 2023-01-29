@@ -146,6 +146,42 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="col">列名</param>
+        /// <param name="data">数据字符串</param>
+        /// <exception cref="ArgumentException"></exception>
+        public ShareFrame(string[] col, string[] data)
+        {
+            if (col.Length != data.Length)
+            {
+                throw new ArgumentException("ShareFrame参数长度不匹配");
+            }
+
+            for (int i = 0; i < col.Length; i++)
+            {
+                switch (col[i])
+                {
+                    case "StockCode": StockCode = DynamicConverter.GetValue<string>(data[i]); break;
+                    case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(data[i]); break;
+                    case "Open": OpenPrice = DynamicConverter.GetValue<double>(data[i]); break;
+                    case "High": HighPrice = DynamicConverter.GetValue<double>(data[i]); break;
+                    case "Low": LowPrice = DynamicConverter.GetValue<double>(data[i]); break;
+                    case "Close": ClosePrice = DynamicConverter.GetValue<double>(data[i]); break;
+                    case "Volume": Volume = DynamicConverter.GetValue<double>(data[i]); break;
+                    case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(data[i]); break;
+                    default:
+                        Params ??= new();
+                        Params[col[i]] = data[i];
+                        break;
+                };
+            }
+
+            if (StockCode == null)
+                throw new NotImplementedException("StockCode == null");
+        }
+
+        /// <summary>
         /// 获取数据键值对
         /// </summary>
         /// <param name="key">key</param>
