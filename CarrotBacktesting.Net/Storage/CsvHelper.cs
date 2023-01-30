@@ -8,6 +8,9 @@ using System.Xml.Linq;
 
 namespace CarrotBacktesting.Net.Storage
 {
+    /// <summary>
+    /// Csv操作类
+    /// </summary>
     public class CsvHelper
     {
         /// <summary>
