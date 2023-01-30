@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using CarrotBackTesting.Net.UnitTest.Common;
+using System.IO;
 
 namespace CarrotBacktesting.Net.Storage.Tests
 {
@@ -27,6 +29,12 @@ namespace CarrotBacktesting.Net.Storage.Tests
         public void GetShareDataTest2()
         {
 
+        }
+
+        [TestMethod()]
+        public void GetAllStockCodeTest()
+        {
+            string csvDir = UnitTestDirectory.CsvDataDirectory;
         }
     }
 }
