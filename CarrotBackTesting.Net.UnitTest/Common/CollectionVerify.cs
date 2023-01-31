@@ -19,5 +19,18 @@ namespace CarrotBackTesting.Net.Common
             var err = v1.Zip(v2, (x1, x2) => Math.Abs(x1 - x2)).ToArray();
             return (err.Min(), err.Max(), err.Average());
         }
+
+        /// <summary>
+        /// 比较两个数组(数组内无相同数据)是否有相同的元素
+        /// </summary>
+        /// <param name="arr1"></param>
+        /// <param name="arr2"></param>
+        /// <returns></returns>
+        public static bool CompareArray<TSource>(TSource[] arr1, TSource[] arr2)
+        {
+            var q = from a in arr1 join b in arr2 on a equals b select a;
+            bool flag = arr1.Length == arr2.Length && q.Count() == arr1.Length;
+            return flag;
+        }
     }
 }

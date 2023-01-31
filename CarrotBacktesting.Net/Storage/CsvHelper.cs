@@ -31,9 +31,10 @@ namespace CarrotBacktesting.Net.Storage
         /// 读取历史数据
         /// </summary>
         /// <param name="fileName">文件名</param>
+        /// <param name="stockCode">股票代码</param>
         /// <returns>ShareFrame[]</returns>
         /// <exception cref="InvalidOperationException"></exception>
-        public ShareFrame[] Read(string fileName)
+        public ShareFrame[] Read(string fileName, string stockCode)
         {
 
             string[] content = File.ReadAllLines(fileName);
@@ -42,6 +43,7 @@ namespace CarrotBacktesting.Net.Storage
                 throw new InvalidOperationException($"文件:{fileName}为空");
             }
 
+            // BUG HERE 数据列未按要求获取
             // 映射
             string[] cols = content[0].Split(',');
             if (Mapper != null)
@@ -54,7 +56,7 @@ namespace CarrotBacktesting.Net.Storage
 
             ShareFrame[] elements = content.Skip(1)
                                            .Where(v => v.Contains(','))
-                                           .Select(v => new ShareFrame(cols, v.Split(',')))
+                                           .Select(v => new ShareFrame(cols, v.Split(','), stockCode))
                                            .ToArray();
 
             return elements;

@@ -149,9 +149,10 @@ namespace CarrotBacktesting.Net.DataModel
         /// 构造函数
         /// </summary>
         /// <param name="col">列名</param>
-        /// <param name="data">数据字符串</param>
+        /// <param name="data">数据行(字符串)</param>
+        /// <param name="stockCode">股票代码,若列中未包含股票代码则使用该参数作为股票代码</param>
         /// <exception cref="ArgumentException"></exception>
-        public ShareFrame(string[] col, string[] data)
+        public ShareFrame(string[] col, string[] data, string? stockCode = null)
         {
             if (col.Length != data.Length)
             {
@@ -178,7 +179,16 @@ namespace CarrotBacktesting.Net.DataModel
             }
 
             if (StockCode == null)
-                throw new NotImplementedException("StockCode == null");
+            {
+                if(stockCode != null)
+                {
+                    StockCode = stockCode;
+                }
+                else
+                {
+                    throw new NotImplementedException("StockCode == null");
+                }
+            }
         }
 
         /// <summary>

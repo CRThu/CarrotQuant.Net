@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
 namespace CarrotBackTesting.Net.UnitTest.Common
@@ -13,5 +15,7 @@ namespace CarrotBackTesting.Net.UnitTest.Common
         public static string CsvDataDirectory = @$"{ProjectDirectory}\TestData\Csv";
 
         public static string InfoPath = @$"{ProjectDirectory}\TestData\info.json";
+        //https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/use-dom-utf8jsonreader-utf8jsonwriter?pivots=dotnet-7-0
+        public static JsonNode Info = JsonNode.Parse(File.ReadAllText(InfoPath))!;
     }
 }
