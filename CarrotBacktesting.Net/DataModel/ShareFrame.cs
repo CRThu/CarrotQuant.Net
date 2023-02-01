@@ -148,39 +148,48 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="col">列名</param>
-        /// <param name="data">数据行(字符串)</param>
+        /// <param name="col">列名数组</param>
+        /// <param name="data">数据行(字符串数组)</param>
+        /// <param name="mask">数组元素是否使用, 若未使用则该元素位置传入false</param>
         /// <param name="stockCode">股票代码,若列中未包含股票代码则使用该参数作为股票代码</param>
         /// <exception cref="ArgumentException"></exception>
-        public ShareFrame(string[] col, string[] data, string? stockCode = null)
+        public ShareFrame(string[] col, string[] data, bool[]? mask = null, string? stockCode = null)
         {
             if (col.Length != data.Length)
             {
-                throw new ArgumentException("ShareFrame参数长度不匹配");
+                throw new ArgumentException("ShareFrame col与data参数长度不匹配");
+            }
+
+            if (mask != null && col.Length != mask.Length)
+            {
+                throw new ArgumentException("ShareFrame col与mask参数长度不匹配");
             }
 
             for (int i = 0; i < col.Length; i++)
             {
-                switch (col[i])
+                if (mask == null || (mask != null && mask[i]))
                 {
-                    case "StockCode": StockCode = DynamicConverter.GetValue<string>(data[i]); break;
-                    case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(data[i]); break;
-                    case "Open": OpenPrice = DynamicConverter.GetValue<double>(data[i]); break;
-                    case "High": HighPrice = DynamicConverter.GetValue<double>(data[i]); break;
-                    case "Low": LowPrice = DynamicConverter.GetValue<double>(data[i]); break;
-                    case "Close": ClosePrice = DynamicConverter.GetValue<double>(data[i]); break;
-                    case "Volume": Volume = DynamicConverter.GetValue<double>(data[i]); break;
-                    case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(data[i]); break;
-                    default:
-                        Params ??= new();
-                        Params[col[i]] = data[i];
-                        break;
-                };
+                    switch (col[i])
+                    {
+                        case "StockCode": StockCode = DynamicConverter.GetValue<string>(data[i]); break;
+                        case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(data[i]); break;
+                        case "Open": OpenPrice = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "High": HighPrice = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "Low": LowPrice = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "Close": ClosePrice = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "Volume": Volume = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(data[i]); break;
+                        default:
+                            Params ??= new();
+                            Params[col[i]] = data[i];
+                            break;
+                    };
+                }
             }
 
             if (StockCode == null)
             {
-                if(stockCode != null)
+                if (stockCode != null)
                 {
                     StockCode = stockCode;
                 }
