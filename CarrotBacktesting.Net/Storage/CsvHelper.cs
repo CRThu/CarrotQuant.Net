@@ -47,6 +47,7 @@ namespace CarrotBacktesting.Net.Storage
             // 筛选需要的列
             string[] cols = content[0].Split(',');
             bool[] mask = cols.Select(c => fields.Contains(c)).ToArray();
+            string[] types = new string[cols.Length];
 
             // 映射
             if (Mapper != null)
@@ -54,12 +55,14 @@ namespace CarrotBacktesting.Net.Storage
                 for (int i = 0; i < cols.Length; i++)
                 {
                     cols[i] = Mapper[cols[i]];
+                    if (Mapper.TypeDict.TryGetValue(cols[i], out string? type))
+                        types[i] = type;
                 }
             }
 
             ShareFrame[] elements = content.Skip(1)
                                            .Where(v => v.Contains(','))
-                                           .Select(v => new ShareFrame(cols, v.Split(','), mask, stockCode))
+                                           .Select(v => new ShareFrame(cols, v.Split(','), mask, types, stockCode))
                                            .ToArray();
 
             return elements;

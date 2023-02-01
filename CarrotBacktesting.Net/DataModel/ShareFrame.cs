@@ -149,11 +149,17 @@ namespace CarrotBacktesting.Net.DataModel
         /// 构造函数
         /// </summary>
         /// <param name="col">列名数组</param>
-        /// <param name="data">数据行(字符串数组)</param>
+        /// <param name="data">数据行数组</param>
         /// <param name="mask">数组元素是否使用, 若未使用则该元素位置传入false</param>
+        /// <param name="types">
+        /// 数组元素是否需要转换<br/>
+        /// 若为null则为默认System.String<br/>
+        /// 转换类型<br/>
+        /// 例如: System.Double, System.String, System.Boolean
+        /// </param>
         /// <param name="stockCode">股票代码,若列中未包含股票代码则使用该参数作为股票代码</param>
         /// <exception cref="ArgumentException"></exception>
-        public ShareFrame(string[] col, string[] data, bool[]? mask = null, string? stockCode = null)
+        public ShareFrame(string[] col, string[] data, bool[]? mask = null, string?[]? types = null, string? stockCode = null)
         {
             if (col.Length != data.Length)
             {
@@ -163,6 +169,11 @@ namespace CarrotBacktesting.Net.DataModel
             if (mask != null && col.Length != mask.Length)
             {
                 throw new ArgumentException("ShareFrame col与mask参数长度不匹配");
+            }
+
+            if (types != null && col.Length != types.Length)
+            {
+                throw new ArgumentException("ShareFrame col与types参数长度不匹配");
             }
 
             for (int i = 0; i < col.Length; i++)
@@ -181,7 +192,14 @@ namespace CarrotBacktesting.Net.DataModel
                         case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(data[i]); break;
                         default:
                             Params ??= new();
-                            Params[col[i]] = data[i];
+                            if (types == null || (types != null && types[i] == null))
+                            {
+                                Params[col[i]] = data[i];
+                            }
+                            else
+                            {
+                                Params[col[i]] = DynamicConverter.ConvertValue(data[i], types![i]);
+                            }
                             break;
                     };
                 }

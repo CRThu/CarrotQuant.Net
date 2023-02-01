@@ -24,7 +24,7 @@ namespace CarrotBacktesting.Net.DataModel.Tests
 
             Assert.AreEqual("DateTime", sfm.MapDict["date"]);
             Assert.AreEqual("Amount", sfm.MapDict["amount"]);
-            Assert.AreEqual("double", sfm.TypeDict["amount"]);
+            Assert.AreEqual("System.Double", sfm.TypeDict["amount"]);
         }
     }
 }

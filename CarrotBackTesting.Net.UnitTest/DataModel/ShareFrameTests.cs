@@ -145,11 +145,12 @@ namespace CarrotBacktesting.Net.DataModel.Tests
         [TestMethod()]
         public void ShareFrameTest5()
         {
-            var cols = new string[] { "StockCode", "DateTime", "Close", "PEStr", "CODE", "IsTrading" };
-            var mask = new bool[] { true, true, true, true, false, true };
-            var dat = new string[] { "code.001", "2022-01-01 09:00:00", "123.456", "333", "CODE.001", "false" };
-            ShareFrame? shareFrame1 = new(cols, dat, mask);
-
+            var cols = new string[] { "StockCode", "DateTime", "Close", "PEStr", "PENum", "CODE", "IsTrading" };
+            var mask = new bool[] { true, true, true, true, true, false, true };
+            var types = new string?[] { null, null, null, null, "System.Double", null, null };
+            var dat = new string[] { "code.001", "2022-01-01 09:00:00", "123.456", "333.33", "333.33", "CODE.001", "false" };
+            ShareFrame? shareFrame1 = new(cols, dat, mask, types);
+            
             Assert.AreEqual("code.001", shareFrame1.StockCode);
             Assert.AreEqual(new DateTime(2022, 01, 01, 09, 00, 00), shareFrame1.DateTime);
             Assert.AreEqual(0, shareFrame1.OpenPrice);
@@ -158,9 +159,11 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             Assert.AreEqual(123.456, shareFrame1.ClosePrice);
             Assert.AreEqual(0, shareFrame1.Volume);
             Assert.AreEqual(false, shareFrame1.IsTrading);
-            Assert.IsTrue(shareFrame1.Params!.Count == 1);
-            Assert.AreEqual("333", shareFrame1["PEStr"]);
-            Assert.AreEqual("String", shareFrame1["PEStr"]!.GetType().Name);
+            Assert.IsTrue(shareFrame1.Params!.Count == 2);
+            Assert.AreEqual("333.33", shareFrame1["PEStr"]);
+            Assert.AreEqual(333.33, shareFrame1["PENum"]);
+            Assert.AreEqual("System.String", shareFrame1["PEStr"]!.GetType().FullName);
+            Assert.AreEqual("System.Double", shareFrame1["PENum"]!.GetType().FullName);
             Assert.IsTrue(shareFrame1["PB"] is null);
         }
     }

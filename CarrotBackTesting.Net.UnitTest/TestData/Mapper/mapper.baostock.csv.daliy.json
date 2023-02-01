@@ -6,6 +6,6 @@
         "amount": "Amount"
     },
     "TypeDict": {
-        "amount": "double"
+        "amount": "System.Double"
     }
 }

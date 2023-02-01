@@ -23,5 +23,30 @@ namespace CarrotBacktesting.Net.Common
             else
                 return Convert.ChangeType(dyn, typeof(T));
         }
+
+        /// <summary>
+        /// 通用转换方法
+        /// </summary>
+        /// <param name="dyn">转换变量</param>
+        /// <param name="typeName">
+        /// 转换类型<br/>
+        /// 例如: System.Double, System.String, System.Boolean
+        /// </param>
+        /// <returns></returns>
+        public static dynamic ConvertValue(dynamic dyn, string typeName)
+        {
+            Type? type = Type.GetType(typeName);
+            if (type == null)
+                return dyn;
+            else
+            {
+                if (dyn is string timeString && type == typeof(DateTime))
+                    return (DateTime)(object)timeString.ParseDateTime();
+                else if (dyn is DateTime time && type == typeof(string))
+                    return (string)(object)time.FormatDateTime();
+                else
+                    return Convert.ChangeType(dyn, type);
+            }
+        }
     }
 }
