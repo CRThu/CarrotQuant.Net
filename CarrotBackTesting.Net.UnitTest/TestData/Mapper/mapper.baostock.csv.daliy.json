@@ -1,0 +1,11 @@
+{
+    "MapDict": {
+        "date": "DateTime",
+        "volume": "Volume",
+        "close": "Close",
+        "amount": "Amount"
+    },
+    "TypeDict": {
+        "amount": "double"
+    }
+}

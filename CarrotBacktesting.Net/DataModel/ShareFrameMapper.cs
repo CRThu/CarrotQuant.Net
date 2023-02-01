@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.DataModel
@@ -15,7 +16,13 @@ namespace CarrotBacktesting.Net.DataModel
         /// key:字段名(对应DataProvider数据源字段)<br/>
         /// value:映射名(对应ShareFrame输入属性)<br/>
         /// </summary>
-        private readonly Dictionary<string, string> MapDict;
+        public Dictionary<string, string> MapDict { get; set; }
+
+        /// <summary>
+        /// key:字段名(对应DataProvider数据源字段)<br/>
+        /// value:映射类型(仅对<see cref="ShareFrame.Params"/>有效)<br/>
+        /// </summary>
+        public Dictionary<string, string> TypeDict { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -23,6 +30,7 @@ namespace CarrotBacktesting.Net.DataModel
         public ShareFrameMapper()
         {
             MapDict = new();
+            TypeDict = new();
         }
 
         /// <summary>
@@ -47,6 +55,30 @@ namespace CarrotBacktesting.Net.DataModel
                 return value;
             else
                 return key;
+        }
+
+        /// <summary>
+        /// 通过json文件构造映射器
+        /// </summary>
+        /// <param name="jsonpath">json文件路径</param>
+        /// <returns>映射器实例</returns>
+        public static ShareFrameMapper? Deserialize(string jsonpath)
+        {
+            string jsonString = File.ReadAllText(jsonpath);
+            ShareFrameMapper? mapper = JsonSerializer.Deserialize<ShareFrameMapper>(jsonString);
+            return mapper;
+        }
+
+        /// <summary>
+        /// 映射器存储为json文件
+        /// </summary>
+        /// <param name="jsonpath">json文件路径</param>
+        /// <returns>映射器实例</returns>
+        public void Serialize(string jsonpath)
+        {
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            string jsonString = JsonSerializer.Serialize(this, options);
+            File.WriteAllText(jsonpath, jsonString);
         }
     }
 }
