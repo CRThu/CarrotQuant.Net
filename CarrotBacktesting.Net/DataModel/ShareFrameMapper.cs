@@ -19,7 +19,6 @@ namespace CarrotBacktesting.Net.DataModel
         public Dictionary<string, string> MapDict { get; set; }
 
         /// <summary>
-        /// TODO
         /// key:字段名(对应DataProvider数据源字段)<br/>
         /// value:映射类型(仅对<see cref="ShareFrame.Params"/>有效)<br/>
         /// </summary>

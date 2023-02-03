@@ -14,29 +14,24 @@ namespace CarrotBacktesting.Net.Engine
     public class SimulationOptions
     {
         /// <summary>
-        /// 是数据源
+        /// 数据源
         /// </summary>
-        public DataFeedSource DataFeedSource { get; set; } = DataFeedSource.Sqlite;
+        public DataFeedSource DataFeedSource { get; set; }
 
         /// <summary>
         /// 数据源路径
         /// </summary>
-        public string SqliteDatabasePath { get; set; } = string.Empty;
+        public string? DataFeedPath { get; set; }
+
+        /// <summary>
+        /// 映射器json文件路径
+        /// </summary>
+        public string? MapperJsonFilePath { get; set; }
 
         /// <summary>
         /// 字段映射信息存储类
         /// </summary>
-        public ShareFrameMapper FieldsMapper { get; set; } =
-            new ShareFrameMapper()
-            {
-                ["交易日期"] = "DateTime",
-                ["开盘价"] = "Open",
-                ["最高价"] = "High",
-                ["最低价"] = "Low",
-                ["收盘价"] = "Close",
-
-                ["滚动市盈率"] = "PE",
-            };
+        public ShareFrameMapper FieldsMapper { get; set; }
 
         /// <summary>
         /// 字段集合
@@ -114,6 +109,11 @@ namespace CarrotBacktesting.Net.Engine
         /// 初始资金
         /// </summary>
         public double InitialCash { get; set; } = 100000;
+
+        public SimulationOptions()
+        {
+
+        }
     }
 
     public struct BasicFields

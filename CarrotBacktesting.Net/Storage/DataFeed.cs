@@ -12,18 +12,9 @@ namespace CarrotBacktesting.Net.Storage
     public class DataFeed
     {
         /// <summary>
-        /// 市场数据构造器
-        /// </summary>
-        private MarketDataBuilder MarketDataBuilder { get; set; }
-        /// <summary>
-        /// 数据源接口
-        /// </summary>
-        private IDataProvider IDataProvider { get; set; }
-
-        /// <summary>
         /// 市场数据存储类访问器
         /// </summary>
-        public MarketData MarketData { get; }
+        public MarketData MarketData { get; init; }
 
         /// <summary>
         /// 回测配置类
@@ -51,15 +42,27 @@ namespace CarrotBacktesting.Net.Storage
         /// <exception cref="NotImplementedException"></exception>
         public DataFeed(SimulationOptions options)
         {
-            if (options.DataFeedSource != DataFeedSource.Sqlite)
-                throw new NotImplementedException("暂不支持该格式数据源");
-
             Options = options;
-            MarketDataBuilder = new();
-            MarketData = MarketDataBuilder.ToMarketData();
-            IDataProvider = new SqliteDataProvider(Options.SqliteDatabasePath, Options.FieldsMapper);
+            MarketDataBuilder MarketDataBuilder = new();
+            IDataProvider IDataProvider;
+
+            switch (Options.DataFeedSource)
+            {
+                case DataFeedSource.Sqlite:
+                    // TODO
+                    break;
+                case DataFeedSource.Csv:
+                    // TODO
+                    break;
+                default:
+                    throw new NotImplementedException("暂不支持该格式数据源");
+            }
+
+            IDataProvider = new SqliteDataProvider(Options.DataFeedPath, Options.FieldsMapper);
             var frames = IDataProvider.GetShareData(Options.ShareNames, Options.Fields, Options.SimulationStartTime, Options.SimulationEndTime);
             MarketDataBuilder.AddRange(frames);
+
+            MarketData = MarketDataBuilder.ToMarketData();
         }
 
         /// <summary>

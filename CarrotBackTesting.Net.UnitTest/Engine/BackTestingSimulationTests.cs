@@ -20,7 +20,7 @@ namespace CarrotBacktesting.Net.Engine.Tests
             SimulationOptions options = new()
             {
                 DataFeedSource = DataFeedSource.Sqlite,
-                SqliteDatabasePath = UnitTestFilePath.SqliteDatabasePath,
+                DataFeedPath = UnitTestFilePath.SqliteDatabasePath,
 
                 ShareNames = UnitTestFilePath.StockCodes,
                 FieldsMapper = new DataModel.ShareFrameMapper()

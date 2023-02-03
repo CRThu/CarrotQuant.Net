@@ -8,6 +8,7 @@ namespace CarrotBacktesting.Net.Storage
 {
     public enum DataFeedSource
     {
-        Sqlite
+        Sqlite,
+        Csv
     }
 }

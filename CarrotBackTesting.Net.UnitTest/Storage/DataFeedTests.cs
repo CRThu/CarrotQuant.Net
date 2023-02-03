@@ -18,7 +18,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
             DataFeed dataFeed = new(new Engine.SimulationOptions()
             {
                 DataFeedSource = DataFeedSource.Sqlite,
-                SqliteDatabasePath = UnitTestFilePath.SqliteDatabasePath,
+                DataFeedPath = UnitTestFilePath.SqliteDatabasePath,
 
                 ShareNames = UnitTestFilePath.StockCodes,
                 FieldsMapper = new DataModel.ShareFrameMapper()
