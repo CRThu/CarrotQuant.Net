@@ -44,21 +44,20 @@ namespace CarrotBacktesting.Net.Storage
         {
             Options = options;
             MarketDataBuilder MarketDataBuilder = new();
-            IDataProvider IDataProvider;
 
-            switch (Options.DataFeedSource)
+            ShareFrameMapper mapper;
+            if (Options.MapperJsonFilePath is not null)
+                mapper = ShareFrameMapper.Deserialize(Options.MapperJsonFilePath)!;
+            else
+                mapper = Options.Mapper;
+
+            IDataProvider IDataProvider = Options.DataFeedSource switch
             {
-                case DataFeedSource.Sqlite:
-                    // TODO
-                    break;
-                case DataFeedSource.Csv:
-                    // TODO
-                    break;
-                default:
-                    throw new NotImplementedException("暂不支持该格式数据源");
-            }
+                DataFeedSource.Sqlite => new SqliteDataProvider(Options.DataFeedPath, mapper),
+                DataFeedSource.Csv => new SqliteDataProvider(Options.DataFeedPath, mapper),
+                _ => throw new NotImplementedException("暂不支持该格式数据源"),
+            };
 
-            IDataProvider = new SqliteDataProvider(Options.DataFeedPath, Options.FieldsMapper);
             var frames = IDataProvider.GetShareData(Options.ShareNames, Options.Fields, Options.SimulationStartTime, Options.SimulationEndTime);
             MarketDataBuilder.AddRange(frames);
 

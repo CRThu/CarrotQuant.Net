@@ -1,0 +1,15 @@
+{
+    "Fields": [
+        "code",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "tradestatus",
+        "amount",
+        "pctChg",
+        "isST"
+    ]
+}

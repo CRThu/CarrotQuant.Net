@@ -1,11 +1,20 @@
 {
     "MapDict": {
+        "code": "StockCode",
         "date": "DateTime",
-        "volume": "Volume",
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
         "close": "Close",
-        "amount": "Amount"
+        "volume": "Volume",
+        "tradestatus": "IsTrading",
+        "amount": "Amount",
+        "pctChg": "PercentChange",
+        "isST": "IsST"
     },
     "TypeDict": {
-        "amount": "System.Double"
+        "amount": "System.Double",
+        "pctChg": "System.Double",
+        "isST": "System.Double"
     }
 }

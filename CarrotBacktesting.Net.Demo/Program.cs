@@ -33,7 +33,7 @@ namespace CarrotBacktesting.Net.Demo
             options = new SimulationOptions()
             {
                 //IsSqliteDataFeed = true,
-                SqliteDatabasePath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
+                DataFeedPath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
                 SimulationStartTime = new DateTime(2021, 6, 1),
                 SimulationEndTime = new DateTime(2021, 11, 1),
                 //SimulationDuration = new TimeSpan(0, 0, 1),

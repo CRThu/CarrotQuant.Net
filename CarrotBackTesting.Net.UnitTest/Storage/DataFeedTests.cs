@@ -21,7 +21,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
                 DataFeedPath = UnitTestFilePath.SqliteDatabasePath,
 
                 ShareNames = UnitTestFilePath.StockCodes,
-                FieldsMapper = new DataModel.ShareFrameMapper()
+                Mapper = new DataModel.ShareFrameMapper()
                 {
                     ["交易日期"] = "DateTime",
                     ["开盘价"] = "Open",
