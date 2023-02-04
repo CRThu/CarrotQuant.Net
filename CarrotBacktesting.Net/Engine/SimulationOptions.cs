@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Engine
@@ -24,19 +25,45 @@ namespace CarrotBacktesting.Net.Engine
         public string? DataFeedPath { get; set; } = null;
 
         /// <summary>
-        /// 映射器json文件路径, 若映射器为程序定义则为null
+        /// 映射器json文件路径字段
         /// </summary>
-        public string? MapperJsonFilePath { get; set; } = null;
+        private string? mapperJsonFilePath = null;
 
         /// <summary>
-        /// 字段映射信息存储类, MapperJsonFilePath需为null
+        /// 映射器json文件路径
+        /// </summary>
+        public string? MapperJsonFilePath
+        {
+            get => mapperJsonFilePath;
+            set
+            {
+                mapperJsonFilePath = value;
+                DeserializeMapper();
+            }
+        }
+
+        /// <summary>
+        /// 字段映射信息存储类
         /// </summary>
         public ShareFrameMapper? Mapper { get; set; } = null;
 
         /// <summary>
-        /// 字段json文件路径, 若为字段为程序定义则为null
+        /// 字段json文件路径字段
         /// </summary>
-        public string? FieldsJsonFilePath { get; set; } = null;
+        private string? fieldsJsonFilePath = null;
+
+        /// <summary>
+        /// 字段json文件路径
+        /// </summary>
+        public string? FieldsJsonFilePath
+        {
+            get => fieldsJsonFilePath;
+            set
+            {
+                fieldsJsonFilePath = value;
+                DeserializeFields();
+            }
+        }
 
         /// <summary>
         /// 字段集合
@@ -93,6 +120,24 @@ namespace CarrotBacktesting.Net.Engine
         public SimulationOptions()
         {
 
+        }
+
+        private void DeserializeMapper()
+        {
+            if (MapperJsonFilePath != null)
+            {
+                Mapper = ShareFrameMapper.Deserialize(MapperJsonFilePath)!;
+            }
+        }
+
+        private void DeserializeFields()
+        {
+            if (FieldsJsonFilePath != null)
+            {
+                string jsonString = File.ReadAllText(FieldsJsonFilePath);
+                FieldsJsonObject? fieldsJsonObject = JsonSerializer.Deserialize<FieldsJsonObject>(jsonString);
+                Fields = fieldsJsonObject!.Fields;
+            }
         }
     }
 }
