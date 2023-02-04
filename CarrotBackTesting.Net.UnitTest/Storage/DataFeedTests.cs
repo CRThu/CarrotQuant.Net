@@ -23,7 +23,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
                 ShareNames = UnitTestFilePath.StockCodes,
                 Mapper = new DataModel.ShareFrameMapper()
                 {
-                    ["交易日期"] = "DateTime",
+                    ["交易日期"] = "Time",
                     ["开盘价"] = "Open",
                     ["最高价"] = "High",
                     ["最低价"] = "Low",
@@ -46,12 +46,12 @@ namespace CarrotBacktesting.Net.Storage.Tests
             Assert.IsTrue(isExist1);
             // sz.000405 406 412 418 已退市
             Assert.IsTrue(f1.Frames.Count() == UnitTestFilePath.StockCodes.Length - 4);
-            Console.WriteLine($"2020-02-10 | sz.000422 | {f1["sz.000422"].OpenPrice:F2} | {f1["sz.000422"].HighPrice:F2} | {f1["sz.000422"].LowPrice:F2} | {f1["sz.000422"].ClosePrice:F2}");
+            Console.WriteLine($"2020-02-10 | sz.000422 | {f1["sz.000422"].Open:F2} | {f1["sz.000422"].High:F2} | {f1["sz.000422"].Low:F2} | {f1["sz.000422"].Close:F2}");
             (double o, double h, double l, double c) d20200210_sz000422_ohlc = (26.1922752000, 27.8889408000, 26.1922752000, 27.8889408000);
-            Assert.IsTrue(f1["sz.000422"].OpenPrice == d20200210_sz000422_ohlc.o);
-            Assert.IsTrue(f1["sz.000422"].HighPrice == d20200210_sz000422_ohlc.h);
-            Assert.IsTrue(f1["sz.000422"].LowPrice == d20200210_sz000422_ohlc.l);
-            Assert.IsTrue(f1["sz.000422"].ClosePrice == d20200210_sz000422_ohlc.c);
+            Assert.IsTrue(f1["sz.000422"].Open == d20200210_sz000422_ohlc.o);
+            Assert.IsTrue(f1["sz.000422"].High == d20200210_sz000422_ohlc.h);
+            Assert.IsTrue(f1["sz.000422"].Low == d20200210_sz000422_ohlc.l);
+            Assert.IsTrue(f1["sz.000422"].Close == d20200210_sz000422_ohlc.c);
             Assert.IsTrue(f1["sz.000422"]["Close"] == d20200210_sz000422_ohlc.c);
 
             Console.WriteLine($"2020-02-10 | sz.000422 | PE = {f1["sz.000422"]["PE"]} | 是否ST = {f1["sz.000422"]["是否ST"]}");
@@ -65,12 +65,12 @@ namespace CarrotBacktesting.Net.Storage.Tests
             Assert.IsTrue(!isExist2);
             // sz.000405 406 412 418 已退市
             Assert.IsTrue(f2.Frames.Count() == UnitTestFilePath.StockCodes.Length - 4);
-            Console.WriteLine($"2020-02-07 | sz.000422 | {f2["sz.000422"].OpenPrice:F2} | {f2["sz.000422"].HighPrice:F2} | {f2["sz.000422"].LowPrice:F2} | {f2["sz.000422"].ClosePrice:F2}");
+            Console.WriteLine($"2020-02-07 | sz.000422 | {f2["sz.000422"].Open:F2} | {f2["sz.000422"].High:F2} | {f2["sz.000422"].Low:F2} | {f2["sz.000422"].Close:F2}");
             (double o, double h, double l, double c) d20200207_sz000422_ohlc = (26.2983168000, 26.7224832000, 26.0862336000, 26.5104000000);
-            Assert.IsTrue(f2["sz.000422"].OpenPrice == d20200207_sz000422_ohlc.o);
-            Assert.IsTrue(f2["sz.000422"].HighPrice == d20200207_sz000422_ohlc.h);
-            Assert.IsTrue(f2["sz.000422"].LowPrice == d20200207_sz000422_ohlc.l);
-            Assert.IsTrue(f2["sz.000422"].ClosePrice == d20200207_sz000422_ohlc.c);
+            Assert.IsTrue(f2["sz.000422"].Open == d20200207_sz000422_ohlc.o);
+            Assert.IsTrue(f2["sz.000422"].High == d20200207_sz000422_ohlc.h);
+            Assert.IsTrue(f2["sz.000422"].Low == d20200207_sz000422_ohlc.l);
+            Assert.IsTrue(f2["sz.000422"].Close == d20200207_sz000422_ohlc.c);
             Assert.IsTrue(f2["sz.000422"]["Close"] == d20200207_sz000422_ohlc.c);
 
             Console.WriteLine($"2020-02-07 | sz.000422 | PE = {f2["sz.000422"]["PE"]} | 是否ST = {f2["sz.000422"]["是否ST"]}");

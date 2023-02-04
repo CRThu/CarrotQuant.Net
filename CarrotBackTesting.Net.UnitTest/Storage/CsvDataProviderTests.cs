@@ -23,7 +23,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
             string[] fields1 = new string[] { "date", "close", "volume", "amount" };
             ShareFrameMapper mapper = new ShareFrameMapper()
             {
-                ["date"] = "DateTime",
+                ["date"] = "Time",
                 ["volume"] = "Volume",
                 ["close"] = "Close",
                 ["amount"] = "Amount",
@@ -31,11 +31,11 @@ namespace CarrotBacktesting.Net.Storage.Tests
             CsvDataProvider csvDataProvider1 = new(dataDir, mapper);
             ShareFrame[] sf1 = csvDataProvider1.GetShareData("sh.000001", fields1, null, null).ToArray();
 
-            Assert.IsTrue(sf1.Where(sf => sf.DateTime == new DateTime(2022, 06, 01)).First().Params!.Count == 1);
-            Assert.AreEqual("402419941241.2000", sf1.Where(sf => sf.DateTime == new DateTime(2022, 06, 01)).First()["Amount"]);
-            Assert.AreEqual(0, sf1.Where(sf => sf.DateTime == new DateTime(2022, 06, 01)).First().OpenPrice);
-            Assert.AreEqual(3182.1566, sf1.Where(sf => sf.DateTime == new DateTime(2022, 06, 01)).First().ClosePrice);
-            Assert.AreEqual(36566443200, sf1.Where(sf => sf.DateTime == new DateTime(2022, 06, 01)).First().Volume);
+            Assert.IsTrue(sf1.Where(sf => sf.Time == new DateTime(2022, 06, 01)).First().Params!.Count == 1);
+            Assert.AreEqual("402419941241.2000", sf1.Where(sf => sf.Time == new DateTime(2022, 06, 01)).First()["Amount"]);
+            Assert.AreEqual(0, sf1.Where(sf => sf.Time == new DateTime(2022, 06, 01)).First().Open);
+            Assert.AreEqual(3182.1566, sf1.Where(sf => sf.Time == new DateTime(2022, 06, 01)).First().Close);
+            Assert.AreEqual(36566443200, sf1.Where(sf => sf.Time == new DateTime(2022, 06, 01)).First().Volume);
         }
 
         [TestMethod()]

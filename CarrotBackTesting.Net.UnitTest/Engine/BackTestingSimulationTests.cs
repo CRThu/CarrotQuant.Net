@@ -25,7 +25,7 @@ namespace CarrotBacktesting.Net.Engine.Tests
                 ShareNames = UnitTestFilePath.StockCodes,
                 Mapper = new DataModel.ShareFrameMapper()
                 {
-                    ["交易日期"] = "DateTime",
+                    ["交易日期"] = "Time",
                     ["开盘价"] = "Open",
                     ["最高价"] = "High",
                     ["最低价"] = "Low",
@@ -41,17 +41,17 @@ namespace CarrotBacktesting.Net.Engine.Tests
             BackTestingSimulation simulation = new(options);
 
             Console.WriteLine($"Time       | sz.000422");
-            Console.WriteLine($"{simulation.CurrentTime.FormatDateTime(isDisplayTime: false)} | {simulation.CurrentMarket["sz.000422"].ClosePrice}");
-            Assert.IsTrue(simulation.CurrentTime == new DateTime(2020, 1, 2) && simulation.CurrentMarket["sz.000422"].ClosePrice == 30.8581056);
+            Console.WriteLine($"{simulation.CurrentTime.FormatDateTime(isDisplayTime: false)} | {simulation.CurrentMarket["sz.000422"].Close}");
+            Assert.IsTrue(simulation.CurrentTime == new DateTime(2020, 1, 2) && simulation.CurrentMarket["sz.000422"].Close == 30.8581056);
             int count = 1;
             while (simulation.IsSimulating)
             {
                 count++;
                 simulation.UpdateFrame();
-                Console.WriteLine($"{simulation.CurrentTime.FormatDateTime(isDisplayTime: false)} | {simulation.CurrentMarket["sz.000422"].ClosePrice}");
+                Console.WriteLine($"{simulation.CurrentTime.FormatDateTime(isDisplayTime: false)} | {simulation.CurrentMarket["sz.000422"].Close}");
             }
             Assert.IsTrue(count == 7);
-            Assert.IsTrue(simulation.CurrentTime == new DateTime(2020, 1, 10) && simulation.CurrentMarket["sz.000422"].ClosePrice == 30.5399808);
+            Assert.IsTrue(simulation.CurrentTime == new DateTime(2020, 1, 10) && simulation.CurrentMarket["sz.000422"].Close == 30.5399808);
         }
     }
 }

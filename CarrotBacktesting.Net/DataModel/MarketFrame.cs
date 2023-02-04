@@ -15,7 +15,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 帧日期
         /// </summary>
-        public DateTime DateTime { get; init; }
+        public DateTime Time { get; init; }
 
         /// <summary>
         /// 存放一帧市场所有股票信息
@@ -25,7 +25,7 @@ namespace CarrotBacktesting.Net.DataModel
         private Dictionary<string, ShareFrame> ShareFrames { get; init; }
 
         /// <summary>
-        /// 读取股票在<see cref="DateTime"/>时间的信息帧
+        /// 读取股票在<see cref="Time"/>时间的信息帧
         /// </summary>
         /// <param name="stockCode">股票代码</param>
         /// <returns>返回stockCode对应帧,若不存在则返回null</returns>
@@ -43,7 +43,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 获取帧存储的股票代码
         /// </summary>
-        public IEnumerable<string> StockCodes => ShareFrames.Keys;
+        public IEnumerable<string> Codes => ShareFrames.Keys;
 
         /// <summary>
         /// 获取股票帧
@@ -61,7 +61,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="dateTime">市场帧时间</param>
         public MarketFrame(DateTime dateTime)
         {
-            DateTime = dateTime;
+            Time = dateTime;
             ShareFrames = new();
         }
 
@@ -72,7 +72,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="frames">字典接口导入股票帧数据</param>
         public MarketFrame(DateTime dateTime, IDictionary<string, ShareFrame> frames)
         {
-            DateTime = dateTime;
+            Time = dateTime;
             ShareFrames = new(frames);
         }
 
@@ -84,15 +84,15 @@ namespace CarrotBacktesting.Net.DataModel
         public void Add(ShareFrame shareFrame)
         {
             // 新增数据与帧时间不符时抛出异常
-            if (shareFrame.DateTime != DateTime)
+            if (shareFrame.Time != Time)
                 throw new InvalidOperationException();
 
             // 添加数据
-            ShareFrames.Add(shareFrame.StockCode, new(shareFrame));
+            ShareFrames.Add(shareFrame.Code, new(shareFrame));
         }
 
         /// <summary>
-        /// 读取股票在<see cref="DateTime"/>时间的信息帧
+        /// 读取股票在<see cref="Time"/>时间的信息帧
         /// </summary>
         /// <param name="key">股票代码</param>
         /// <param name="value">stockCode对应帧,若不存在则返回null</param>

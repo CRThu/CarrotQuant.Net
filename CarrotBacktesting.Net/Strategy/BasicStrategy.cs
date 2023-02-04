@@ -61,31 +61,31 @@ namespace CarrotBacktesting.Net.Strategy
         {
 #if DEBUG
             Console.WriteLine("BasicStrategy.Next()");
-            Console.WriteLine($"{strategyContext.MarketFrame.DateTime:d}" +
-                $"| Market {(strategyContext.MarketFrame["sz.000422"].IsTrading ? "Open" : "Close")} " +
-                $"| Price: {strategyContext.MarketFrame["sz.000422"].ClosePrice:F3} " +
+            Console.WriteLine($"{strategyContext.MarketFrame.Time:d}" +
+                $"| Market {(strategyContext.MarketFrame["sz.000422"].Status ? "Open" : "Close")} " +
+                $"| Price: {strategyContext.MarketFrame["sz.000422"].Close:F3} " +
                 $"| Status: {strategyContext.MarketFrame["sz.000422"]["交易状态"]} " +
                 $"| IsST: {strategyContext.MarketFrame["sz.000422"]["是否ST"]} " +
                 $"| PE: {strategyContext.MarketFrame["sz.000422"]["滚动市盈率"]:F3}.");
-            Console.WriteLine($"{strategyContext.MarketFrame.DateTime:d}" +
-                $"| Market {(strategyContext.MarketFrame["sz.000423"].IsTrading ? "Open" : "Close")} " +
-                $"| Price: {strategyContext.MarketFrame["sz.000423"].ClosePrice:F3} " +
+            Console.WriteLine($"{strategyContext.MarketFrame.Time:d}" +
+                $"| Market {(strategyContext.MarketFrame["sz.000423"].Status ? "Open" : "Close")} " +
+                $"| Price: {strategyContext.MarketFrame["sz.000423"].Close:F3} " +
                 $"| Status: {strategyContext.MarketFrame["sz.000423"]["交易状态"]} " +
                 $"| IsST: {strategyContext.MarketFrame["sz.000423"]["是否ST"]} " +
                 $"| PE: {strategyContext.MarketFrame["sz.000423"]["滚动市盈率"]:F3}.");
 #endif
 
-            if (strategyContext.MarketFrame["sz.000422"].IsTrading)
+            if (strategyContext.MarketFrame["sz.000422"].Status)
             {
-                if (strategyContext.MarketFrame["sz.000422"].ClosePrice <= 220)
+                if (strategyContext.MarketFrame["sz.000422"].Close <= 220)
                     strategyContext.PortfolioManager.AddOrder("sz.000422", 230, 100.0, OrderDirection.Buy);
-                if (strategyContext.MarketFrame["sz.000422"].ClosePrice >= 350)
+                if (strategyContext.MarketFrame["sz.000422"].Close >= 350)
                     strategyContext.PortfolioManager.AddOrder("sz.000422", 320, 300.0, OrderDirection.Sell);
             }
 
-            if (strategyContext.MarketFrame["sz.000423"].IsTrading)
+            if (strategyContext.MarketFrame["sz.000423"].Status)
             {
-                if (strategyContext.MarketFrame["sz.000423"].ClosePrice <= 270)
+                if (strategyContext.MarketFrame["sz.000423"].Close <= 270)
                     strategyContext.PortfolioManager.AddOrder("sz.000423", 280, 100.0, OrderDirection.Buy);
             }
         }

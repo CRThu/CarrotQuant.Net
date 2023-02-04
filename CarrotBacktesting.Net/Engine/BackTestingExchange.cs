@@ -140,7 +140,7 @@ namespace CarrotBacktesting.Net.Engine
                     foreach (var order in orderGroup.Where(o => o.Status == GeneralOrderStatus.Pending))
                     {
                         // TODO IF SUPPORT ISTRADING
-                        if (shareInfo.IsTrading)
+                        if (shareInfo.Status)
                         {
                             double tradeVolume;
                             double tradePrice;
@@ -148,29 +148,29 @@ namespace CarrotBacktesting.Net.Engine
                             switch (order.Type)
                             {
                                 case OrderType.LimitOrder:
-                                    if ((order.Direction == OrderDirection.Buy && order.Price >= shareInfo.ClosePrice)
-                                        || (order.Direction == OrderDirection.Sell && order.Price <= shareInfo.ClosePrice))
+                                    if ((order.Direction == OrderDirection.Buy && order.Price >= shareInfo.Close)
+                                        || (order.Direction == OrderDirection.Sell && order.Price <= shareInfo.Close))
                                     {
-                                        tradePrice = shareInfo.ClosePrice;
+                                        tradePrice = shareInfo.Close;
                                         // 成交量限制计算
                                         tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
                                         tradeVolume = Math.Min(Cash / tradePrice, tradeVolume);
                                         if (tradeVolume > 0)
                                         {
-                                            tradeEventArgs = new(order.OrderId, shareInfo.DateTime, shareInfo.StockCode, order.Direction, tradePrice, tradeVolume);
+                                            tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
                                             OnTradeUpdate?.Invoke(this, tradeEventArgs);
                                             estimateLiquidity -= tradeVolume;
                                         }
                                     }
                                     break;
                                 case OrderType.MarketOrder:
-                                    tradePrice = 1 + (order.Direction == OrderDirection.Buy ? 1 : -1) * shareInfo.ClosePrice * Options.ExchangePriceSlippage;
+                                    tradePrice = 1 + (order.Direction == OrderDirection.Buy ? 1 : -1) * shareInfo.Close * Options.ExchangePriceSlippage;
                                     // 成交量限制计算
                                     tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
                                     tradeVolume = Math.Min(Cash / tradePrice, tradeVolume);
                                     if (tradeVolume > 0)
                                     {
-                                        tradeEventArgs = new(order.OrderId, shareInfo.DateTime, shareInfo.StockCode, order.Direction, tradePrice, tradeVolume);
+                                        tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
                                         OnTradeUpdate?.Invoke(this, tradeEventArgs);
                                         estimateLiquidity -= tradeVolume;
                                     }

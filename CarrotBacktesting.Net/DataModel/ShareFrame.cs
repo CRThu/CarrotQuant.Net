@@ -15,32 +15,32 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 股票代码
         /// </summary>
-        public string StockCode { get; init; }
+        public string Code { get; init; }
 
         /// <summary>
         /// 时间
         /// </summary>
-        public DateTime DateTime { get; init; }
+        public DateTime Time { get; init; }
 
         /// <summary>
         /// 开盘价
         /// </summary>
-        public double OpenPrice { get; init; }
+        public double Open { get; init; }
 
         /// <summary>
         /// 最高价
         /// </summary>
-        public double HighPrice { get; init; }
+        public double High { get; init; }
 
         /// <summary>
         /// 最低价
         /// </summary>
-        public double LowPrice { get; init; }
+        public double Low { get; init; }
 
         /// <summary>
         /// 收盘价
         /// </summary>
-        public double ClosePrice { get; init; }
+        public double Close { get; init; }
 
         /// <summary>
         /// 成交量
@@ -50,7 +50,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 是否正常交易
         /// </summary>
-        public bool IsTrading { get; init; }
+        public bool Status { get; init; }
 
         /// <summary>
         /// 其他数据键值对(必须为值类型)
@@ -73,25 +73,25 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 构造函数
         /// </summary>        
-        /// <param name="stockCode">股票代码</param>
-        /// <param name="dateTime">时间</param>
-        /// <param name="openPrice">开盘价</param>
-        /// <param name="highPrice">最高价</param>
-        /// <param name="lowPrice">最低价</param>
-        /// <param name="closePrice">收盘价</param>
+        /// <param name="code">股票代码</param>
+        /// <param name="time">时间</param>
+        /// <param name="open">开盘价</param>
+        /// <param name="high">最高价</param>
+        /// <param name="low">最低价</param>
+        /// <param name="close">收盘价</param>
         /// <param name="volume">成交量</param>
-        /// <param name="isTrading">是否正常交易</param>
+        /// <param name="status">是否正常交易</param>
         /// <param name="kv">其他数据键值对</param>
-        public ShareFrame(string stockCode, DateTime dateTime, double openPrice, double highPrice, double lowPrice, double closePrice, double volume, bool isTrading, IDictionary<string, dynamic>? kv = null)
+        public ShareFrame(string code, DateTime time, double open, double high, double low, double close, double volume, bool status, IDictionary<string, dynamic>? kv = null)
         {
-            StockCode = stockCode;
-            DateTime = dateTime;
-            OpenPrice = openPrice;
-            HighPrice = highPrice;
-            LowPrice = lowPrice;
-            ClosePrice = closePrice;
+            Code = code;
+            Time = time;
+            Open = open;
+            High = high;
+            Low = low;
+            Close = close;
             Volume = volume;
-            IsTrading = isTrading;
+            Status = status;
             Params = kv == null ? null : new(kv);
         }
 
@@ -100,14 +100,14 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         /// <param name="frame">信息帧</param>
         public ShareFrame(ShareFrame frame) : this(
-            stockCode: frame.StockCode,
-            dateTime: frame.DateTime,
-            openPrice: frame.OpenPrice,
-            highPrice: frame.HighPrice,
-            lowPrice: frame.LowPrice,
-            closePrice: frame.ClosePrice,
+            code: frame.Code,
+            time: frame.Time,
+            open: frame.Open,
+            high: frame.High,
+            low: frame.Low,
+            close: frame.Close,
             volume: frame.Volume,
-            isTrading: frame.IsTrading,
+            status: frame.Status,
             kv: frame.Params)
         {
         }
@@ -123,14 +123,14 @@ namespace CarrotBacktesting.Net.DataModel
             {
                 switch (kv.Key)
                 {
-                    case "StockCode": StockCode = DynamicConverter.GetValue<string>(kv.Value); break;
-                    case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(kv.Value); break;
-                    case "Open": OpenPrice = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "High": HighPrice = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "Low": LowPrice = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "Close": ClosePrice = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "Code": Code = DynamicConverter.GetValue<string>(kv.Value); break;
+                    case "Time": Time = DynamicConverter.GetValue<DateTime>(kv.Value); break;
+                    case "Open": Open = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "High": High = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "Low": Low = DynamicConverter.GetValue<double>(kv.Value); break;
+                    case "Close": Close = DynamicConverter.GetValue<double>(kv.Value); break;
                     case "Volume": Volume = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(kv.Value); break;
+                    case "Status": Status = DynamicConverter.GetValue<bool>(kv.Value); break;
                     default:
                         Params ??= new();
                         Params[kv.Key] = kv.Value;
@@ -139,10 +139,10 @@ namespace CarrotBacktesting.Net.DataModel
             }
 
             if (stockCode is not null)
-                StockCode = stockCode;
+                Code = stockCode;
 
-            if (StockCode == null)
-                throw new NotImplementedException("StockCode == null");
+            if (Code == null)
+                throw new NotImplementedException("Code == null");
         }
 
         /// <summary>
@@ -182,14 +182,14 @@ namespace CarrotBacktesting.Net.DataModel
                 {
                     switch (col[i])
                     {
-                        case "StockCode": StockCode = DynamicConverter.GetValue<string>(data[i]); break;
-                        case "DateTime": DateTime = DynamicConverter.GetValue<DateTime>(data[i]); break;
-                        case "Open": OpenPrice = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "High": HighPrice = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "Low": LowPrice = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "Close": ClosePrice = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "Code": Code = DynamicConverter.GetValue<string>(data[i]); break;
+                        case "Time": Time = DynamicConverter.GetValue<DateTime>(data[i]); break;
+                        case "Open": Open = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "High": High = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "Low": Low = DynamicConverter.GetValue<double>(data[i]); break;
+                        case "Close": Close = DynamicConverter.GetValue<double>(data[i]); break;
                         case "Volume": Volume = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "IsTrading": IsTrading = DynamicConverter.GetValue<bool>(data[i]); break;
+                        case "Status": Status = DynamicConverter.GetValue<bool>(data[i]); break;
                         default:
                             Params ??= new();
                             if (types == null || (types != null && types[i] == null))
@@ -198,22 +198,22 @@ namespace CarrotBacktesting.Net.DataModel
                             }
                             else
                             {
-                                Params[col[i]] = DynamicConverter.ConvertValue(data[i], types![i]);
+                                Params[col[i]] = DynamicConverter.ConvertValue(data[i], types![i]!);
                             }
                             break;
                     };
                 }
             }
 
-            if (StockCode == null)
+            if (Code == null)
             {
                 if (stockCode != null)
                 {
-                    StockCode = stockCode;
+                    Code = stockCode;
                 }
                 else
                 {
-                    throw new NotImplementedException("StockCode == null");
+                    throw new NotImplementedException("Code == null");
                 }
             }
         }
@@ -240,14 +240,14 @@ namespace CarrotBacktesting.Net.DataModel
         {
             return key switch
             {
-                "StockCode" => StockCode,
-                "DateTime" => DateTime,
-                "Open" => OpenPrice,
-                "High" => HighPrice,
-                "Low" => LowPrice,
-                "Close" => ClosePrice,
+                "Code" => Code,
+                "Time" => Time,
+                "Open" => Open,
+                "High" => High,
+                "Low" => Low,
+                "Close" => Close,
                 "Volume" => Volume,
-                "IsTrading" => IsTrading,
+                "Status" => Status,
                 _ => GetKv(key),
             };
         }

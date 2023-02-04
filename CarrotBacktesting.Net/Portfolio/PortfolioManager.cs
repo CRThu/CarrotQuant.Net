@@ -85,7 +85,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <param name="direction"></param>
         public void AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
         {
-            Console.WriteLine($"{MarketFrame.DateTime:d}:委托单已挂单, 股票名称:{shareName}, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
+            Console.WriteLine($"{MarketFrame.Time:d}:委托单已挂单, 股票名称:{shareName}, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
             throw new NotImplementedException();
             //OrderManager.AddOrder(shareName, limitPrice, size, direction);
         }

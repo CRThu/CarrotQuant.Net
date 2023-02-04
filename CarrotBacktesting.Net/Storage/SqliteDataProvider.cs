@@ -54,7 +54,7 @@ namespace CarrotBacktesting.Net.Storage
             }
             else
             {
-                table = SqliteHelper.GetTable(stockCode, fields, ("DateTime", ((DateTime)startTime).FormatDateTime(), ((DateTime)endTime).FormatDateTime(), FilterCondition.BigEqualAndSmallEqual)!);
+                table = SqliteHelper.GetTable(stockCode, fields, ("Time", ((DateTime)startTime).FormatDateTime(), ((DateTime)endTime).FormatDateTime(), FilterCondition.BigEqualAndSmallEqual)!);
             }
 
             List<ShareFrame> frames = new();

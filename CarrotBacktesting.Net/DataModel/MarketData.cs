@@ -122,7 +122,7 @@ namespace CarrotBacktesting.Net.DataModel
             IsCacheDirty = true;
 
             // 添加数据
-            MarketFrames.Add(frame.DateTime, frame);
+            MarketFrames.Add(frame.Time, frame);
         }
 
         /// <summary>
@@ -131,9 +131,9 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="frame">股票信息帧</param>
         public void Add(ShareFrame frame)
         {
-            if (!TryGet(frame.DateTime, out MarketFrame? mf))
+            if (!TryGet(frame.Time, out MarketFrame? mf))
             {
-                mf = new MarketFrame(frame.DateTime);
+                mf = new MarketFrame(frame.Time);
                 Add(mf);
             }
             mf!.Add(frame);

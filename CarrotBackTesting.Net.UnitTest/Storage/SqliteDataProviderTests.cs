@@ -20,7 +20,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
                 new ShareFrameMapper()
                 {
                     ["[index]"] = "[index]",
-                    ["交易日期"] = "DateTime",
+                    ["交易日期"] = "Time",
                     ["收盘价"] = "close"
                 });
             string[] codes = new[] { "sz.000400", "sz.000401", "sz.000402", "sz.000403", "sz.000404" };
@@ -34,7 +34,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
             // LINES IN DATABASE: 446*5=2230
             Console.WriteLine($"Frames Count: {frames.Count()}");
             Assert.IsTrue(frames.Count() == 2230);
-            foreach(var stockInfo in frames.GroupBy(f => f.StockCode))
+            foreach(var stockInfo in frames.GroupBy(f => f.Code))
             {
                 Console.WriteLine($"{stockInfo.Key}:{stockInfo.Count()}");
                 Assert.IsTrue(stockInfo.Count() == 446);

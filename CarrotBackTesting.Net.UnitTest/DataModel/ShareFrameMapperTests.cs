@@ -22,7 +22,7 @@ namespace CarrotBacktesting.Net.DataModel.Tests
 
             ShareFrameMapper sfm = ShareFrameMapper.Deserialize(mapperJsonpath)!;
 
-            Assert.AreEqual("DateTime", sfm.MapDict["date"]);
+            Assert.AreEqual("Time", sfm.MapDict["date"]);
             Assert.AreEqual("Amount", sfm.MapDict["amount"]);
             Assert.AreEqual("System.Double", sfm.TypeDict["amount"]);
         }

@@ -20,31 +20,31 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             MarketFrame marketFrame1 = new(t);
 
             ShareFrame? shareFrame1 = new(
-                stockCode: "SH.000001",
-                dateTime: t,
-                openPrice: 1.5, highPrice: 3.5, lowPrice: 1.0, closePrice: 2.0,
-                volume: 10000, isTrading: true);
+                code: "SH.000001",
+                time: t,
+                open: 1.5, high: 3.5, low: 1.0, close: 2.0,
+                volume: 10000, status: true);
             marketFrame1.Add(shareFrame1);
             shareFrame1 = new(
-                stockCode: "SH.000002",
-                dateTime: t,
-                openPrice: 1.5, highPrice: 3.5, lowPrice: 1.0, closePrice: 2.0,
-                volume: 20000, isTrading: true);
+                code: "SH.000002",
+                time: t,
+                open: 1.5, high: 3.5, low: 1.0, close: 2.0,
+                volume: 20000, status: true);
             marketFrame1.Add(shareFrame1);
 
             DateTime t2 = new DateTime(2022, 01, 02, 11, 22, 33);
             MarketFrame marketFrame2 = new(t2);
             shareFrame1 = new(
-                stockCode: "SH.000001",
-                dateTime: t2,
-                openPrice: 1.5, highPrice: 3.5, lowPrice: 1.0, closePrice: 2.0,
-                volume: 10000, isTrading: true);
+                code: "SH.000001",
+                time: t2,
+                open: 1.5, high: 3.5, low: 1.0, close: 2.0,
+                volume: 10000, status: true);
             marketFrame2.Add(shareFrame1);
             shareFrame1 = new(
-                stockCode: "SH.000002",
-                dateTime: t2,
-                openPrice: 1.5, highPrice: 3.5, lowPrice: 1.0, closePrice: 2.0,
-                volume: 20000, isTrading: true);
+                code: "SH.000002",
+                time: t2,
+                open: 1.5, high: 3.5, low: 1.0, close: 2.0,
+                volume: 20000, status: true);
             marketFrame2.Add(shareFrame1);
 
             marketData.Add(marketFrame1);
@@ -52,8 +52,8 @@ namespace CarrotBacktesting.Net.DataModel.Tests
 
             Assert.AreEqual(2, marketData.Count);
             Assert.AreEqual(2, marketData.Frames.First().Count);
-            Assert.AreEqual(t, marketData[0].DateTime);
-            Assert.AreEqual(t2, marketData[1].DateTime);
+            Assert.AreEqual(t, marketData[0].Time);
+            Assert.AreEqual(t2, marketData[1].Time);
             Assert.AreEqual(10000, marketData[t]["SH.000001"]!.Volume);
             Assert.AreEqual(20000, marketData[t2]["SH.000002"]!.Volume);
         }
@@ -65,36 +65,36 @@ namespace CarrotBacktesting.Net.DataModel.Tests
 
             DateTime t = new DateTime(2022, 01, 01, 11, 22, 33);
             ShareFrame? shareFrame1 = new(
-                stockCode: "SH.000001",
-                dateTime: t,
-                openPrice: 1.5, highPrice: 3.5, lowPrice: 1.0, closePrice: 2.0,
-                volume: 10000, isTrading: true);
+                code: "SH.000001",
+                time: t,
+                open: 1.5, high: 3.5, low: 1.0, close: 2.0,
+                volume: 10000, status: true);
             marketData.Add(shareFrame1);
             shareFrame1 = new(
-                stockCode: "SH.000002",
-                dateTime: t,
-                openPrice: 1.5, highPrice: 3.5, lowPrice: 1.0, closePrice: 2.0,
-                volume: 20000, isTrading: true);
+                code: "SH.000002",
+                time: t,
+                open: 1.5, high: 3.5, low: 1.0, close: 2.0,
+                volume: 20000, status: true);
             marketData.Add(shareFrame1);
 
             DateTime t2 = new DateTime(2022, 01, 02, 11, 22, 33);
             shareFrame1 = new(
-                stockCode: "SH.000001",
-                dateTime: t2,
-                openPrice: 1.5, highPrice: 3.5, lowPrice: 1.0, closePrice: 2.0,
-                volume: 10000, isTrading: true);
+                code: "SH.000001",
+                time: t2,
+                open: 1.5, high: 3.5, low: 1.0, close: 2.0,
+                volume: 10000, status: true);
             marketData.Add(shareFrame1);
             shareFrame1 = new(
-                stockCode: "SH.000002",
-                dateTime: t2,
-                openPrice: 1.5, highPrice: 3.5, lowPrice: 1.0, closePrice: 2.0,
-                volume: 20000, isTrading: true);
+                code: "SH.000002",
+                time: t2,
+                open: 1.5, high: 3.5, low: 1.0, close: 2.0,
+                volume: 20000, status: true);
             marketData.Add(shareFrame1);
 
             Assert.AreEqual(2, marketData.Count);
             Assert.AreEqual(2, marketData.Frames.First().Count);
-            Assert.AreEqual(t, marketData[0].DateTime);
-            Assert.AreEqual(t2, marketData[1].DateTime);
+            Assert.AreEqual(t, marketData[0].Time);
+            Assert.AreEqual(t2, marketData[1].Time);
             Assert.AreEqual(10000, marketData[t]["SH.000001"]!.Volume);
             Assert.AreEqual(20000, marketData[t2]["SH.000002"]!.Volume);
         }
