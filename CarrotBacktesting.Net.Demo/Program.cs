@@ -19,7 +19,7 @@ namespace CarrotBacktesting.Net.Demo
                 //ShareNames = new[] { "sz.000422" },
                 ShareNames = new[] { "sz.000422", "sz.000423" },
                 //IsEnableShareStatusFlag = true,
-                AdditionalFields = new string[] { "是否ST", "交易状态", "滚动市盈率" }
+                Fields = new string[] { "交易日期", "开盘价", "最高价", "最低价", "收盘价", "成交量", "是否ST", "交易状态", "滚动市盈率" }
             };
 
             IEngine engine = new BackTestingEngine(new BasicStrategy(), options);

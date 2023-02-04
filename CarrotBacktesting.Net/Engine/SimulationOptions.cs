@@ -21,50 +21,27 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 数据源路径
         /// </summary>
-        public string DataFeedPath { get; set; }
+        public string? DataFeedPath { get; set; } = null;
 
         /// <summary>
-        /// 映射器json文件路径, 若为映射器程序定义则为null
+        /// 映射器json文件路径, 若映射器为程序定义则为null
         /// </summary>
-        public string MapperJsonFilePath { get; set; }
+        public string? MapperJsonFilePath { get; set; } = null;
 
         /// <summary>
         /// 字段映射信息存储类, MapperJsonFilePath需为null
         /// </summary>
-        public ShareFrameMapper Mapper { get; set; }
+        public ShareFrameMapper? Mapper { get; set; } = null;
+
+        /// <summary>
+        /// 字段json文件路径, 若为字段为程序定义则为null
+        /// </summary>
+        public string? FieldsJsonFilePath { get; set; } = null;
 
         /// <summary>
         /// 字段集合
         /// </summary>
-        public string[] Fields
-        {
-            get
-            {
-                List<string> fieldList = new();
-                fieldList.AddRange(BasicFields.ToArray());
-                fieldList.AddRange(AdditionalFields);
-                // 去重后输出数组
-                return fieldList.Distinct().ToArray();
-            }
-        }
-
-        /// <summary>
-        /// 基础字段数组(交易日期, 开盘价, 收盘价, 最高价, 最低价, 成交量)
-        /// </summary>
-        public BasicFields BasicFields { get; set; } = new BasicFields()
-        {
-            Time = "交易日期",
-            Open = "开盘价",
-            High = "最高价",
-            Low = "最低价",
-            Close = "收盘价",
-            Volume = "成交量"
-        };
-
-        /// <summary>
-        /// 额外字段数组
-        /// </summary>
-        public string[] AdditionalFields { get; set; } = Array.Empty<string>();
+        public string[]? Fields { get; set; } = null;
 
         // TODO 
         ///// <summary>
@@ -109,5 +86,13 @@ namespace CarrotBacktesting.Net.Engine
         /// 初始资金
         /// </summary>
         public double InitialCash { get; set; } = 100000;
+
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        public SimulationOptions()
+        {
+
+        }
     }
 }

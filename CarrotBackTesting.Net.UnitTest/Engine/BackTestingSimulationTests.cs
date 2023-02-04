@@ -33,7 +33,7 @@ namespace CarrotBacktesting.Net.Engine.Tests
 
                     ["滚动市盈率"] = "PE",
                 },
-                AdditionalFields = new string[] { "滚动市盈率", "是否ST" },
+                Fields = new string[] { "交易日期", "开盘价", "最高价", "最低价", "收盘价", "成交量","滚动市盈率", "是否ST" },
                 SimulationStartTime = new DateTime(2020, 01, 01),
                 SimulationEndTime = new DateTime(2020, 01, 12),
             };
