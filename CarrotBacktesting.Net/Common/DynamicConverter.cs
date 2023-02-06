@@ -14,11 +14,11 @@ namespace CarrotBacktesting.Net.Common
         /// <summary>
         /// Boolean类型True值字符串附加转换字段
         /// </summary>
-        private static readonly HashSet<string> BooleanExTrueStrings = new() { "yes", "1", "是" };
+        private static readonly HashSet<string> BooleanExTrueStrings = new() { "true", "1", "是" };
         /// <summary>
         /// Boolean类型False值字符串附加转换字段
         /// </summary>
-        private static readonly HashSet<string> BooleanExFalseStrings = new() { "no", "0", "否" };
+        private static readonly HashSet<string> BooleanExFalseStrings = new() { "false", "no", "0", "否" };
 
         /// <summary>
         /// Boolean类型添加True值字符串方法
