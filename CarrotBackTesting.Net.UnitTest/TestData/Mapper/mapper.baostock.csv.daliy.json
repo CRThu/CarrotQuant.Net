@@ -16,5 +16,13 @@
         "amount": "System.Double",
         "pctChg": "System.Double",
         "isST": "System.Double"
-    }
+    },
+    "BooleanTrueString": [
+        "1",
+        "测试True"
+    ],
+    "BooleanFalseString": [
+        "0",
+        "测试False"
+    ]
 }

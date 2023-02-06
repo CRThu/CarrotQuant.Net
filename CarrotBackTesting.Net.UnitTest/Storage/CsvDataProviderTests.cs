@@ -20,12 +20,13 @@ namespace CarrotBacktesting.Net.Storage.Tests
         {
             string dataDir = Path.Combine(UnitTestDirectory.CsvDataDirectory, "daliy");
 
-            string[] fields1 = new string[] { "date", "close", "volume", "amount" };
+            string[] fields1 = new string[] { "date", "close", "volume", "tradestatus", "amount" };
             ShareFrameMapper mapper = new ShareFrameMapper()
             {
                 ["date"] = "Time",
-                ["volume"] = "Volume",
                 ["close"] = "Close",
+                ["volume"] = "Volume",
+                ["tradestatus"] = "Status",
                 ["amount"] = "Amount",
             };
             CsvDataProvider csvDataProvider1 = new(dataDir, mapper);

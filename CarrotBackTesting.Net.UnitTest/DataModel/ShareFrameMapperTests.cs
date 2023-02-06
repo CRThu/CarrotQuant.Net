@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CarrotBackTesting.Net.UnitTest.Common;
 using System.IO;
 using System.Text.Json;
+using CarrotBacktesting.Net.Common;
 
 namespace CarrotBacktesting.Net.DataModel.Tests
 {
@@ -25,6 +26,8 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             Assert.AreEqual("Time", sfm.MapDict["date"]);
             Assert.AreEqual("Amount", sfm.MapDict["amount"]);
             Assert.AreEqual("System.Double", sfm.TypeDict["amount"]);
+            Assert.IsTrue(BooleanEx.BooleanExTrueStrings.Contains("测试True"));
+            Assert.IsTrue(BooleanEx.BooleanExFalseStrings.Contains("测试False"));
         }
     }
 }
