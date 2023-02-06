@@ -26,8 +26,8 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             Assert.AreEqual("Time", sfm.MapDict["date"]);
             Assert.AreEqual("Amount", sfm.MapDict["amount"]);
             Assert.AreEqual("System.Double", sfm.TypeDict["amount"]);
-            Assert.IsTrue(BooleanEx.BooleanExTrueStrings.Contains("测试True"));
-            Assert.IsTrue(BooleanEx.BooleanExFalseStrings.Contains("测试False"));
+            Assert.IsTrue(BooleanEx.TrueStrings.Contains("测试True"));
+            Assert.IsTrue(BooleanEx.FalseStrings.Contains("测试False"));
         }
     }
 }
