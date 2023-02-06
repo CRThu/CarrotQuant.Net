@@ -33,5 +33,11 @@ namespace CarrotBacktesting.Net.Storage
         /// <returns>股票数据帧集合</returns>
         public IEnumerable<ShareFrame> GetShareData(string[] stockCode, string[] fields,
             DateTime? startTime = null, DateTime? endTime = null);
+
+        /// <summary>
+        /// 获取目录下所有股票名称
+        /// </summary>
+        /// <returns>返回所有股票代码</returns>
+        public string[] GetAllStockCode();
     }
 }

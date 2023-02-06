@@ -84,5 +84,14 @@ namespace CarrotBacktesting.Net.Storage
             }
             return frames;
         }
+
+        /// <summary>
+        /// 获取目录下所有股票名称
+        /// </summary>
+        /// <returns>返回所有股票代码</returns>
+        public string[] GetAllStockCode()
+        {
+            return SqliteHelper.GetTableNames().ToArray();
+        }
     }
 }

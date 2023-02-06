@@ -49,7 +49,7 @@ namespace CarrotBacktesting.Net.Storage
             IDataProvider IDataProvider = Options.DataFeedSource switch
             {
                 DataFeedSource.Sqlite => new SqliteDataProvider(Options.DataFeedPath!, Options.Mapper),
-                DataFeedSource.Csv => new SqliteDataProvider(Options.DataFeedPath!, Options.Mapper),
+                DataFeedSource.Csv => new CsvDataProvider(Options.DataFeedPath!, Options.Mapper),
                 _ => throw new NotImplementedException("暂不支持该格式数据源"),
             };
 

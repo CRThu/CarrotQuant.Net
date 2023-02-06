@@ -71,11 +71,6 @@ namespace CarrotBacktesting.Net.Engine
         public string[]? Fields { get; set; } = null;
 
         /// <summary>
-        /// 是否导入股票交易状态, 例如停牌/休市
-        /// </summary>
-        public bool IsEnableShareStatusFlag { get; set; } = false;
-
-        /// <summary>
         /// 模拟开始日期
         /// </summary>
         public DateTime? SimulationStartTime { get; set; }
@@ -86,9 +81,27 @@ namespace CarrotBacktesting.Net.Engine
         public DateTime? SimulationEndTime { get; set; }
 
         /// <summary>
-        /// 模拟股票名称数组
+        /// 股票列表json文件路径字段
         /// </summary>
-        public string[] ShareNames { get; set; } = Array.Empty<string>();
+        private string? shareNamesJsonFilePath = null;
+
+        /// <summary>
+        /// 股票列表json文件路径
+        /// </summary>
+        public string? ShareNamesJsonFilePath
+        {
+            get => shareNamesJsonFilePath;
+            set
+            {
+                shareNamesJsonFilePath = value;
+                DeserializeShareNames();
+            }
+        }
+
+        /// <summary>
+        /// 股票列表
+        /// </summary>
+        public string[]? ShareNames { get; set; } = null;
 
         /// <summary>
         /// 回测交易流动性估计(实际成交量与Tick总成交量比值)
@@ -129,6 +142,40 @@ namespace CarrotBacktesting.Net.Engine
                 FieldsJsonObject? fieldsJsonObject = JsonSerializer.Deserialize<FieldsJsonObject>(jsonString);
                 Fields = fieldsJsonObject!.Fields;
             }
+        }
+
+        private void DeserializeShareNames()
+        {
+            if (ShareNamesJsonFilePath != null)
+            {
+                string jsonString = File.ReadAllText(ShareNamesJsonFilePath);
+                string[]? fieldsJsonObject = JsonSerializer.Deserialize<string[]>(jsonString);
+                ShareNames = fieldsJsonObject!;
+            }
+        }
+
+        /// <summary>
+        /// 通过json文件构造配置
+        /// </summary>
+        /// <param name="jsonpath">json文件路径</param>
+        /// <returns>映射器实例</returns>
+        public static SimulationOptions? Deserialize(string jsonpath)
+        {
+            string jsonString = File.ReadAllText(jsonpath);
+            SimulationOptions? options = JsonSerializer.Deserialize<SimulationOptions>(jsonString);
+            return options;
+        }
+
+        /// <summary>
+        /// 配置存储为json文件
+        /// </summary>
+        /// <param name="jsonpath">json文件路径</param>
+        /// <returns>映射器实例</returns>
+        public void Serialize(string jsonpath)
+        {
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            string jsonString = JsonSerializer.Serialize(this, options);
+            File.WriteAllText(jsonpath, jsonString);
         }
     }
 }

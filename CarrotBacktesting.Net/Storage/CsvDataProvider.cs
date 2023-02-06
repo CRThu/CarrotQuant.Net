@@ -85,7 +85,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 获取目录下所有股票名称
         /// </summary>
-        /// <returns></returns>
+        /// <returns>返回所有股票代码</returns>
         public string[] GetAllStockCode()
         {
             DirectoryInfo folder = new(DirectoryPath);
