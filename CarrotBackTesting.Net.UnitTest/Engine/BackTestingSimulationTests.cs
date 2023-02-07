@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CarrotBacktesting.Net.Storage;
 using CarrotBackTesting.Net.UnitTest.Common;
 using CarrotBacktesting.Net.Common;
+using System.IO;
 
 namespace CarrotBacktesting.Net.Engine.Tests
 {
@@ -17,12 +18,15 @@ namespace CarrotBacktesting.Net.Engine.Tests
         [TestMethod()]
         public void UpdateFrameTest()
         {
+            string dataDir = Path.Combine(UnitTestDirectory.SqliteDataDirectory, "sz.000400-sz.000499_1d_baostock.db");
+            string[] stockcodes = UnitTestDirectory.Info["sqlite"]!["daliy"]!["stockcode"]!.AsArray().Select(o => (string)o!).ToArray()!;
+
             SimulationOptions options = new()
             {
                 DataFeedSource = DataFeedSource.Sqlite,
-                DataFeedPath = UnitTestFilePath.SqliteDatabasePath,
+                DataFeedPath = dataDir,
 
-                StockCodes = UnitTestFilePath.StockCodes,
+                StockCodes = stockcodes,
                 Mapper = new DataModel.ShareFrameMapper()
                 {
                     ["交易日期"] = "Time",
@@ -34,15 +38,15 @@ namespace CarrotBacktesting.Net.Engine.Tests
                     ["滚动市盈率"] = "PE",
                 },
                 Fields = new string[] { "交易日期", "开盘价", "最高价", "最低价", "收盘价", "成交量","滚动市盈率", "是否ST" },
-                SimulationStartTime = new DateTime(2020, 01, 01),
-                SimulationEndTime = new DateTime(2020, 01, 12),
+                SimulationStartTime = new DateTime(2021, 01, 01),
+                SimulationEndTime = new DateTime(2021, 01, 12),
             };
 
             BackTestingSimulation simulation = new(options);
 
             Console.WriteLine($"Time       | sz.000422");
             Console.WriteLine($"{simulation.CurrentTime.FormatDateTime(isDisplayTime: false)} | {simulation.CurrentMarket["sz.000422"].Close}");
-            Assert.IsTrue(simulation.CurrentTime == new DateTime(2020, 1, 2) && simulation.CurrentMarket["sz.000422"].Close == 30.8581056);
+            Assert.IsTrue(simulation.CurrentTime == new DateTime(2021, 1, 4) && simulation.CurrentMarket["sz.000422"].Close == 33.2970624);
             int count = 1;
             while (simulation.IsSimulating)
             {
@@ -51,7 +55,7 @@ namespace CarrotBacktesting.Net.Engine.Tests
                 Console.WriteLine($"{simulation.CurrentTime.FormatDateTime(isDisplayTime: false)} | {simulation.CurrentMarket["sz.000422"].Close}");
             }
             Assert.IsTrue(count == 7);
-            Assert.IsTrue(simulation.CurrentTime == new DateTime(2020, 1, 10) && simulation.CurrentMarket["sz.000422"].Close == 30.5399808);
+            Assert.IsTrue(simulation.CurrentTime == new DateTime(2021, 1, 12) && simulation.CurrentMarket["sz.000422"].Close == 31.3883136000);
         }
     }
 }

@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using CarrotBackTesting.Net.UnitTest.Common;
 using CarrotBacktesting.Net.DataModel;
+using System.IO;
 
 namespace CarrotBacktesting.Net.Storage.Tests
 {
@@ -16,7 +17,9 @@ namespace CarrotBacktesting.Net.Storage.Tests
         [TestMethod()]
         public void GetShareDataTest()
         {
-            SqliteDataProvider sqliteDataProvider = new(UnitTestFilePath.SqliteDatabasePath,
+            string dataDir = Path.Combine(UnitTestDirectory.SqliteDataDirectory, "sz.000400-sz.000499_1d_baostock.db");
+
+            SqliteDataProvider sqliteDataProvider = new(dataDir,
                 new ShareFrameMapper()
                 {
                     ["[index]"] = "[index]",
@@ -31,13 +34,13 @@ namespace CarrotBacktesting.Net.Storage.Tests
 
             // 使用sz.000400-sz.000404获取
             // SELECT [index] as [index],交易日期 as DateTime,收盘价 as close FROM 'sz.000400' WHERE DateTime >= '2020-01-01 00:00:00' AND DateTime <= '2022-12-31 00:00:00';
-            // LINES IN DATABASE: 446*5=2230
+            // LINES IN DATABASE: 263*5=1315
             Console.WriteLine($"Frames Count: {frames.Count()}");
-            Assert.IsTrue(frames.Count() == 2230);
+            Assert.IsTrue(frames.Count() == 1315);
             foreach(var stockInfo in frames.GroupBy(f => f.Code))
             {
                 Console.WriteLine($"{stockInfo.Key}:{stockInfo.Count()}");
-                Assert.IsTrue(stockInfo.Count() == 446);
+                Assert.IsTrue(stockInfo.Count() == 263);
             }
         }
     }

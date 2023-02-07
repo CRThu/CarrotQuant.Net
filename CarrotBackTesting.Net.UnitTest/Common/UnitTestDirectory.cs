@@ -13,6 +13,7 @@ namespace CarrotBackTesting.Net.UnitTest.Common
         public static string ProjectDirectory => @$"{Environment.CurrentDirectory}\..\..\..";
         public static string TestDataDirectory => @$"{ProjectDirectory}\TestData";
         public static string CsvDataDirectory => @$"{ProjectDirectory}\TestData\Csv";
+        public static string SqliteDataDirectory => @$"{ProjectDirectory}\TestData\Sqlite";
         public static string JsonDirectory => @$"{ProjectDirectory}\TestData\Json";
 
         public static string InfoPath => @$"{ProjectDirectory}\TestData\Json\info.json";
