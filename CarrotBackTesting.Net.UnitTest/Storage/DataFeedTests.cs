@@ -45,17 +45,22 @@ namespace CarrotBacktesting.Net.Storage.Tests
             Assert.IsTrue(f1.Frames.Count() == dataFeed.Options.StockCodes!.Length - 4);
 
             Console.WriteLine($"2021-02-01 | sz.000422 | {f1["sz.000422"].Open:F2} | {f1["sz.000422"].High:F2} | {f1["sz.000422"].Low:F2} | {f1["sz.000422"].Close:F2}");
-            (double o, double h, double l, double c) d20210201_sz000422_ohlc = (31.6003968000, 32.0245632000, 31.0701888000, 31.0701888000);
-            Assert.IsTrue(f1["sz.000422"].Open == d20210201_sz000422_ohlc.o);
-            Assert.IsTrue(f1["sz.000422"].High == d20210201_sz000422_ohlc.h);
-            Assert.IsTrue(f1["sz.000422"].Low == d20210201_sz000422_ohlc.l);
-            Assert.IsTrue(f1["sz.000422"].Close == d20210201_sz000422_ohlc.c);
-            Assert.IsTrue(f1["sz.000422"]["Close"] == d20210201_sz000422_ohlc.c);
+            (double o, double h, double l, double c) = (31.6003968000, 32.0245632000, 31.0701888000, 31.0701888000);
+            Assert.IsTrue(f1["sz.000422"].Open == o);
+            Assert.IsTrue(f1["sz.000422"].High == h);
+            Assert.IsTrue(f1["sz.000422"].Low == l);
+            Assert.IsTrue(f1["sz.000422"].Close == c);
+            Assert.IsTrue(f1["sz.000422"]["Close"] == c);
 
-            Console.WriteLine($"2021-02-01 | sz.000422 | PE = {f1["sz.000422"]["PE"]} | 是否ST = {f1["sz.000422"]["是否ST"]}");
-            (string pe, string st) d20200210_sz000422_otherData = ("53.450686", "是");
-            Assert.IsTrue(f1["sz.000422"]["PE"] == d20200210_sz000422_otherData.pe);
-            Assert.IsTrue(f1["sz.000422"]["ST"] == d20200210_sz000422_otherData.st);
+            Console.WriteLine($"2021-02-01 | sz.000422 | PE = {f1["sz.000422"]["PE"]} | 是否ST = {f1["sz.000422"]["ST"]}");
+            (string pe, string st) = ("53.450686", "是");
+            Assert.IsTrue(f1["sz.000422"]["PE"] == pe);
+            Assert.IsTrue(f1["sz.000422"]["ST"] == st);
+
+            // Generate Serialization Json of SimulationOptions
+            string optionsPath = Path.Combine(UnitTestDirectory.JsonDirectory, "simulationoptions.baostock.sqlite.daliy.json");
+            dataFeed.Options.Serialize(optionsPath);
+            Console.WriteLine($"Generated simulationOptions json file at {optionsPath}.");
         }
     }
 }

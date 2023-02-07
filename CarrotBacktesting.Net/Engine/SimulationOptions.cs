@@ -4,7 +4,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Engine
@@ -173,7 +175,11 @@ namespace CarrotBacktesting.Net.Engine
         /// <returns>映射器实例</returns>
         public void Serialize(string jsonpath)
         {
-            var options = new JsonSerializerOptions { WriteIndented = true };
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+            };
             string jsonString = JsonSerializer.Serialize(this, options);
             File.WriteAllText(jsonpath, jsonString);
         }
