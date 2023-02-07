@@ -101,7 +101,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 股票列表
         /// </summary>
-        public string[]? ShareNames { get; set; } = null;
+        public string[]? StockCodes { get; set; } = null;
 
         /// <summary>
         /// 回测交易流动性估计(实际成交量与Tick总成交量比值)
@@ -149,8 +149,8 @@ namespace CarrotBacktesting.Net.Engine
             if (ShareNamesJsonFilePath != null)
             {
                 string jsonString = File.ReadAllText(ShareNamesJsonFilePath);
-                string[]? fieldsJsonObject = JsonSerializer.Deserialize<string[]>(jsonString);
-                ShareNames = fieldsJsonObject!;
+                StockCodesJsonObject? stockCodesJsonObject = JsonSerializer.Deserialize<StockCodesJsonObject>(jsonString);
+                StockCodes = stockCodesJsonObject!.StockCodes;
             }
         }
 

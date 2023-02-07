@@ -17,7 +17,7 @@ namespace CarrotBacktesting.Net.Demo
                 SimulationEndTime = new DateTime(2021, 11, 1),
                 //SimulationDuration = new TimeSpan(0, 0, 1),
                 //ShareNames = new[] { "sz.000422" },
-                ShareNames = new[] { "sz.000422", "sz.000423" },
+                StockCodes = new[] { "sz.000422", "sz.000423" },
                 //IsEnableShareStatusFlag = true,
                 Fields = new string[] { "交易日期", "开盘价", "最高价", "最低价", "收盘价", "成交量", "是否ST", "交易状态", "滚动市盈率" }
             };

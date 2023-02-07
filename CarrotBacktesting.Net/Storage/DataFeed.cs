@@ -53,7 +53,7 @@ namespace CarrotBacktesting.Net.Storage
                 _ => throw new NotImplementedException("暂不支持该格式数据源"),
             };
 
-            var frames = IDataProvider.GetShareData(Options.ShareNames, Options.Fields!, Options.SimulationStartTime, Options.SimulationEndTime);
+            var frames = IDataProvider.GetShareData(Options.StockCodes, Options.Fields!, Options.SimulationStartTime, Options.SimulationEndTime);
             MarketDataBuilder.AddRange(frames);
 
             MarketData = MarketDataBuilder.ToMarketData();

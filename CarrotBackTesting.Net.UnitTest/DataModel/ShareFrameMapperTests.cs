@@ -19,7 +19,7 @@ namespace CarrotBacktesting.Net.DataModel.Tests
         public void DeserializeTest()
         {
             string filename = "mapper.baostock.csv.daliy.json";
-            string mapperJsonpath = Path.Combine(UnitTestDirectory.MapperDirectory, filename);
+            string mapperJsonpath = Path.Combine(UnitTestDirectory.JsonDirectory, filename);
 
             ShareFrameMapper sfm = ShareFrameMapper.Deserialize(mapperJsonpath)!;
 
