@@ -83,17 +83,17 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 股票列表json文件路径字段
         /// </summary>
-        private string? shareNamesJsonFilePath = null;
+        private string? stockCodesJsonFilePath = null;
 
         /// <summary>
         /// 股票列表json文件路径
         /// </summary>
-        public string? ShareNamesJsonFilePath
+        public string? StockCodesJsonFilePath
         {
-            get => shareNamesJsonFilePath;
+            get => stockCodesJsonFilePath;
             set
             {
-                shareNamesJsonFilePath = value;
+                stockCodesJsonFilePath = value;
                 DeserializeShareNames();
             }
         }
@@ -146,9 +146,9 @@ namespace CarrotBacktesting.Net.Engine
 
         private void DeserializeShareNames()
         {
-            if (ShareNamesJsonFilePath != null)
+            if (StockCodesJsonFilePath != null)
             {
-                string jsonString = File.ReadAllText(ShareNamesJsonFilePath);
+                string jsonString = File.ReadAllText(StockCodesJsonFilePath);
                 StockCodesJsonObject? stockCodesJsonObject = JsonSerializer.Deserialize<StockCodesJsonObject>(jsonString);
                 StockCodes = stockCodesJsonObject!.StockCodes;
             }

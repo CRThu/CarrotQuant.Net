@@ -11,6 +11,7 @@ namespace CarrotBacktesting.Net.Storage
 {
     /// <summary>
     /// Sqlite数据库历史数据获取接口<br/>
+    /// TODO: Sqlite暂不支持Mapper的类型转换功能
     /// 要求数据结构:<br/>
     /// 表名为股票代码<br/>
     /// 字段类型全部为TEXT<br/>

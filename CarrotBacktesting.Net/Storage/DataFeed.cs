@@ -19,7 +19,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 回测配置类
         /// </summary>
-        private SimulationOptions Options { get; set; }
+        public SimulationOptions Options { get; set; }
 
         /// <summary>
         /// 数据存储类开始日期
