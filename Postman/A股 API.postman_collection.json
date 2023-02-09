@@ -1,0 +1,84 @@
+{
+	"info": {
+		"_postman_id": "7595215d-3b9d-4720-a8ed-b66d6dde442a",
+		"name": "A股 API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "16008720"
+	},
+	"item": [
+		{
+			"name": "市场实时行情-东方财富通",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://70.push2.eastmoney.com/api/qt/clist/get?pn=1&pz=100000&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=|0|0|0|web&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048&fields=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152&_=1675964407480",
+					"protocol": "https",
+					"host": [
+						"70",
+						"push2",
+						"eastmoney",
+						"com"
+					],
+					"path": [
+						"api",
+						"qt",
+						"clist",
+						"get"
+					],
+					"query": [
+						{
+							"key": "pn",
+							"value": "1"
+						},
+						{
+							"key": "pz",
+							"value": "100000"
+						},
+						{
+							"key": "po",
+							"value": "1"
+						},
+						{
+							"key": "np",
+							"value": "1"
+						},
+						{
+							"key": "ut",
+							"value": "bd1d9ddb04089700cf9c27f6f7426281"
+						},
+						{
+							"key": "fltt",
+							"value": "2"
+						},
+						{
+							"key": "invt",
+							"value": "2"
+						},
+						{
+							"key": "wbp2u",
+							"value": "|0|0|0|web"
+						},
+						{
+							"key": "fid",
+							"value": "f3"
+						},
+						{
+							"key": "fs",
+							"value": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
+						},
+						{
+							"key": "fields",
+							"value": "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
+						},
+						{
+							"key": "_",
+							"value": "1675964407480"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

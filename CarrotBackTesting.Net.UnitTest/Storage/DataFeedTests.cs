@@ -58,9 +58,9 @@ namespace CarrotBacktesting.Net.Storage.Tests
             Assert.IsTrue(f1["sz.000422"]["ST"] == st);
 
             // Generate Serialization Json of SimulationOptions
-            string optionsPath = Path.Combine(UnitTestDirectory.JsonDirectory, "simulationoptions.baostock.sqlite.daliy.json");
-            dataFeed.Options.Serialize(optionsPath);
-            Console.WriteLine($"Generated simulationOptions json file at {optionsPath}.");
+            // string optionsPath = Path.Combine(UnitTestDirectory.JsonDirectory, "simulationoptions.baostock.sqlite.daliy.json");
+            // dataFeed.Options.Serialize(optionsPath);
+            // Console.WriteLine($"Generated simulationOptions json file at {optionsPath}.");
         }
     }
 }
