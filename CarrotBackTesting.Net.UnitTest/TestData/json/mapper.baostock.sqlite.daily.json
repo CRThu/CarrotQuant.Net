@@ -1,0 +1,24 @@
+{
+    "MapDict": {
+        "交易日期": "Time",
+        "开盘价": "Open",
+        "最高价": "High",
+        "最低价": "Low",
+        "收盘价": "Close",
+        "成交量": "Volume",
+        "滚动市盈率": "PE",
+        "是否ST": "ST"
+    },
+    "TypeDict": {
+        "滚动市盈率": "System.Double",
+        "是否ST": "System.Boolean"
+    },
+    "BooleanTrueString": [
+        "正常交易",
+        "是"
+    ],
+    "BooleanFalseString": [
+        "停牌",
+        "否"
+    ]
+}

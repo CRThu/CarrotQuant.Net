@@ -12,11 +12,11 @@ namespace CarrotBackTesting.Net.UnitTest.Common
     {
         public static string ProjectDirectory => @$"{Environment.CurrentDirectory}\..\..\..";
         public static string TestDataDirectory => @$"{ProjectDirectory}\TestData";
-        public static string CsvDataDirectory => @$"{ProjectDirectory}\TestData\Csv";
-        public static string SqliteDataDirectory => @$"{ProjectDirectory}\TestData\Sqlite";
-        public static string JsonDirectory => @$"{ProjectDirectory}\TestData\Json";
+        public static string CsvDataDirectory => @$"{ProjectDirectory}\TestData\csv";
+        public static string SqliteDataDirectory => @$"{ProjectDirectory}\TestData\sqlite";
+        public static string JsonDirectory => @$"{ProjectDirectory}\TestData\json";
 
-        public static string InfoPath => @$"{ProjectDirectory}\TestData\Json\info.json";
+        public static string InfoPath => @$"{ProjectDirectory}\TestData\json\info.json";
         //https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/use-dom-utf8jsonreader-utf8jsonwriter?pivots=dotnet-7-0
         public static JsonNode Info = JsonNode.Parse(File.ReadAllText(InfoPath))!;
     }

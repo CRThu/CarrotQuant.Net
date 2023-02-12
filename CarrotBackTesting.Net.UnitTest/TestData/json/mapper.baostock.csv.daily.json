@@ -1,0 +1,28 @@
+{
+    "MapDict": {
+        "code": "Code",
+        "date": "Time",
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "volume": "Volume",
+        "tradestatus": "Status",
+        "amount": "Amount",
+        "pctChg": "Percent",
+        "isST": "ST"
+    },
+    "TypeDict": {
+        "amount": "System.Double",
+        "pctChg": "System.Double",
+        "isST": "System.Double"
+    },
+    "BooleanTrueString": [
+        "1",
+        "测试True"
+    ],
+    "BooleanFalseString": [
+        "0",
+        "测试False"
+    ]
+}
