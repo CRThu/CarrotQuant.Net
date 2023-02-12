@@ -17,9 +17,9 @@ namespace CarrotBacktesting.Net.Storage.Tests
         public void GetMarketDataTest()
         {
             string dataDir = Path.Combine(UnitTestDirectory.SqliteDataDirectory, "sz.000400-sz.000499_1d_baostock.db");
-            string codesPath = Path.Combine(UnitTestDirectory.JsonDirectory, "stockcodes.baostock.sqlite.daliy.json");
-            string fieldsPath = Path.Combine(UnitTestDirectory.JsonDirectory, "fields.baostock.sqlite.daliy.json");
-            string mapperPath = Path.Combine(UnitTestDirectory.JsonDirectory, "mapper.baostock.sqlite.daliy.json");
+            string codesPath = Path.Combine(UnitTestDirectory.JsonDirectory, "stockcodes.baostock.sqlite.daily.json");
+            string fieldsPath = Path.Combine(UnitTestDirectory.JsonDirectory, "fields.baostock.sqlite.daily.json");
+            string mapperPath = Path.Combine(UnitTestDirectory.JsonDirectory, "mapper.baostock.sqlite.daily.json");
 
             DataFeed dataFeed = new(new Engine.SimulationOptions()
             {
@@ -58,7 +58,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
             Assert.IsTrue(f1["sz.000422"]["ST"] == st);
 
             // Generate Serialization Json of SimulationOptions
-            // string optionsPath = Path.Combine(UnitTestDirectory.JsonDirectory, "simulationoptions.baostock.sqlite.daliy.json");
+            // string optionsPath = Path.Combine(UnitTestDirectory.JsonDirectory, "simulationoptions.baostock.sqlite.daily.json");
             // dataFeed.Options.Serialize(optionsPath);
             // Console.WriteLine($"Generated simulationOptions json file at {optionsPath}.");
         }

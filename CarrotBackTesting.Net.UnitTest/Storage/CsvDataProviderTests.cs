@@ -18,7 +18,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
         [TestMethod()]
         public void GetShareDataTest()
         {
-            string dataDir = Path.Combine(UnitTestDirectory.CsvDataDirectory, "daliy");
+            string dataDir = Path.Combine(UnitTestDirectory.CsvDataDirectory, "daily");
 
             string[] fields1 = new string[] { "date", "close", "volume", "tradestatus", "amount" };
             ShareFrameMapper mapper = new ShareFrameMapper()
@@ -42,9 +42,9 @@ namespace CarrotBacktesting.Net.Storage.Tests
         [TestMethod()]
         public void GetAllStockCodeTest()
         {
-            string[] stockcodes = UnitTestDirectory.Info["csv"]!["daliy"]!["stockcode"]!.AsArray().Select(o => (string)o!).ToArray()!;
+            string[] stockcodes = UnitTestDirectory.Info["csv"]!["daily"]!["stockcode"]!.AsArray().Select(o => (string)o!).ToArray()!;
 
-            string dataDir = Path.Combine(UnitTestDirectory.CsvDataDirectory, "daliy");
+            string dataDir = Path.Combine(UnitTestDirectory.CsvDataDirectory, "daily");
             CsvDataProvider csvDataProvider = new(dataDir, null);
             string[] getstockcodes = csvDataProvider.GetAllStockCode();
 

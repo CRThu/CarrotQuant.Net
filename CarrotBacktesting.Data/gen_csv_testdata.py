@@ -2,9 +2,9 @@ import baostock as bs
 import pandas as pd
 import DataDirectory as d
 
-csvdir = d.DataDirectory.combine3(d.DataDirectory.UnitTestDataDirectory, 'Csv', 'daliy')
+csvdir = d.DataDirectory.combine3(d.DataDirectory.UnitTestDataDirectory, 'Csv', 'daily')
 fields = 'date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,tradestatus,pctChg,peTTM,psTTM,' \
-        'pcfNcfTTM,pbMRQ,isST'
+         'pcfNcfTTM,pbMRQ,isST'
 code = 'sz.000422'
 startdate = '2020-01-01'
 enddate = '2022-12-31'

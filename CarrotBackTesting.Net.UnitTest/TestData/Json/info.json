@@ -1,6 +1,6 @@
 {
     "csv": {
-        "daliy": {
+        "daily": {
             "stockcode": [
                 "sh.000001",
                 "sh.600000",
@@ -11,7 +11,7 @@
         }
     },
     "sqlite": {
-        "daliy": {
+        "daily": {
             "stockcode": [
                 "sz.000400",
                 "sz.000401",

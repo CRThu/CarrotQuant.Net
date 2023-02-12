@@ -19,7 +19,7 @@ namespace CarrotBacktesting.Net.Engine.Tests
         public void UpdateFrameTest()
         {
             string dataDir = Path.Combine(UnitTestDirectory.SqliteDataDirectory, "sz.000400-sz.000499_1d_baostock.db");
-            string[] stockcodes = UnitTestDirectory.Info["sqlite"]!["daliy"]!["stockcode"]!.AsArray().Select(o => (string)o!).ToArray()!;
+            string[] stockcodes = UnitTestDirectory.Info["sqlite"]!["daily"]!["stockcode"]!.AsArray().Select(o => (string)o!).ToArray()!;
 
             SimulationOptions options = new()
             {

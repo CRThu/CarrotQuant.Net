@@ -1,7 +1,7 @@
 {
   "DataFeedSource": 0,
   "DataFeedPath": "D:\\Projects\\CarrotQuant.Net\\CarrotBackTesting.Net.UnitTest\\bin\\Debug\\net7.0\\..\\..\\..\\TestData\\Sqlite\\sz.000400-sz.000499_1d_baostock.db",
-  "MapperJsonFilePath": "D:\\Projects\\CarrotQuant.Net\\CarrotBackTesting.Net.UnitTest\\bin\\Debug\\net7.0\\..\\..\\..\\TestData\\Json\\mapper.baostock.sqlite.daliy.json",
+  "MapperJsonFilePath": "D:\\Projects\\CarrotQuant.Net\\CarrotBackTesting.Net.UnitTest\\bin\\Debug\\net7.0\\..\\..\\..\\TestData\\Json\\mapper.baostock.sqlite.daily.json",
   "Mapper": {
     "MapDict": {
       "交易日期": "Time",
@@ -26,7 +26,7 @@
       "否"
     ]
   },
-  "FieldsJsonFilePath": "D:\\Projects\\CarrotQuant.Net\\CarrotBackTesting.Net.UnitTest\\bin\\Debug\\net7.0\\..\\..\\..\\TestData\\Json\\fields.baostock.sqlite.daliy.json",
+  "FieldsJsonFilePath": "D:\\Projects\\CarrotQuant.Net\\CarrotBackTesting.Net.UnitTest\\bin\\Debug\\net7.0\\..\\..\\..\\TestData\\Json\\fields.baostock.sqlite.daily.json",
   "Fields": [
     "交易日期",
     "开盘价",
@@ -39,7 +39,7 @@
   ],
   "SimulationStartTime": "2021-01-01T00:00:00",
   "SimulationEndTime": "2021-05-01T00:00:00",
-  "StockCodesJsonFilePath": "D:\\Projects\\CarrotQuant.Net\\CarrotBackTesting.Net.UnitTest\\bin\\Debug\\net7.0\\..\\..\\..\\TestData\\Json\\stockcodes.baostock.sqlite.daliy.json",
+  "StockCodesJsonFilePath": "D:\\Projects\\CarrotQuant.Net\\CarrotBackTesting.Net.UnitTest\\bin\\Debug\\net7.0\\..\\..\\..\\TestData\\Json\\stockcodes.baostock.sqlite.daily.json",
   "StockCodes": [
     "sz.000400",
     "sz.000401",
