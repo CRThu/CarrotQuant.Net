@@ -50,6 +50,24 @@ namespace CarrotBacktesting.Net.Engine
         public MarketFrame CurrentMarket => DataFeed.MarketData[CurrentTickIndex];
 
         /// <summary>
+        /// 当前与历史时间市场数据
+        /// </summary>
+        /// <param name="tickOffset">偏移量,为0或负数<br/>
+        /// 0为当前市场数据, -1为上一个时间数据<br/>
+        /// </param>
+        /// <returns>存在则返回, 不存在则返回null</returns>
+        public MarketFrame? this[int tickOffset]
+        {
+            get
+            {
+                if (CurrentTickIndex + tickOffset < 0)
+                    return null;
+                else
+                    return DataFeed.MarketData[CurrentTickIndex + tickOffset];
+            }
+        }
+
+        /// <summary>
         /// 当前时间
         /// </summary>
         public DateTime CurrentTime => CurrentMarket.Time;
