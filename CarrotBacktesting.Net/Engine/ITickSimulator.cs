@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Engine
 {
-    public interface ITickSimulator
+    public interface ITickDataManager
     {
     }
 }

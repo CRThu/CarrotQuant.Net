@@ -11,7 +11,7 @@ namespace CarrotBacktesting.Net.Engine
     /// <summary>
     /// 回测时间片模拟器
     /// </summary>
-    public class TickSimulator : ITickSimulator
+    public class TickSimulator : ITickDataManager
     {
         /// <summary>
         /// 开始时间(第一个存在的时间片)
@@ -84,16 +84,27 @@ namespace CarrotBacktesting.Net.Engine
             DataFeed = dataFeed;
             Options = options;
 
-            // TODO UpdateDataFeedInfo
-
+            // Update DataFeedInfo
+            DateTime optionStartTime = Options.SimulationStartTime ?? DataFeed.StartTime;
+            DateTime optionEndTime = Options.SimulationEndTime ?? DataFeed.EndTime;
+            DataFeed.GetMarketData(optionStartTime, out MarketFrame startFrame);
+            DataFeed.GetMarketData(optionEndTime, out MarketFrame endFrame);
+            StartTime = startFrame.Time;
+            EndTime = endFrame.Time;
+            TickCount = dataFeed.MarketData.Times.Count(t => t >= StartTime && t <= EndTime);
+            CurrentTickIndex = 0;
+            IsRunning = false;
         }
 
         /// <summary>
         /// 时间片更新
         /// </summary>
-        public void UpdateTick()
+        /// <returns>返回是否模拟器运行结束, 若结束返回false</returns>
+        public bool UpdateTick()
         {
-            // TODO
+            CurrentTickIndex++;
+            IsRunning = CurrentTickIndex < TickCount;
+            return IsRunning;
         }
     }
 }

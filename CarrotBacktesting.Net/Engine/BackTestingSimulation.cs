@@ -12,6 +12,7 @@ namespace CarrotBacktesting.Net.Engine
     /// <summary>
     /// 回测系统模拟, 用于生成市场时间帧
     /// </summary>
+    [Obsolete("Use TickSimulator Instead.")]
     public class BackTestingSimulation
     {
         /// <summary>
