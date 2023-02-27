@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CarrotBacktesting.Net.Common;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,9 +8,9 @@ using System.Threading.Tasks;
 namespace CarrotBacktesting.Net.Portfolio.Order
 {
     /// <summary>
-    /// 常规委托
+    /// 常规委托单
     /// </summary>
-    public struct GeneralOrder
+    public class GeneralOrder
     {
         /// <summary>
         /// 委托单自增id
@@ -42,12 +43,12 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public double OrderSize { get; set; }
 
         /// <summary>
-        /// 成交头寸大小
+        /// 已成交头寸大小
         /// </summary>
         public double DealSize { get; set; }
 
         /// <summary>
-        /// 剩余未成交头寸大小
+        /// 待成交头寸大小
         /// </summary>
         public double PendingSize => OrderSize - DealSize;
 
@@ -67,25 +68,39 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public double Price { get; set; }
 
         /// <summary>
-        /// 构造函数
+        /// OrderId生成器
         /// </summary>
-        /// <param name="orderId">委托单id</param>
+        private IncrementIdGenerator OrderIdGenerator { get; init; }
+
+        /// <summary>
+        /// 市价委托单默认价格
+        /// </summary>
+        public const double DefaultPrice = double.MaxValue;
+
+        /// <summary>
+        /// 构造函数,创建委托单
+        /// </summary>
         /// <param name="stockCode">股票代码</param>
+        /// <param name="type">委托单类型(限价/市价)</param>
         /// <param name="direction">头寸方向</param>
         /// <param name="size">头寸大小</param>
-        /// <param name="type">委托单类型(限价/市价)</param>
         /// <param name="price">委托限价(委托单类型为市价时此属性无效)</param>
-        public GeneralOrder(int orderId, string stockCode, OrderDirection direction, double size, OrderType type, double price = 0)
+        public GeneralOrder(string stockCode, OrderType type, OrderDirection direction, double size, double price = 0)
         {
-            OrderId = orderId;
+            OrderIdGenerator = new();
+
             StockCode = stockCode;
             Direction = direction;
             OrderSize = size;
             Type = type;
-            Price = price;
             Status = GeneralOrderStatus.Pending;
             DealSize = 0;
             DealTotalPrice = 0;
+            Price = type switch {
+                OrderType.LimitOrder => price,
+                OrderType.MarketOrder => DefaultPrice,
+                _ => throw new NotImplementedException(),
+            };
         }
 
         /// <summary>
@@ -113,11 +128,17 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             {
                 throw new InvalidOperationException("委托单已被取消.");
             }
+            if (Status == GeneralOrderStatus.Executed)
+            {
+                throw new InvalidOperationException("委托单已被成交.");
+            }
+
             DealSize += size;
             DealTotalPrice += size * price;
+
             if (PendingSize == 0)
             {
-                Status = GeneralOrderStatus.Deal;
+                Status = GeneralOrderStatus.Executed;
             }
         }
 
@@ -140,9 +161,18 @@ namespace CarrotBacktesting.Net.Portfolio.Order
     /// </summary>
     public enum GeneralOrderStatus
     {
-        Pending,    // 待成交/部分成交
-        Deal,       // 已成交
-        Cancelled   // 已取消
+        /// <summary>
+        /// 待成交/部分成交
+        /// </summary>
+        Pending,
+        /// <summary>
+        /// 已成交
+        /// </summary>
+        Executed,
+        /// <summary>
+        /// 已取消
+        /// </summary>
+        Cancelled
     }
 
     /// <summary>
@@ -150,8 +180,14 @@ namespace CarrotBacktesting.Net.Portfolio.Order
     /// </summary>
     public enum OrderDirection
     {
-        Buy,        // 买入
-        Sell,       // 卖出
+        /// <summary>
+        /// 买入
+        /// </summary>
+        Buy,
+        /// <summary>
+        /// 卖出
+        /// </summary>
+        Sell
     }
 
     /// <summary>
@@ -159,7 +195,13 @@ namespace CarrotBacktesting.Net.Portfolio.Order
     /// </summary>
     public enum OrderType
     {
-        LimitOrder, // 限价委托
-        MarketOrder,// 市价委托
+        /// <summary>
+        /// 限价委托
+        /// </summary>
+        LimitOrder,
+        /// <summary>
+        /// 市价委托
+        /// </summary>
+        MarketOrder
     }
 }

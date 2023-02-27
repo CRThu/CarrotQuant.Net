@@ -115,7 +115,8 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public int CreateOrder(string stockCode, OrderDirection direction, double size, OrderType type, double price = 0)
         {
             int orderId = OrderIdGen;
-            GeneralOrder order = new(orderId, stockCode, direction, size, type, price);
+            // TODO
+            GeneralOrder order = new(stockCode, type, direction, size, price);
             OrdersStorage.Add(orderId, order);
 
             OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.CreateOrder);

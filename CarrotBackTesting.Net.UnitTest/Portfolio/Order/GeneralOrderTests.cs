@@ -14,10 +14,10 @@ namespace CarrotBacktesting.Net.Portfolio.Order.Tests
         [TestMethod()]
         public void TradeTest()
         {
-            GeneralOrder order1 = new(1, "sz.000444", OrderDirection.Buy, 1000, OrderType.LimitOrder, 100);
-            GeneralOrder order2 = new(2, "sz.000444", OrderDirection.Sell, 1000, OrderType.LimitOrder, 100);
-            GeneralOrder order3 = new(3, "sz.000444", OrderDirection.Buy, 1000, OrderType.MarketOrder);
-            GeneralOrder order4 = new(4, "sz.000444", OrderDirection.Sell, 1000, OrderType.MarketOrder);
+            GeneralOrder order1 = new("sz.000444", OrderType.LimitOrder, OrderDirection.Buy, 1000, 100);
+            GeneralOrder order2 = new("sz.000444", OrderType.LimitOrder, OrderDirection.Sell, 1000, 100);
+            GeneralOrder order3 = new("sz.000444", OrderType.MarketOrder, OrderDirection.Buy, 1000);
+            GeneralOrder order4 = new("sz.000444", OrderType.MarketOrder, OrderDirection.Sell, 1000);
 
             (int size, int price)[] order1TradeData = new (int, int)[] {
                 (200, 100),
@@ -45,28 +45,28 @@ namespace CarrotBacktesting.Net.Portfolio.Order.Tests
             Console.WriteLine($"Order1:");
             Console.WriteLine($"Status: {order1.Status}, PendingSize: {order1.PendingSize}, "
                 + $"Deal AvgPrice and Size: {order1.DealAveragePrice} * {order1.DealSize}.");
-            Assert.IsTrue(order1.Status == ((order1TradeData.Sum(d => d.size) == 1000) ? GeneralOrderStatus.Deal : GeneralOrderStatus.Pending)
+            Assert.IsTrue(order1.Status == ((order1TradeData.Sum(d => d.size) == 1000) ? GeneralOrderStatus.Executed : GeneralOrderStatus.Pending)
                 && order1.PendingSize == (1000 - order1TradeData.Sum(d => d.size))
                 && order1.DealSize == order1TradeData.Sum(d => d.size)
                 && order1.DealAveragePrice == (double)order1TradeData.Sum(d => d.size * d.price) / order1TradeData.Sum(d => d.size));
             Console.WriteLine($"Order2:");
             Console.WriteLine($"Status: {order2.Status}, PendingSize: {order2.PendingSize}, "
                 + $"Deal AvgPrice and Size: {order2.DealAveragePrice} * {order2.DealSize}.");
-            Assert.IsTrue(order2.Status == ((order2TradeData.Sum(d => d.size) == 1000) ? GeneralOrderStatus.Deal : GeneralOrderStatus.Pending)
+            Assert.IsTrue(order2.Status == ((order2TradeData.Sum(d => d.size) == 1000) ? GeneralOrderStatus.Executed : GeneralOrderStatus.Pending)
                 && order2.PendingSize == (1000 - order2TradeData.Sum(d => d.size))
                 && order2.DealSize == order2TradeData.Sum(d => d.size)
                 && order2.DealAveragePrice == (double)order2TradeData.Sum(d => d.size * d.price) / order2TradeData.Sum(d => d.size));
             Console.WriteLine($"Order3:");
             Console.WriteLine($"Status: {order3.Status}, PendingSize: {order3.PendingSize}, "
                 + $"Deal AvgPrice and Size: {order3.DealAveragePrice} * {order3.DealSize}.");
-            Assert.IsTrue(order3.Status == ((order3TradeData.Sum(d => d.size) == 1000) ? GeneralOrderStatus.Deal : GeneralOrderStatus.Pending)
+            Assert.IsTrue(order3.Status == ((order3TradeData.Sum(d => d.size) == 1000) ? GeneralOrderStatus.Executed : GeneralOrderStatus.Pending)
                 && order3.PendingSize == (1000 - order3TradeData.Sum(d => d.size))
                 && order3.DealSize == order3TradeData.Sum(d => d.size)
                 && order3.DealAveragePrice == (double)order3TradeData.Sum(d => d.size * d.price) / order3TradeData.Sum(d => d.size));
             Console.WriteLine($"Order4:");
             Console.WriteLine($"Status: {order4.Status}, PendingSize: {order4.PendingSize}, "
                 + $"Deal AvgPrice and Size: {order4.DealAveragePrice} * {order4.DealSize}.");
-            Assert.IsTrue(order4.Status == ((order4TradeData.Sum(d => d.size) == 1000) ? GeneralOrderStatus.Deal : GeneralOrderStatus.Pending)
+            Assert.IsTrue(order4.Status == ((order4TradeData.Sum(d => d.size) == 1000) ? GeneralOrderStatus.Executed : GeneralOrderStatus.Pending)
                 && order4.PendingSize == (1000 - order4TradeData.Sum(d => d.size))
                 && order4.DealSize == order4TradeData.Sum(d => d.size)
                 && order4.DealAveragePrice == (double)order4TradeData.Sum(d => d.size * d.price) / order4TradeData.Sum(d => d.size));
