@@ -70,7 +70,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <summary>
         /// OrderId生成器
         /// </summary>
-        private IncrementIdGenerator OrderIdGenerator { get; init; }
+        private static IncrementIdGenerator<int> OrderIdGenerator = new();
 
         /// <summary>
         /// 市价委托单默认价格
@@ -87,7 +87,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <param name="price">委托限价(委托单类型为市价时此属性无效)</param>
         public GeneralOrder(string stockCode, OrderType type, OrderDirection direction, double size, double price = 0)
         {
-            OrderIdGenerator = new();
+            OrderId = OrderIdGenerator.GetId();
 
             StockCode = stockCode;
             Direction = direction;

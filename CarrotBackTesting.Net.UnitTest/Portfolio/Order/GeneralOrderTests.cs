@@ -19,6 +19,11 @@ namespace CarrotBacktesting.Net.Portfolio.Order.Tests
             GeneralOrder order3 = new("sz.000444", OrderType.MarketOrder, OrderDirection.Buy, 1000);
             GeneralOrder order4 = new("sz.000444", OrderType.MarketOrder, OrderDirection.Sell, 1000);
 
+            Assert.AreEqual(0, order1.OrderId);
+            Assert.AreEqual(1, order2.OrderId);
+            Assert.AreEqual(2, order3.OrderId);
+            Assert.AreEqual(3, order4.OrderId);
+
             (int size, int price)[] order1TradeData = new (int, int)[] {
                 (200, 100),
                 (400, 98),
