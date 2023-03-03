@@ -15,7 +15,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <summary>
         /// 委托单存储字典
         /// </summary>
-        private Dictionary<int, GeneralOrder> OrdersStorage { get; set; } = new();
+        private Dictionary<int, GeneralOrder> OrdersStorage { get; set; }
 
         /// <summary>
         /// 全部委托单集合
@@ -50,21 +50,10 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public int PendingCount => OrdersStorage.Values.Count(o => o.Status == GeneralOrderStatus.Pending);
 
         /// <summary>
-        /// 委托单字典自增键
+        /// 获取委托单
         /// </summary>
-        private int orderIdGen = 0;
-
-        /// <summary>
-        /// 委托单字典自增键访问器
-        /// </summary>
-        private int OrderIdGen
-        {
-            get
-            {
-                return orderIdGen++;
-            }
-        }
-
+        /// <param name="orderId"></param>
+        /// <returns></returns>
         public GeneralOrder this[int orderId]
         {
             get
@@ -86,6 +75,14 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         public event OrderUpdateHandler? OnOrderUpdate;
 
         /// <summary>
+        /// 构造函数
+        /// </summary>
+        public OrderManager()
+        {
+            OrdersStorage = new();
+        }
+
+        /// <summary>
         /// 获取委托单
         /// </summary>
         /// <param name="orderId">委托单id</param>
@@ -93,9 +90,9 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <exception cref="InvalidOperationException"></exception>
         public GeneralOrder GetOrder(int orderId)
         {
-            if (OrdersStorage.ContainsKey(orderId))
+            if (OrdersStorage.TryGetValue(orderId, out GeneralOrder? value))
             {
-                return OrdersStorage[orderId];
+                return value!;
             }
             else
             {
@@ -114,14 +111,12 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <returns>委托单id号</returns>
         public int CreateOrder(string stockCode, OrderDirection direction, double size, OrderType type, double price = 0)
         {
-            int orderId = OrderIdGen;
-            // TODO
             GeneralOrder order = new(stockCode, type, direction, size, price);
-            OrdersStorage.Add(orderId, order);
+            OrdersStorage.Add(order.OrderId, order);
 
-            OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.CreateOrder);
+            OrderEventArgs orderEventArgs = new(order.OrderId, OrderUpdatedEventOperation.CreateOrder);
             OnOrderUpdate?.Invoke(this, orderEventArgs);
-            return orderId;
+            return order.OrderId;
         }
 
         /// <summary>
@@ -154,7 +149,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         }
 
         /// <summary>
-        /// 交易所成交更新事件订阅方法
+        /// 交易所成交更新事件订阅回调
         /// </summary>
         /// <param name="sender">回测交易所实例</param>
         /// <param name="tradeEventArgs">成交事件参数</param>
