@@ -19,7 +19,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <summary>
         /// 头寸存储字典
         /// </summary>
-        public Dictionary<string, GeneralPosition> PositionsStorage { get; set; } = new();
+        private Dictionary<string, GeneralPosition> PositionsStorage { get; set; }
 
         /// <summary>
         /// 现金
@@ -43,14 +43,37 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         public int Count => PositionsStorage.Count;
 
         /// <summary>
-        /// 回测设置
+        /// 获取头寸
         /// </summary>
-        private SimulationOptions Options { get; set; }
+        /// <param name="stockCode">股票代码</param>
+        /// <returns>头寸, 若不存在返回null</returns>
+        public GeneralPosition? this[string stockCode]
+        {
+            get
+            {
+                TryGetPosition(stockCode, out GeneralPosition? val);
+                return val;
+            }
+        }
 
+        /// <summary>
+        /// 现金更新委托
+        /// </summary>
+        /// <param name="cash">现金数量</param>
         public delegate void CashUpdateDelegate(double cash);
+        /// <summary>
+        /// 现金更新事件
+        /// </summary>
         public event CashUpdateDelegate? CashUpdateEvent;
 
+        /// <summary>
+        /// 头寸更新委托
+        /// </summary>
+        /// <param name="positionEventArgs"></param>
         public delegate void PositionUpdateDelegate(PositionEventArgs positionEventArgs);
+        /// <summary>
+        /// 头寸更新事件
+        /// </summary>
         public event PositionUpdateDelegate? PositionUpdateEvent;
 
         /// <summary>
@@ -58,8 +81,7 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// </summary>
         public PositionManager(SimulationOptions options)
         {
-            Options = options;
-            //EventRegister();
+            PositionsStorage = new();
             UpdateCash(options.InitialCash);
         }
 
@@ -67,66 +89,48 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// 获取头寸信息
         /// </summary>
         /// <param name="stockCode">股票代码</param>
-        /// <returns>头寸信息类</returns>
-        /// <exception cref="InvalidOperationException"></exception>
-        public GeneralPosition GetPosition(string stockCode)
-        {
-            if (PositionsStorage.ContainsKey(stockCode))
-            {
-                return PositionsStorage[stockCode];
-            }
-            else
-            {
-                throw new InvalidOperationException($"不存在此头寸, StockCode:{stockCode}.");
-            }
-        }
-
-        /// <summary>
-        /// 获取头寸信息
-        /// </summary>
-        /// <param name="stockCode">股票代码</param>
         /// <param name="position">头寸信息类, 不存在则返回null</param>
-        /// <returns>是否存在</returns>
+        /// <returns>是否存在该头寸</returns>
         public bool TryGetPosition(string stockCode, out GeneralPosition? position)
         {
             return PositionsStorage.TryGetValue(stockCode, out position);
         }
 
-        /// <summary>
-        /// 获取头寸持仓成本
-        /// </summary>
-        /// <param name="stockCode">股票代码</param>
-        /// <returns>头寸持仓成本</returns>
-        public double GetPositionCost(string stockCode)
-        {
-            bool hasPosition = TryGetPosition(stockCode, out GeneralPosition? position);
-            if (hasPosition)
-            {
-                return position!.Cost;
-            }
-            else
-            {
-                return 0;
-            }
-        }
+        ///// <summary>
+        ///// 获取头寸持仓成本
+        ///// </summary>
+        ///// <param name="stockCode">股票代码</param>
+        ///// <returns>头寸持仓成本, 若不存在则返回null</returns>
+        //public double? GetPositionCost(string stockCode)
+        //{
+        //    bool hasPosition = TryGetPosition(stockCode, out GeneralPosition? position);
+        //    if (hasPosition)
+        //    {
+        //        return position!.Cost;
+        //    }
+        //    else
+        //    {
+        //        return null;
+        //    }
+        //}
 
-        /// <summary>
-        /// 获取头寸持仓量
-        /// </summary>
-        /// <param name="stockCode">股票代码</param>
-        /// <returns>头寸持仓量</returns>
-        public double GetPositionSize(string stockCode)
-        {
-            bool hasPosition = TryGetPosition(stockCode, out GeneralPosition? position);
-            if (hasPosition)
-            {
-                return position!.Size;
-            }
-            else
-            {
-                return 0;
-            }
-        }
+        ///// <summary>
+        ///// 获取头寸持仓量
+        ///// </summary>
+        ///// <param name="stockCode">股票代码</param>
+        ///// <returns>头寸持仓量, 若不存在则返回null</returns>
+        //public double? GetPositionSize(string stockCode)
+        //{
+        //    bool hasPosition = TryGetPosition(stockCode, out GeneralPosition? position);
+        //    if (hasPosition)
+        //    {
+        //        return position!.Size;
+        //    }
+        //    else
+        //    {
+        //        return null;
+        //    }
+        //}
 
         /// <summary>
         /// 新建头寸
@@ -151,9 +155,6 @@ namespace CarrotBacktesting.Net.Portfolio.Position
             if (TryGetPosition(stockCode, out GeneralPosition? position))
             {
                 position!.Trade(size, price);
-                // 若清仓则删除持仓头寸数据
-                if (position!.Size == 0)
-                    PositionsStorage.Remove(stockCode);
             }
             else
             {
@@ -162,6 +163,10 @@ namespace CarrotBacktesting.Net.Portfolio.Position
 
             PositionEventArgs positionEventArgs = new(stockCode, price, size);
             PositionUpdateEvent?.Invoke(positionEventArgs);
+
+            // 若清仓则删除持仓头寸数据
+            if (position!.Size == 0)
+                PositionsStorage.Remove(stockCode);
 
             // 计算现金剩余
             UpdateCash(Cash - price * size);
@@ -180,9 +185,9 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// <summary>
         /// 交易所成交更新事件回调
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="tradeEventArgs"></param>
-        public void OnTradeUpdate(BackTestingExchange sender, TradeEventArgs tradeEventArgs)
+        /// <param name="_">交易所实例</param>
+        /// <param name="tradeEventArgs">成交事件参数</param>
+        public void OnTradeUpdate(BackTestingExchange _, TradeEventArgs tradeEventArgs)
         {
             UpdatePosition(tradeEventArgs.StockCode, tradeEventArgs.Price, tradeEventArgs.Volume);
         }

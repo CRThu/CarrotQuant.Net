@@ -74,11 +74,29 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         /// 交易
         /// </summary>
         /// <param name="size">头寸大小</param>
-        /// <param name="cost">股票单价</param>
-        public void Trade(double size, double cost)
+        /// <param name="price">股票单价</param>
+        public void Trade(double size, double price)
         {
-            Size += size;
-            CostValue += cost * size;
+            //if (Size == size)
+            //{
+            //    RealizedPnl += UnRealizedPnl;
+            //    Size = 0;
+            //    CostValue = 0;
+            //}
+            //else
+            //{
+                Size += size;
+                CostValue += price * size;
+            //}
         }
+
+        ///// <summary>
+        ///// 更新价格,损益
+        ///// </summary>
+        ///// <param name="price"></param>
+        //public void OnPriceUpdate(double price)
+        //{
+        //    CurrentPrice = price;
+        //}
     }
 }

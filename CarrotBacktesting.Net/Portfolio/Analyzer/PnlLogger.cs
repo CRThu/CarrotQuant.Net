@@ -24,7 +24,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         {
             double shareValue = 0, cashValue = positionManager.Cash;
             double realizedPnl = 0, unrealizedPnl = 0;
-            foreach (var position in positionManager.PositionsStorage.Values)
+            foreach (var position in positionManager.Positions)
             {
                 throw new NotImplementedException();
                 //shareValue += position.CurrentValue;

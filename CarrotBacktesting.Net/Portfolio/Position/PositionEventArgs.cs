@@ -18,12 +18,12 @@ namespace CarrotBacktesting.Net.Portfolio.Position
         public string StockCode { get; set; }
 
         /// <summary>
-        /// 更新部分头寸大小
+        /// 更新头寸大小
         /// </summary>
         public double Size { get; set; }
 
         /// <summary>
-        /// 更新部分持仓成本
+        /// 更新持仓成本
         /// </summary>
         public double Price { get; set; }
 

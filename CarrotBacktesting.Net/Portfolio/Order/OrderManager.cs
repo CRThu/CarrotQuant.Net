@@ -29,36 +29,21 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         }
 
         /// <summary>
-        /// 待成交委托单集合
-        /// </summary>
-        public IEnumerable<GeneralOrder> PendingOrders
-        {
-            get
-            {
-                return OrdersStorage.Values.Where(o => o.Status == GeneralOrderStatus.Pending);
-            }
-        }
-
-        /// <summary>
         /// 委托单数量
         /// </summary>
         public int Count => OrdersStorage.Count;
 
         /// <summary>
-        /// 待成交委托单数量
-        /// </summary>
-        public int PendingCount => OrdersStorage.Values.Count(o => o.Status == GeneralOrderStatus.Pending);
-
-        /// <summary>
         /// 获取委托单
         /// </summary>
-        /// <param name="orderId"></param>
-        /// <returns></returns>
-        public GeneralOrder this[int orderId]
+        /// <param name="orderId">委托单id</param>
+        /// <returns>委托单, 若不存在返回null</returns>
+        public GeneralOrder? this[int orderId]
         {
             get
             {
-                return GetOrder(orderId);
+                TryGetOrder(orderId, out GeneralOrder? val);
+                return val;
             }
         }
 
@@ -82,22 +67,25 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             OrdersStorage = new();
         }
 
+
         /// <summary>
         /// 获取委托单
         /// </summary>
         /// <param name="orderId">委托单id</param>
         /// <returns>查询到的委托单</returns>
         /// <exception cref="InvalidOperationException"></exception>
-        public GeneralOrder GetOrder(int orderId)
+        /// 
+
+
+        /// <summary>
+        /// 获取委托单
+        /// </summary>
+        /// <param name="orderId">委托单id</param>
+        /// <param name="value">委托单,若不存在则为null</param>
+        /// <returns>返回是否存在委托单</returns>
+        public bool TryGetOrder(int orderId, out GeneralOrder? value)
         {
-            if (OrdersStorage.TryGetValue(orderId, out GeneralOrder? value))
-            {
-                return value!;
-            }
-            else
-            {
-                throw new InvalidOperationException($"委托单中不存在此委托, Id:{orderId}.");
-            }
+            return OrdersStorage.TryGetValue(orderId, out value);
         }
 
         /// <summary>
@@ -116,6 +104,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
 
             OrderEventArgs orderEventArgs = new(order.OrderId, OrderUpdatedEventOperation.CreateOrder);
             OnOrderUpdate?.Invoke(this, orderEventArgs);
+
             return order.OrderId;
         }
 
@@ -126,11 +115,15 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <exception cref="InvalidOperationException"></exception>
         public void CancelOrder(int orderId)
         {
-            GeneralOrder order = GetOrder(orderId);
-            order.Cancel();
+            if (!TryGetOrder(orderId, out GeneralOrder? order))
+                throw new InvalidOperationException($"不存在此委托, OrderId = {orderId}");
+
+            order!.Cancel();
 
             OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.CancelOrder);
             OnOrderUpdate?.Invoke(this, orderEventArgs);
+
+            OrdersStorage.Remove(order.OrderId);
         }
 
         /// <summary>
@@ -141,19 +134,23 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <param name="size">成交头寸</param>
         public void TradeOrder(int orderId, double price, double size)
         {
-            GeneralOrder order = GetOrder(orderId);
-            order.Trade(size, price);
+            if (!TryGetOrder(orderId, out GeneralOrder? order))
+                throw new InvalidOperationException($"不存在此委托, OrderId = {orderId}");
+
+            order!.Trade(size, price);
 
             OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.UpdateOrder);
             OnOrderUpdate?.Invoke(this, orderEventArgs);
+
+            OrdersStorage.Remove(order.OrderId);
         }
 
         /// <summary>
         /// 交易所成交更新事件订阅回调
         /// </summary>
-        /// <param name="sender">回测交易所实例</param>
+        /// <param name="_">回测交易所实例</param>
         /// <param name="tradeEventArgs">成交事件参数</param>
-        public void OnTradeUpdate(BackTestingExchange sender, TradeEventArgs tradeEventArgs)
+        public void OnTradeUpdate(BackTestingExchange _, TradeEventArgs tradeEventArgs)
         {
             TradeOrder(tradeEventArgs.OrderId, tradeEventArgs.Price, tradeEventArgs.Volume);
         }
