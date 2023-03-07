@@ -37,11 +37,11 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 交易记录器
         /// </summary>
-        public TransactionLogger TransactionLogger => PortfolioManager.TransactionLogger;
+        public TransactionLogger TransactionLogger => PortfolioManager.Analyzer.TransactionLogger;
         /// <summary>
         /// 损益记录器
         /// </summary>
-        public PnlLogger PnlLogger => PortfolioManager.PnlLogger;
+        public PnlLogger PnlLogger => PortfolioManager.Analyzer.PnlLogger;
         /// <summary>
         /// 投资组合分析器
         /// </summary>
@@ -51,7 +51,8 @@ namespace CarrotBacktesting.Net.Engine
 
         public StrategyContext(MarketFrame marketFrame)
         {
-            PortfolioManager = new PortfolioManager();
+            // TODO
+            PortfolioManager = new PortfolioManager(new());
             MarketFrame = marketFrame;
         }
     }
