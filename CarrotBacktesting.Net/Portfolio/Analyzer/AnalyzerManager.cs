@@ -12,17 +12,24 @@ using System.Threading.Tasks;
 namespace CarrotBacktesting.Net.Portfolio.Analyzer
 {
     /// <summary>
-    /// 投资组合分析器
+    /// 分析器管理器
     /// </summary>
-    public class Analyzer
+    public class AnalyzerManager
     {
+        /// <summary>
+        /// 交易记录器
+        /// </summary>
         public TransactionLogger TransactionLogger { get; set; }
+
+        /// <summary>
+        /// 损益记录器
+        /// </summary>
         public PnlLogger PnlLogger { get; set; }
 
         /// <summary>
         /// 构造函数
         /// </summary>
-        public Analyzer()
+        public AnalyzerManager()
         {
             TransactionLogger = new TransactionLogger();
             PnlLogger = new PnlLogger();

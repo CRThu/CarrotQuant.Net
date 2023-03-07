@@ -45,8 +45,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 投资组合分析器
         /// </summary>
-        public Analyzer Analyzer => PortfolioManager.Analyzer;
-
+        public AnalyzerManager Analyzer => PortfolioManager.Analyzer;
 
 
         public StrategyContext(MarketFrame marketFrame)

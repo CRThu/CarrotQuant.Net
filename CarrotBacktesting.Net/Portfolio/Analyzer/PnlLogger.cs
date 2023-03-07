@@ -43,6 +43,6 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// 调用分析器
         /// </summary>
         /// <returns></returns>
-        public Dictionary<string, double> Analyze() => Analyzer.Analyze(this);
+        public Dictionary<string, double> Analyze() => AnalyzerManager.Analyze(this);
     }
 }

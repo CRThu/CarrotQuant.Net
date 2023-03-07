@@ -31,7 +31,7 @@ namespace CarrotBacktesting.Net.Portfolio
         /// TODO
         /// 投资组合分析器
         /// </summary>
-        public Analyzer.Analyzer Analyzer { get; set; }
+        public AnalyzerManager Analyzer { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -40,7 +40,7 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             OrderManager = new OrderManager();
             PositionManager = new PositionManager(options);
-            Analyzer = new Analyzer.Analyzer();
+            Analyzer = new AnalyzerManager();
             //EventRegister();
         }
 
