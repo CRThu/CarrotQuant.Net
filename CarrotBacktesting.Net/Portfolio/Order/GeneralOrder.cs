@@ -70,7 +70,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <summary>
         /// OrderId生成器
         /// </summary>
-        private static IncrementIdGenerator<int> OrderIdGenerator = new();
+        private static readonly IncrementIdGenerator<int> OrderIdGenerator = new();
 
         /// <summary>
         /// 市价委托单默认价格

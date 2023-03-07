@@ -14,7 +14,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// </summary>
     public class TransactionLogger
     {
-        public List<TransactionLog> Logs { get; set; } = new();
+        public List<TransactionLog> Logs { get; set; }
 
         /// <summary>
         /// 交易记录自增Id生成
@@ -33,31 +33,33 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         }
 
         /// <summary>
-        /// 添加设置现金记录
+        /// 构造函数
         /// </summary>
-        /// <param name="cash"></param>
-        public void SetCash(DateTime transactionTime, double cash)
+        public TransactionLogger()
         {
-            Logs.Add(new TransactionLog(transactionTime, "$CASH$", cash, 0, OrderDirection.Buy)
-            {
-                TransactionId = TransactionId
-            });
+            Logs = new();
         }
+
+        ///// <summary>
+        ///// 添加设置现金记录
+        ///// </summary>
+        ///// <param name="time">时间</param>
+        ///// <param name="cash">金额</param>
+        //public void SetCash(DateTime time, double cash)
+        //{
+        //    Logs.Add(new TransactionLog(time, "$CASH$", 1, cash));
+        //}
 
         /// <summary>
         /// 添加交易记录
         /// </summary>
-        /// <param name="time"></param>
-        /// <param name="shareName"></param>
-        /// <param name="cost"></param>
-        /// <param name="size"></param>
-        /// <param name="direction"></param>
-        public void AddTransaction(DateTime time, string shareName, double cost, double size, OrderDirection direction)
+        /// <param name="time">交易时间</param>
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="cost">交易成本</param>
+        /// <param name="size">头寸数量</param>
+        public void AddTransaction(DateTime time, string stockCode, double cost, double size)
         {
-            Logs.Add(new TransactionLog(time, shareName, cost, size, direction)
-            {
-                TransactionId = TransactionId
-            });
+            Logs.Add(new TransactionLog(time, stockCode, cost, size));
         }
 
         public override string ToString()
