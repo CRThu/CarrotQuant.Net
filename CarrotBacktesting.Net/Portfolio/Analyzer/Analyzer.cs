@@ -1,4 +1,6 @@
 ﻿using CarrotBacktesting.Net.Common;
+using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Shared;
 using MathNet.Numerics.Statistics;
 using System;
@@ -20,10 +22,10 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <summary>
         /// 构造函数
         /// </summary>
-        public Analyzer(TransactionLogger transactionLogger, PnlLogger pnlLogger)
+        public Analyzer()
         {
-            TransactionLogger = transactionLogger;
-            PnlLogger = pnlLogger;
+            TransactionLogger = new TransactionLogger();
+            PnlLogger = new PnlLogger();
         }
 
         /// <summary>
@@ -158,8 +160,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             double cost = pnlLogger.Logs[0].TotalValue - pnlLogger.Logs[0].TotalPnl;
             TimeSpan timeSpan = pnlLogger.Logs[^1].DateTime - pnlLogger.Logs[0].DateTime;
 
-            return dateSpan switch
-            {
+            return dateSpan switch {
                 DateSpan.Day => (pnl / cost) / (timeSpan / TimeSpan.FromDays(1)),
                 DateSpan.Month => (pnl / cost) / (timeSpan / TimeSpan.FromDays(30)),
                 DateSpan.Year => (pnl / cost) / (timeSpan / TimeSpan.FromDays(365)),
@@ -223,5 +224,17 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// </summary>
         /// <returns></returns>
         public Dictionary<string, double> Analyze() => Analyze(PnlLogger);
+
+
+        /// <summary>
+        /// 市场更新事件回调
+        /// </summary>
+        /// <param name="_">市场数据更新</param>
+        /// <param name="marketEventArgs">市场更新事件参数</param>
+        public void OnMarketUpdate(MarketFrame data, MarketEventArgs marketEventArgs)
+        {
+            // TODO
+            //PnlLogger.AddPnlSnapshot(data, PositionManager);
+        }
     }
 }

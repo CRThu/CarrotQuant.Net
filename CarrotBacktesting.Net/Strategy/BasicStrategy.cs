@@ -78,15 +78,15 @@ namespace CarrotBacktesting.Net.Strategy
             if (strategyContext.MarketFrame["sz.000422"].Status)
             {
                 if (strategyContext.MarketFrame["sz.000422"].Close <= 220)
-                    strategyContext.PortfolioManager.AddOrder("sz.000422", 230, 100.0, OrderDirection.Buy);
+                    strategyContext.PortfolioManager.CreateOrder("sz.000422", 230, 100.0, OrderDirection.Buy);
                 if (strategyContext.MarketFrame["sz.000422"].Close >= 350)
-                    strategyContext.PortfolioManager.AddOrder("sz.000422", 320, 300.0, OrderDirection.Sell);
+                    strategyContext.PortfolioManager.CreateOrder("sz.000422", 320, 300.0, OrderDirection.Sell);
             }
 
             if (strategyContext.MarketFrame["sz.000423"].Status)
             {
                 if (strategyContext.MarketFrame["sz.000423"].Close <= 270)
-                    strategyContext.PortfolioManager.AddOrder("sz.000423", 280, 100.0, OrderDirection.Buy);
+                    strategyContext.PortfolioManager.CreateOrder("sz.000423", 280, 100.0, OrderDirection.Buy);
             }
         }
     }

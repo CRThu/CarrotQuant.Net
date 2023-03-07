@@ -18,31 +18,17 @@ namespace CarrotBacktesting.Net.Portfolio
     public class PortfolioManager
     {
         /// <summary>
-        /// 当前时间市场帧
-        /// </summary>
-        public MarketFrame MarketFrame { get; set; }
-
-        /// <summary>
         /// 委托单管理器
         /// </summary>
-        public OrderManager OrderManager { get; set; } = new();
+        public OrderManager OrderManager { get; set; }
 
         /// <summary>
         /// 头寸管理器
         /// </summary>
-        //public PositionManager PositionManager { get; set; } = new();
+        public PositionManager PositionManager { get; set; }
 
         /// <summary>
-        /// 交易记录器
-        /// </summary>
-        public TransactionLogger TransactionLogger { get; set; } = new();
-
-        /// <summary>
-        /// 损益记录器
-        /// </summary>
-        public PnlLogger PnlLogger { get; set; } = new();
-
-        /// <summary>
+        /// TODO
         /// 投资组合分析器
         /// </summary>
         public Analyzer.Analyzer Analyzer { get; set; }
@@ -50,13 +36,11 @@ namespace CarrotBacktesting.Net.Portfolio
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <exception cref="NotImplementedException"></exception>
-        public PortfolioManager()
+        public PortfolioManager(SimulationOptions options)
         {
-            Analyzer = new Analyzer.Analyzer(TransactionLogger, PnlLogger);
-
-            throw new NotImplementedException();
-            //MarketFrame = marketFrame;
+            OrderManager = new OrderManager();
+            PositionManager = new PositionManager(options);
+            Analyzer = new Analyzer.Analyzer();
             //EventRegister();
         }
 
@@ -68,32 +52,25 @@ namespace CarrotBacktesting.Net.Portfolio
         //}
 
         /// <summary>
-        /// 实时股价更新
+        /// 创建委托单
         /// </summary>
-        public void OnPriceUpdate()
-        {
-            //PositionManager.OnPriceUpdate(MarketFrame);
-            //PnlLogger.AddPnlSnapshot(MarketFrame.DateTime, PositionManager);
-        }
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="price">委托限价(委托单类型为市价时此属性无效)</param>
+        /// <param name="size">头寸大小</param>
+        /// <param name="direction">头寸方向(买入/卖出)</param>
+        /// <param name="type">头寸类型(限价/市价)</param>
+        /// <returns>委托单id号</returns>
+        public int CreateOrder(string stockCode, OrderDirection direction, double size, OrderType type, double price = 0)
+            => OrderManager.CreateOrder(stockCode, direction, size, type, price);
 
         /// <summary>
-        /// 添加委托单
+        /// 市场更新事件回调
         /// </summary>
-        /// <param name="shareName"></param>
-        /// <param name="limitPrice"></param>
-        /// <param name="size"></param>
-        /// <param name="direction"></param>
-        public void AddOrder(string shareName, double limitPrice, double size, OrderDirection direction)
+        /// <param name="_">市场数据更新</param>
+        /// <param name="marketEventArgs">市场更新事件参数</param>
+        public void OnMarketUpdate(MarketFrame data, MarketEventArgs marketEventArgs)
         {
-            Console.WriteLine($"{MarketFrame.Time:d}:委托单已挂单, 股票名称:{shareName}, 价格:{limitPrice}, 数量:{size}, 方向:{direction}.");
-            throw new NotImplementedException();
-            //OrderManager.AddOrder(shareName, limitPrice, size, direction);
+            Analyzer.OnMarketUpdate(data, marketEventArgs);
         }
-
-        /// <summary>
-        /// 添加资金
-        /// </summary>
-        /// <param name="cash"></param>
-        //public void SetCash(double cash = 100000) => PositionManager.SetCash(cash);
     }
 }

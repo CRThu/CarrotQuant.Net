@@ -63,7 +63,8 @@ namespace CarrotBacktesting.Net.Engine
                 //Exchange.OnPriceUpdate();
 
                 // 投资组合PNL信息更新
-                StrategyContext.PortfolioManager.OnPriceUpdate();
+                // TODO
+                //StrategyContext.PortfolioManager.OnPriceUpdate();
 
                 // 时间片更新(用于更新Tick生成指标等数据)
                 Strategy.OnTick(StrategyContext);
