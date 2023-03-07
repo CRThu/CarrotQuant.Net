@@ -47,9 +47,9 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             DateRangeData<double>[] tickReturn = new DateRangeData<double>[pnlLogger.Logs.Count];
             if (pnlLogger.Logs.Count > 0)
             {
-                tickReturn[0] = new(pnlLogger.Logs[0].DateTime, pnlLogger.Logs[0].TotalPnl);
+                tickReturn[0] = new(pnlLogger.Logs[0].Time, pnlLogger.Logs[0].TotalPnl);
                 for (int i = 1; i < pnlLogger.Logs.Count; i++)
-                    tickReturn[i] = new(pnlLogger.Logs[i].DateTime,
+                    tickReturn[i] = new(pnlLogger.Logs[i].Time,
                         pnlLogger.Logs[i].TotalPnl - pnlLogger.Logs[i - 1].TotalPnl);
             }
 
@@ -63,8 +63,8 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             }
             else
             {
-                DateTime minDateTime = pnlLogger.Logs.Min(l => l.DateTime);
-                DateTime maxDateTime = pnlLogger.Logs.Max(l => l.DateTime);
+                DateTime minDateTime = pnlLogger.Logs.Min(l => l.Time);
+                DateTime maxDateTime = pnlLogger.Logs.Max(l => l.Time);
 
                 DateTime[] dts = DateTimeMisc.GetDateTimeSpan(minDateTime, maxDateTime, dateSpan);
                 data = dts.Select(dt => new DateRangeData<double>(dt, dateSpan, 0)).ToArray();
@@ -97,7 +97,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             DateRangeData<double>[] retValues = GetReturn(pnlLogger, dateSpan);
             if (pnlLogger.Logs.Count > 0)
             {
-                PnlLog firstLog = pnlLogger.Logs[0];
+                PnlTickLog firstLog = pnlLogger.Logs[0];
                 double cost = firstLog.TotalValue - firstLog.TotalPnl;
                 for (int i = 0; i < retValues.Length; i++)
                     retValues[i].Value /= cost;
@@ -139,7 +139,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
                 // 回撤计算(恒定本金法)
                 if (pnlLogger.Logs[i].TotalValue > peakDrawdown)
                     peakDrawdown = pnlLogger.Logs[i].TotalValue;
-                tickDrawdown[i] = new(pnlLogger.Logs[i].DateTime, 1 - pnlLogger.Logs[i].TotalValue / peakDrawdown);
+                tickDrawdown[i] = new(pnlLogger.Logs[i].Time, 1 - pnlLogger.Logs[i].TotalValue / peakDrawdown);
             }
             return tickDrawdown;
         }
@@ -165,7 +165,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         {
             double pnl = pnlLogger.Logs[^1].TotalPnl - pnlLogger.Logs[0].TotalPnl;
             double cost = pnlLogger.Logs[0].TotalValue - pnlLogger.Logs[0].TotalPnl;
-            TimeSpan timeSpan = pnlLogger.Logs[^1].DateTime - pnlLogger.Logs[0].DateTime;
+            TimeSpan timeSpan = pnlLogger.Logs[^1].Time - pnlLogger.Logs[0].Time;
 
             return dateSpan switch {
                 DateSpan.Day => (pnl / cost) / (timeSpan / TimeSpan.FromDays(1)),

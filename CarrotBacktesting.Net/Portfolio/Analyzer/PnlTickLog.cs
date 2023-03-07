@@ -11,22 +11,22 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// <summary>
     /// 损益记录器
     /// </summary>
-    public struct PnlLog
+    public class PnlTickLog
     {
         /// <summary>
         /// 时间片
         /// </summary>
-        public DateTime DateTime { get; set; }
+        public DateTime Time { get; init; }
 
         /// <summary>
         /// 权益价值
         /// </summary>
-        public double ShareValue { get; set; }
+        public double ShareValue { get; init; }
 
         /// <summary>
         /// 现金价值
         /// </summary>
-        public double CashValue { get; set; }
+        public double CashValue { get; init; }
 
         /// <summary>
         /// 总价值
@@ -58,9 +58,9 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// </summary>
         public double RateOfReturn => TotalPnl / (TotalValue - TotalPnl);
 
-        public PnlLog(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
+        public PnlTickLog(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
         {
-            DateTime = dateTime;
+            Time = dateTime;
             ShareValue = shareValue;
             CashValue = cashValue;
             RealizedPnl = realizedPnl;

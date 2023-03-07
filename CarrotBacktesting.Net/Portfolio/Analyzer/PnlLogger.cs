@@ -13,11 +13,11 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// </summary>
     public class PnlLogger
     {
-        public List<PnlLog> Logs { get; set; } = new();
+        public List<PnlTickLog> Logs { get; set; } = new();
 
         public void AddPnlSnapshot(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
         {
-            Logs.Add(new PnlLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
+            Logs.Add(new PnlTickLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
         }
 
         public void AddPnlSnapshot(DateTime dateTime, PositionManager positionManager)
@@ -31,7 +31,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
                 //realizedPnl += position.RealizedPnl;
                 //unrealizedPnl += position.UnRealizedPnl;
             }
-            Logs.Add(new PnlLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
+            Logs.Add(new PnlTickLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
         }
 
         public override string ToString()
