@@ -1,14 +1,14 @@
-﻿using CarrotBacktesting.Net.Common;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.Portfolio.Analyzer
+namespace CarrotBacktesting.Net.Common
 {
 
     /// <summary>
+    /// TODO
     /// 记录时间范围信息的数据类型
     /// </summary>
     public struct DateRangeData<T>

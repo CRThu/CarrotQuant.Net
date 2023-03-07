@@ -142,7 +142,10 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             OrderEventArgs orderEventArgs = new(orderId, OrderUpdatedEventOperation.UpdateOrder);
             OnOrderUpdate?.Invoke(this, orderEventArgs);
 
-            OrdersStorage.Remove(order.OrderId);
+            if (order.Status == GeneralOrderStatus.Executed)
+            {
+                OrdersStorage.Remove(order.OrderId);
+            }
         }
 
         /// <summary>
