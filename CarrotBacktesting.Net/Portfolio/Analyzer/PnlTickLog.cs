@@ -19,9 +19,9 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public DateTime Time { get; init; }
 
         /// <summary>
-        /// 权益价值
+        /// 头寸记录
         /// </summary>
-        public double ShareValue { get; init; }
+        public List<PnlPositionLog> PositionLogs { get; init; }
 
         /// <summary>
         /// 现金价值
@@ -29,42 +29,58 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public double CashValue { get; init; }
 
         /// <summary>
+        /// 当前价值
+        /// </summary>
+        public double CurrentValue => PositionLogs.Sum(p => p.CurrentValue);
+
+        /// <summary>
         /// 总价值
         /// </summary>
-        public double TotalValue => ShareValue + CashValue;
+        public double TotalValue => CurrentValue + CashValue;
 
         /// <summary>
         /// 仓位占比
         /// </summary>
-        public double PositionRatio => ShareValue / (ShareValue + CashValue);
+        public double PositionRatio => CurrentValue / (CurrentValue + CashValue);
 
         /// <summary>
         /// 已实现损益
         /// </summary>
-        public double RealizedPnl { get; set; }
+        public double RealizedPnl => PositionLogs.Sum(p => p.RealizedPnl);
 
         /// <summary>
         /// 未实现损益
         /// </summary>
-        public double UnRealizedPnl { get; set; }
+        public double UnRealizedPnl => PositionLogs.Sum(p => p.UnRealizedPnl);
 
         /// <summary>
         /// 总损益
         /// </summary>
-        public double TotalPnl => RealizedPnl + UnRealizedPnl;
+        public double TotalPnl => PositionLogs.Sum(p => p.TotalPnl);
 
         /// <summary>
-        /// 收益率
+        /// 构造函数
         /// </summary>
-        public double RateOfReturn => TotalPnl / (TotalValue - TotalPnl);
-
-        public PnlTickLog(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
+        /// <param name="dateTime">日期</param>
+        /// <param name="cashValue">当前持有现金</param>
+        public PnlTickLog(DateTime dateTime, double cashValue)
         {
             Time = dateTime;
-            ShareValue = shareValue;
             CashValue = cashValue;
-            RealizedPnl = realizedPnl;
-            UnRealizedPnl = unrealizedPnl;
+            PositionLogs = new();
+        }
+
+        /// <summary>
+        /// 添加头寸记录
+        /// </summary>
+        /// <param name="stockCode">股票代码</param>
+        /// <param name="currentPrice">当前价格</param>
+        /// <param name="size">头寸大小</param>
+        /// <param name="costValue">头寸持仓成本总价值</param>
+        /// <param name="realizedPnl">已实现损益</param>
+        public void AddPosition(string stockCode, double currentPrice, double size, double costValue, double realizedPnl)
+        {
+            PositionLogs.Add(new PnlPositionLog(stockCode, currentPrice, size, costValue, realizedPnl));
         }
     }
 }

@@ -13,7 +13,18 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     /// </summary>
     public class PnlLogger
     {
-        public List<PnlTickLog> Logs { get; set; } = new();
+        /// <summary>
+        /// 
+        /// </summary>
+        public List<PnlTickLog> Logs { get; init; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public PnlLogger()
+        {
+            Logs = new();
+        }
 
         public void AddPnlSnapshot(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
         {

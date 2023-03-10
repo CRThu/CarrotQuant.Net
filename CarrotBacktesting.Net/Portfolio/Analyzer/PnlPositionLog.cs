@@ -60,11 +60,11 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// 构造函数
         /// </summary>
         /// <param name="stockCode">股票代码</param>
+        /// <param name="currentPrice">当前价格</param>
         /// <param name="size">头寸大小</param>
         /// <param name="costValue">头寸持仓成本总价值</param>
-        /// <param name="currentPrice">当前价格</param>
         /// <param name="realizedPnl">已实现损益</param>
-        public PnlPositionLog(string stockCode, double size, double costValue, double currentPrice, double realizedPnl)
+        public PnlPositionLog(string stockCode, double currentPrice, double size, double costValue, double realizedPnl)
         {
             StockCode = stockCode;
             Size = size;
