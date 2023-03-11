@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Portfolio.Position;
+﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Portfolio.Position;
 using CarrotBacktesting.Net.Shared;
 using System;
 using System.Collections.Generic;
@@ -14,35 +15,43 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
     public class PnlLogger
     {
         /// <summary>
-        /// 
+        /// 记录器存储结构
         /// </summary>
         public List<PnlTickLog> Logs { get; init; }
 
         /// <summary>
-        /// 
+        /// 构造函数
         /// </summary>
         public PnlLogger()
         {
             Logs = new();
         }
 
-        public void AddPnlSnapshot(DateTime dateTime, double shareValue, double cashValue, double realizedPnl, double unrealizedPnl)
+        /// <summary>
+        /// 添加损益记录
+        /// </summary>
+        /// <param name="marketFrame">市场信息</param>
+        /// <param name="cashValue">现金价值</param>
+        /// <param name="positions">头寸信息</param>
+        public void AddPnlTickLog(MarketFrame marketFrame, double cashValue, IEnumerable<GeneralPosition> positions)
         {
-            Logs.Add(new PnlTickLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
+            PnlTickLog tickLog = new(marketFrame.Time, cashValue);
+            foreach (var position in positions)
+            {
+                // TODO RelizedPNL
+                tickLog.AddPosition(position.StockCode, marketFrame[position.StockCode]!.Close, position.Size, position.CostValue, 0);
+            }
+            Logs.Add(tickLog);
         }
 
-        public void AddPnlSnapshot(DateTime dateTime, PositionManager positionManager)
+        /// <summary>
+        /// 添加损益记录
+        /// </summary>
+        /// <param name="marketFrame">市场信息</param>
+        /// <param name="manager">头寸管理器</param>
+        public void AddPnlTickLog(MarketFrame marketFrame, PositionManager manager)
         {
-            double shareValue = 0, cashValue = positionManager.Cash;
-            double realizedPnl = 0, unrealizedPnl = 0;
-            foreach (var position in positionManager.Positions)
-            {
-                throw new NotImplementedException();
-                //shareValue += position.CurrentValue;
-                //realizedPnl += position.RealizedPnl;
-                //unrealizedPnl += position.UnRealizedPnl;
-            }
-            Logs.Add(new PnlTickLog(dateTime, shareValue, cashValue, realizedPnl, unrealizedPnl));
+            AddPnlTickLog(marketFrame, manager.Cash, manager.Positions);
         }
 
         public override string ToString()

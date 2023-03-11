@@ -27,12 +27,26 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public PnlLogger PnlLogger { get; set; }
 
         /// <summary>
+        /// 回测设置
+        /// </summary>
+        private SimulationOptions Options { get; init; }
+
+        /// <summary>
+        /// 投资组合管理器
+        /// </summary>
+        private PortfolioManager PortfolioManager { get; init; }
+
+        /// <summary>
         /// 构造函数
         /// </summary>
-        public AnalyzerManager()
+        /// <param name="options">回测设置</param>
+        /// <param name="portfolioManager"></param>
+        public AnalyzerManager(SimulationOptions options, PortfolioManager portfolioManager)
         {
             TransactionLogger = new TransactionLogger();
             PnlLogger = new PnlLogger();
+
+
         }
 
         /// <summary>
@@ -236,12 +250,12 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         /// <summary>
         /// 市场更新事件回调
         /// </summary>
-        /// <param name="_">市场数据更新</param>
+        /// <param name="frame">市场信息</param>
         /// <param name="marketEventArgs">市场更新事件参数</param>
-        public void OnMarketUpdate(MarketFrame data, MarketEventArgs marketEventArgs)
+        public void OnMarketUpdate(MarketFrame frame, MarketEventArgs marketEventArgs)
         {
             // TODO
-            //PnlLogger.AddPnlSnapshot(data, PositionManager);
+            PnlLogger.AddPnlTickLog(frame, PortfolioManager.PositionManager);
         }
     }
 }
