@@ -59,10 +59,10 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             return ClassFormatter.Formatter(Logs);
         }
 
-        /// <summary>
-        /// 调用分析器
-        /// </summary>
-        /// <returns></returns>
-        public Dictionary<string, double> Analyze() => AnalyzerManager.Analyze(this);
+        ///// <summary>
+        ///// 调用分析器
+        ///// </summary>
+        ///// <returns></returns>
+        //public Dictionary<string, double> Analyze() => AnalyzerManager.Analyze(this);
     }
 }

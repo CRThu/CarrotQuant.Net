@@ -46,7 +46,8 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             TransactionLogger = new TransactionLogger();
             PnlLogger = new PnlLogger();
 
-
+            Options = options;
+            PortfolioManager = portfolioManager;
         }
 
         /// <summary>
@@ -257,5 +258,7 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             // TODO
             PnlLogger.AddPnlTickLog(frame, PortfolioManager.PositionManager);
         }
+
+
     }
 }

@@ -17,22 +17,6 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
         public List<TransactionLog> Logs { get; set; }
 
         /// <summary>
-        /// 交易记录自增Id生成
-        /// </summary>
-        private int transactionId;
-
-        /// <summary>
-        /// 交易记录自增Id生成
-        /// </summary>
-        public int TransactionId
-        {
-            get
-            {
-                return transactionId++;
-            }
-        }
-
-        /// <summary>
         /// 构造函数
         /// </summary>
         public TransactionLogger()
