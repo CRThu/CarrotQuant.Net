@@ -24,16 +24,6 @@ namespace CarrotBacktesting.Net.Portfolio.Analyzer
             Logs = new();
         }
 
-        ///// <summary>
-        ///// 添加设置现金记录
-        ///// </summary>
-        ///// <param name="time">时间</param>
-        ///// <param name="cash">金额</param>
-        //public void SetCash(DateTime time, double cash)
-        //{
-        //    Logs.Add(new TransactionLog(time, "$CASH$", 1, cash));
-        //}
-
         /// <summary>
         /// 添加交易记录
         /// </summary>

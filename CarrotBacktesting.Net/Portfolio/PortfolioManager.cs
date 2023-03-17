@@ -28,7 +28,6 @@ namespace CarrotBacktesting.Net.Portfolio
         public PositionManager PositionManager { get; set; }
 
         /// <summary>
-        /// TODO
         /// 投资组合分析器
         /// </summary>
         public AnalyzerManager Analyzer { get; set; }
@@ -40,7 +39,7 @@ namespace CarrotBacktesting.Net.Portfolio
         {
             OrderManager = new OrderManager();
             PositionManager = new PositionManager(options);
-            Analyzer = new AnalyzerManager();
+            Analyzer = new AnalyzerManager(options, this);
             //EventRegister();
         }
 
@@ -64,13 +63,33 @@ namespace CarrotBacktesting.Net.Portfolio
             => OrderManager.CreateOrder(stockCode, direction, size, type, price);
 
         /// <summary>
+        /// 取消委托单
+        /// </summary>
+        /// <param name="orderId">委托单id</param>
+        /// <returns>返回是否成功取消委托单, 若失败可能已被成交或取消</returns>
+        public bool CancelOrder(int orderId)
+            => OrderManager.TryCancelOrder(orderId);
+
+        /// <summary>
         /// 市场更新事件回调
         /// </summary>
-        /// <param name="_">市场数据更新</param>
+        /// <param name="data">市场数据更新</param>
         /// <param name="marketEventArgs">市场更新事件参数</param>
         public void OnMarketUpdate(MarketFrame data, MarketEventArgs marketEventArgs)
         {
             Analyzer.OnMarketUpdate(data, marketEventArgs);
+        }
+
+        /// <summary>
+        /// 交易所成交更新事件回调
+        /// </summary>
+        /// <param name="exchange">交易所实例</param>
+        /// <param name="tradeEventArgs">成交事件参数</param>
+        public void OnTradeUpdate(BackTestingExchange exchange, TradeEventArgs tradeEventArgs)
+        {
+            OrderManager.OnTradeUpdate(exchange, tradeEventArgs);
+            PositionManager.OnTradeUpdate(exchange, tradeEventArgs);
+            Analyzer.OnTradeUpdate(exchange, tradeEventArgs);
         }
     }
 }

@@ -112,11 +112,12 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// 取消委托单
         /// </summary>
         /// <param name="orderId">委托单id</param>
-        /// <exception cref="InvalidOperationException"></exception>
-        public void CancelOrder(int orderId)
+        /// <return>返回是否成功取消委托单, 若失败可能已被成交或取消</return>
+        public bool TryCancelOrder(int orderId)
         {
             if (!TryGetOrder(orderId, out GeneralOrder? order))
-                throw new InvalidOperationException($"不存在此委托, OrderId = {orderId}");
+                //throw new InvalidOperationException($"不存在此委托, OrderId = {orderId}");
+                return false;
 
             order!.Cancel();
 
@@ -124,6 +125,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             OnOrderUpdate?.Invoke(this, orderEventArgs);
 
             OrdersStorage.Remove(order.OrderId);
+            return true;
         }
 
         /// <summary>
@@ -132,7 +134,7 @@ namespace CarrotBacktesting.Net.Portfolio.Order
         /// <param name="orderId">委托单id</param>
         /// <param name="price">成交价格</param>
         /// <param name="size">成交头寸</param>
-        public void TradeOrder(int orderId, double price, double size)
+        private void TradeOrder(int orderId, double price, double size)
         {
             if (!TryGetOrder(orderId, out GeneralOrder? order))
                 throw new InvalidOperationException($"不存在此委托, OrderId = {orderId}");
