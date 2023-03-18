@@ -154,6 +154,12 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             }
             Status = GeneralOrderStatus.Cancelled;
         }
+
+
+        public GeneralOrder Clone()
+        {
+            return (GeneralOrder)MemberwiseClone();
+        }
     }
 
     /// <summary>

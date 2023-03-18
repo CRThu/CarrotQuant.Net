@@ -1,6 +1,7 @@
 ﻿using CarrotBacktesting.Net.DataModel;
 using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Order;
+using CarrotBacktesting.Net.Portfolio.Position;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,18 +18,17 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 委托单存储字典
         /// </summary>
-        public Dictionary<int, GeneralOrder> Orders { get; set; } = new();
+        public Dictionary<string, Dictionary<int, GeneralOrder>> Orders { get; set; }
 
-        ///// <summary>
-        ///// 当前交易信息
-        ///// TODO
-        ///// </summary>
-        //public PortfolioManager Portfolio { get; set; }
+        /// <summary>
+        /// 头寸存储字典
+        /// </summary>
+        //public Dictionary<string, GeneralPosition> Positions { get; set; }
 
         /// <summary>
         /// 当前余额
         /// </summary>
-        public double Cash { get; set; }
+        //public double Cash { get; set; }
 
         /// <summary>
         /// 回测设置
@@ -52,6 +52,8 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public BackTestingExchange(SimulationOptions options)
         {
+            Orders = new();
+            //Positions = new();
             Options = options;
             //EventRegister();
         }
@@ -72,34 +74,126 @@ namespace CarrotBacktesting.Net.Engine
         //}
 
         /// <summary>
+        /// 新增或更新委托单(交易所内部)
+        /// </summary>
+        /// <param name="order">委托单实例</param>
+        private void AddOrUpdateOrder(GeneralOrder order)
+        {
+            if (!Orders.ContainsKey(order.StockCode))
+                Orders.Add(order.StockCode, new());
+            if (!Orders[order.StockCode].ContainsKey(order.OrderId))
+                Orders[order.StockCode].Add(order.OrderId, order.Clone());
+            else
+                Orders[order.StockCode][order.OrderId] = order.Clone();
+        }
+
+        /// <summary>
+        /// 移除委托单(交易所内部)
+        /// </summary>
+        /// <param name="order"></param>
+        private void RemoveOrder(GeneralOrder order)
+        {
+            Orders[order.StockCode].Remove(order.OrderId);
+            if (Orders[order.StockCode].Count == 0)
+                Orders.Remove(order.StockCode);
+        }
+
+        /// <summary>
+        /// 同步订单簿
+        /// </summary>
+        /// <param name="sender">委托单管理器</param>
+        /// <param name="operation">委托单事件参数</param>
+        public void SyncOrderBook(OrderManager sender, OrderEventArgs operation)
+        {
+            GeneralOrder order = sender[operation.OrderId]!;
+            switch (operation.Operation)
+            {
+                case OrderUpdatedEventOperation.CreateOrder:
+                    AddOrUpdateOrder(order);
+                    break;
+                case OrderUpdatedEventOperation.CancelOrder:
+                    RemoveOrder(order);
+                    break;
+                case OrderUpdatedEventOperation.UpdateOrder:
+                    // 若更新的委托单不为待成交则删除
+                    if (order.Status != GeneralOrderStatus.Pending)
+                        RemoveOrder(order);
+                    else
+                        AddOrUpdateOrder(order);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 交易所检查订单簿成交
+        /// </summary>
+        /// <param name="marketFrame">市场信息</param>
+        public void CheckOrders(MarketFrame marketFrame)
+        {
+            // 遍历股票代码委托单组
+            foreach (var orderGroup in Orders)
+            {
+                // 股票信息
+                ShareFrame shareInfo = marketFrame[orderGroup.Key]!;
+                // 总流动性
+                double estimateLiquidity = shareInfo.Volume * Options.ExchangeEstimateLiquidityRatio;
+
+                // 若股票不能交易或无成交量则继续遍历下一支股票
+                if ((!shareInfo.Status) || estimateLiquidity == 0)
+                    continue;
+
+                // 遍历此股票的委托单
+                foreach (var order in orderGroup.Value.Values)
+                {
+                    // TODO
+                    double tradeVolume;
+                    double tradePrice;
+                    TradeEventArgs tradeEventArgs;
+                    switch (order.Type)
+                    {
+                        case OrderType.LimitOrder:
+                            if ((order.Direction == OrderDirection.Buy && order.Price >= shareInfo.Close)
+                                || (order.Direction == OrderDirection.Sell && order.Price <= shareInfo.Close))
+                            {
+                                tradePrice = shareInfo.Close;
+                                // 成交量限制计算
+                                tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
+                                // TODO
+                                //tradeVolume = Math.Min(Cash / tradePrice, tradeVolume);
+                                if (tradeVolume > 0)
+                                {
+                                    tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
+                                    OnTradeUpdate?.Invoke(this, tradeEventArgs);
+                                    estimateLiquidity -= tradeVolume;
+                                }
+                            }
+                            break;
+                        case OrderType.MarketOrder:
+                            tradePrice = 1 + (order.Direction == OrderDirection.Buy ? 1 : -1) * shareInfo.Close * Options.ExchangePriceSlippage;
+                            // 成交量限制计算
+                            tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
+                            // TODO
+                            //tradeVolume = Math.Min(Cash / tradePrice, tradeVolume);
+                            if (tradeVolume > 0)
+                            {
+                                tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
+                                OnTradeUpdate?.Invoke(this, tradeEventArgs);
+                                estimateLiquidity -= tradeVolume;
+                            }
+                            break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// 委托单更新事件订阅方法
         /// </summary>
         /// <param name="sender">委托单管理器</param>
         /// <param name="operation">委托单事件参数</param>
         public void OnOrderUpdate(OrderManager sender, OrderEventArgs operation)
         {
-            switch (operation.Operation)
-            {
-                case OrderUpdatedEventOperation.CreateOrder:
-                    Orders.Add(operation.OrderId, sender[operation.OrderId]);
-                    break;
-                case OrderUpdatedEventOperation.CancelOrder:
-                    Orders.Remove(operation.OrderId);
-                    break;
-                case OrderUpdatedEventOperation.UpdateOrder:
-                    if (Orders.ContainsKey(operation.OrderId))
-                    {
-                        Orders[operation.OrderId] = sender[operation.OrderId];
-                        // 若更新的委托单不为待成交则删除
-                        if (Orders[operation.OrderId].Status != GeneralOrderStatus.Pending)
-                            Orders.Remove(operation.OrderId);
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"交易所委托单中不存在此委托, Id:{operation.OrderId}.");
-                    }
-                    break;
-            }
+            SyncOrderBook(sender, operation);
         }
 
         /// <summary>
@@ -109,77 +203,8 @@ namespace CarrotBacktesting.Net.Engine
         /// <param name="marketEventArgs">市场事件参数</param>
         public void OnMarketUpdate(MarketFrame marketFrame, MarketEventArgs marketEventArgs)
         {
-            CheckOrders(marketFrame, marketEventArgs.IsMarketOpen);
-        }
-
-        /// <summary>
-        /// 余额更新事件订阅方法
-        /// </summary>
-        /// <param name="cash"></param>
-        public void OnCashUpdate(double cash)
-        {
-            Cash = cash;
-        }
-
-        /// <summary>
-        /// 交易所检查委托单成交
-        /// </summary>
-        /// <param name="marketFrame">市场信息</param>
-        /// <param name="isMarketOpen">市场是否可交易</param>
-        public void CheckOrders(MarketFrame marketFrame, bool isMarketOpen)
-        {
-            if (isMarketOpen)
-            {
-                // 按股票代码分组遍历
-                foreach (var orderGroup in Orders.Values.GroupBy(o => o.StockCode))
-                {
-                    var shareInfo = marketFrame[orderGroup.First().StockCode];
-                    // 总流动性
-                    double estimateLiquidity = shareInfo.Volume * Options.ExchangeEstimateLiquidityRatio;
-                    // 遍历所有待成交的委托单
-                    foreach (var order in orderGroup.Where(o => o.Status == GeneralOrderStatus.Pending))
-                    {
-                        // TODO IF SUPPORT ISTRADING
-                        if (shareInfo.Status)
-                        {
-                            double tradeVolume;
-                            double tradePrice;
-                            TradeEventArgs tradeEventArgs;
-                            switch (order.Type)
-                            {
-                                case OrderType.LimitOrder:
-                                    if ((order.Direction == OrderDirection.Buy && order.Price >= shareInfo.Close)
-                                        || (order.Direction == OrderDirection.Sell && order.Price <= shareInfo.Close))
-                                    {
-                                        tradePrice = shareInfo.Close;
-                                        // 成交量限制计算
-                                        tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
-                                        tradeVolume = Math.Min(Cash / tradePrice, tradeVolume);
-                                        if (tradeVolume > 0)
-                                        {
-                                            tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
-                                            OnTradeUpdate?.Invoke(this, tradeEventArgs);
-                                            estimateLiquidity -= tradeVolume;
-                                        }
-                                    }
-                                    break;
-                                case OrderType.MarketOrder:
-                                    tradePrice = 1 + (order.Direction == OrderDirection.Buy ? 1 : -1) * shareInfo.Close * Options.ExchangePriceSlippage;
-                                    // 成交量限制计算
-                                    tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
-                                    tradeVolume = Math.Min(Cash / tradePrice, tradeVolume);
-                                    if (tradeVolume > 0)
-                                    {
-                                        tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
-                                        OnTradeUpdate?.Invoke(this, tradeEventArgs);
-                                        estimateLiquidity -= tradeVolume;
-                                    }
-                                    break;
-                            }
-                        }
-                    }
-                }
-            }
+            if (marketEventArgs.IsMarketOpen)
+                CheckOrders(marketFrame);
         }
     }
 }

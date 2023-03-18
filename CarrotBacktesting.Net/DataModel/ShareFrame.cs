@@ -48,9 +48,9 @@ namespace CarrotBacktesting.Net.DataModel
         public double Volume { get; init; }
 
         /// <summary>
-        /// 是否正常交易(默认为true)
+        /// 是否正常交易
         /// </summary>
-        public bool Status { get; init; } = true;
+        public bool Status { get; init; }
 
         /// <summary>
         /// 其他数据键值对(必须为值类型)
