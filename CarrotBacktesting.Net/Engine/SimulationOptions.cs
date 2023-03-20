@@ -106,14 +106,24 @@ namespace CarrotBacktesting.Net.Engine
         public string[]? StockCodes { get; set; } = null;
 
         /// <summary>
+        /// 回测价格参考
+        /// </summary>
+        public ExchangePriceRef ExchangePriceRef { get; set; } = ExchangePriceRef.Close;
+
+        /// <summary>
         /// 回测交易流动性估计(实际成交量与Tick总成交量比值)
         /// </summary>
-        public double ExchangeEstimateLiquidityRatio { get; set; } = 0.2;
+        public double ExchangeEstimateLiquidityRatio { get; set; } = 0.1;
 
         /// <summary>
         /// 回测交易滑点
         /// </summary>
         public double ExchangePriceSlippage { get; set; } = 0.02;
+
+        /// <summary>
+        /// 回测交易手续费比例
+        /// </summary>
+        public double ExchangeTradeFeeRatio { get; set; } = 0.0003;
 
         /// <summary>
         /// 初始资金
@@ -175,13 +185,31 @@ namespace CarrotBacktesting.Net.Engine
         /// <returns>映射器实例</returns>
         public void Serialize(string jsonpath)
         {
-            var options = new JsonSerializerOptions
-            {
+            var options = new JsonSerializerOptions {
                 WriteIndented = true,
                 Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
             };
             string jsonString = JsonSerializer.Serialize(this, options);
             File.WriteAllText(jsonpath, jsonString);
         }
+    }
+
+    /// <summary>
+    /// 交易所模拟成交价格参考选项
+    /// </summary>
+    public enum ExchangePriceRef
+    {
+        /// <summary>
+        /// 开盘价
+        /// </summary>
+        Open,
+        /// <summary>
+        /// 收盘价
+        /// </summary>
+        Close,
+        /// <summary>
+        /// 平均成交价(本K线成交额/成交量)
+        /// </summary>
+        TradeAverage
     }
 }

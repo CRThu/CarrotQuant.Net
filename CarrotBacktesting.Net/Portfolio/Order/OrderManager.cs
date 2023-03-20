@@ -67,16 +67,6 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             OrdersStorage = new();
         }
 
-
-        /// <summary>
-        /// 获取委托单
-        /// </summary>
-        /// <param name="orderId">委托单id</param>
-        /// <returns>查询到的委托单</returns>
-        /// <exception cref="InvalidOperationException"></exception>
-        /// 
-
-
         /// <summary>
         /// 获取委托单
         /// </summary>

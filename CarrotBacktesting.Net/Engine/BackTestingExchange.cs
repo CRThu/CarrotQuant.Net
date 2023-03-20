@@ -137,6 +137,12 @@ namespace CarrotBacktesting.Net.Engine
                 ShareFrame shareInfo = marketFrame[orderGroup.Key]!;
                 // 总流动性
                 double estimateLiquidity = shareInfo.Volume * Options.ExchangeEstimateLiquidityRatio;
+                // 成交价参考
+                var exchangePrice = Options.ExchangePriceRef switch {
+                    ExchangePriceRef.Open => shareInfo.Open,
+                    ExchangePriceRef.Close => shareInfo.Close,
+                    _ => throw new NotImplementedException("Not Implemented ExchangePriceRef: ExchangePriceRef.TradeAverage"),
+                };
 
                 // 若股票不能交易或无成交量则继续遍历下一支股票
                 if ((!shareInfo.Status) || estimateLiquidity == 0)
@@ -145,42 +151,34 @@ namespace CarrotBacktesting.Net.Engine
                 // 遍历此股票的委托单
                 foreach (var order in orderGroup.Value.Values)
                 {
-                    // TODO
-                    double tradeVolume;
-                    double tradePrice;
-                    TradeEventArgs tradeEventArgs;
-                    switch (order.Type)
+                    if (((order.Type == OrderType.LimitOrder)
+                        && ((order.Direction == OrderDirection.Buy && order.Price >= exchangePrice)
+                        || (order.Direction == OrderDirection.Sell && order.Price <= exchangePrice))
+                        )
+                    || (order.Type == OrderType.MarketOrder))
                     {
-                        case OrderType.LimitOrder:
-                            if ((order.Direction == OrderDirection.Buy && order.Price >= shareInfo.Close)
-                                || (order.Direction == OrderDirection.Sell && order.Price <= shareInfo.Close))
-                            {
-                                tradePrice = shareInfo.Close;
-                                // 成交量限制计算
-                                tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
-                                // TODO
-                                //tradeVolume = Math.Min(Cash / tradePrice, tradeVolume);
-                                if (tradeVolume > 0)
-                                {
-                                    tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
-                                    OnTradeUpdate?.Invoke(this, tradeEventArgs);
-                                    estimateLiquidity -= tradeVolume;
-                                }
-                            }
-                            break;
-                        case OrderType.MarketOrder:
-                            tradePrice = 1 + (order.Direction == OrderDirection.Buy ? 1 : -1) * shareInfo.Close * Options.ExchangePriceSlippage;
-                            // 成交量限制计算
-                            tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
-                            // TODO
-                            //tradeVolume = Math.Min(Cash / tradePrice, tradeVolume);
-                            if (tradeVolume > 0)
-                            {
-                                tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
-                                OnTradeUpdate?.Invoke(this, tradeEventArgs);
-                                estimateLiquidity -= tradeVolume;
-                            }
-                            break;
+
+                        // 成交量限制计算
+                        double tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
+                        double tradePrice;
+                        if (order.Direction == OrderDirection.Buy)
+                        {
+                            // 滑点计算
+                            tradePrice = (1 + Options.ExchangePriceSlippage) * exchangePrice;
+                            // 手续费计算
+                            tradePrice *= (1 + Options.ExchangeTradeFeeRatio);
+                        }
+                        else
+                        {
+                            // 滑点计算
+                            tradePrice = (1 - Options.ExchangePriceSlippage) * exchangePrice;
+                            // 手续费计算
+                            tradePrice *= (1 - Options.ExchangeTradeFeeRatio);
+                        }
+
+                        TradeEventArgs tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
+                        estimateLiquidity -= tradeVolume;
+                        OnTradeUpdate?.Invoke(this, tradeEventArgs);
                     }
                 }
             }
