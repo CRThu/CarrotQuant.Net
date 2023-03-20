@@ -83,6 +83,11 @@ namespace CarrotBacktesting.Net.Engine
         public DateTime? SimulationEndTime { get; set; }
 
         /// <summary>
+        /// 是否支持回测未来函数
+        /// </summary>
+        public bool SimulatorUseFutureData { get; set; } = false;
+
+        /// <summary>
         /// 股票列表json文件路径字段
         /// </summary>
         private string? stockCodesJsonFilePath = null;

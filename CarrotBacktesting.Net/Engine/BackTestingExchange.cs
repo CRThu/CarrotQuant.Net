@@ -157,7 +157,6 @@ namespace CarrotBacktesting.Net.Engine
                         )
                     || (order.Type == OrderType.MarketOrder))
                     {
-
                         // 成交量限制计算
                         double tradeVolume = Math.Min(estimateLiquidity, order.PendingSize);
                         double tradePrice;
@@ -176,6 +175,7 @@ namespace CarrotBacktesting.Net.Engine
                             tradePrice *= (1 - Options.ExchangeTradeFeeRatio);
                         }
 
+                        // TODO 余额必须为正的规则
                         TradeEventArgs tradeEventArgs = new(order.OrderId, shareInfo.Time, shareInfo.Code, order.Direction, tradePrice, tradeVolume);
                         estimateLiquidity -= tradeVolume;
                         OnTradeUpdate?.Invoke(this, tradeEventArgs);

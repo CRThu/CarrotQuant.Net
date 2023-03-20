@@ -54,13 +54,15 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         /// <param name="tickOffset">偏移量,为0或负数<br/>
         /// 0为当前市场数据, -1为上一个时间数据<br/>
+        /// (若 <see cref="SimulationOptions.SimulatorUseFutureData"/> 为True则可以通过正数获取未来市场数据, 否则输出null)<br/>
         /// </param>
         /// <returns>存在则返回, 不存在则返回null</returns>
         public MarketFrame? this[int tickOffset]
         {
             get
             {
-                if (CurrentTickIndex + tickOffset < 0)
+                if ((CurrentTickIndex + tickOffset < 0)
+                    && !(tickOffset <= 0 || Options.SimulatorUseFutureData))
                     return null;
                 else
                     return DataFeed.MarketData[CurrentTickIndex + tickOffset];
