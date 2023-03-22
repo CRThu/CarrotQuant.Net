@@ -61,31 +61,31 @@ namespace CarrotBacktesting.Net.Strategy
         {
 #if DEBUG
             Console.WriteLine("BasicStrategy.Next()");
-            Console.WriteLine($"{strategyContext.MarketFrame.Time:d}" +
-                $"| Market {(strategyContext.MarketFrame["sz.000422"].Status ? "Open" : "Close")} " +
-                $"| Price: {strategyContext.MarketFrame["sz.000422"].Close:F3} " +
-                $"| Status: {strategyContext.MarketFrame["sz.000422"]["交易状态"]} " +
-                $"| IsST: {strategyContext.MarketFrame["sz.000422"]["是否ST"]} " +
-                $"| PE: {strategyContext.MarketFrame["sz.000422"]["滚动市盈率"]:F3}.");
-            Console.WriteLine($"{strategyContext.MarketFrame.Time:d}" +
-                $"| Market {(strategyContext.MarketFrame["sz.000423"].Status ? "Open" : "Close")} " +
-                $"| Price: {strategyContext.MarketFrame["sz.000423"].Close:F3} " +
-                $"| Status: {strategyContext.MarketFrame["sz.000423"]["交易状态"]} " +
-                $"| IsST: {strategyContext.MarketFrame["sz.000423"]["是否ST"]} " +
-                $"| PE: {strategyContext.MarketFrame["sz.000423"]["滚动市盈率"]:F3}.");
+            Console.WriteLine($"{strategyContext.Simulator.Time:d}" +
+                $"| Market {(strategyContext.Simulator["sz.000422"].Status ? "Open" : "Close")} " +
+                $"| Price: {strategyContext.Simulator["sz.000422"].Close:F3} " +
+                $"| Status: {strategyContext.Simulator["sz.000422"]["交易状态"]} " +
+                $"| IsST: {strategyContext.Simulator["sz.000422"]["是否ST"]} " +
+                $"| PE: {strategyContext.Simulator["sz.000422"]["滚动市盈率"]:F3}.");
+            Console.WriteLine($"{strategyContext.Simulator.Time:d}" +
+                $"| Market {(strategyContext.Simulator["sz.000423"].Status ? "Open" : "Close")} " +
+                $"| Price: {strategyContext.Simulator["sz.000423"].Close:F3} " +
+                $"| Status: {strategyContext.Simulator["sz.000423"]["交易状态"]} " +
+                $"| IsST: {strategyContext.Simulator["sz.000423"]["是否ST"]} " +
+                $"| PE: {strategyContext.Simulator["sz.000423"]["滚动市盈率"]:F3}.");
 #endif
 
-            if (strategyContext.MarketFrame["sz.000422"].Status)
+            if (strategyContext.Simulator["sz.000422"].Status)
             {
-                if (strategyContext.MarketFrame["sz.000422"].Close <= 220)
+                if (strategyContext.Simulator["sz.000422"].Close <= 220)
                     strategyContext.PortfolioManager.CreateOrder("sz.000422", OrderDirection.Buy, 100.0, OrderType.LimitOrder, 230);
-                if (strategyContext.MarketFrame["sz.000422"].Close >= 350)
+                if (strategyContext.Simulator["sz.000422"].Close >= 350)
                     strategyContext.PortfolioManager.CreateOrder("sz.000422", OrderDirection.Sell, 300.0, OrderType.LimitOrder, 320);
             }
 
-            if (strategyContext.MarketFrame["sz.000423"].Status)
+            if (strategyContext.Simulator["sz.000423"].Status)
             {
-                if (strategyContext.MarketFrame["sz.000423"].Close <= 270)
+                if (strategyContext.Simulator["sz.000423"].Close <= 270)
                     strategyContext.PortfolioManager.CreateOrder("sz.000423", OrderDirection.Buy, 100.0, OrderType.LimitOrder, 280);
             }
         }

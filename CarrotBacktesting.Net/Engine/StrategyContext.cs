@@ -22,37 +22,40 @@ namespace CarrotBacktesting.Net.Engine
         public PortfolioManager PortfolioManager { get; set; }
 
         /// <summary>
-        /// 市场信息帧
+        /// 回测模拟器
         /// </summary>
-        public MarketFrame MarketFrame { get; set; }
+        public TickSimulator Simulator { get; set; }
 
         /// <summary>
         /// 委托管理器
         /// </summary>
         public OrderManager OrderManager => PortfolioManager.OrderManager;
+        
         /// <summary>
         /// 头寸管理器
         /// </summary>
-        //public PositionManager PositionManager => PortfolioManager.PositionManager;
+        public PositionManager PositionManager => PortfolioManager.PositionManager;
+
+        /// <summary>
+        /// 委托管理器
+        /// </summary>
+        public AnalyzerManager Analyzer => PortfolioManager.Analyzer;
+
         /// <summary>
         /// 交易记录器
         /// </summary>
         public TransactionLogger TransactionLogger => PortfolioManager.Analyzer.TransactionLogger;
+        
         /// <summary>
         /// 损益记录器
         /// </summary>
         public PnlLogger PnlLogger => PortfolioManager.Analyzer.PnlLogger;
+
         /// <summary>
-        /// 投资组合分析器
+        /// 构造函数
         /// </summary>
-        public AnalyzerManager Analyzer => PortfolioManager.Analyzer;
-
-
-        public StrategyContext(MarketFrame marketFrame)
+        public StrategyContext()
         {
-            // TODO
-            PortfolioManager = new PortfolioManager(new());
-            MarketFrame = marketFrame;
         }
     }
 }
