@@ -18,13 +18,14 @@ namespace CarrotBacktesting.Net.Engine
         /// 通过配置创建回测引擎
         /// </summary>
         /// <returns></returns>
-        public static BackTestingEngine Create(SimulationOptions options, IStrategy strategy)
+        public static BackTestingEngine Create(IStrategy strategy, SimulationOptions options)
         {
             // 类初始化
             DataFeed dataFeed = new(options);
             BackTestingExchange exchange = new(options);
             TickSimulator simulator = new(dataFeed, options);
             PortfolioManager portfolio = new(options);
+            StrategyContext context = new(portfolio, simulator);
 
             BackTestingEngine engine = new() {
                 DataFeed = dataFeed,
@@ -32,12 +33,15 @@ namespace CarrotBacktesting.Net.Engine
                 Simulator = simulator,
                 Portfolio = portfolio,
                 Options = options,
-                Strategy = strategy
+                Strategy = strategy,
+                StrategyContext = context
             };
 
             // 事件订阅
-            // TODO
-
+            simulator.OnMarketUpdate += exchange.OnMarketUpdate;
+            simulator.OnMarketUpdate += portfolio.OnMarketUpdate;
+            exchange.OnTradeUpdate += portfolio.OnTradeUpdate;
+            portfolio.OrderManager.OnOrderUpdate += exchange.OnOrderUpdate;
 
             return engine;
         }

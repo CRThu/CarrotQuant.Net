@@ -30,7 +30,7 @@ namespace CarrotBacktesting.Net.Engine
         /// 委托管理器
         /// </summary>
         public OrderManager OrderManager => PortfolioManager.OrderManager;
-        
+
         /// <summary>
         /// 头寸管理器
         /// </summary>
@@ -45,7 +45,7 @@ namespace CarrotBacktesting.Net.Engine
         /// 交易记录器
         /// </summary>
         public TransactionLogger TransactionLogger => PortfolioManager.Analyzer.TransactionLogger;
-        
+
         /// <summary>
         /// 损益记录器
         /// </summary>
@@ -54,8 +54,10 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 构造函数
         /// </summary>
-        public StrategyContext()
+        public StrategyContext(PortfolioManager portfolio, TickSimulator simulator)
         {
+            PortfolioManager = portfolio;
+            Simulator = simulator;
         }
     }
 }

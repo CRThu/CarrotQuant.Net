@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Storage;
 using System;
 using System.Collections.Generic;
@@ -94,6 +95,19 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public SimulationOptions Options { get; init; }
 
+
+        /// <summary>
+        /// 市场信息更新委托
+        /// </summary>
+        /// <param name="marketFrame">市场信息更新帧数据</param>
+        /// <param name="marketEventArgs">市场更新事件参数</param>
+        public delegate void MarketUpdateHandler(MarketFrame marketFrame, MarketEventArgs marketEventArgs);
+
+        /// <summary>
+        /// 市场信息更新事件
+        /// </summary>
+        public event MarketUpdateHandler? OnMarketUpdate;
+
         /// <summary>
         /// 构造函数
         /// </summary>
@@ -122,6 +136,8 @@ namespace CarrotBacktesting.Net.Engine
         /// <returns>返回是否模拟器运行结束, 若结束返回false</returns>
         public bool UpdateTick()
         {
+            OnMarketUpdate?.Invoke(this[CurrentTickIndex]!, new MarketEventArgs(this[CurrentTickIndex]!.Time, true));
+            
             CurrentTickIndex++;
             IsRunning = CurrentTickIndex < TickCount;
             return IsRunning;

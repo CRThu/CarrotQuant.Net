@@ -9,8 +9,7 @@ namespace CarrotBacktesting.Net.Demo
         {
             Console.WriteLine("Hello, World!");
 
-            var options = new SimulationOptions()
-            {
+            var options = new SimulationOptions() {
                 DataFeedSource = CarrotBacktesting.Net.Storage.DataFeedSource.Sqlite,
                 DataFeedPath = @"D:\Projects\CarrotQuant.Net\Data\sz.000400-sz.000499_1d_baostock.db",
                 SimulationStartTime = new DateTime(2021, 10, 1),
@@ -22,11 +21,11 @@ namespace CarrotBacktesting.Net.Demo
                 Fields = new string[] { "交易日期", "开盘价", "最高价", "最低价", "收盘价", "成交量", "是否ST", "交易状态", "滚动市盈率" }
             };
 
-            IEngine engine = new BackTestingEngine(new BasicStrategy(), options);
+            IEngine engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
             engine.Run();
-            //engine = new BackTestingEngine(new BasicStrategy(), options);
+            //engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
             //engine.Run();
-            //engine = new BackTestingEngine(new BasicStrategy(), options);
+            //engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
             //engine.Run();
 
 #if RELEASE
@@ -40,15 +39,11 @@ namespace CarrotBacktesting.Net.Demo
                 ShareNames = new[] { "sz.000422" },
             };
 
-            engine = new BackTestingEngine(new BasicStrategy(), options);
+            engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
             engine.Run();
-            engine = new BackTestingEngine(new BasicStrategy(), options);
+            engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
             engine.Run();
-            engine = new BackTestingEngine(new BasicStrategy(), options);
-            engine.Run();
-            engine = new BackTestingEngine(new BasicStrategy(), options);
-            engine.Run();
-            engine = new BackTestingEngine(new BasicStrategy(), options);
+            engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
             engine.Run();
 #endif
         }

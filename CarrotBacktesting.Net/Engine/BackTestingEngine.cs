@@ -15,8 +15,10 @@ namespace CarrotBacktesting.Net.Engine
     /// </summary>
     public class BackTestingEngine : IEngine
     {
-        // TODO
-        //public StrategyContext StrategyContext { get; set; }
+        /// <summary>
+        /// 策略上下文
+        /// </summary>
+        public StrategyContext StrategyContext { get; set; }
 
         /// <summary>
         /// 数据源
@@ -77,6 +79,7 @@ namespace CarrotBacktesting.Net.Engine
             //Exchange = new(StrategyContext.PortfolioManager, Simulation.SimulationMarketFrame);
         }
         */
+
         public void Run()
         {
         /*
