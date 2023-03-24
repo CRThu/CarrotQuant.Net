@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static CarrotBacktesting.Net.Common.Enums;
 
 namespace CarrotBacktesting.Net.Portfolio
 {

@@ -1,5 +1,4 @@
 ﻿using CarrotBacktesting.Net.Portfolio.Order;
-using CarrotBacktesting.Net.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;

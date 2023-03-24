@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static CarrotBacktesting.Net.Common.Enums;
 
 namespace CarrotBacktesting.Net.Portfolio.Order
 {
@@ -32,24 +33,4 @@ namespace CarrotBacktesting.Net.Portfolio.Order
             Operation = operation;
         }
     }
-
-    /// <summary>
-    /// 委托单操作
-    /// </summary>
-    public enum OrderUpdatedEventOperation
-    {
-        /// <summary>
-        /// 创建委托单
-        /// </summary>
-        CreateOrder,
-        /// <summary>
-        /// 更新委托单
-        /// </summary>
-        UpdateOrder,
-        /// <summary>
-        /// 取消委托单
-        /// </summary>
-        CancelOrder
-    }
-
 }

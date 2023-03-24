@@ -8,6 +8,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
 using System.Threading.Tasks;
+using static CarrotBacktesting.Net.Common.Enums;
 
 namespace CarrotBacktesting.Net.Engine
 {
@@ -197,24 +198,5 @@ namespace CarrotBacktesting.Net.Engine
             string jsonString = JsonSerializer.Serialize(this, options);
             File.WriteAllText(jsonpath, jsonString);
         }
-    }
-
-    /// <summary>
-    /// 交易所模拟成交价格参考选项
-    /// </summary>
-    public enum ExchangePriceRef
-    {
-        /// <summary>
-        /// 开盘价
-        /// </summary>
-        Open,
-        /// <summary>
-        /// 收盘价
-        /// </summary>
-        Close,
-        /// <summary>
-        /// 平均成交价(本K线成交额/成交量)
-        /// </summary>
-        TradeAverage
     }
 }

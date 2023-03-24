@@ -7,6 +7,8 @@ using System.Text;
 using System.Threading.Tasks;
 using CarrotBackTesting.Net.UnitTest.Common;
 using System.IO;
+using static CarrotBacktesting.Net.Common.Enums;
+
 
 namespace CarrotBacktesting.Net.Storage.Tests
 {

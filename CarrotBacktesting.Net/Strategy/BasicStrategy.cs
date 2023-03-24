@@ -3,12 +3,12 @@ using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Analyzer;
 using CarrotBacktesting.Net.Portfolio.Order;
-using CarrotBacktesting.Net.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static CarrotBacktesting.Net.Common.Enums;
 
 namespace CarrotBacktesting.Net.Strategy
 {

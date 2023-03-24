@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static CarrotBacktesting.Net.Common.Enums;
+
 
 namespace CarrotBacktesting.Net.Common
 {

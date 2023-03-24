@@ -1,7 +1,6 @@
 ﻿using CarrotBacktesting.Net.Common;
 using CarrotBacktesting.Net.DataModel;
 using CarrotBacktesting.Net.Engine;
-using CarrotBacktesting.Net.Shared;
 using MathNet.Numerics.Statistics;
 using System;
 using System.Collections.Generic;
