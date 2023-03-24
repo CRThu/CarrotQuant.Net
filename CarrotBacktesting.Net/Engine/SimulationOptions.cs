@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.DataModel;
+﻿using CarrotBacktesting.Net.Common;
+using CarrotBacktesting.Net.DataModel;
 using CarrotBacktesting.Net.Storage;
 using System;
 using System.Collections.Generic;
@@ -17,10 +18,26 @@ namespace CarrotBacktesting.Net.Engine
     /// </summary>
     public class SimulationOptions
     {
+
+        /// <summary>
+        /// 映射器Json文件路径, 若反序列化后不为null则反序列化该路径文件至<see cref="Mapper"/>
+        /// </summary>
+        public string? MapperJsonFilePath { get; set; } = null;
+
+        /// <summary>
+        /// 导入字段列表Json文件路径, 若反序列化后不为null则反序列化该路径文件至<see cref="Fields"/>
+        /// </summary>
+        public string? FieldsJsonFilePath { get; set; } = null;
+
+        /// <summary>
+        /// 股票列表json文件路径, 若反序列化后不为null则反序列化该路径文件至<see cref="StockCodes"/>
+        /// </summary>
+        public string? StockCodesJsonFilePath { get; set; } = null;
+
         /// <summary>
         /// 数据源
         /// </summary>
-        public DataFeedSource DataFeedSource { get; set; }
+        public DataFeedSource DataFeedSource { get; set; } = DataFeedSource.Csv;
 
         /// <summary>
         /// 数据源路径
@@ -28,45 +45,9 @@ namespace CarrotBacktesting.Net.Engine
         public string? DataFeedPath { get; set; } = null;
 
         /// <summary>
-        /// 映射器json文件路径字段
-        /// </summary>
-        private string? mapperJsonFilePath = null;
-
-        /// <summary>
-        /// 映射器json文件路径
-        /// </summary>
-        public string? MapperJsonFilePath
-        {
-            get => mapperJsonFilePath;
-            set
-            {
-                mapperJsonFilePath = value;
-                DeserializeMapper();
-            }
-        }
-
-        /// <summary>
         /// 字段映射信息存储类
         /// </summary>
         public ShareFrameMapper? Mapper { get; set; } = null;
-
-        /// <summary>
-        /// 字段json文件路径字段
-        /// </summary>
-        private string? fieldsJsonFilePath = null;
-
-        /// <summary>
-        /// 字段json文件路径
-        /// </summary>
-        public string? FieldsJsonFilePath
-        {
-            get => fieldsJsonFilePath;
-            set
-            {
-                fieldsJsonFilePath = value;
-                DeserializeFields();
-            }
-        }
 
         /// <summary>
         /// 字段集合
@@ -76,35 +57,17 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 模拟开始日期
         /// </summary>
-        public DateTime? SimulationStartTime { get; set; }
+        public DateTime? SimulationStartTime { get; set; } = null;
 
         /// <summary>
         /// 模拟结束日期
         /// </summary>
-        public DateTime? SimulationEndTime { get; set; }
+        public DateTime? SimulationEndTime { get; set; } = null;
 
         /// <summary>
         /// 是否支持回测未来函数
         /// </summary>
         public bool SimulatorUseFutureData { get; set; } = false;
-
-        /// <summary>
-        /// 股票列表json文件路径字段
-        /// </summary>
-        private string? stockCodesJsonFilePath = null;
-
-        /// <summary>
-        /// 股票列表json文件路径
-        /// </summary>
-        public string? StockCodesJsonFilePath
-        {
-            get => stockCodesJsonFilePath;
-            set
-            {
-                stockCodesJsonFilePath = value;
-                DeserializeShareNames();
-            }
-        }
 
         /// <summary>
         /// 股票列表
@@ -144,59 +107,27 @@ namespace CarrotBacktesting.Net.Engine
 
         }
 
-        private void DeserializeMapper()
+        /// <summary>
+        /// 展开SimulationOptionsJsonObject的Json配置嵌套
+        /// </summary>
+        /// <returns>返回本类</returns>
+        public SimulationOptions Load()
         {
             if (MapperJsonFilePath != null)
             {
-                Mapper = ShareFrameMapper.Deserialize(MapperJsonFilePath)!;
+                Mapper = Json.DeSerializeFromFile<ShareFrameMapper>(MapperJsonFilePath);
             }
-        }
 
-        private void DeserializeFields()
-        {
             if (FieldsJsonFilePath != null)
             {
-                string jsonString = File.ReadAllText(FieldsJsonFilePath);
-                FieldsJsonObject? fieldsJsonObject = JsonSerializer.Deserialize<FieldsJsonObject>(jsonString);
-                Fields = fieldsJsonObject!.Fields;
+                Fields = Json.DeSerializeFromFile<string[]>(FieldsJsonFilePath);
             }
-        }
 
-        private void DeserializeShareNames()
-        {
             if (StockCodesJsonFilePath != null)
             {
-                string jsonString = File.ReadAllText(StockCodesJsonFilePath);
-                StockCodesJsonObject? stockCodesJsonObject = JsonSerializer.Deserialize<StockCodesJsonObject>(jsonString);
-                StockCodes = stockCodesJsonObject!.StockCodes;
+                StockCodes = Json.DeSerializeFromFile<string[]>(StockCodesJsonFilePath);
             }
-        }
-
-        /// <summary>
-        /// 通过json文件构造配置
-        /// </summary>
-        /// <param name="jsonpath">json文件路径</param>
-        /// <returns>映射器实例</returns>
-        public static SimulationOptions? Deserialize(string jsonpath)
-        {
-            string jsonString = File.ReadAllText(jsonpath);
-            SimulationOptions? options = JsonSerializer.Deserialize<SimulationOptions>(jsonString);
-            return options;
-        }
-
-        /// <summary>
-        /// 配置存储为json文件
-        /// </summary>
-        /// <param name="jsonpath">json文件路径</param>
-        /// <returns>映射器实例</returns>
-        public void Serialize(string jsonpath)
-        {
-            var options = new JsonSerializerOptions {
-                WriteIndented = true,
-                Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
-            };
-            string jsonString = JsonSerializer.Serialize(this, options);
-            File.WriteAllText(jsonpath, jsonString);
+            return this;
         }
     }
 }
