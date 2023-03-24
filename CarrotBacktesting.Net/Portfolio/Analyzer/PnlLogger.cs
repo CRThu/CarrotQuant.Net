@@ -1,6 +1,6 @@
-﻿using CarrotBacktesting.Net.DataModel;
+﻿using CarrotBacktesting.Net.Common;
+using CarrotBacktesting.Net.DataModel;
 using CarrotBacktesting.Net.Portfolio.Position;
-using CarrotBacktesting.Net.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;

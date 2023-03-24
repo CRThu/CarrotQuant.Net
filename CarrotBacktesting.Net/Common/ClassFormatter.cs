@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.Net.Shared
+namespace CarrotBacktesting.Net.Common
 {
     public static class ClassFormatter
     {

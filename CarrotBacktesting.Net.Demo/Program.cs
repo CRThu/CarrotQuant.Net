@@ -10,7 +10,7 @@ namespace CarrotBacktesting.Net.Demo
             Console.WriteLine("Hello, World!");
 
             var options = new SimulationOptions() {
-                DataFeedSource = CarrotBacktesting.Net.Storage.DataFeedSource.Sqlite,
+                DataFeedSource = Storage.DataFeedSource.Sqlite,
                 DataFeedPath = @"D:\Projects\CarrotQuant.Net\Data\sz.000400-sz.000499_1d_baostock.db",
                 SimulationStartTime = new DateTime(2021, 10, 1),
                 SimulationEndTime = new DateTime(2021, 11, 1),
