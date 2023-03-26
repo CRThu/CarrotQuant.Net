@@ -10,7 +10,6 @@ namespace CarrotBacktesting.Net.Demo
     {
         static void Main(string[] args)
         {
-            Console.WriteLine(Json.Serialize(new string[] { "a", "vv" }));
             Console.WriteLine("Hello, World!");
 
             var options = new SimulationOptions() {

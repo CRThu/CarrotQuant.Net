@@ -1,8 +1,8 @@
-﻿using System;
+﻿using CarrotBacktesting.Net.Common;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Engine
@@ -20,7 +20,7 @@ namespace CarrotBacktesting.Net.Engine
         public static SimulationOptions CreateFromJson(string jsonpath)
         {
             string jsonString = File.ReadAllText(jsonpath);
-            SimulationOptions options = JsonSerializer.Deserialize<SimulationOptions>(jsonString)!;
+            SimulationOptions options = Json.DeSerialize<SimulationOptions>(jsonString)!;
             options.Load();
             return options;
         }

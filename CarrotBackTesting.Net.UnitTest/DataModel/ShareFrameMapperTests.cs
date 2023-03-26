@@ -21,7 +21,8 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             string filename = "mapper.baostock.csv.daily.json";
             string mapperJsonpath = Path.Combine(UnitTestDirectory.JsonDirectory, filename);
 
-            ShareFrameMapper sfm = ShareFrameMapper.Deserialize(mapperJsonpath)!;
+            ShareFrameMapper sfm = Json.DeSerializeFromFile<ShareFrameMapper>(mapperJsonpath)!;
+            sfm.UpdateGlobalBoolString();
 
             Assert.AreEqual("Time", sfm.MapDict["date"]);
             Assert.AreEqual("Amount", sfm.MapDict["amount"]);

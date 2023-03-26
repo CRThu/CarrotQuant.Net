@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
-using System.Text.Json;
 using System.Text.Unicode;
 using System.Threading.Tasks;
 using static CarrotBacktesting.Net.Common.Enums;
@@ -113,6 +112,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <returns>返回本类</returns>
         public SimulationOptions Load()
         {
+            // 反序列化嵌套配置读取
             if (MapperJsonFilePath != null)
             {
                 Mapper = Json.DeSerializeFromFile<ShareFrameMapper>(MapperJsonFilePath);
@@ -127,6 +127,10 @@ namespace CarrotBacktesting.Net.Engine
             {
                 StockCodes = Json.DeSerializeFromFile<string[]>(StockCodesJsonFilePath);
             }
+
+            // 更新全局布尔值字符串
+            Mapper!.UpdateGlobalBoolString();
+
             return this;
         }
     }

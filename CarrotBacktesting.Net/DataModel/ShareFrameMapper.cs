@@ -1,11 +1,11 @@
 ﻿using CarrotBacktesting.Net.Common;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.Unicode;
 using System.Threading.Tasks;
 
@@ -30,45 +30,15 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         public Dictionary<string, string> TypeDict { get; set; }
 
-        private HashSet<string> booleanTrueString = new HashSet<string>();
         /// <summary>
         /// 回测数据中数据类型为bool并转换为System.Boolean的True结果的字符串, 不区分大小写
         /// </summary>
-        [JsonInclude]
-        public HashSet<string> BooleanTrueString
-        {
-            get
-            {
-                return booleanTrueString;
-            }
-            private set
-            {
-                booleanTrueString = value;
-                // 在BooleanEx新增自定义字符串
-                BooleanEx.ResetBooleanExTrueStrings();
-                BooleanEx.AddBooleanExTrueStrings(value.ToArray());
-            }
-        }
+        public HashSet<string> BooleanTrueString { get; set; }
 
-        private HashSet<string> booleanFalseString = new HashSet<string>();
         /// <summary>
         /// 回测数据中数据类型为bool并转换为System.Boolean的False结果的字符串, 不区分大小写
         /// </summary>
-        [JsonInclude]
-        public HashSet<string> BooleanFalseString
-        {
-            get
-            {
-                return booleanFalseString;
-            }
-            private set
-            {
-                booleanFalseString = value;
-                // 在BooleanEx新增自定义字符串
-                BooleanEx.ResetBooleanExFalseStrings();
-                BooleanEx.AddBooleanExFalseStrings(value.ToArray());
-            }
-        }
+        public HashSet<string> BooleanFalseString { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -77,6 +47,8 @@ namespace CarrotBacktesting.Net.DataModel
         {
             MapDict = new();
             TypeDict = new();
+            BooleanTrueString = new();
+            BooleanFalseString = new();
         }
 
         /// <summary>
@@ -90,6 +62,8 @@ namespace CarrotBacktesting.Net.DataModel
         {
             MapDict = mapDict ?? new();
             TypeDict = typeDict ?? new();
+            BooleanTrueString = new();
+            BooleanFalseString = new();
             if (booleanTrueString != null)
                 BooleanTrueString = new HashSet<string>(booleanTrueString);
             if (booleanFalseString != null)
@@ -140,31 +114,16 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
-        /// 通过json文件构造映射器
+        /// 更新全局自定义字符串
         /// </summary>
-        /// <param name="jsonpath">json文件路径</param>
-        /// <returns>映射器实例</returns>
-        public static ShareFrameMapper? Deserialize(string jsonpath)
+        public void UpdateGlobalBoolString()
         {
-            string jsonString = File.ReadAllText(jsonpath);
-            ShareFrameMapper? mapper = JsonSerializer.Deserialize<ShareFrameMapper>(jsonString);
-            return mapper;
-        }
-
-        /// <summary>
-        /// 映射器存储为json文件
-        /// </summary>
-        /// <param name="jsonpath">json文件路径</param>
-        /// <returns>映射器实例</returns>
-        public void Serialize(string jsonpath)
-        {
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
-            };
-            string jsonString = JsonSerializer.Serialize(this, options);
-            File.WriteAllText(jsonpath, jsonString);
+            // 在BooleanEx新增自定义字符串
+            BooleanEx.ResetBooleanExTrueStrings();
+            BooleanEx.AddBooleanExTrueStrings(BooleanTrueString.ToArray());
+            // 在BooleanEx新增自定义字符串
+            BooleanEx.ResetBooleanExFalseStrings();
+            BooleanEx.AddBooleanExFalseStrings(BooleanFalseString.ToArray());
         }
     }
 }
