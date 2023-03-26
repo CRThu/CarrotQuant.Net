@@ -80,40 +80,49 @@ namespace CarrotBacktesting.Net.Engine
         }
         */
 
+        public void RunTickForBenchmark()
+        {
+            Simulator.UpdateTickForBenchmark();
+        }
+
         public void Run()
         {
-        /*
-            // Stopwatch stopwatch = new();
-            // stopwatch.Start();
-            // int loop = 0;
+            //if (Simulator.IsRunning)
+            //    throw new InvalidOperationException();
 
-            Strategy.Start(StrategyContext);
-            while (Simulator.IsSimulating)
-            {
-                // 市场价格更新
-                Simulator.UpdateFrame();
+            while (Simulator.UpdateTick())
+                ;
 
-                // 交易所订单更新
-                throw new NotImplementedException();
-                //Exchange.OnPriceUpdate();
+            /*
+                // Stopwatch stopwatch = new();
+                // stopwatch.Start();
+                // int loop = 0;
 
-                // 投资组合PNL信息更新
-                // TODO
-                //StrategyContext.PortfolioManager.OnPriceUpdate();
+                Strategy.Start(StrategyContext);
+                while (Simulator.IsSimulating)
+                {
+                    // 市场价格更新
+                    Simulator.UpdateFrame();
 
-                // 时间片更新(用于更新Tick生成指标等数据)
-                Strategy.OnTick(StrategyContext);
+                    // 交易所订单更新
+                    throw new NotImplementedException();
+                    //Exchange.OnPriceUpdate();
 
-                // 策略更新(更新策略, 挂单)
-                Strategy.OnNext(StrategyContext);
+                    // 投资组合PNL信息更新
+                    // TODO
+                    //StrategyContext.PortfolioManager.OnPriceUpdate();
 
-                // loop++;
-            }
-            Strategy.End(StrategyContext);
+                    // 时间片更新(用于更新Tick生成指标等数据)
+                    Strategy.OnTick(StrategyContext);
 
-            // stopwatch.Stop();
-            // Console.WriteLine($"回测已完成, 共测试{loop}帧, 耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒, 回测速度{(double)loop / stopwatch.ElapsedMilliseconds * 1000:F3}帧/秒.");
-        */
+                    // 策略更新(更新策略, 挂单)
+                    Strategy.OnNext(StrategyContext);
+
+                    // loop++;
+                }
+                Strategy.End(StrategyContext);
+
+            */
         }
     }
 }

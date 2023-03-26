@@ -16,8 +16,4 @@
     <PackageReference Include="TA-Lib" Version="0.5.0.3" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Shared\" />
-  </ItemGroup>
-
 </Project>

@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CarrotBackTesting.Net.UnitTest\CarrotBackTesting.Net.UnitTest.csproj" />
     <ProjectReference Include="..\CarrotBacktesting.Net\CarrotBacktesting.Net.csproj" />
   </ItemGroup>
 

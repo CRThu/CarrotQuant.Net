@@ -43,7 +43,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <summary>
         /// 已完成时间片数量
         /// </summary>
-        public int ElapsedTickCount => CurrentTickIndex + 1;
+        public int ElapsedTickCount => CurrentTickIndex;
 
         /// <summary>
         /// 当前市场数据
@@ -136,9 +136,16 @@ namespace CarrotBacktesting.Net.Engine
         /// <returns>返回是否模拟器运行结束, 若结束返回false</returns>
         public bool UpdateTick()
         {
-            OnMarketUpdate?.Invoke(this[CurrentTickIndex]!, new MarketEventArgs(this[CurrentTickIndex]!.Time, true));
-            
+            OnMarketUpdate?.Invoke(this[0]!, new MarketEventArgs(this[0]!.Time, true));
+
             CurrentTickIndex++;
+            IsRunning = CurrentTickIndex < TickCount;
+            return IsRunning;
+        }
+
+        public bool UpdateTickForBenchmark()
+        {
+            OnMarketUpdate?.Invoke(this[0]!, new MarketEventArgs(this[0]!.Time, true));
             IsRunning = CurrentTickIndex < TickCount;
             return IsRunning;
         }

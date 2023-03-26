@@ -1,10 +1,13 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Running;
 using CarrotBacktesting.Net.Common;
 using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Storage;
 using CarrotBacktesting.Net.Strategy;
+using CarrotBackTesting.Net.UnitTest.Common;
+using Microsoft.Extensions.Options;
 using System.Data;
 
 Console.WriteLine("Hello, World!");
@@ -14,26 +17,21 @@ BenchmarkRunner.Run<BackTestingEngineBenchmark>();
 [MemoryDiagnoser]
 public class BackTestingEngineBenchmark
 {
-    public const string SqliteDatabasePath = "../../../../../../../../Data/sz.000400-sz.000499_1d_baostock.db";
-    SqliteHelper sqliteHelper;
+    SimulationOptions options;
+    BackTestingEngine engine;
 
     public BackTestingEngineBenchmark()
     {
-        sqliteHelper = new();
-        sqliteHelper.Open(SqliteDatabasePath);
-    }
-
-    [Benchmark(Baseline = true)]
-    public int UseDataTable()
-    {
-        DataTable dt = sqliteHelper.QueryAsDataTable("SELECT * FROM 'sz.000400';");
-        return dt.Rows.Count;
+        string filename = "simulationoptions.baostock.sqlite.daily.json";
+        string optionJsonPath = Path.Combine(UnitTestDirectory.BenchmarkJsonDirectory, filename);
+        Console.WriteLine($"optionJsonPath:{optionJsonPath}");
+        options = SimulationOptionsFactory.CreateFromJson(optionJsonPath);
+        engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
     }
 
     [Benchmark]
-    public int voidUseDictionaryList()
+    public void RunTick()
     {
-        IEnumerable<IDictionary<string,object>> rows = sqliteHelper.QueryAsDictionaryList("SELECT * FROM 'sz.000400';");
-        return rows.Count();
+        engine.RunTickForBenchmark();
     }
 }

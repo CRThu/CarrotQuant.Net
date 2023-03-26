@@ -1,6 +1,8 @@
 ﻿using CarrotBacktesting.Net.Common;
 using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Strategy;
+using CarrotBackTesting.Net.UnitTest.Common;
+using System.Diagnostics;
 using static CarrotBacktesting.Net.Common.Enums;
 
 
@@ -12,43 +14,19 @@ namespace CarrotBacktesting.Net.Demo
         {
             Console.WriteLine("Hello, World!");
 
-            var options = new SimulationOptions() {
-                DataFeedSource = DataFeedSource.Sqlite,
-                DataFeedPath = @"D:\Projects\CarrotQuant.Net\Data\sz.000400-sz.000499_1d_baostock.db",
-                SimulationStartTime = new DateTime(2021, 10, 1),
-                SimulationEndTime = new DateTime(2021, 11, 1),
-                //SimulationDuration = new TimeSpan(0, 0, 1),
-                //ShareNames = new[] { "sz.000422" },
-                StockCodes = new[] { "sz.000422", "sz.000423" },
-                //IsEnableShareStatusFlag = true,
-                Fields = new string[] { "交易日期", "开盘价", "最高价", "最低价", "收盘价", "成交量", "是否ST", "交易状态", "滚动市盈率" }
-            }.Load();
+            string filename = "simulationoptions.baostock.sqlite.daily.json";
+            string optionJsonPath = Path.Combine(UnitTestDirectory.JsonDirectory, filename);
+            SimulationOptions options = SimulationOptionsFactory.CreateFromJson(optionJsonPath);
 
-            IEngine engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
-            engine.Run();
-            //engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
-            //engine.Run();
-            //engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
-            //engine.Run();
+            BackTestingEngine engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
 
-#if RELEASE
-            options = new SimulationOptions()
-            {
-                //IsSqliteDataFeed = true,
-                DataFeedPath = @"D:\Projects\CarrotQuant\Stock\Data\StockData_1d_baostock.db",
-                SimulationStartTime = new DateTime(2021, 6, 1),
-                SimulationEndTime = new DateTime(2021, 11, 1),
-                //SimulationDuration = new TimeSpan(0, 0, 1),
-                ShareNames = new[] { "sz.000422" },
-            }.Load();
+            Stopwatch stopwatch = new();
+            stopwatch.Start();
 
-            engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
             engine.Run();
-            engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
-            engine.Run();
-            engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
-            engine.Run();
-#endif
+
+            stopwatch.Stop();
+            Console.WriteLine($"回测已完成, 共测试{engine.Simulator.ElapsedTickCount}帧, 耗时{stopwatch.ElapsedMilliseconds / 1000.0}秒, 回测速度{(double)engine.Simulator.ElapsedTickCount / stopwatch.ElapsedMilliseconds * 1000:F3}帧/秒.");
         }
     }
 }
