@@ -3,6 +3,7 @@ using CarrotBacktesting.Net.Portfolio.Order;
 using CarrotBacktesting.Net.Storage;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -136,18 +137,17 @@ namespace CarrotBacktesting.Net.Engine
         /// <returns>返回是否模拟器运行结束, 若结束返回false</returns>
         public bool UpdateTick()
         {
-            OnMarketUpdate?.Invoke(CurrentMarket!, new MarketEventArgs(CurrentTime, true));
+            OnRaiseMarketUpdateEvent();
 
             CurrentTickIndex++;
             IsRunning = CurrentTickIndex < TickCount;
             return IsRunning;
         }
 
-        public bool UpdateTickForBenchmark()
+        public void OnRaiseMarketUpdateEvent()
         {
+            // Console.WriteLine($"TickSimulator: Tick: {CurrentTime} ({ElapsedTickCount + 1}/{TickCount})");
             OnMarketUpdate?.Invoke(CurrentMarket!, new MarketEventArgs(CurrentTime, true));
-            IsRunning = CurrentTickIndex < TickCount;
-            return IsRunning;
         }
     }
 }

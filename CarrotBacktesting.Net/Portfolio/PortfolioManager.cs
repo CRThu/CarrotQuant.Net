@@ -41,15 +41,7 @@ namespace CarrotBacktesting.Net.Portfolio
             OrderManager = new OrderManager();
             PositionManager = new PositionManager(options);
             Analyzer = new AnalyzerManager(options, this);
-            //EventRegister();
         }
-
-        //public void EventRegister()
-        //{
-        //    // 交割单记录器事件
-        //    PositionManager.CashUpdateEvent += TransactionLogger.SetCash;
-        //    PositionManager.PositionUpdateEvent += TransactionLogger.AddTransaction;
-        //}
 
         /// <summary>
         /// 创建委托单

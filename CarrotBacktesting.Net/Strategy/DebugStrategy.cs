@@ -45,6 +45,9 @@ namespace CarrotBacktesting.Net.Strategy
         public void OnTick(MarketFrame marketFrame, MarketEventArgs marketEventArgs)
         {
             Console.WriteLine("EmptyStrategy.OnTick(sender, args)");
+            Console.WriteLine($"Strategy: Tick: {marketFrame.Time}");
+            Console.WriteLine($"Strategy: StockCount: {marketFrame.Count}");
+            //Console.WriteLine($"Strategy: Stock: {string.Join(',', marketFrame.Codes)}");
         }
 
         /// <summary>

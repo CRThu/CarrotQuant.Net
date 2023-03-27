@@ -59,36 +59,15 @@ namespace CarrotBacktesting.Net.Engine
 
         }
 
-        /*
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        /// <param name="strategy">策略接口</param>
-        /// <param name="options">回测模拟器选项</param>
-        public BackTestingEngine(IStrategy strategy, SimulationOptions options)
-        {
-            // Console.WriteLine($"初始化数据库.");
-            //Simulator = new(options);
-            // Console.WriteLine($"模拟时间共{Simulation.SimulationDuration.TotalDays}天.");
-
-            throw new NotImplementedException();
-            //StrategyContext = new(Simulation.SimulationMarketFrame);
-
-            Strategy = strategy;
-            throw new NotImplementedException();
-            //Exchange = new(StrategyContext.PortfolioManager, Simulation.SimulationMarketFrame);
-        }
-        */
-
         public void RunTickForBenchmark()
         {
-            Simulator.UpdateTickForBenchmark();
+            Simulator.OnRaiseMarketUpdateEvent();
         }
 
         public void Run()
         {
-            //if (Simulator.IsRunning)
-            //    throw new InvalidOperationException();
+            if (Simulator.IsRunning)
+                throw new InvalidOperationException();
 
             Strategy.OnStart(StrategyContext);
 
@@ -98,37 +77,6 @@ namespace CarrotBacktesting.Net.Engine
             }
 
             Strategy.OnEnd(StrategyContext);
-
-            /*
-                // Stopwatch stopwatch = new();
-                // stopwatch.Start();
-                // int loop = 0;
-
-                Strategy.Start(StrategyContext);
-                while (Simulator.IsSimulating)
-                {
-                    // 市场价格更新
-                    Simulator.UpdateFrame();
-
-                    // 交易所订单更新
-                    throw new NotImplementedException();
-                    //Exchange.OnPriceUpdate();
-
-                    // 投资组合PNL信息更新
-                    // TODO
-                    //StrategyContext.PortfolioManager.OnPriceUpdate();
-
-                    // 时间片更新(用于更新Tick生成指标等数据)
-                    Strategy.OnTick(StrategyContext);
-
-                    // 策略更新(更新策略, 挂单)
-                    Strategy.OnNext(StrategyContext);
-
-                    // loop++;
-                }
-                Strategy.End(StrategyContext);
-
-            */
         }
     }
 }

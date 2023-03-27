@@ -57,23 +57,7 @@ namespace CarrotBacktesting.Net.Engine
             Orders = new();
             //Positions = new();
             Options = options;
-            //EventRegister();
         }
-
-        ///// <summary>
-        ///// 事件监听
-        ///// </summary>
-        //public void EventRegister()
-        //{
-        //    // 委托单更新事件监听
-        //    //Portfolio.OrderManager.OnOrderUpdated += OnOrderUpdate;
-        //    throw new NotImplementedException();
-        //    // 交易所成交更新事件订阅
-        //    //OnTradeUpdated += Portfolio.OrderManager.OnTradeUpdate;
-        //    // 头寸管理器更新
-        //    //OnTradeUpdated += Portfolio.PositionManager.OnTradeUpdate;
-        //    throw new NotImplementedException();
-        //}
 
         /// <summary>
         /// 新增或更新委托单(交易所内部)
