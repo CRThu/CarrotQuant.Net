@@ -18,7 +18,7 @@ namespace CarrotBacktesting.Net.Demo
             string optionJsonPath = Path.Combine(UnitTestDirectory.JsonDirectory, filename);
             SimulationOptions options = SimulationOptionsFactory.CreateFromJson(optionJsonPath);
 
-            BackTestingEngine engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
+            BackTestingEngine engine = BackTestingEngineFactory.Create(new DebugStrategy(), options);
 
             Stopwatch stopwatch = new();
             stopwatch.Start();

@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.Net.Engine;
+﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio.Order;
 
 namespace CarrotBacktesting.Net.Strategy
@@ -23,8 +24,9 @@ namespace CarrotBacktesting.Net.Strategy
         /// <summary>
         /// 回测引擎正常工作时Tick更新时在此函数更新k线/指标类等数据
         /// </summary>
-        /// <param name="strategyContext"></param>
-        public void OnTick(StrategyContext strategyContext);
+        /// <param name="marketFrame"></param>
+        /// <param name="marketEventArgs"></param>
+        public void OnTick(MarketFrame marketFrame, MarketEventArgs marketEventArgs);
 
         /// <summary>
         /// 回测引擎正常工作时Tick更新时在此函数更新本Tick策略

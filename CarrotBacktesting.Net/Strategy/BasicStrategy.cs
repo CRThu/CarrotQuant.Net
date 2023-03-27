@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.Net.Common;
+using CarrotBacktesting.Net.DataModel;
 using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio;
 using CarrotBacktesting.Net.Portfolio.Analyzer;
@@ -50,7 +51,7 @@ namespace CarrotBacktesting.Net.Strategy
 #endif
         }
 
-        public void OnTick(StrategyContext strategyContext)
+        public void OnTick(MarketFrame marketFrame, MarketEventArgs marketEventArgs)
         {
 #if DEBUG
             Console.WriteLine("BasicStrategy.PreNext()");

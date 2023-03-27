@@ -26,7 +26,7 @@ public class BackTestingEngineBenchmark
         string optionJsonPath = Path.Combine(UnitTestDirectory.BenchmarkJsonDirectory, filename);
         Console.WriteLine($"optionJsonPath:{optionJsonPath}");
         options = SimulationOptionsFactory.CreateFromJson(optionJsonPath);
-        engine = BackTestingEngineFactory.Create(new BasicStrategy(), options);
+        engine = BackTestingEngineFactory.Create(new EmptyStrategy(), options);
     }
 
     [Benchmark]

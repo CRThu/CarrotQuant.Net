@@ -40,8 +40,11 @@ namespace CarrotBacktesting.Net.Engine
             // 事件订阅
             simulator.OnMarketUpdate += exchange.OnMarketUpdate;
             simulator.OnMarketUpdate += portfolio.OnMarketUpdate;
+            simulator.OnMarketUpdate += strategy.OnTick;
             exchange.OnTradeUpdate += portfolio.OnTradeUpdate;
+            exchange.OnTradeUpdate += strategy.OnTradeUpdate;
             portfolio.OrderManager.OnOrderUpdate += exchange.OnOrderUpdate;
+            portfolio.OrderManager.OnOrderUpdate += strategy.OnOrderUpdate;
 
             return engine;
         }

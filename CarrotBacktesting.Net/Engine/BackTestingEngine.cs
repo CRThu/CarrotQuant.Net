@@ -90,8 +90,14 @@ namespace CarrotBacktesting.Net.Engine
             //if (Simulator.IsRunning)
             //    throw new InvalidOperationException();
 
+            Strategy.OnStart(StrategyContext);
+
             while (Simulator.UpdateTick())
-                ;
+            {
+                Strategy.OnNext(StrategyContext);
+            }
+
+            Strategy.OnEnd(StrategyContext);
 
             /*
                 // Stopwatch stopwatch = new();

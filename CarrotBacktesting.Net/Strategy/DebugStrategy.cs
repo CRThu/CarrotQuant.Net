@@ -9,12 +9,12 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.Strategy
 {
-    public class EmptyStrategy : IStrategy
+    public class DebugStrategy : IStrategy
     {
         /// <summary>
         /// 构造函数
         /// </summary>
-        public EmptyStrategy()
+        public DebugStrategy()
         {
 
         }
@@ -25,7 +25,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="strategyContext"></param>
         public void OnStart(StrategyContext strategyContext)
         {
-
+            Console.WriteLine("EmptyStrategy.OnStart()");
         }
 
         /// <summary>
@@ -34,7 +34,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="strategyContext"></param>
         public void OnEnd(StrategyContext strategyContext)
         {
-
+            Console.WriteLine("EmptyStrategy.OnEnd()");
         }
 
         /// <summary>
@@ -44,7 +44,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="marketEventArgs"></param>
         public void OnTick(MarketFrame marketFrame, MarketEventArgs marketEventArgs)
         {
-
+            Console.WriteLine("EmptyStrategy.OnTick(sender, args)");
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="strategyContext"></param>
         public void OnNext(StrategyContext strategyContext)
         {
-
+            Console.WriteLine("EmptyStrategy.OnNext()");
         }
 
         /// <summary>
@@ -63,7 +63,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="operation"></param>
         public void OnOrderUpdate(OrderManager sender, OrderEventArgs operation)
         {
-
+            Console.WriteLine("EmptyStrategy.OnOrderUpdate(sender, args)");
         }
 
         /// <summary>
@@ -73,7 +73,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="tradeEventArgs"></param>
         public void OnTradeUpdate(BackTestingExchange exchange, TradeEventArgs tradeEventArgs)
         {
-
+            Console.WriteLine("EmptyStrategy.OnTradeUpdate(sender, args)");
         }
     }
 }
