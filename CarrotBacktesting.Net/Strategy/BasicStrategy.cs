@@ -17,7 +17,7 @@ namespace CarrotBacktesting.Net.Strategy
     /// </summary>
     public class BasicStrategy : IStrategy
     {
-        public void Start(StrategyContext context)
+        public void OnStart(StrategyContext context)
         {
 #if DEBUG
             Console.WriteLine("BasicStrategy.Start()");
@@ -27,7 +27,7 @@ namespace CarrotBacktesting.Net.Strategy
             throw new NotImplementedException();
         }
 
-        public void End(StrategyContext strategyContext)
+        public void OnEnd(StrategyContext strategyContext)
         {
 #if DEBUG
             Console.WriteLine("BasicStrategy.End()");
@@ -88,6 +88,16 @@ namespace CarrotBacktesting.Net.Strategy
                 if (strategyContext.Simulator.CurrentMarket["sz.000423"].Close <= 270)
                     strategyContext.PortfolioManager.CreateOrder("sz.000423", OrderDirection.Buy, 100.0, OrderType.LimitOrder, 280);
             }
+        }
+
+        public void OnOrderUpdate(OrderManager sender, OrderEventArgs operation)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void OnTradeUpdate(BackTestingExchange exchange, TradeEventArgs tradeEventArgs)
+        {
+            throw new NotImplementedException();
         }
     }
 }

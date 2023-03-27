@@ -136,7 +136,7 @@ namespace CarrotBacktesting.Net.Engine
         /// <returns>返回是否模拟器运行结束, 若结束返回false</returns>
         public bool UpdateTick()
         {
-            OnMarketUpdate?.Invoke(this[0]!, new MarketEventArgs(this[0]!.Time, true));
+            OnMarketUpdate?.Invoke(CurrentMarket!, new MarketEventArgs(CurrentTime, true));
 
             CurrentTickIndex++;
             IsRunning = CurrentTickIndex < TickCount;
@@ -145,7 +145,7 @@ namespace CarrotBacktesting.Net.Engine
 
         public bool UpdateTickForBenchmark()
         {
-            OnMarketUpdate?.Invoke(this[0]!, new MarketEventArgs(this[0]!.Time, true));
+            OnMarketUpdate?.Invoke(CurrentMarket!, new MarketEventArgs(CurrentTime, true));
             IsRunning = CurrentTickIndex < TickCount;
             return IsRunning;
         }
