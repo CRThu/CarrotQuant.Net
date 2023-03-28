@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>27b47064-d55d-47d6-b8bd-df20d6b2255a</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>CarrotQuant.Data.Python.py</StartupFile>
+    <StartupFile>data_directory.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -22,6 +22,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="CarrotQuant.Data.Python.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="data_directory.py" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
