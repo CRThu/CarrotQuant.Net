@@ -1,5 +1,5 @@
-# ÔÚ´Ë½øĞĞ¹¤³ÌËùÓĞÂ·¾¶¶¨Òå
-# ±¾ÎÄ¼şÔËĞĞÂ·¾¶
+ï»¿# åœ¨æ­¤è¿›è¡Œå·¥ç¨‹æ‰€æœ‰è·¯å¾„å®šä¹‰
+# æœ¬æ–‡ä»¶è¿è¡Œè·¯å¾„
 # D:\Projects\CarrotQuant.Net\CarrotQuant.Data.Python
 
 import os
@@ -15,13 +15,13 @@ if __name__ == '__main__':
           + os.getcwd())
     print(
         'solution_dir:\t'
-        + solution_dir + '\t\t\t\t'
+        + solution_dir + '\t\t\t\t\t\t\t'
         + ('Exist' if os.path.exists(solution_dir) else 'Not Exist'))
     print(
         'project_dir:\t'
         + project_dir + '\t'
         + ('Exist' if os.path.exists(project_dir) else 'Not Exist'))
     print(
-        'db_dir:\t\t'
-        + db_dir + '\t\t\t'
+        'db_dir:\t\t\t'
+        + db_dir + '\t\t\t\t\t'
         + ('Exist' if os.path.exists(db_dir) else 'Not Exist'))

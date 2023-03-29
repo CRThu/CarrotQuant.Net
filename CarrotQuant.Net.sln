@@ -13,8 +13,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBacktesting.Net.Bench
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBacktesting.Net.Demo", "CarrotBacktesting.Net.Demo\CarrotBacktesting.Net.Demo.csproj", "{29D2C500-57C6-48C5-9E55-BEC44C596854}"
 EndProject
-Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "CarrotQuant.Data.Python", "CarrotQuant.Data.Python\CarrotQuant.Data.Python.pyproj", "{27B47064-D55D-47D6-B8BD-DF20D6B2255A}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,8 +39,6 @@ Global
 		{29D2C500-57C6-48C5-9E55-BEC44C596854}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{29D2C500-57C6-48C5-9E55-BEC44C596854}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{29D2C500-57C6-48C5-9E55-BEC44C596854}.Release|Any CPU.Build.0 = Release|Any CPU
-		{27B47064-D55D-47D6-B8BD-DF20D6B2255A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{27B47064-D55D-47D6-B8BD-DF20D6B2255A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
