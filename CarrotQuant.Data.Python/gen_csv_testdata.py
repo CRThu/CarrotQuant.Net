@@ -1,8 +1,8 @@
 import baostock as bs
 import pandas as pd
-import DataDirectory as d
+import data_directory as d
 
-csvdir = d.DataDirectory.combine3(d.DataDirectory.UnitTestDataDirectory, 'Csv', 'daily')
+csvdir = d.db_testdata_csv_daily_dir
 fields = 'date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,tradestatus,pctChg,peTTM,psTTM,' \
          'pcfNcfTTM,pbMRQ,isST'
 code = 'sz.000422'
@@ -34,7 +34,7 @@ while (rs.error_code == '0') & rs.next():
 result = pd.DataFrame(data_list, columns=rs.fields)
 
 #### 结果集输出到csv文件 ####
-csvpath = d.DataDirectory.combine2(csvdir, code + '.csv')
+csvpath = d.combine(csvdir, code + '.csv')
 result.to_csv(csvpath, index=False)
 print(result)
 

@@ -4,14 +4,19 @@
 
 import os
 
-solution_dir: str = '..'
-project_dir: str = os.path.join(solution_dir, 'CarrotQuant.Data.Python')
-db_dir: str = os.path.join(solution_dir, 'Database')
-db_ashare_csv_daily_dir: str = os.path.join(db_dir, 'ashare\\csv\\daily')
 
+def combine(*paths: str) -> str:
+    return os.path.join(*paths)
+
+
+solution_dir: str = '..'
+project_dir: str = combine(solution_dir, "CarrotQuant.Data.Python")
+db_dir: str = combine(solution_dir, "Database")
+db_ashare_csv_daily_dir: str = combine(db_dir, "ashare", "csv", "daily")
+db_testdata_csv_daily_dir: str = combine(db_dir, "testdata", "csv", "daily")
 
 if __name__ == '__main__':
-    print('my_dir:\t'
+    print('my_dir:\t\t\t'
           + os.getcwd())
     print(
         'solution_dir:\t'
