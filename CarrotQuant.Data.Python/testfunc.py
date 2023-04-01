@@ -1,5 +1,8 @@
 # 跨语言交互测试函数
 import sys
+import time
+
+from print_xml import print_xml
 
 
 class MyClass:
@@ -14,6 +17,11 @@ class MyClass:
 
     def func3(self, arg1: str, arg2: str, arg3: str) -> None:
         print_xml("Function with 3 arguments:" + arg1 + " " + arg2 + " " + arg3)
+
+    def loop0(self) -> None:
+        for i in range(10):
+            print_xml("Loop times : " + str(i + 1))
+            time.sleep(1)
 
 
 def main() -> None:
@@ -36,13 +44,6 @@ def main() -> None:
     print_xml("0", "return")
     sys.exit()  # 调用则退出程序
 
-
-def print_xml(content, tag="output"):
-    """
-    This function takes in a string parameter and prints an xml tag with the content as its value.
-    This function takes in a string parameter and prints an xml tag with the tag as its name.
-    """
-    print("<" + tag + ">" + content + "</" + tag + ">")
 
 
 if __name__ == '__main__':

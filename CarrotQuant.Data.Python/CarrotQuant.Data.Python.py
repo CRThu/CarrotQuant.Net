@@ -3,10 +3,10 @@ import pandas as pd
 
 lg = bs.login()
 
-rs = bs.query_history_k_data_plus("sh.600000",
-    "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,tradestatus,pctChg,isST",
+rs = bs.query_history_k_data_plus("sz.000422",
+    "date,time,code,open,high,low,close,volume,amount,adjustflag",
     start_date='2020-01-01', end_date='2020-12-31',
-    frequency="d", adjustflag="3")
+    frequency="5", adjustflag="3")
 
 data_list = []
 while (rs.error_code == '0') & rs.next():
