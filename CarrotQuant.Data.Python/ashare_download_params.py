@@ -15,8 +15,8 @@ adjustflag：复权类型，默认不复权：3；1：后复权；2：前复权�
 """
 baostock_kline_adjust_dict = {
     'none': '3',
-    'forward': '1',
-    'backward': '2'
+    'backward': '1',
+    'forward': '2'
 }
 
 """
