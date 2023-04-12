@@ -85,12 +85,16 @@ def store_klines(save_dir: str, stock_code: str, df: pd.DataFrame):
     df.to_csv(os.path.join(save_dir, f'{stock_code}.csv'), mode='w', index=False)
 
 
-# baostock多线程下载函数
+# baostock多线程k线下载函数
 def baostock_klines_download(stock_list: str, save_dir: str,
                              start_time='1990-01-01', end_time=None,
                              frequency='day', adjust='backward',
                              max_workers=128):
     dir_detect(save_dir)
+
+    lg = bs.login()
+    print_xml('login respond error_code:' + lg.error_code)
+    print_xml('login respond error_msg:' + lg.error_msg)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         # submit the tasks to the executor
@@ -126,3 +130,29 @@ def baostock_klines_download(stock_list: str, save_dir: str,
             json_save_dir = os.path.join(save_dir, f"{kline_store_dir_dict[frequency]}_download_log.json")
             with open(json_save_dir, "w") as outfile:
                 json.dump(download_log_dict, outfile)
+
+    bs.logout()
+
+
+# baostock股票基础数据下载函数
+def baostock_stock_basic_download(save_dir: str):
+    lg = bs.login()
+    print_xml('login respond error_code:' + lg.error_code)
+    print_xml('login respond error_msg:' + lg.error_msg)
+
+    # 请求数据
+    stock_rs = bs.query_stock_basic()
+    stock_df = stock_rs.get_data()
+    bs.logout()
+
+    # 数据处理
+    # stock_df.rename(columns=stock_info_dict, inplace=True)
+    # for tup in stock_info_replace_dict:
+    #     stock_df.loc[stock_df[tup[0]] == tup[1], tup[0]] = tup[2]
+    # print(stock_df)
+
+    stock_basic_save_dir = os.path.join(save_dir, f"stock_basic.csv")
+    stock_df.to_csv(stock_basic_save_dir, index=False)
+    # TODO: JSON
+
+    bs.logout()
