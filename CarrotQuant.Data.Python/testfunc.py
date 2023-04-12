@@ -45,6 +45,5 @@ def main() -> None:
     sys.exit()  # 调用则退出程序
 
 
-
 if __name__ == '__main__':
     main()

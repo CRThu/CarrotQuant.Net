@@ -1,3 +1,5 @@
+import builtins
+import sys
 import threading
 
 
@@ -16,4 +18,28 @@ def print_xml(content, tag="output"):
         content = content.replace("\n", "\\n")
         content = content.replace("\r", "\\r")
         content = content.replace("\t", "\\t")
-        print("<" + tag + ">" + content + "</" + tag + ">")
+        sys.stdout.write("<" + tag + ">" + content + "</" + tag + ">\n")
+
+
+# 兼容stdout的print调用
+def print_compat(*args, tag="output"):
+    # implementation of print_xml function
+    # convert args to string and concatenate them
+    result = ""
+    for arg in args:
+        result += str(arg)
+    # return the concatenated string
+    return print_xml(result, tag)
+
+
+def override_print():
+    builtins.print = print_compat
+
+
+if __name__ == '__main__':
+    print("TEST1")
+    override_print()
+    print("TEST2", tag="TAG")
+    print("T", "E", "S", "T", "3")
+    print("T", "E", "S", "T", "4", tag="TAG")
+    print_xml("TEST5", "TAG")
