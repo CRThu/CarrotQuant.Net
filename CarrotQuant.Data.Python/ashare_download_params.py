@@ -141,7 +141,7 @@ k线频率对应存储路径文件夹名
 """
 kline_store_dir_dict = {
     'day': 'daily',
-    '5m': '5min'
+    '5m': '5min',
 }
 
 """

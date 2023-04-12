@@ -3,6 +3,11 @@ import concurrent.futures
 import random
 import os
 import time
+import json
+import baostock as bs
+
+from ashare_download_params import *
+from print_xml import *
 
 
 # 探测是否存放路径为空, 若为空则新建
@@ -11,36 +16,81 @@ def dir_detect(save_dir: str):
         os.makedirs(save_dir)
 
 
-# define a function to write data to dataframe
+# 下载并保存k线数据函数
+# 返回字典: key:股票代码, value: k线记录行数
 def download_and_store_klines_callfunc(thread_id, save_dir: str,
-                                       stock_name: str, start_time: str, end_time: str,
+                                       stock_code: str, start_time: str, end_time: str,
                                        frequency: str, adjust: str):
-    # 处理参数
-    # TODO
+    # 参数处理
+    # save_dir
+    save_dir_param = os.path.join(save_dir, kline_store_dir_dict[frequency])
 
-    df = download_klines(stock_name)
+    # fields
+    fields_param = baostock_kline_fields_dict[frequency]
+    fields_param = str.join(',', fields_param)
 
-    # 处理数据
-    # TODO
+    # frequency
+    frequency_param = baostock_kline_frequency_dict[frequency]
 
-    store_klines(save_dir, str(thread_id), df)
-    return len(df.index), stock_name
+    # adjust
+    adjust_param = baostock_kline_adjust_dict[adjust]
+
+    # 数据下载
+    stock_df = download_klines(stock_code, fields_param, start_time, end_time, frequency_param, adjust_param)
+
+    # 处理空dataframe
+    if len(stock_df.index) != 0:
+
+        # 数据处理
+        # fields mapper
+        stock_df.rename(columns=baostock_kline_fields_mapper_dict[frequency], inplace=True)
+        # data mapper
+        for mapper_field_key in baostock_kline_fields_data_mapper_dict:
+            if mapper_field_key in stock_df.columns:
+                mapper_field_val = baostock_kline_fields_data_mapper_dict[mapper_field_key]
+                stock_df['col_name'] = stock_df['col_name'].replace(mapper_field_val)
+
+        # 数据存储
+        store_klines(save_dir_param, stock_code, stock_df)
+
+    return {stock_code: len(stock_df.index)}
 
 
-def download_klines(stock_name):
-    df = pd.DataFrame({'data': [stock_name]})
-    return df
+# 下载k线
+def download_klines(stock_code: str, fields: str,
+                    start_time: str, end_time: str,
+                    frequency: str, adjust: str):
+    params = {'stock_code': stock_code, 'fields': fields, 'start_time': start_time, 'end_time': end_time,
+              'frequency': frequency, 'adjust': adjust}
+    result = download_history_klines_with_retry(**params)
+    return result
 
 
+# 下载一支股票k线函数(带超时重试)
+def download_history_klines_with_retry(**params):
+    for _ in range(10):
+        try:
+            result = bs.query_history_k_data_plus(**params)
+            if result.error_code != '0':
+                raise ConnectionError(result.error_msg)
+            return result.get_data()
+        except Exception as e:
+            print_xml('下载遇到错误, 15秒后自动重试:' + repr(e), "warning")
+            time.sleep(15)
+    raise TimeoutError()
+
+
+# 存储k线至csv文件
 def store_klines(save_dir: str, stock_code: str, df: pd.DataFrame):
     df.to_csv(os.path.join(save_dir, f'{stock_code}.csv'), mode='w', index=False)
 
 
+# baostock多线程下载函数
 def baostock_klines_download(stock_list: str, save_dir: str,
                              start_time='1990-01-01', end_time=None,
                              frequency='day', adjust='backward',
                              max_workers=128):
-    dir_detect('datadir')
+    dir_detect(save_dir)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         # submit the tasks to the executor
@@ -50,8 +100,8 @@ def baostock_klines_download(stock_list: str, save_dir: str,
             for thread_id in range(len(stock_list))]
 
         count = 0
-        totallen = 0
         total = 0
+        stock_log_dict = {}
         start_time = time.time()
         for future in concurrent.futures.as_completed(futures):
             count += 1
@@ -59,11 +109,20 @@ def baostock_klines_download(stock_list: str, save_dir: str,
             try:
                 result = future.result()
             except Exception as e:
-                print(f"Exception occurred: {e}")
+                print_xml(f"Exception occurred: {e}")
             else:
-                totallen += result[0]
-                total += result[1]
+                stock_log_dict.update(result)
+                total += list(result.values())[0]
                 if time.time() - start_time > 1:
                     progress = count / len(futures) * 100
-                    print(f'Progress: {progress:.2f}%, Count: {totallen}, Total: {total}')
+                    print_xml(f'Progress: {progress:.2f}%, Count: {count}, Total: {total}')
                     start_time = time.time()
+
+            # Convert my_dict1 to JSON and store it in a file named "my_dict1.json"
+            download_log_dict = {'start_time': start_time, 'end_time': end_time,
+                                 'frequency': frequency, 'adjust': adjust,
+                                 'field': baostock_kline_fields_dict[frequency], 'stock_log': stock_log_dict}
+
+            json_save_dir = os.path.join(save_dir, f"{kline_store_dir_dict[frequency]}_download_log.json")
+            with open(json_save_dir, "w") as outfile:
+                json.dump(download_log_dict, outfile)
