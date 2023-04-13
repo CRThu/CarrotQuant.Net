@@ -364,3 +364,6 @@ FodyWeavers.xsd
 
 # runtime installer
 /MicrosoftEdgeWebView2RuntimeInstallerX64.exe
+
+# database
+CarrotQuant.Data/

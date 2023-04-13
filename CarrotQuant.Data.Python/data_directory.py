@@ -9,11 +9,16 @@ def combine(*paths: str) -> str:
     return os.path.join(*paths)
 
 
+def check_directory(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
 solution_dir: str = '..'
 project_dir: str = combine(solution_dir, "CarrotQuant.Data.Python")
-db_dir: str = combine(solution_dir, "Database")
-db_ashare_csv_daily_dir: str = combine(db_dir, "ashare", "csv", "daily")
-db_testdata_csv_daily_dir: str = combine(db_dir, "testdata", "csv", "daily")
+db_dir: str = combine(solution_dir, "CarrotQuant.Data")
+db_ashare_csv_dir: str = combine(db_dir, "ashare", "csv")
+db_testdata_csv_dir: str = combine(db_dir, "testdata", "csv")
 
 if __name__ == '__main__':
     print('my_dir:\t\t\t'
@@ -28,5 +33,5 @@ if __name__ == '__main__':
         + ('Exist' if os.path.exists(project_dir) else 'Not Exist'))
     print(
         'db_dir:\t\t\t'
-        + db_dir + '\t\t\t\t\t'
+        + db_dir + '\t\t\t'
         + ('Exist' if os.path.exists(db_dir) else 'Not Exist'))

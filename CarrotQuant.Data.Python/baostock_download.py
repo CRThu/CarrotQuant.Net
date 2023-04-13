@@ -1,3 +1,5 @@
+import signal
+
 import pandas as pd
 import concurrent.futures
 import random
@@ -7,13 +9,8 @@ import json
 import baostock as bs
 
 from ashare_download_params import *
+from data_directory import *
 from print_xml import *
-
-
-# 探测是否存放路径为空, 若为空则新建
-def dir_detect(save_dir: str):
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
 
 
 # 下载并保存k线数据函数
@@ -21,6 +18,8 @@ def dir_detect(save_dir: str):
 def download_and_store_klines_callfunc(thread_id, save_dir: str,
                                        stock_code: str, start_time: str, end_time: str,
                                        frequency: str, adjust: str):
+    # lg = bs.login()
+
     # 参数处理
     # save_dir
     save_dir_param = os.path.join(save_dir, kline_store_dir_dict[frequency])
@@ -48,10 +47,12 @@ def download_and_store_klines_callfunc(thread_id, save_dir: str,
         for mapper_field_key in baostock_kline_fields_data_mapper_dict:
             if mapper_field_key in stock_df.columns:
                 mapper_field_val = baostock_kline_fields_data_mapper_dict[mapper_field_key]
-                stock_df['col_name'] = stock_df['col_name'].replace(mapper_field_val)
+                stock_df[mapper_field_key].replace(mapper_field_val, inplace=True)
 
         # 数据存储
         store_klines(save_dir_param, stock_code, stock_df)
+
+    # bs.logout()
 
     return {stock_code: len(stock_df.index)}
 
@@ -60,8 +61,8 @@ def download_and_store_klines_callfunc(thread_id, save_dir: str,
 def download_klines(stock_code: str, fields: str,
                     start_time: str, end_time: str,
                     frequency: str, adjust: str):
-    params = {'stock_code': stock_code, 'fields': fields, 'start_time': start_time, 'end_time': end_time,
-              'frequency': frequency, 'adjust': adjust}
+    params = {'code': stock_code, 'fields': fields, 'start_date': start_time, 'end_date': end_time,
+              'frequency': frequency, 'adjustflag': adjust}
     result = download_history_klines_with_retry(**params)
     return result
 
@@ -85,18 +86,33 @@ def store_klines(save_dir: str, stock_code: str, df: pd.DataFrame):
     df.to_csv(os.path.join(save_dir, f'{stock_code}.csv'), mode='w', index=False)
 
 
+def init_func():
+    # code to be executed by each thread
+    lg = bs.login()
+
+
 # baostock多线程k线下载函数
-def baostock_klines_download(stock_list: str, save_dir: str,
+def baostock_klines_download(stock_list: list, save_dir: str,
                              start_time='1990-01-01', end_time=None,
                              frequency='day', adjust='backward',
-                             max_workers=128):
-    dir_detect(save_dir)
+                             max_workers=8):
+    save_dir_param = os.path.join(save_dir, kline_store_dir_dict[frequency])
+    check_directory(save_dir_param)
 
     lg = bs.login()
     print_xml('login respond error_code:' + lg.error_code)
     print_xml('login respond error_msg:' + lg.error_msg)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+    # 外部中断进程退出
+    def signal_handler(sig, frame):
+        print('外部终止进程')
+        executor.shutdown(wait=False)
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, initializer=init_func) as executor:
         # submit the tasks to the executor
         futures = [
             executor.submit(download_and_store_klines_callfunc, thread_id
@@ -128,14 +144,17 @@ def baostock_klines_download(stock_list: str, save_dir: str,
                                  'field': baostock_kline_fields_dict[frequency], 'stock_log': stock_log_dict}
 
             json_save_dir = os.path.join(save_dir, f"{kline_store_dir_dict[frequency]}_download_log.json")
-            with open(json_save_dir, "w") as outfile:
-                json.dump(download_log_dict, outfile)
+            with open(json_save_dir, "w", encoding='utf-8') as outfile:
+                # Use ensure_ascii=False to prevent escaping of Unicode characters
+                json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)
 
     bs.logout()
 
 
-# baostock股票基础数据下载函数
+# baostock股票基础数据下载函数, 返回所有证券代码
 def baostock_stock_basic_download(save_dir: str):
+    check_directory(save_dir)
+
     lg = bs.login()
     print_xml('login respond error_code:' + lg.error_code)
     print_xml('login respond error_msg:' + lg.error_msg)
@@ -146,13 +165,24 @@ def baostock_stock_basic_download(save_dir: str):
     bs.logout()
 
     # 数据处理
-    # stock_df.rename(columns=stock_info_dict, inplace=True)
-    # for tup in stock_info_replace_dict:
-    #     stock_df.loc[stock_df[tup[0]] == tup[1], tup[0]] = tup[2]
-    # print(stock_df)
+    # fields mapper
+    stock_df.rename(columns=baostock_stock_basic_params_mapper_dict, inplace=True)
+    # data mapper
+    for mapper_field_key in baostock_stock_basic_data_mapper_dict:
+        if mapper_field_key in stock_df.columns:
+            mapper_field_val = baostock_stock_basic_data_mapper_dict[mapper_field_key]
+            stock_df[mapper_field_key].replace(mapper_field_val, inplace=True)
 
     stock_basic_save_dir = os.path.join(save_dir, f"stock_basic.csv")
     stock_df.to_csv(stock_basic_save_dir, index=False)
-    # TODO: JSON
 
-    bs.logout()
+    # create a dictionary from the dataframe
+    stock_list_dict = stock_df.set_index('证券代码')['证券名称'].to_dict()
+
+    # convert the dictionary to json
+    json_save_dir = os.path.join(save_dir, f"stock_list.json")
+    with open(json_save_dir, "w", encoding='utf-8') as outfile:
+        # Use ensure_ascii=False to prevent escaping of Unicode characters
+        json.dump(stock_list_dict, outfile, ensure_ascii=False, indent=4)
+
+    return list(stock_df['证券代码'])
