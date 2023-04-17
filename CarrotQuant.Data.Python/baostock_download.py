@@ -22,7 +22,7 @@ def download_and_store_klines_callfunc(thread_id, save_dir: str,
 
     # 参数处理
     # save_dir
-    save_dir_param = os.path.join(save_dir, kline_store_dir_dict[frequency])
+    save_dir_param = save_dir
 
     # fields
     fields_param = baostock_kline_fields_dict[frequency]
@@ -94,9 +94,13 @@ def init_func():
 # baostock多线程k线下载函数
 def baostock_klines_download(stock_list: list, save_dir: str,
                              start_time='1990-01-01', end_time=None,
-                             frequency='day', adjust='backward',
+                             frequency='day', adjust='post',
                              max_workers=8):
-    save_dir_param = os.path.join(save_dir, kline_store_dir_dict[frequency])
+    # 数据路径
+    metadataset_name = f"{kline_store_dir_dict[frequency]}.{adjust_store_dir_dict[adjust]}"
+    save_dir_param = os.path.join(save_dir, metadataset_name)
+
+    # 目录检查
     check_directory(save_dir_param)
 
     lg = bs.login()
@@ -116,7 +120,7 @@ def baostock_klines_download(stock_list: list, save_dir: str,
         # submit the tasks to the executor
         futures = [
             executor.submit(download_and_store_klines_callfunc, thread_id
-                            , save_dir, stock_list[thread_id], start_time, end_time, frequency, adjust)
+                            , save_dir_param, stock_list[thread_id], start_time, end_time, frequency, adjust)
             for thread_id in range(len(stock_list))]
 
         count = 0
@@ -143,7 +147,7 @@ def baostock_klines_download(stock_list: list, save_dir: str,
                                  'frequency': frequency, 'adjust': adjust,
                                  'field': baostock_kline_fields_dict[frequency], 'stock_log': stock_log_dict}
 
-            json_save_dir = os.path.join(save_dir, f"{kline_store_dir_dict[frequency]}_download_log.json")
+            json_save_dir = os.path.join(save_dir, f"{metadataset_name}_download_log.json")
             with open(json_save_dir, "w", encoding='utf-8') as outfile:
                 # Use ensure_ascii=False to prevent escaping of Unicode characters
                 json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)

@@ -15,8 +15,8 @@ adjustflag：复权类型，默认不复权：3；1：后复权；2：前复权�
 """
 baostock_kline_adjust_dict = {
     'none': '3',
-    'backward': '1',
-    'forward': '2'
+    'post': '1',
+    'pre': '2'
 }
 
 """
@@ -142,6 +142,15 @@ k线频率对应存储路径文件夹名
 kline_store_dir_dict = {
     'day': 'daily',
     '5m': '5min',
+}
+
+"""
+复权类型对应存储路径文件夹名
+"""
+adjust_store_dir_dict = {
+    'none': 'no-adjust',
+    'post': 'post-adjust',
+    'pre': 'pre-adjust'
 }
 
 """
