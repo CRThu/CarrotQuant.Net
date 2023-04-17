@@ -21,7 +21,7 @@ class MyClass:
     def loop0(self) -> None:
         for i in range(10):
             print_xml("Loop times : " + str(i + 1))
-            time.sleep(1)
+            time.sleep(0.25)
 
 
 def main() -> None:
