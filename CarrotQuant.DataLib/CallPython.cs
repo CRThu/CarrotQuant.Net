@@ -10,7 +10,7 @@ namespace CarrotQuant.DataLib
     public class CallPython
     {
         // Create new process start info
-        public static string RunPythonScript(string scriptPath, string funcName, string[] args)
+        public static void RunPythonScript(string scriptPath, string funcName, string[] args, Action<string> outputCallback)
         {
             ProcessStartInfo start = new ProcessStartInfo();
 
@@ -30,7 +30,7 @@ namespace CarrotQuant.DataLib
             if (pythonPath == "")
             {
                 // If python interpreter not found in environment variables, search in common python and anaconda paths
-                string[] commonPythonPaths = { @"C:\Python27\python.exe", @"C:\Python36\python.exe", @"C:\Program Files\Python38\python.exe", @"C:\Program Files\Anaconda3\python.exe", $@"C:\Users\{Environment.UserName}\anaconda3\python.exe" };
+                string[] commonPythonPaths = { @"C:\Python27\python.exe", @"C:\Python36\python.exe", @"C:\Python37\python.exe", $@"C:\Users\{Environment.UserName}\AppData\Local\Programs\Python\Python311\python.exe" };
                 foreach (string path in commonPythonPaths)
                 {
                     if (File.Exists(path))
@@ -63,22 +63,14 @@ namespace CarrotQuant.DataLib
             process.Start();
 
             // Read the output from the process
-            StringBuilder outputBuilder = new StringBuilder();
             while (!process.StandardOutput.EndOfStream)
             {
                 string line = process.StandardOutput.ReadLine();
                 // Do something with the line of output
-                outputBuilder.AppendLine(line);
+                outputCallback(line);
             }
-
-            string output = outputBuilder.ToString();
-
             // Wait for the process to exit
             process.WaitForExit();
-
-            // Process the output
-            // Do something with the output
-            return output;
         }
 
     }

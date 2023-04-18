@@ -19,6 +19,7 @@ def print_xml(content, tag="output"):
         content = content.replace("\r", "\\r")
         content = content.replace("\t", "\\t")
         sys.stdout.write("<" + tag + ">" + content + "</" + tag + ">\n")
+        sys.stdout.flush()
 
 
 # 兼容stdout的print调用

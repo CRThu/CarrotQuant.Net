@@ -1,4 +1,5 @@
 ﻿using CarrotQuant.DataLib;
+using Spectre.Console;
 
 namespace CarrotQuant.DataLib.Demo
 {
@@ -6,29 +7,50 @@ namespace CarrotQuant.DataLib.Demo
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello, World!");
-            Console.WriteLine("Call Python Script Demo");
+            var frequency = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                .Title("Download Menu: Select frequency: ")
+                .AddChoices(new[] { "day", "5m" }));
 
-            string scriptPath = "D:\\Projects\\CarrotQuant.Net\\CarrotQuant.Data.Python\\testfunc.py";
-            string funcName = "func0";
+            AnsiConsole.WriteLine($"Frequency: {frequency}");
+
+            var adjust = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                .Title("Download Menu: Select adjust: ")
+                .AddChoices(new[] { "none", "post", "pre" }));
+
+            AnsiConsole.WriteLine($"Adjust: {adjust}");
+
+            Console.Write("start time(default: 1990-01-01): ");
+            var starttime = Console.ReadLine();
+            if (starttime == "")
+            {
+                starttime = "1990-01-01";
+            }
+            AnsiConsole.WriteLine($"start time: {starttime}");
+
+            Console.Write("end time(default: now): ");
+            var endtime = Console.ReadLine();
+            if (endtime == "")
+            {
+                endtime = "now";
+            }
+            AnsiConsole.WriteLine($"end time: {endtime}");
+
+            string scriptPath = "D:\\Projects\\CarrotQuant.Net\\CarrotQuant.Data.Python\\main_download.py";
+
+            string funcName = "get_version";
             string[] scriptArgs = new string[] { };
-            string log = CallPython.RunPythonScript(scriptPath, funcName, scriptArgs);
-            Console.WriteLine(log);
+            CallPython.RunPythonScript(scriptPath, funcName, scriptArgs, OutputCallback);
 
-            funcName = "func1";
-            scriptArgs = new string[] { "arg1" };
-            log = CallPython.RunPythonScript(scriptPath, funcName, scriptArgs);
-            Console.WriteLine(log);
+            funcName = "download_ashare";
+            scriptArgs = new string[] { starttime, endtime, frequency, adjust };
+            CallPython.RunPythonScript(scriptPath, funcName, scriptArgs, OutputCallback);
+        }
 
-            funcName = "func2";
-            scriptArgs = new string[] { "arg1", "arg2" };
-            log = CallPython.RunPythonScript(scriptPath, funcName, scriptArgs);
-            Console.WriteLine(log);
-
-            funcName = "loop0";
-            scriptArgs = new string[] { };
-            log = CallPython.RunPythonScript(scriptPath, funcName, scriptArgs);
-            Console.WriteLine(log);
+        static void OutputCallback(string line)
+        {
+            AnsiConsole.WriteLine(line);
         }
     }
 }
