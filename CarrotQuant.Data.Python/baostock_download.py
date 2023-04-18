@@ -52,9 +52,11 @@ def download_and_store_klines_callfunc(thread_id, save_dir: str,
         # 数据存储
         store_klines(save_dir_param, stock_code, stock_df)
 
-    # bs.logout()
+        # bs.logout()
 
-    return {stock_code: len(stock_df.index)}
+        return {stock_code: len(stock_df.index)}
+    else:
+        return None
 
 
 # 下载k线
@@ -124,33 +126,31 @@ def baostock_klines_download(stock_list: list, save_dir: str,
             for thread_id in range(len(stock_list))]
 
         count = 0
+        pct_count = 0
         total = 0
         stock_log_dict = {}
         start_time = time.time()
         for future in concurrent.futures.as_completed(futures):
-            count += 1
-            # 函数运行抛出的异常处理
-            try:
-                result = future.result()
-            except Exception as e:
-                print_xml(f"Exception occurred: {e}")
-            else:
+            pct_count += 1
+            result = future.result()
+            if result is not None:
+                count += 1
                 stock_log_dict.update(result)
                 total += list(result.values())[0]
                 if time.time() - start_time > 1:
-                    progress = count / len(futures) * 100
+                    progress = pct_count / len(futures) * 100
                     print_xml(f'Progress: {progress:.2f}%, Count: {count}, Total: {total}')
                     start_time = time.time()
 
-            # Convert my_dict1 to JSON and store it in a file named "my_dict1.json"
-            download_log_dict = {'start_time': start_time, 'end_time': end_time,
-                                 'frequency': frequency, 'adjust': adjust,
-                                 'field': baostock_kline_fields_dict[frequency], 'stock_log': stock_log_dict}
+        # Convert my_dict1 to JSON and store it in a file named "my_dict1.json"
+        download_log_dict = {'start_time': start_time, 'end_time': end_time,
+                             'frequency': frequency, 'adjust': adjust,
+                             'field': baostock_kline_fields_dict[frequency], 'stock_log': stock_log_dict}
 
-            json_save_dir = os.path.join(save_dir, f"{metadataset_name}_download_log.json")
-            with open(json_save_dir, "w", encoding='utf-8') as outfile:
-                # Use ensure_ascii=False to prevent escaping of Unicode characters
-                json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)
+        json_save_dir = os.path.join(save_dir, f"{metadataset_name}_download_log.json")
+        with open(json_save_dir, "w", encoding='utf-8') as outfile:
+            # Use ensure_ascii=False to prevent escaping of Unicode characters
+            json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)
 
     bs.logout()
 
