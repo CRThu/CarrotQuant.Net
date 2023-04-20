@@ -129,7 +129,7 @@ def baostock_klines_download(stock_list: list, save_dir: str,
         pct_count = 0
         total = 0
         stock_log_dict = {}
-        start_time = time.time()
+        timer_t = time.time()
         for future in concurrent.futures.as_completed(futures):
             pct_count += 1
             result = future.result()
@@ -137,13 +137,16 @@ def baostock_klines_download(stock_list: list, save_dir: str,
                 count += 1
                 stock_log_dict.update(result)
                 total += list(result.values())[0]
-                if time.time() - start_time > 1:
+                if time.time() - timer_t > 1:
                     progress = pct_count / len(futures) * 100
                     print_xml(f'Progress: {progress:.2f}%, Count: {count}, Total: {total}')
-                    start_time = time.time()
+                    timer_t = time.time()
 
         # Convert my_dict1 to JSON and store it in a file named "my_dict1.json"
-        download_log_dict = {'start_time': start_time, 'end_time': end_time,
+        if end_time is None:
+            end_time = time.localtime().strftime('%Y-%m-%d')
+        download_log_dict = {'start_time': start_time,
+                             'end_time': end_time,
                              'frequency': frequency, 'adjust': adjust,
                              'field': baostock_kline_fields_dict[frequency], 'stock_log': stock_log_dict}
 
