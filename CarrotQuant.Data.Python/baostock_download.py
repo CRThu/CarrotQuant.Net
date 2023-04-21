@@ -85,6 +85,13 @@ def init_func():
     lg = bs.login()
 
 
+# 比较两个list是否完全一致，允许顺序不同
+def compare_lists(list1, list2):
+    if set(list1) == set(list2) and len(list1) == len(list2):
+        return True
+    return False
+
+
 # baostock多线程k线下载函数
 def baostock_klines_download(stock_list: list, save_dir: str,
                              start_time: str, end_time: str,
@@ -106,9 +113,32 @@ def baostock_klines_download(stock_list: list, save_dir: str,
     # 数据路径
     metadataset_name = f"{kline_store_dir_dict[frequency]}.{adjust_store_dir_dict[adjust]}"
     save_dir_param = os.path.join(save_dir, metadataset_name)
+    json_save_dir = os.path.join(save_dir, f"{metadataset_name}_download_log.json")
 
     # 目录检查
     check_directory(save_dir_param)
+
+    # 断点续传，增量更新(TODO)
+    if os.path.exists(json_save_dir):
+        print("发现上次的下载日志")
+
+        # 打开json文件并读取
+        with open(json_save_dir, 'r', encoding='utf-8') as f:
+            last_download_log_dict = json.load(f)
+
+        # 断点续传
+        if last_download_log_dict['start_time'] == download_log_dict['start_time'] and last_download_log_dict[
+            'end_time'] == download_log_dict['end_time'] and last_download_log_dict['frequency'] == download_log_dict[
+            'frequency'] and last_download_log_dict['adjust'] == download_log_dict['adjust'] and last_download_log_dict[
+            'field'] == download_log_dict['field'] and compare_lists(
+            last_download_log_dict['downloaded_stock'] + last_download_log_dict['blank_stock'] +
+            last_download_log_dict['undownload_stock'], download_log_dict['undownload_stock']):
+            print("断点续传中")
+            print(
+                f"剩余股票数量:{len(last_download_log_dict['undownload_stock'])}/{len(download_log_dict['undownload_stock'])}")
+            download_log_dict = last_download_log_dict
+
+    undownload_stock_list = download_log_dict['undownload_stock']
 
     lg = bs.login()
     print_xml('login respond error_code:' + lg.error_code)
@@ -126,9 +156,10 @@ def baostock_klines_download(stock_list: list, save_dir: str,
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, initializer=init_func) as executor:
         # submit the tasks to the executor
         futures = [
-            executor.submit(download_and_proc_klines_callfunc, thread_id
-                            , save_dir_param, stock_list[thread_id], start_time, end_time, frequency, adjust)
-            for thread_id in range(len(stock_list))]
+            executor.submit(download_and_proc_klines_callfunc, thread_id,
+                            save_dir_param, undownload_stock_list[thread_id],
+                            start_time, end_time, frequency, adjust)
+            for thread_id in range(len(undownload_stock_list))]
 
         count = 0
         pct_count = 0
@@ -163,7 +194,6 @@ def baostock_klines_download(stock_list: list, save_dir: str,
                 download_log_dict['undownload_stock'].remove(result['code'])
 
             # log写入
-            json_save_dir = os.path.join(save_dir, f"{metadataset_name}_download_log.json")
             with open(json_save_dir, "w", encoding='utf-8') as outfile:
                 # Use ensure_ascii=False to prevent escaping of Unicode characters
                 json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)

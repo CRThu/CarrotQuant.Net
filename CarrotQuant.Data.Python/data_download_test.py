@@ -20,7 +20,7 @@ if __name__ == '__main__':
     # Loop through each string in the original array
     for string in stock_list:
         # Check if the string starts with "sz." and if the length of the new array is less than 100
-        if string.startswith("sz.") and len(test_stock_list) < 100:
+        if string.startswith("sz.") and len(test_stock_list) < 150:
             # If both conditions are met, append the string to the new array
             test_stock_list.append(string)
 
@@ -29,8 +29,8 @@ if __name__ == '__main__':
 
     # 下载k线数据
     baostock_klines_download(test_stock_list, db_ashare_baostock_csv_dir,
-                             start_time='2020-01-01',
+                             start_time='2000-01-01',
                              end_time='2023-01-01',
-                             max_workers=61)
+                             max_workers=20)
 
     print_xml("k线下载已完成")
