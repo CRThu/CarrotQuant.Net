@@ -13,17 +13,11 @@ from data_directory import *
 from print_xml import *
 
 
-# 下载并保存k线数据函数
-# 返回字典: key:股票代码, value: k线记录行数
-def download_and_store_klines_callfunc(thread_id, save_dir: str,
-                                       stock_code: str, start_time: str, end_time: str,
-                                       frequency: str, adjust: str):
-    # lg = bs.login()
-
-    # 参数处理
-    # save_dir
-    save_dir_param = save_dir
-
+# 下载并处理k线数据函数
+# 返回字典: {'code': 股票代码, 'count': k线记录行数, 'data': k线数据}
+def download_and_proc_klines_callfunc(thread_id, save_dir: str,
+                                      stock_code: str, start_time: str, end_time: str,
+                                      frequency: str, adjust: str):
     # fields
     fields_param = baostock_kline_fields_dict[frequency]
     fields_param = str.join(',', fields_param)
@@ -35,7 +29,7 @@ def download_and_store_klines_callfunc(thread_id, save_dir: str,
     adjust_param = baostock_kline_adjust_dict[adjust]
 
     # 数据下载
-    stock_df = download_klines(stock_code, fields_param, start_time, end_time, frequency_param, adjust_param)
+    stock_df = download_klines_interface(stock_code, fields_param, start_time, end_time, frequency_param, adjust_param)
 
     # 处理空dataframe
     if len(stock_df.index) != 0:
@@ -49,20 +43,13 @@ def download_and_store_klines_callfunc(thread_id, save_dir: str,
                 mapper_field_val = baostock_kline_fields_data_mapper_dict[mapper_field_key]
                 stock_df[mapper_field_key].replace(mapper_field_val, inplace=True)
 
-        # 数据存储
-        store_klines(save_dir_param, stock_code, stock_df)
-
-        # bs.logout()
-
-        return {stock_code: len(stock_df.index)}
-    else:
-        return None
+    return {'code': stock_code, 'count': len(stock_df.index), 'data': stock_df}
 
 
 # 下载k线
-def download_klines(stock_code: str, fields: str,
-                    start_time: str, end_time: str,
-                    frequency: str, adjust: str):
+def download_klines_interface(stock_code: str, fields: str,
+                              start_time: str, end_time: str,
+                              frequency: str, adjust: str):
     params = {'code': stock_code, 'fields': fields, 'start_date': start_time, 'end_date': end_time,
               'frequency': frequency, 'adjustflag': adjust}
     result = download_history_klines_with_retry(**params)
@@ -76,7 +63,12 @@ def download_history_klines_with_retry(**params):
             result = bs.query_history_k_data_plus(**params)
             if result.error_code != '0':
                 raise ConnectionError(result.error_msg)
-            return result.get_data()
+            # return result.get_data()
+            data_list = []
+            while (result.error_code == '0') & result.next():
+                # 获取一条记录，将记录合并在一起
+                data_list.append(result.get_row_data())
+            return pd.DataFrame(data_list, columns=result.fields)
         except Exception as e:
             print_xml('下载遇到错误, 15秒后自动重试:' + repr(e), "warning")
             time.sleep(15)
@@ -95,9 +87,22 @@ def init_func():
 
 # baostock多线程k线下载函数
 def baostock_klines_download(stock_list: list, save_dir: str,
-                             start_time='1990-01-01', end_time=None,
+                             start_time: str, end_time: str,
                              frequency='day', adjust='post',
                              max_workers=8):
+    # 下载log记录信息字典
+    fields_names = [baostock_kline_fields_mapper_dict[frequency][field]
+                    for field in baostock_kline_fields_dict[frequency]]
+    download_log_dict = {'start_time': start_time,
+                         'end_time': end_time,
+                         'frequency': frequency,
+                         'adjust': adjust,
+                         'field': fields_names,
+                         'downloaded_stock': [],
+                         'blank_stock': [],
+                         'undownload_stock': stock_list
+                         }
+
     # 数据路径
     metadataset_name = f"{kline_store_dir_dict[frequency]}.{adjust_store_dir_dict[adjust]}"
     save_dir_param = os.path.join(save_dir, metadataset_name)
@@ -121,39 +126,47 @@ def baostock_klines_download(stock_list: list, save_dir: str,
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, initializer=init_func) as executor:
         # submit the tasks to the executor
         futures = [
-            executor.submit(download_and_store_klines_callfunc, thread_id
+            executor.submit(download_and_proc_klines_callfunc, thread_id
                             , save_dir_param, stock_list[thread_id], start_time, end_time, frequency, adjust)
             for thread_id in range(len(stock_list))]
 
         count = 0
         pct_count = 0
         total = 0
-        stock_log_dict = {}
         timer_t = time.time()
         for future in concurrent.futures.as_completed(futures):
             pct_count += 1
-            result = future.result()
-            if result is not None:
+            try:
+                result = future.result()
+            except Exception as e:
+                print_xml('下载进程遇到错误:' + repr(e), "error")
+
+            # 股票有数据
+            if result['count'] != 0:
+                # 进度更新
                 count += 1
-                stock_log_dict.update(result)
-                total += list(result.values())[0]
+                total += result['count']
                 if time.time() - timer_t > 1:
                     progress = pct_count / len(futures) * 100
                     print_xml(f'Progress: {progress:.2f}%, Count: {count}, Total: {total}')
                     timer_t = time.time()
 
-        # Convert my_dict1 to JSON and store it in a file named "my_dict1.json"
-        if end_time is None:
-            end_time = time.localtime().strftime('%Y-%m-%d')
-        download_log_dict = {'start_time': start_time,
-                             'end_time': end_time,
-                             'frequency': frequency, 'adjust': adjust,
-                             'field': baostock_kline_fields_dict[frequency], 'stock_log': stock_log_dict}
+                # 数据存储
+                store_klines(save_dir_param, result['code'], result['data'])
+                # log更新
+                download_log_dict['downloaded_stock'].append(result['code'])
+                download_log_dict['undownload_stock'].remove(result['code'])
+            # 股票无数据
+            else:
+                # log更新
+                download_log_dict['blank_stock'].append(result['code'])
+                download_log_dict['undownload_stock'].remove(result['code'])
 
-        json_save_dir = os.path.join(save_dir, f"{metadataset_name}_download_log.json")
-        with open(json_save_dir, "w", encoding='utf-8') as outfile:
-            # Use ensure_ascii=False to prevent escaping of Unicode characters
-            json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)
+            # log写入
+            json_save_dir = os.path.join(save_dir, f"{metadataset_name}_download_log.json")
+            with open(json_save_dir, "w", encoding='utf-8') as outfile:
+                # Use ensure_ascii=False to prevent escaping of Unicode characters
+                json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)
 
     bs.logout()
 
@@ -168,7 +181,14 @@ def baostock_stock_basic_download(save_dir: str):
 
     # 请求数据
     stock_rs = bs.query_stock_basic()
-    stock_df = stock_rs.get_data()
+    # stock_df = stock_rs.get_data()
+    if stock_rs.error_code != '0':
+        raise ConnectionError(stock_rs.error_msg)
+    data_list = []
+    while (stock_rs.error_code == '0') & stock_rs.next():
+        # 获取一条记录，将记录合并在一起
+        data_list.append(stock_rs.get_row_data())
+    stock_df = pd.DataFrame(data_list, columns=stock_rs.fields)
     bs.logout()
 
     # 数据处理
@@ -184,12 +204,14 @@ def baostock_stock_basic_download(save_dir: str):
     stock_df.to_csv(stock_basic_save_dir, index=False)
 
     # create a dictionary from the dataframe
-    stock_list_dict = stock_df.set_index('证券代码')['证券名称'].to_dict()
+    stock_list = stock_df[(stock_df['证券类型'] == '股票')].set_index('证券代码')['证券名称'].to_dict()
+    index_list = stock_df[(stock_df['证券类型'] == '指数')].set_index('证券代码')['证券名称'].to_dict()
+    basic_info_dict = {'stock': stock_list, 'index': index_list}
 
     # convert the dictionary to json
     json_save_dir = os.path.join(save_dir, f"stock_list.json")
     with open(json_save_dir, "w", encoding='utf-8') as outfile:
         # Use ensure_ascii=False to prevent escaping of Unicode characters
-        json.dump(stock_list_dict, outfile, ensure_ascii=False, indent=4)
+        json.dump(basic_info_dict, outfile, ensure_ascii=False, indent=4)
 
     return list(stock_df['证券代码'])

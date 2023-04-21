@@ -13,12 +13,9 @@ class MyClass:
     def get_version(self) -> None:
         print_xml(f"版本号: {version.version}", "version")
 
-    def download_ashare(self, start_time='1990-01-01', end_time='now',
+    def download_ashare(self, start_time='1990-01-01', end_time='2023-04-01',
                         frequency='day', adjust='post') -> None:
         db_ashare_baostock_csv_dir: str = combine(db_dir, "ashare", "baostock", "csv")
-
-        if end_time == 'now':
-            end_time = ''
 
         # 下载股票信息
         print_xml(f"正在下载股票信息")
@@ -46,7 +43,6 @@ def main() -> None:
     # sys.stdout.reconfigure(encoding='utf-8')
     # Ignore FutureWarning for frame.append method
     warnings.simplefilter(action='ignore', category=FutureWarning)
-
 
     my_class = MyClass()
 

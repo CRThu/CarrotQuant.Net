@@ -1,11 +1,10 @@
 from baostock_download import *
 from data_directory import *
 
-
 if __name__ == '__main__':
     # override_print()
 
-    db_ashare_baostock_csv_dir: str = combine(db_dir, "ashare", "baostock", "csv")
+    db_ashare_baostock_csv_dir: str = combine(db_dir, "ashare", "baostock", "csv.test")
     print(
         'db_ashare_baostock_csv_dir:\t\t\t'
         + db_ashare_baostock_csv_dir + '\t\t\t'
@@ -29,6 +28,9 @@ if __name__ == '__main__':
     print(test_stock_list)
 
     # 下载k线数据
-    baostock_klines_download(test_stock_list, db_ashare_baostock_csv_dir, max_workers=61)
+    baostock_klines_download(test_stock_list, db_ashare_baostock_csv_dir,
+                             start_time='2020-01-01',
+                             end_time='2023-01-01',
+                             max_workers=61)
 
     print_xml("k线下载已完成")
