@@ -14,7 +14,7 @@ class MyClass:
         print_xml(f"版本号: {version.version}", "version")
 
     def download_ashare(self, start_time='1990-01-01', end_time='2023-04-01',
-                        frequency='day', adjust='post') -> None:
+                        frequency='day', adjust='post',max_workers=16) -> None:
         db_ashare_baostock_csv_dir: str = combine(db_dir, "ashare", "baostock", "csv")
 
         # 下载股票信息
@@ -33,7 +33,7 @@ class MyClass:
         baostock_klines_download(stock_list=stock_list_new, save_dir=db_ashare_baostock_csv_dir,
                                  start_time=start_time, end_time=end_time,
                                  frequency=frequency, adjust=adjust,
-                                 max_workers=61)
+                                 max_workers=max_workers)
 
         print_xml("k线下载已完成")
 
