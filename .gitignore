@@ -365,5 +365,9 @@ FodyWeavers.xsd
 # runtime installer
 /MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 
-# database
-CarrotQuant.Data/
+# csv database
+# exclude CarrotQuant.Data\ashare\baostock\csv\daily.post-adjust
+# exclude CarrotQuant.Data\ashare\baostock\csv\5min.post-adjust
+# include CarrotQuant.Data\ashare\baostock\csv\testdata
+/CarrotQuant.Data/**/csv/*
+!/CarrotQuant.Data/**/csv/testdata/
