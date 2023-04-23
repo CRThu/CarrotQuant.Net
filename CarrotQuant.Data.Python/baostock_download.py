@@ -1,3 +1,4 @@
+import gc
 import signal
 
 import pandas as pd
@@ -197,6 +198,10 @@ def baostock_klines_download(stock_list: list, save_dir: str,
             with open(json_save_dir, "w", encoding='utf-8') as outfile:
                 # Use ensure_ascii=False to prevent escaping of Unicode characters
                 json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)
+            
+            # GC
+            del result['data']
+            gc.collect()
 
     bs.logout()
 
