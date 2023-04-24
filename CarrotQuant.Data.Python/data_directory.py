@@ -17,7 +17,6 @@ def check_directory(path):
 solution_dir: str = '..'
 project_dir: str = combine(solution_dir, "CarrotQuant.Data.Python")
 db_dir: str = combine(solution_dir, "CarrotQuant.Data")
-db_ashare_csv_dir: str = combine(db_dir, "ashare", "csv")
 
 if __name__ == '__main__':
     print('my_dir:\t\t\t'
