@@ -18,7 +18,8 @@ from print_xml import *
 # 返回字典: {'code': 股票代码, 'count': k线记录行数, 'data': k线数据}
 def download_and_proc_klines_callfunc(thread_id, save_dir: str,
                                       stock_code: str, start_time: str, end_time: str,
-                                      frequency: str, adjust: str):
+                                      frequency: str, adjust: str,
+                                      is_map: bool = True):
     # fields
     fields_param = baostock_kline_fields_dict[frequency]
     fields_param = str.join(',', fields_param)
@@ -34,15 +35,15 @@ def download_and_proc_klines_callfunc(thread_id, save_dir: str,
 
     # 处理空dataframe
     if len(stock_df.index) != 0:
-
-        # 数据处理
-        # fields mapper
-        stock_df.rename(columns=baostock_kline_fields_mapper_dict[frequency], inplace=True)
-        # data mapper
-        for mapper_field_key in baostock_kline_fields_data_mapper_dict:
-            if mapper_field_key in stock_df.columns:
-                mapper_field_val = baostock_kline_fields_data_mapper_dict[mapper_field_key]
-                stock_df[mapper_field_key].replace(mapper_field_val, inplace=True)
+        if is_map:
+            # 数据处理
+            # fields mapper
+            stock_df.rename(columns=baostock_kline_fields_mapper_dict[frequency], inplace=True)
+            # data mapper
+            for mapper_field_key in baostock_kline_fields_data_mapper_dict:
+                if mapper_field_key in stock_df.columns:
+                    mapper_field_val = baostock_kline_fields_data_mapper_dict[mapper_field_key]
+                    stock_df[mapper_field_key].replace(mapper_field_val, inplace=True)
 
     return {'code': stock_code, 'count': len(stock_df.index), 'data': stock_df}
 
@@ -97,7 +98,7 @@ def compare_lists(list1, list2):
 def baostock_klines_download(stock_list: list, save_dir: str,
                              start_time: str, end_time: str,
                              frequency='day', adjust='post',
-                             max_workers=8):
+                             is_map: bool = True, max_workers=8):
     # 下载log记录信息字典
     fields_names = [baostock_kline_fields_mapper_dict[frequency][field]
                     for field in baostock_kline_fields_dict[frequency]]
@@ -159,7 +160,7 @@ def baostock_klines_download(stock_list: list, save_dir: str,
         futures = [
             executor.submit(download_and_proc_klines_callfunc, thread_id,
                             save_dir_param, undownload_stock_list[thread_id],
-                            start_time, end_time, frequency, adjust)
+                            start_time, end_time, frequency, adjust, is_map)
             for thread_id in range(len(undownload_stock_list))]
 
         count = 0
@@ -198,7 +199,7 @@ def baostock_klines_download(stock_list: list, save_dir: str,
             with open(json_save_dir, "w", encoding='utf-8') as outfile:
                 # Use ensure_ascii=False to prevent escaping of Unicode characters
                 json.dump(download_log_dict, outfile, ensure_ascii=False, indent=4)
-            
+
             # GC
             del result['data']
             gc.collect()
