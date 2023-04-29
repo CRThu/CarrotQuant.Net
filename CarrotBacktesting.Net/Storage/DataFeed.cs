@@ -55,6 +55,10 @@ namespace CarrotBacktesting.Net.Storage
                 _ => throw new NotImplementedException("暂不支持该格式数据源"),
             };
 
+            // 若未传入被测股票代码则获取所有股票代码
+            if (Options.StockCodes is null)
+                Options.StockCodes = IDataProvider.GetAllStockCode();
+
             var frames = IDataProvider.GetShareData(Options.StockCodes, Options.Fields!, Options.SimulationStartTime, Options.SimulationEndTime);
             MarketDataBuilder.AddRange(frames);
 

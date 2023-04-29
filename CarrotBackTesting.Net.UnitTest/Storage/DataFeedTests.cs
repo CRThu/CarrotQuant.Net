@@ -32,7 +32,7 @@ namespace CarrotBacktesting.Net.Storage.Tests
                 MapperJsonFilePath = mapperPath,
                 SimulationStartTime = new DateTime(2021, 01, 01),
                 SimulationEndTime = new DateTime(2021, 05, 01),
-            }.Load());
+            }.Parse());
 
             // 载入市场数据天数验证
             Console.WriteLine($"共载入{dataFeed.Count}天市场数据.");

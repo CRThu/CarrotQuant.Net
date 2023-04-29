@@ -21,6 +21,7 @@ namespace CarrotBacktesting.Net.Engine
         public static BackTestingEngine Create(IStrategy strategy, SimulationOptions options)
         {
             // 类初始化
+            options.Parse();
             DataFeed dataFeed = new(options);
             BackTestingExchange exchange = new(options);
             TickSimulator simulator = new(dataFeed, options);

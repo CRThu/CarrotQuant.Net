@@ -20,6 +20,16 @@ namespace CarrotBackTesting.Net.UnitTest.Common
         public static string JsonDirectory => @$"{ProjectDirectory}\TestData\json";
         public static string BenchmarkJsonDirectory => @$"{BenchmarkProjectDirectory}\TestData\json";
 
+        /// <summary>
+        /// 历史数据测试数据路径
+        /// </summary>
+        public static string AsBsCsvTestDataDir => @$"{SolutionDirectory}\CarrotQuant.Data\ashare\baostock\csv\testdata";
+
+        /// <summary>
+        /// 历史数据测试数据配置文件路径
+        /// </summary>
+        public static string AsBsJsonTestDataDir => @$"{SolutionDirectory}\CarrotQuant.Data\ashare\baostock\json\testdata";
+
         public static string InfoPath => @$"{ProjectDirectory}\TestData\json\info.json";
         //https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/use-dom-utf8jsonreader-utf8jsonwriter?pivots=dotnet-7-0
         public static JsonNode Info = JsonNode.Parse(File.ReadAllText(InfoPath))!;

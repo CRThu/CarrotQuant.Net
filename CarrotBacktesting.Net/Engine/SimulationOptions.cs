@@ -69,7 +69,7 @@ namespace CarrotBacktesting.Net.Engine
         public bool SimulatorUseFutureData { get; set; } = false;
 
         /// <summary>
-        /// 股票列表
+        /// 股票列表, 若为null则获取所有股票代码
         /// </summary>
         public string[]? StockCodes { get; set; } = null;
 
@@ -106,11 +106,24 @@ namespace CarrotBacktesting.Net.Engine
 
         }
 
+
+        /// <summary>
+        /// 通过Json载入SimulationObject配置
+        /// </summary>
+        /// <param name="jsonpath">Json配置文件</param>
+        /// <returns>返回创建的配置类</returns>
+        public static SimulationOptions CreateFromJson(string jsonpath)
+        {
+            string jsonString = File.ReadAllText(jsonpath);
+            SimulationOptions options = Json.DeSerialize<SimulationOptions>(jsonString)!;
+            return options;
+        }
+
         /// <summary>
         /// 展开SimulationOptionsJsonObject的Json配置嵌套
         /// </summary>
         /// <returns>返回本类</returns>
-        public SimulationOptions Load()
+        public SimulationOptions Parse()
         {
             // 反序列化嵌套配置读取
             if (MapperJsonFilePath != null)

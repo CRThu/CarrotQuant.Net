@@ -25,7 +25,7 @@ public class BackTestingEngineBenchmark
         string filename = "simulationoptions.baostock.sqlite.daily.json";
         string optionJsonPath = Path.Combine(UnitTestDirectory.BenchmarkJsonDirectory, filename);
         Console.WriteLine($"optionJsonPath:{optionJsonPath}");
-        options = SimulationOptionsFactory.CreateFromJson(optionJsonPath);
+        options = SimulationOptions.CreateFromJson(optionJsonPath);
         engine = BackTestingEngineFactory.Create(new EmptyStrategy(), options);
     }
 
