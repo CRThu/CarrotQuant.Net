@@ -1,0 +1,17 @@
+[
+    "date",
+    "code",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+    "turn",
+    "tradestatus",
+    "peTTM",
+    "psTTM",
+    "pcfNcfTTM",
+    "pbMRQ",
+    "isST"
+]

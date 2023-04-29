@@ -1,0 +1,36 @@
+{
+    "MapDict": {
+        "date": "Time",
+        "code": "Code",
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "volume": "Volume",
+        "amount": "Amount",
+        "turn": "Turn",
+        "tradestatus": "Status",
+        "peTTM": "PE",
+        "psTTM": "PS",
+        "pcfNcfTTM": "PCF",
+        "pbMRQ": "PB",
+        "isST": "ST"
+    },
+    "TypeDict": {
+        "amount": "System.Double",
+        "turn": "System.Double",
+        "peTTM": "System.Double",
+        "psTTM": "System.Double",
+        "pcfNcfTTM": "System.Double",
+        "pbMRQ": "System.Double",
+        "isST": "System.Boolean"
+    },
+    "BooleanTrueString": [
+        "1",
+        "测试True"
+    ],
+    "BooleanFalseString": [
+        "0",
+        "测试False"
+    ]
+}
