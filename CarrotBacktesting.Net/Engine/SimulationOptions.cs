@@ -123,22 +123,25 @@ namespace CarrotBacktesting.Net.Engine
         /// 展开SimulationOptionsJsonObject的Json配置嵌套
         /// </summary>
         /// <returns>返回本类</returns>
-        public SimulationOptions Parse()
+        public SimulationOptions Parse(string baseDir = ".")
         {
             // 反序列化嵌套配置读取
             if (MapperJsonFilePath != null)
             {
-                Mapper = Json.DeSerializeFromFile<ShareFrameMapper>(MapperJsonFilePath);
+                string parsedMapperJsonFilePath = Path.Combine(baseDir, MapperJsonFilePath);
+                Mapper = Json.DeSerializeFromFile<ShareFrameMapper>(parsedMapperJsonFilePath);
             }
 
             if (FieldsJsonFilePath != null)
             {
-                Fields = Json.DeSerializeFromFile<string[]>(FieldsJsonFilePath);
+                string parsedFieldsJsonFilePath = Path.Combine(baseDir, FieldsJsonFilePath);
+                Fields = Json.DeSerializeFromFile<string[]>(parsedFieldsJsonFilePath);
             }
 
             if (StockCodesJsonFilePath != null)
             {
-                StockCodes = Json.DeSerializeFromFile<string[]>(StockCodesJsonFilePath);
+                string parsedStockCodesJsonFilePath = Path.Combine(baseDir, StockCodesJsonFilePath);
+                StockCodes = Json.DeSerializeFromFile<string[]>(parsedStockCodesJsonFilePath);
             }
 
             // 更新全局布尔值字符串

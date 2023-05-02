@@ -14,12 +14,9 @@ namespace CarrotBacktesting.Net.Demo
         {
             Console.WriteLine("Hello, World!");
 
-            string filename = "simulationoptions.baostock.sqlite.daily.json";
-            string optionJsonPath = Path.Combine(UnitTestDirectory.JsonDirectory, filename);
-            SimulationOptions options = SimulationOptions.CreateFromJson(optionJsonPath);
-
-            BackTestingEngine engine = BackTestingEngineFactory.Create(new DebugStrategy(), options);
-
+            string filename = "options.daily.no-map.json";
+            string optionsJsonPath = Path.Combine(UnitTestDirectory.AsBsJsonTestDataDir, filename);
+            BackTestingEngine engine = BackTestingEngine.Create(new DebugStrategy(), optionsJsonPath);
             Stopwatch stopwatch = new();
             stopwatch.Start();
 

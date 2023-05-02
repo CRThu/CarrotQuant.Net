@@ -78,5 +78,57 @@ namespace CarrotBacktesting.Net.Engine
 
             Strategy.OnEnd(StrategyContext);
         }
+
+        /// <summary>
+        /// 通过配置文件路径创建回测引擎
+        /// </summary>
+        /// <param name="strategy">策略</param>
+        /// <param name="optionsJsonPath">配置文件路径</param>
+        /// <returns>回测引擎类</returns>
+        public static BackTestingEngine Create(IStrategy strategy, string optionsJsonPath)
+        {
+            string baseDir = Path.GetDirectoryName(optionsJsonPath)!;
+            SimulationOptions options = SimulationOptions.CreateFromJson(optionsJsonPath);
+            return Create(strategy, options, baseDir);
+        }
+
+        /// <summary>
+        /// 通过配置创建回测引擎
+        /// </summary>
+        /// <param name="strategy">策略</param>
+        /// <param name="options">配置类</param>
+        /// <param name="baseDir">默认根目录</param>
+        /// <returns>回测引擎类</returns>
+        public static BackTestingEngine Create(IStrategy strategy, SimulationOptions options, string baseDir = ".")
+        {
+            // 类初始化
+            options.Parse(baseDir);
+            DataFeed dataFeed = new(options);
+            BackTestingExchange exchange = new(options);
+            TickSimulator simulator = new(dataFeed, options);
+            PortfolioManager portfolio = new(options);
+            StrategyContext context = new(portfolio, simulator);
+
+            BackTestingEngine engine = new() {
+                DataFeed = dataFeed,
+                Exchange = exchange,
+                Simulator = simulator,
+                Portfolio = portfolio,
+                Options = options,
+                Strategy = strategy,
+                StrategyContext = context
+            };
+
+            // 事件订阅
+            simulator.OnMarketUpdate += exchange.OnMarketUpdate;
+            simulator.OnMarketUpdate += portfolio.OnMarketUpdate;
+            simulator.OnMarketUpdate += strategy.OnTick;
+            exchange.OnTradeUpdate += portfolio.OnTradeUpdate;
+            exchange.OnTradeUpdate += strategy.OnTradeUpdate;
+            portfolio.OrderManager.OnOrderUpdate += exchange.OnOrderUpdate;
+            portfolio.OrderManager.OnOrderUpdate += strategy.OnOrderUpdate;
+
+            return engine;
+        }
     }
 }
