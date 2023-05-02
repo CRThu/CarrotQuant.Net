@@ -3,6 +3,7 @@ using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Portfolio.Order;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -25,7 +26,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="strategyContext"></param>
         public void OnStart(StrategyContext strategyContext)
         {
-            Console.WriteLine("EmptyStrategy.OnStart()");
+            Debug.WriteLine("EmptyStrategy.OnStart()");
         }
 
         /// <summary>
@@ -34,7 +35,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="strategyContext"></param>
         public void OnEnd(StrategyContext strategyContext)
         {
-            Console.WriteLine("EmptyStrategy.OnEnd()");
+            Debug.WriteLine("EmptyStrategy.OnEnd()");
         }
 
         /// <summary>
@@ -44,10 +45,10 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="marketEventArgs"></param>
         public void OnTick(MarketFrame marketFrame, MarketEventArgs marketEventArgs)
         {
-            Console.WriteLine("EmptyStrategy.OnTick(sender, args)");
-            Console.WriteLine($"Strategy: Tick: {marketFrame.Time}");
-            Console.WriteLine($"Strategy: StockCount: {marketFrame.Count}");
-            //Console.WriteLine($"Strategy: Stock: {string.Join(',', marketFrame.Codes)}");
+            Debug.WriteLine("EmptyStrategy.OnTick(sender, args)");
+            Debug.WriteLine($"Strategy: Tick: {marketFrame.Time}");
+            // Debug.WriteLine($"Strategy: StockCount: {marketFrame.Count}");
+            // Debug.WriteLine($"Strategy: Stock: {string.Join(',', marketFrame.Codes)}");
         }
 
         /// <summary>
@@ -56,7 +57,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="strategyContext"></param>
         public void OnNext(StrategyContext strategyContext)
         {
-            Console.WriteLine("EmptyStrategy.OnNext()");
+            Debug.WriteLine("EmptyStrategy.OnNext()");
         }
 
         /// <summary>
@@ -66,7 +67,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="operation"></param>
         public void OnOrderUpdate(OrderManager sender, OrderEventArgs operation)
         {
-            Console.WriteLine("EmptyStrategy.OnOrderUpdate(sender, args)");
+            Debug.WriteLine("EmptyStrategy.OnOrderUpdate(sender, args)");
         }
 
         /// <summary>
@@ -76,7 +77,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="tradeEventArgs"></param>
         public void OnTradeUpdate(BackTestingExchange exchange, TradeEventArgs tradeEventArgs)
         {
-            Console.WriteLine("EmptyStrategy.OnTradeUpdate(sender, args)");
+            Debug.WriteLine("EmptyStrategy.OnTradeUpdate(sender, args)");
         }
     }
 }

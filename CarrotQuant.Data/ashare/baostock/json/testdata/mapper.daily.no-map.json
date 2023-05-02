@@ -17,13 +17,13 @@
         "isST": "ST"
     },
     "TypeDict": {
-        "amount": "System.Double",
-        "turn": "System.Double",
-        "peTTM": "System.Double",
-        "psTTM": "System.Double",
-        "pcfNcfTTM": "System.Double",
-        "pbMRQ": "System.Double",
-        "isST": "System.Boolean"
+        "Amount": "System.Double",
+        "Turn": "System.Double",
+        "PE": "System.Double",
+        "PS": "System.Double",
+        "PCF": "System.Double",
+        "PB": "System.Double",
+        "ST": "System.Boolean"
     },
     "BooleanTrueString": [
         "1",

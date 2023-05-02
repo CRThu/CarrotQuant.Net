@@ -1,9 +1,9 @@
 {
   "DataFeedSource": "Csv",
-  "DataFeedPath": ".\\..\\csv\\testdata\\daily.no-map",
-  "MapperJsonFilePath": ".\\mapper.daily.no-map.json",
-  "FieldsJsonFilePath": ".\\fields.daily.no-map.json",
-  "StockCodesJsonFilePath": ".\\stockcodes.daily.no-map.json",
+  "DataFeedPath": "..\\..\\csv\\testdata\\daily.no-map",
+  "MapperJsonFilePath": "mapper.daily.no-map.json",
+  "FieldsJsonFilePath": "fields.daily.no-map.json",
+  "StockCodesJsonFilePath": "stockcodes.daily.no-map.json",
   "ExchangeEstimateLiquidityRatio": 0.2,
   "ExchangePriceSlippage": 0.02,
   "InitialCash": 1000000
