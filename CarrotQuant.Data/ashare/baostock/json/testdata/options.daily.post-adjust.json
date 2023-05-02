@@ -1,0 +1,9 @@
+{
+  "DataFeedSource": "Csv",
+  "DataFeedPath": "..\\..\\csv\\testdata\\daily.post-adjust",
+  "MapperJsonFilePath": "mapper.daily.post-adjust.json",
+  "FieldsJsonFilePath": "fields.daily.post-adjust.json",
+  "ExchangeEstimateLiquidityRatio": 0.2,
+  "ExchangePriceSlippage": 0.02,
+  "InitialCash": 1000000
+}

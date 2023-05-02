@@ -17,7 +17,9 @@ namespace CarrotBacktesting.Net.Demo
             Stopwatch runStopwatch = new();
 
 
-            string filename = "options.daily.no-map.json";
+            // string filename = "options.daily.no-adjust.json";
+            // string filename = "options.daily.post-adjust.json";
+            string filename = "options.5min.post-adjust.json";
             string optionsJsonPath = Path.Combine(UnitTestDirectory.AsBsJsonTestDataDir, filename);
             loadStopwatch.Start();
             BackTestingEngine engine = BackTestingEngine.Create(new DebugStrategy(), optionsJsonPath);

@@ -27,10 +27,12 @@
     },
     "BooleanTrueString": [
         "1",
+        "正常交易",
         "测试True"
     ],
     "BooleanFalseString": [
         "0",
+        "停牌",
         "测试False"
     ]
 }

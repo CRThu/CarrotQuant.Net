@@ -1,0 +1,38 @@
+{
+    "MapDict": {
+        "交易日期": "Time",
+        "证券代码": "Code",
+        "开盘价": "Open",
+        "最高价": "High",
+        "最低价": "Low",
+        "收盘价": "Close",
+        "成交量": "Volume",
+        "成交额": "Amount",
+        "换手率": "Turn",
+        "交易状态": "Status",
+        "滚动市盈率": "PE",
+        "滚动市销率": "PS",
+        "滚动市现率": "PCF",
+        "市净率": "PB",
+        "是否ST": "ST"
+    },
+    "TypeDict": {
+        "Amount": "System.Double",
+        "Turn": "System.Double",
+        "PE": "System.Double",
+        "PS": "System.Double",
+        "PCF": "System.Double",
+        "PB": "System.Double",
+        "ST": "System.Boolean"
+    },
+    "BooleanTrueString": [
+        "1",
+        "正常交易",
+        "测试True"
+    ],
+    "BooleanFalseString": [
+        "0",
+        "停牌",
+        "测试False"
+    ]
+}
