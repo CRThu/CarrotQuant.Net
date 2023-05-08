@@ -28,9 +28,21 @@ namespace CarrotBacktesting.Net.Demo
             engine.Run();
             runStopwatch.Stop();
 
-            Console.WriteLine($"回测已完成, 共测试 {engine.Simulator.ElapsedTickCount} 帧");
-            Console.WriteLine($"加载耗时: {loadStopwatch.ElapsedMilliseconds / 1000.0} 秒, 加载速度: {(double)engine.Simulator.ElapsedTickCount / loadStopwatch.ElapsedMilliseconds * 1000:F3} 帧/秒.");
-            Console.WriteLine($"回测耗时: {runStopwatch.ElapsedMilliseconds / 1000.0} 秒, 回测速度: {(double)engine.Simulator.ElapsedTickCount / runStopwatch.ElapsedMilliseconds * 1000:F3} 帧/秒.");
+            int klinesCount = engine.Simulator.KLineCount;
+            int ticksCount = engine.Simulator.TickCount;
+            double loadTicksSpeed = (double)ticksCount / loadStopwatch.ElapsedMilliseconds * 1000;
+            double loadKlinesSpeed = (double)klinesCount / loadStopwatch.ElapsedMilliseconds * 1000;
+            double runTicksSpeed = (double)ticksCount / runStopwatch.ElapsedMilliseconds * 1000;
+            double runKlinesSpeed = (double)klinesCount / runStopwatch.ElapsedMilliseconds * 1000;
+
+            Console.WriteLine($"回测已完成, 共测试 {ticksCount} Ticks, "
+                + $"{klinesCount} KLines");
+            Console.WriteLine($"加载耗时: {loadStopwatch.ElapsedMilliseconds / 1000.0} Sec, "
+                + $"加载速度: {loadTicksSpeed:F3} Ticks/Sec, "
+                + $"{loadKlinesSpeed:F3} KLines/Sec");
+            Console.WriteLine($"回测耗时: {runStopwatch.ElapsedMilliseconds / 1000.0} Sec, "
+                + $"回测速度: {runTicksSpeed:F3} Ticks/Sec, "
+                + $"{runKlinesSpeed:F3} KLines/Sec");
         }
     }
 }

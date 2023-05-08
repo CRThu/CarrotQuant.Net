@@ -46,6 +46,12 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         public int ElapsedTickCount => CurrentTickIndex;
 
+
+        /// <summary>
+        /// 总k线数据条目数量
+        /// </summary>
+        public int KLineCount { get; init; }
+
         /// <summary>
         /// 当前市场数据
         /// </summary>
@@ -127,6 +133,7 @@ namespace CarrotBacktesting.Net.Engine
             StartTime = startFrame.Time;
             EndTime = endFrame.Time;
             TickCount = dataFeed.MarketData.Times.Count(t => t >= StartTime && t <= EndTime);
+            KLineCount = dataFeed.MarketData.Frames.Where(t => t.Time >= StartTime && t.Time <= EndTime).Sum(t => t.Count);
             CurrentTickIndex = 0;
             IsRunning = false;
         }

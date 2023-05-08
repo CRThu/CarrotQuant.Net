@@ -48,7 +48,9 @@ namespace CarrotBacktesting.Net.Common
         /// <returns></returns>
         public static dynamic ConvertValue(dynamic dyn, string typeName)
         {
-            Type? type = Type.GetType(typeName);
+            // Type? type = Type.GetType(typeName);
+
+            Type? type = InternalType[typeName];
             if (type == null)
                 return dyn;
             else
@@ -58,6 +60,12 @@ namespace CarrotBacktesting.Net.Common
                 return generic.Invoke(null, new object[] { dyn })!;
             }
         }
+
+        public static readonly Dictionary<string, Type> InternalType = new Dictionary<string, Type>() {
+            {"System.Double",Type.GetType("System.Double")! },
+            {"System.Boolean",Type.GetType("System.Boolean")! },
+            {"System.String",Type.GetType("System.String")! },
+        };
 
         /// <summary>
         /// 是否为数字类型

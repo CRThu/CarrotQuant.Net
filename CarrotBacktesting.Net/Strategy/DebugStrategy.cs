@@ -45,8 +45,8 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="marketEventArgs"></param>
         public void OnTick(MarketFrame marketFrame, MarketEventArgs marketEventArgs)
         {
-            Debug.WriteLine("EmptyStrategy.OnTick(sender, args)");
-            Debug.WriteLine($"Strategy: Tick: {marketFrame.Time}");
+            // Debug.WriteLine("EmptyStrategy.OnTick(sender, args)");
+            // Debug.WriteLine($"Strategy: Tick: {marketFrame.Time}");
             // Debug.WriteLine($"Strategy: StockCount: {marketFrame.Count}");
             // Debug.WriteLine($"Strategy: Stock: {string.Join(',', marketFrame.Codes)}");
         }
@@ -57,7 +57,7 @@ namespace CarrotBacktesting.Net.Strategy
         /// <param name="strategyContext"></param>
         public void OnNext(StrategyContext strategyContext)
         {
-            Debug.WriteLine("EmptyStrategy.OnNext()");
+            // Debug.WriteLine("EmptyStrategy.OnNext()");
         }
 
         /// <summary>
