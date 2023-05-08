@@ -198,7 +198,7 @@ namespace CarrotBacktesting.Net.DataModel
                             }
                             else
                             {
-                                Params[col[i]] = DynamicConverter.ConvertValue(data[i], types![i]!);
+                                Params[col[i]] = DynamicConverter.GetValue(data[i], types![i]!);
                             }
                             break;
                     };

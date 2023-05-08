@@ -20,21 +20,27 @@ namespace CarrotBacktesting.Net.Common
         /// <returns>转换后的变量, 若转换不成功则抛出异常</returns>
         public static T GetValue<T>(dynamic dyn)
         {
+            return GetValue(dyn, typeof(T));
+        }
+
+
+        public static dynamic GetValue(dynamic dyn, Type type)
+        {
             // 日期与时间类型转换为限定类型
-            if (dyn is string timeString && default(T) is DateTime)
-                return (T)(object)timeString.ParseDateTime();
-            else if (dyn is DateTime time && default(T) is string)
-                return (T)(object)time.FormatDateTime();
+            if (dyn is string timeString && type == typeof(DateTime))
+                return timeString.ParseDateTime();
+            else if (dyn is DateTime time && type == typeof(string))
+                return time.FormatDateTime();
             // Boolean类型转换为限定类型
-            else if (dyn is string boolString && default(T) is bool)
-                return (T)(object)BooleanEx.ToBooleanEx(boolString);
+            else if (dyn is string boolString && type == typeof(bool))
+                return BooleanEx.ToBooleanEx(boolString);
             // 输入为字符串且内容为null或empty,转换类型为数字类型则返回0
-            else if (string.IsNullOrEmpty(dyn.ToString()) && IsNumeric(typeof(T)))
+            else if (string.IsNullOrEmpty(dyn.ToString()) && IsNumeric(type))
             {
-                return (T)(object)default(T)!;
+                return default;
             }
             else
-                return Convert.ChangeType(dyn, typeof(T));
+                return Convert.ChangeType(dyn, type);
         }
 
         /// <summary>
@@ -46,25 +52,25 @@ namespace CarrotBacktesting.Net.Common
         /// 例如: System.Double, System.String, System.Boolean
         /// </param>
         /// <returns></returns>
-        public static dynamic ConvertValue(dynamic dyn, string typeName)
+        public static dynamic GetValue(dynamic dyn, string typeName)
         {
             // Type? type = Type.GetType(typeName);
-
             Type? type = InternalType[typeName];
             if (type == null)
                 return dyn;
             else
             {
-                MethodInfo method = typeof(DynamicConverter).GetMethod("GetValue")!;
-                MethodInfo generic = method.MakeGenericMethod(type);
-                return generic.Invoke(null, new object[] { dyn })!;
+                return GetValue(dyn, type);
             }
         }
 
-        public static readonly Dictionary<string, Type> InternalType = new Dictionary<string, Type>() {
-            {"System.Double",Type.GetType("System.Double")! },
-            {"System.Boolean",Type.GetType("System.Boolean")! },
-            {"System.String",Type.GetType("System.String")! },
+        /// <summary>
+        /// 内部类型字典，缓存反射结果
+        /// </summary>
+        public static readonly Dictionary<string, Type> InternalType = new() {
+            { "System.Double", Type.GetType("System.Double")! },
+            { "System.Boolean", Type.GetType("System.Boolean")! },
+            { "System.String", Type.GetType("System.String")! },
         };
 
         /// <summary>
