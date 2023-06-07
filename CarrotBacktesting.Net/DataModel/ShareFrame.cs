@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace CarrotBacktesting.Net.DataModel
 {
@@ -112,6 +113,47 @@ namespace CarrotBacktesting.Net.DataModel
         {
         }
 
+
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="keys"></param>
+        /// <param name="vals"></param>
+        /// <param name="stockCode"></param>
+        /// <exception cref="NotImplementedException"></exception>
+        public ShareFrame(string[] keys, string[] vals, string? stockCode = null)
+        {
+            if (keys.Length != vals.Length)
+            {
+                throw new ArgumentException("ShareFrame keys与vals参数长度不匹配");
+            }
+
+            for (int i = 0; i < keys.Length; i++)
+            {
+                switch (keys[i])
+                {
+                    case "Code": Code = DynamicConverter.GetValue<string>(vals[i]); break;
+                    case "Time": Time = DynamicConverter.GetValue<DateTime>(vals[i]); break;
+                    case "Open": Open = DynamicConverter.GetValue<double>(vals[i]); break;
+                    case "High": High = DynamicConverter.GetValue<double>(vals[i]); break;
+                    case "Low": Low = DynamicConverter.GetValue<double>(vals[i]); break;
+                    case "Close": Close = DynamicConverter.GetValue<double>(vals[i]); break;
+                    case "Volume": Volume = DynamicConverter.GetValue<double>(vals[i]); break;
+                    case "Status": Status = DynamicConverter.GetValue<bool>(vals[i]); break;
+                    default:
+                        Params ??= new();
+                        Params[keys[i]] = vals[i];
+                        break;
+                };
+            }
+
+            if (stockCode is not null)
+                Code = stockCode;
+
+            if (Code == null)
+                throw new NotImplementedException("Code == null");
+        }
+
         /// <summary>
         /// 构造函数
         /// </summary>
@@ -159,7 +201,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// </param>
         /// <param name="stockCode">股票代码,若列中未包含股票代码则使用该参数作为股票代码</param>
         /// <exception cref="ArgumentException"></exception>
-        public ShareFrame(string[] col, string[] data, bool[]? mask = null, string?[]? types = null, string? stockCode = null)
+        public ShareFrame(string[] col, string[] data, bool[]? mask, string?[]? types = null, string? stockCode = null)
         {
             if (col.Length != data.Length)
             {
@@ -238,8 +280,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <returns>key对应的value, 若key不存在则返回null</returns>
         private dynamic? Get(string key)
         {
-            return key switch
-            {
+            return key switch {
                 "Code" => Code,
                 "Time" => Time,
                 "Open" => Open,
