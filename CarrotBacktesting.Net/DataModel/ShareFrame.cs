@@ -16,47 +16,47 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 股票代码
         /// </summary>
-        public string Code { get; init; }
+        public string Code { get; set; }
 
         /// <summary>
         /// 时间
         /// </summary>
-        public DateTime Time { get; init; }
+        public DateTime Time { get; set; }
 
         /// <summary>
         /// 开盘价
         /// </summary>
-        public double Open { get; init; }
+        public double Open { get; set; }
 
         /// <summary>
         /// 最高价
         /// </summary>
-        public double High { get; init; }
+        public double High { get; set; }
 
         /// <summary>
         /// 最低价
         /// </summary>
-        public double Low { get; init; }
+        public double Low { get; set; }
 
         /// <summary>
         /// 收盘价
         /// </summary>
-        public double Close { get; init; }
+        public double Close { get; set; }
 
         /// <summary>
         /// 成交量
         /// </summary>
-        public double Volume { get; init; }
+        public double Volume { get; set; }
 
         /// <summary>
         /// 是否正常交易
         /// </summary>
-        public bool Status { get; init; }
+        public bool Status { get; set; }
 
         /// <summary>
         /// 其他数据键值对(必须为值类型)
         /// </summary>
-        public Dictionary<string, dynamic>? Params { get; init; }
+        public Dictionary<string, dynamic>? Params { get; set; }
 
         /// <summary>
         /// 写入或读取<see cref="ShareFrame"/>中的元素
@@ -69,6 +69,11 @@ namespace CarrotBacktesting.Net.DataModel
             {
                 return Get(key);
             }
+        }
+
+        public ShareFrame()
+        {
+
         }
 
         /// <summary>
@@ -224,10 +229,10 @@ namespace CarrotBacktesting.Net.DataModel
                 {
                     switch (col[i])
                     {
-                        
+
                         case "Code": Code = DynamicConverter.GetValue(data[i], "System.String"); break;
                         case "Time": Time = DynamicConverter.GetValue(data[i], "System.DateTime"); break;
-                        case "Open": Open = DynamicConverter.GetValue(data[i],"System.Double"); break;
+                        case "Open": Open = DynamicConverter.GetValue(data[i], "System.Double"); break;
                         case "High": High = DynamicConverter.GetValue(data[i], "System.Double"); break;
                         case "Low": Low = DynamicConverter.GetValue(data[i], "System.Double"); break;
                         case "Close": Close = DynamicConverter.GetValue(data[i], "System.Double"); break;
