@@ -80,26 +80,43 @@ namespace CarrotBacktesting.Net.Demo
                 fieldsIndex[i] = csv.GetOrdinal(fields[i]);
             }
 
+            // 映射
+            bool[] mask = fields.Select(c => true).ToArray();
+            string[] types = new string[fields.Length];
+            if (engine.Options.Mapper != null)
+            {
+                for (int i = 0; i < fields.Length; i++)
+                {
+                    fields[i] = engine.Options.Mapper[fields[i]];
+                    if (engine.Options.Mapper.TypeDict.TryGetValue(fields[i], out string? type))
+                        types[i] = type;
+                }
+            }
+
             while (csv.Read())
             {
-                for (int i = 0; i < fieldsIndex.Length; i++)
+                if (true)
                 {
-                    fieldsStr[i] = csv.GetString(fieldsIndex[i]);
+                    for (int i = 0; i < fieldsIndex.Length; i++)
+                    {
+                        fieldsStr[i] = csv.GetString(fieldsIndex[i]);
+                    }
+                    // TODO
+                    frames.Add(new ShareFrame(fields, fieldsStr, mask, types));
+                    //var id = csv.GetInt32(0);
+                    //var name = csv.GetString(1);
+                    //var date = csv.GetDateTime(2);
+                    //var id = csv.GetInt32(idIndex);
+                    //var name = csv.GetString(nameIndex);
+                    //var date = csv.GetDateTime(dateIndex);
+
                 }
-                // TODO
-                frames.Add(new ShareFrame(fields,fieldsStr));
-                //var id = csv.GetInt32(0);
-                //var name = csv.GetString(1);
-                //var date = csv.GetDateTime(2);
-                //var id = csv.GetInt32(idIndex);
-                //var name = csv.GetString(nameIndex);
-                //var date = csv.GetDateTime(dateIndex);
             }
             stopwatch2.Stop();
 
-            double speed2 = (double)data.Length / stopwatch2.ElapsedMilliseconds * 1000;
+            double speed2 = (double)frames.Count / stopwatch2.ElapsedMilliseconds * 1000;
             Console.WriteLine($"加载已完成, "
-                + $"{data.Length} KLines");
+                + $"{frames.Count} KLines");
             Console.WriteLine($"加载耗时: {stopwatch2.ElapsedMilliseconds / 1000.0} Sec, "
                 + $"{speed2:F3} KLines/Sec");
 

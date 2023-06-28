@@ -224,14 +224,16 @@ namespace CarrotBacktesting.Net.DataModel
                 {
                     switch (col[i])
                     {
-                        case "Code": Code = DynamicConverter.GetValue<string>(data[i]); break;
-                        case "Time": Time = DynamicConverter.GetValue<DateTime>(data[i]); break;
-                        case "Open": Open = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "High": High = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "Low": Low = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "Close": Close = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "Volume": Volume = DynamicConverter.GetValue<double>(data[i]); break;
-                        case "Status": Status = DynamicConverter.GetValue<bool>(data[i]); break;
+                        
+                        case "Code": Code = DynamicConverter.GetValue(data[i], "System.String"); break;
+                        case "Time": Time = DynamicConverter.GetValue(data[i], "System.DateTime"); break;
+                        case "Open": Open = DynamicConverter.GetValue(data[i],"System.Double"); break;
+                        case "High": High = DynamicConverter.GetValue(data[i], "System.Double"); break;
+                        case "Low": Low = DynamicConverter.GetValue(data[i], "System.Double"); break;
+                        case "Close": Close = DynamicConverter.GetValue(data[i], "System.Double"); break;
+                        case "Volume": Volume = DynamicConverter.GetValue(data[i], "System.Double"); break;
+                        case "Status": Status = DynamicConverter.GetValue(data[i], "System.Boolean"); break;
+
                         default:
                             Params ??= new();
                             if (types == null || (types != null && types[i] == null))

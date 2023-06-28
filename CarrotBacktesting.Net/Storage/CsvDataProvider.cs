@@ -56,11 +56,12 @@ namespace CarrotBacktesting.Net.Storage
             string filename = Path.Combine(DirectoryPath, stockCode + ".csv");
 
             ShareFrame[] data = CsvHelper.Read(filename, stockCode, fields);
-            if (startTime == null)
-                startTime = data[0].Time;
-            if (endTime == null)
-                endTime = data[^1].Time;
-            return data.Where(d => d.Time >= startTime && d.Time <= endTime);
+            //if (startTime == null)
+            //    startTime = data[0].Time;
+            //if (endTime == null)
+            //    endTime = data[^1].Time;
+            //return data.Where(d => d.Time >= startTime && d.Time <= endTime);
+            return data;
         }
 
         /// <summary>

@@ -60,10 +60,16 @@ namespace CarrotBacktesting.Net.Storage
                 }
             }
 
+            /*
+             ShareFrame[] elements = content.Skip(1)
+                                            .Where(v => v.Contains(','))
+                                            .Select(v => new ShareFrame(cols, v.Split(','), mask, types, stockCode))
+                                            .ToArray();
+            */
             ShareFrame[] elements = content.Skip(1)
-                                           .Where(v => v.Contains(','))
-                                           .Select(v => new ShareFrame(cols, v.Split(','), mask, types, stockCode))
-                                           .ToArray();
+                                            .Where(v => v.Contains(','))
+                                            .Select(v => new ShareFrame(cols, v.Split(','), mask, types, stockCode))
+                                            .ToArray();
 
             return elements;
         }

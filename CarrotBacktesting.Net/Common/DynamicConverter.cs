@@ -52,15 +52,32 @@ namespace CarrotBacktesting.Net.Common
         /// 例如: System.Double, System.String, System.Boolean
         /// </param>
         /// <returns></returns>
-        public static dynamic GetValue(dynamic dyn, string typeName)
+        public static dynamic GetValue(string dyn, string typeName)
         {
-            // Type? type = Type.GetType(typeName);
-            Type? type = InternalType[typeName];
-            if (type == null)
+            if (typeName == "System.String")
+            {
                 return dyn;
+            }
+            else if (typeName == "System.Boolean")
+            {
+                return Convert.ToBoolean(dyn);
+            }
+            else if (typeName == "System.Double")
+            {
+                return Convert.ToDouble(dyn);
+            }
             else
             {
-                return GetValue(dyn, type);
+                // Type? type = Type.GetType(typeName);
+                Type? type = InternalType[typeName];
+                if (type == null)
+                {
+                    return dyn;
+                }
+                else
+                {
+                    return GetValue(dyn, type);
+                }
             }
         }
 
@@ -71,6 +88,7 @@ namespace CarrotBacktesting.Net.Common
             { "System.Double", Type.GetType("System.Double")! },
             { "System.Boolean", Type.GetType("System.Boolean")! },
             { "System.String", Type.GetType("System.String")! },
+            { "System.DateTime", Type.GetType("System.DateTime")! },
         };
 
         /// <summary>
