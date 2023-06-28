@@ -66,6 +66,8 @@ namespace CarrotBacktesting.Net.Storage
             ShareFrame[] elements = content.Skip(1)
                                             .Where(v => v.Contains(','))
                                             .Select(v => new ShareFrame(cols, v.Split(','), mask, types, stockCode))
+                                            .Where(v => (startTime == null || v.Time >= startTime)
+                                                        && (endTime == null || v.Time <= endTime))
                                             .ToArray();
 
             return elements;

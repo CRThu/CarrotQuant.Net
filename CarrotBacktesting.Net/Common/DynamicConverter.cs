@@ -58,14 +58,6 @@ namespace CarrotBacktesting.Net.Common
             {
                 return dyn;
             }
-            else if (typeName == "System.Boolean")
-            {
-                return Convert.ToBoolean(dyn);
-            }
-            else if (typeName == "System.Double")
-            {
-                return Convert.ToDouble(dyn);
-            }
             else
             {
                 // Type? type = Type.GetType(typeName);
