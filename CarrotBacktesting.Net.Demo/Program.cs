@@ -4,7 +4,6 @@ using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Storage;
 using CarrotBacktesting.Net.Strategy;
 using CarrotBackTesting.Net.UnitTest.Common;
-using Sylvan.Data.Csv;
 using System.Data;
 using System.Diagnostics;
 
