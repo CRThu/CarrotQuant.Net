@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace CarrotBackTesting.Net.UnitTest.Common
 {
@@ -29,6 +30,17 @@ namespace CarrotBackTesting.Net.UnitTest.Common
         /// 历史数据测试数据配置文件路径
         /// </summary>
         public static string AsBsJsonTestDataDir => @$"{SolutionDirectory}\CarrotQuant.Data\ashare\baostock\json\testdata";
+
+        /// <summary>
+        /// 数据根目录
+        /// </summary>
+        public static string DataRootDirectory => @$"{SolutionDirectory}\CarrotQuant.Data";
+
+        /// <summary>
+        /// 数据根目录
+        /// </summary>
+        public static string BenchmarkDataRootDirectory => @$"{BenchmarkSolutionDirectory}\CarrotQuant.Data";
+
 
         public static string InfoPath => @$"{ProjectDirectory}\TestData\json\info.json";
         //https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/use-dom-utf8jsonreader-utf8jsonwriter?pivots=dotnet-7-0

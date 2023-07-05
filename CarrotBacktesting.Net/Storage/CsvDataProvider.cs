@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.Net.DataModel;
+using CarrotBacktesting.Net.Engine;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -20,9 +21,9 @@ namespace CarrotBacktesting.Net.Storage
     public class CsvDataProvider : IDataProvider
     {
         /// <summary>
-        /// Csv存放目录
+        /// 数据管理器
         /// </summary>
-        public string DirectoryPath { get; set; }
+        public BackTestingDataManager DataManager { get; set; }
 
         /// <summary>
         /// Csv操作类实例
@@ -32,14 +33,12 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="directoryPath">Csv存放目录</param>
+        /// <param name="dataManager">数据管理器</param>
         /// <param name="mapper">字段映射信息</param>
         /// <exception cref="DirectoryNotFoundException"></exception>
-        public CsvDataProvider(string directoryPath, ShareFrameMapper? mapper = null)
+        public CsvDataProvider(BackTestingDataManager dataManager, ShareFrameMapper? mapper = null)
         {
-            if (!Directory.Exists(directoryPath))
-                throw new DirectoryNotFoundException($"找不到存在的目录: {directoryPath}");
-            DirectoryPath = directoryPath;
+            DataManager = dataManager;
             CsvHelper = new(mapper);
         }
 
@@ -53,10 +52,12 @@ namespace CarrotBacktesting.Net.Storage
         /// <returns>股票数据帧集合</returns>
         public IEnumerable<ShareFrame> GetShareData(string stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
         {
-            string filename = Path.Combine(DirectoryPath, stockCode + ".csv");
+            // string filename = Path.Combine(DirectoryPath, stockCode + ".csv");
+            string filename = DataManager.GetCsvFilePath(stockCode);
 
             ShareFrame[] data = CsvHelper.Read(filename, stockCode, fields, startTime, endTime);
-            return data;
+            return data.Where(v => (startTime == null || v.Time >= startTime)
+                                && (endTime == null || v.Time <= endTime));
         }
 
         /// <summary>
@@ -84,8 +85,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <returns>返回所有股票代码</returns>
         public string[] GetAllStockCode()
         {
-            DirectoryInfo folder = new(DirectoryPath);
-            return folder.GetFiles("*.csv").Select(v => Path.GetFileNameWithoutExtension(v.Name)).ToArray();
+            return DataManager.ListFiles("csv");
         }
     }
 }

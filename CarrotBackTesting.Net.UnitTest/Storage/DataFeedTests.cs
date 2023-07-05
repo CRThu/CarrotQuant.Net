@@ -15,6 +15,8 @@ namespace CarrotBacktesting.Net.Storage.Tests
     [TestClass()]
     public class DataFeedTests
     {
+        // TODO 删除Sqlite数据源
+        /*
         [TestMethod()]
         public void GetMarketDataTest()
         {
@@ -64,5 +66,6 @@ namespace CarrotBacktesting.Net.Storage.Tests
             // dataFeed.Options.Serialize(optionsPath);
             // Console.WriteLine($"Generated simulationOptions json file at {optionsPath}.");
         }
+        */
     }
 }

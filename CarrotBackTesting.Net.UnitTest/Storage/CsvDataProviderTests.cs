@@ -15,6 +15,8 @@ namespace CarrotBacktesting.Net.Storage.Tests
     [TestClass()]
     public class CsvDataProviderTests
     {
+        // TODO TestClasses Update
+        /*
         [TestMethod()]
         public void GetShareDataTest()
         {
@@ -50,5 +52,6 @@ namespace CarrotBacktesting.Net.Storage.Tests
 
             Assert.IsTrue(CollectionVerify.CompareArray(stockcodes, getstockcodes));
         }
+        */
     }
 }

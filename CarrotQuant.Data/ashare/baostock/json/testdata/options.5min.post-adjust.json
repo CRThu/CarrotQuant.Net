@@ -1,9 +1,0 @@
-{
-  "DataFeedSource": "Csv",
-  "DataFeedPath": "..\\..\\csv\\testdata\\5min.post-adjust",
-  "MapperJsonFilePath": "mapper.5min.post-adjust.json",
-  "FieldsJsonFilePath": "fields.5min.post-adjust.json",
-  "ExchangeEstimateLiquidityRatio": 0.2,
-  "ExchangePriceSlippage": 0.02,
-  "InitialCash": 1000000
-}

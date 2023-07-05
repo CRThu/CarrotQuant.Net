@@ -42,16 +42,15 @@ namespace CarrotBacktesting.Net.Storage
         /// </summary>
         /// <param name="options"></param>
         /// <exception cref="NotImplementedException"></exception>
-        public DataFeed(SimulationOptions options)
+        public DataFeed(SimulationOptions options, BackTestingDataManager dataManager)
         {
             Options = options;
             MarketDataBuilder MarketDataBuilder = new();
 
-
-            IDataProvider IDataProvider = Options.DataFeedSource switch
-            {
-                DataFeedSource.Sqlite => new SqliteDataProvider(Options.DataFeedPath!, Options.Mapper),
-                DataFeedSource.Csv => new CsvDataProvider(Options.DataFeedPath!, Options.Mapper),
+            // TODO 删除Sqlite数据源
+            IDataProvider IDataProvider = Options.DataFeedSource switch {
+                //DataFeedSource.Sqlite => new SqliteDataProvider(Options.DataFeedPath!, Options.Mapper),
+                DataFeedSource.Csv => new CsvDataProvider(dataManager, Options.Mapper),
                 _ => throw new NotImplementedException("暂不支持该格式数据源"),
             };
 
@@ -59,6 +58,7 @@ namespace CarrotBacktesting.Net.Storage
             if (Options.StockCodes is null)
                 Options.StockCodes = IDataProvider.GetAllStockCode();
 
+            // TODO 待增加Cache
             var frames = IDataProvider.GetShareData(Options.StockCodes, Options.Fields!, Options.SimulationStartTime, Options.SimulationEndTime);
             MarketDataBuilder.AddRange(frames);
 

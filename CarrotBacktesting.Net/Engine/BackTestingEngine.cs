@@ -3,6 +3,7 @@ using CarrotBacktesting.Net.Storage;
 using CarrotBacktesting.Net.Strategy;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -15,6 +16,11 @@ namespace CarrotBacktesting.Net.Engine
     /// </summary>
     public class BackTestingEngine : IEngine
     {
+        /// <summary>
+        /// 回测数据管理器
+        /// </summary>
+        public BackTestingDataManager DataManager { get; set; }
+
         /// <summary>
         /// 策略上下文
         /// </summary>
@@ -85,11 +91,12 @@ namespace CarrotBacktesting.Net.Engine
         /// <param name="strategy">策略</param>
         /// <param name="optionsJsonPath">配置文件路径</param>
         /// <returns>回测引擎类</returns>
-        public static BackTestingEngine Create(IStrategy strategy, string optionsJsonPath)
+        public static BackTestingEngine Create(IStrategy strategy, string baseDir, string dataSet, string optionsJsonName = "options.json")
         {
-            string baseDir = Path.GetDirectoryName(optionsJsonPath)!;
+            BackTestingDataManager btdm = BackTestingDataManager.Create(baseDir, dataSet);
+            string optionsJsonPath = btdm.GetJsonFilePath(optionsJsonName);
             SimulationOptions options = SimulationOptions.CreateFromJson(optionsJsonPath);
-            return Create(strategy, options, baseDir);
+            return Create(strategy, options, btdm);
         }
 
         /// <summary>
@@ -97,20 +104,22 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         /// <param name="strategy">策略</param>
         /// <param name="options">配置类</param>
-        /// <param name="baseDir">默认根目录</param>
+        /// <param name="dataManager">数据管理器</param>
         /// <returns>回测引擎类</returns>
-        public static BackTestingEngine Create(IStrategy strategy, SimulationOptions options, string baseDir = ".")
+        public static BackTestingEngine Create(IStrategy strategy, SimulationOptions options, BackTestingDataManager dataManager)
         {
             // 类初始化
-            Directory.SetCurrentDirectory(baseDir);
-            options.Parse();
-            DataFeed dataFeed = new(options);
+            Directory.SetCurrentDirectory(dataManager.BaseDirectory);
+            options.Parse(dataManager);
+
+            DataFeed dataFeed = new(options, dataManager);
             BackTestingExchange exchange = new(options);
             TickSimulator simulator = new(dataFeed, options);
             PortfolioManager portfolio = new(options);
             StrategyContext context = new(portfolio, simulator);
 
             BackTestingEngine engine = new() {
+                DataManager = dataManager,
                 DataFeed = dataFeed,
                 Exchange = exchange,
                 Simulator = simulator,
