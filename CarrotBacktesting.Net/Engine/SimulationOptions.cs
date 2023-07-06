@@ -17,6 +17,10 @@ namespace CarrotBacktesting.Net.Engine
     /// </summary>
     public class SimulationOptions
     {
+        /// <summary>
+        /// 数据管理器
+        /// </summary>
+        public BackTestingDataManager? DataManager { get; set; } = null;
 
         /// <summary>
         /// 映射器Json文件路径, 若反序列化后不为null则反序列化该路径文件至<see cref="Mapper"/>
@@ -37,11 +41,6 @@ namespace CarrotBacktesting.Net.Engine
         /// 数据源
         /// </summary>
         public DataFeedSource DataFeedSource { get; set; } = DataFeedSource.Csv;
-
-        /// <summary>
-        /// 数据源路径
-        /// </summary>
-        public string? DataFeedPath { get; set; } = null;
 
         /// <summary>
         /// 字段映射信息存储类
@@ -112,43 +111,38 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         /// <param name="jsonpath">Json配置文件</param>
         /// <returns>返回创建的配置类</returns>
-        public static SimulationOptions CreateFromJson(string jsonpath)
+        public static SimulationOptions CreateFromJson(string baseDir, string dataSet, string optionsJsonName)
         {
-            string jsonString = File.ReadAllText(jsonpath);
+            BackTestingDataManager btdm = BackTestingDataManager.Create(baseDir, dataSet);
+            string optionsJsonPath = btdm.GetJsonFilePath(optionsJsonName);
+            string jsonString = File.ReadAllText(optionsJsonPath);
             SimulationOptions options = Json.DeSerialize<SimulationOptions>(jsonString)!;
-            return options;
-        }
 
-        /// <summary>
-        /// 展开SimulationOptionsJsonObject的Json配置嵌套
-        /// TODO 废弃此解析方法
-        /// </summary>
-        /// <returns>返回本类</returns>
-        public SimulationOptions Parse(BackTestingDataManager dataManager)
-        {
+            options.DataManager = btdm;
+
             // 反序列化嵌套配置读取
-            if (MapperJsonFilePath != null)
+            if (options.MapperJsonFilePath != null)
             {
-                string mapperFilePath = dataManager.GetJsonFilePath(MapperJsonFilePath);
-                Mapper = Json.DeSerializeFromFile<ShareFrameMapper>(mapperFilePath);
+                string mapperFilePath = options.DataManager!.GetJsonFilePath(options.MapperJsonFilePath);
+                options.Mapper = Json.DeSerializeFromFile<ShareFrameMapper>(mapperFilePath);
             }
 
-            if (FieldsJsonFilePath != null)
+            if (options.FieldsJsonFilePath != null)
             {
-                string fieldsFilePath = dataManager.GetJsonFilePath(FieldsJsonFilePath);
-                Fields = Json.DeSerializeFromFile<string[]>(fieldsFilePath);
+                string fieldsFilePath = options.DataManager.GetJsonFilePath(options.FieldsJsonFilePath);
+                options.Fields = Json.DeSerializeFromFile<string[]>(fieldsFilePath);
             }
 
-            if (StockCodesJsonFilePath != null)
+            if (options.StockCodesJsonFilePath != null)
             {
-                string stockcodesFilePath = dataManager.GetJsonFilePath(StockCodesJsonFilePath);
-                StockCodes = Json.DeSerializeFromFile<string[]>(stockcodesFilePath);
+                string stockcodesFilePath = options.DataManager!.GetJsonFilePath(options.StockCodesJsonFilePath);
+                options.StockCodes = Json.DeSerializeFromFile<string[]>(stockcodesFilePath);
             }
 
             // 更新全局布尔值字符串
-            Mapper!.UpdateGlobalBoolString();
+            options.Mapper!.UpdateGlobalBoolString();
 
-            return this;
+            return options;
         }
     }
 }

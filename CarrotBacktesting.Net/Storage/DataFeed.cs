@@ -42,13 +42,13 @@ namespace CarrotBacktesting.Net.Storage
         /// </summary>
         /// <param name="options"></param>
         /// <exception cref="NotImplementedException"></exception>
-        public DataFeed(SimulationOptions options, BackTestingDataManager dataManager)
+        public DataFeed(SimulationOptions options)
         {
             Options = options;
             MarketDataBuilder MarketDataBuilder = new();
 
             IDataProvider IDataProvider = Options.DataFeedSource switch {
-                DataFeedSource.Csv => new CsvDataProvider(dataManager, Options.Mapper),
+                DataFeedSource.Csv => new CsvDataProvider(Options),
                 _ => throw new NotImplementedException("暂不支持该格式数据源"),
             };
 

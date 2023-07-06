@@ -17,11 +17,6 @@ namespace CarrotBacktesting.Net.Engine
     public class BackTestingEngine : IEngine
     {
         /// <summary>
-        /// 回测数据管理器
-        /// </summary>
-        public BackTestingDataManager DataManager { get; set; }
-
-        /// <summary>
         /// 策略上下文
         /// </summary>
         public StrategyContext StrategyContext { get; set; }
@@ -93,10 +88,8 @@ namespace CarrotBacktesting.Net.Engine
         /// <returns>回测引擎类</returns>
         public static BackTestingEngine Create(IStrategy strategy, string baseDir, string dataSet, string optionsJsonName = "options.json")
         {
-            BackTestingDataManager btdm = BackTestingDataManager.Create(baseDir, dataSet);
-            string optionsJsonPath = btdm.GetJsonFilePath(optionsJsonName);
-            SimulationOptions options = SimulationOptions.CreateFromJson(optionsJsonPath);
-            return Create(strategy, options, btdm);
+            SimulationOptions options = SimulationOptions.CreateFromJson(baseDir, dataSet, optionsJsonName);
+            return Create(strategy, options);
         }
 
         /// <summary>
@@ -104,22 +97,19 @@ namespace CarrotBacktesting.Net.Engine
         /// </summary>
         /// <param name="strategy">策略</param>
         /// <param name="options">配置类</param>
-        /// <param name="dataManager">数据管理器</param>
         /// <returns>回测引擎类</returns>
-        public static BackTestingEngine Create(IStrategy strategy, SimulationOptions options, BackTestingDataManager dataManager)
+        public static BackTestingEngine Create(IStrategy strategy, SimulationOptions options)
         {
             // 类初始化
-            Directory.SetCurrentDirectory(dataManager.BaseDirectory);
-            options.Parse(dataManager);
+            //Directory.SetCurrentDirectory(options.DataManager!.BaseDirectory);
 
-            DataFeed dataFeed = new(options, dataManager);
+            DataFeed dataFeed = new(options);
             BackTestingExchange exchange = new(options);
             TickSimulator simulator = new(dataFeed, options);
             PortfolioManager portfolio = new(options);
             StrategyContext context = new(portfolio, simulator);
 
             BackTestingEngine engine = new() {
-                DataManager = dataManager,
                 DataFeed = dataFeed,
                 Exchange = exchange,
                 Simulator = simulator,

@@ -21,9 +21,9 @@ namespace CarrotBacktesting.Net.Storage
     public class CsvDataProvider : IDataProvider
     {
         /// <summary>
-        /// 数据管理器
+        /// 回测配置类
         /// </summary>
-        public BackTestingDataManager DataManager { get; set; }
+        public SimulationOptions Options { get; set; }
 
         /// <summary>
         /// Csv操作类实例
@@ -33,13 +33,11 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="dataManager">数据管理器</param>
-        /// <param name="mapper">字段映射信息</param>
-        /// <exception cref="DirectoryNotFoundException"></exception>
-        public CsvDataProvider(BackTestingDataManager dataManager, ShareFrameMapper? mapper = null)
+        /// <param name="options"></param>
+        public CsvDataProvider(SimulationOptions options)
         {
-            DataManager = dataManager;
-            CsvHelper = new(mapper);
+            Options = options!;
+            CsvHelper = new(Options.Mapper);
         }
 
         /// <summary>
@@ -52,8 +50,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <returns>股票数据帧集合</returns>
         public IEnumerable<ShareFrame> GetShareData(string stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
         {
-            // string filename = Path.Combine(DirectoryPath, stockCode + ".csv");
-            string filename = DataManager.GetCsvFilePath(stockCode);
+            string filename = Options.DataManager!.GetCsvFilePath(stockCode);
 
             ShareFrame[] data = CsvHelper.Read(filename, stockCode, fields, startTime, endTime);
             return data.Where(v => (startTime == null || v.Time >= startTime)
@@ -85,7 +82,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <returns>返回所有股票代码</returns>
         public string[] GetAllStockCode()
         {
-            return DataManager.ListFiles("csv");
+            return Options.DataManager!.ListFiles("csv");
         }
     }
 }
