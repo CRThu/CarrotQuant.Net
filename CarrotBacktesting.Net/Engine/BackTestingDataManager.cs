@@ -26,6 +26,9 @@ namespace CarrotBacktesting.Net.Engine
     ///     |           |- mapper.json <br/>
     ///     |           |- ... <br/>
     ///     |- cache <br/>       
+    ///     |   |- status.json <br/>
+    ///     |   |- raw <br/>
+    ///     |       |- DataSet1.DataSet1Child.cache <br/>
     ///           
     /// </summary>
     public class BackTestingDataManager
@@ -94,11 +97,15 @@ namespace CarrotBacktesting.Net.Engine
             return Path.Combine(BaseDirectory, "json", DataSet, jsonName);
         }
 
-        public string GetCacheFilePath(string cacheName)
+        public string GetCacheFilePath()
         {
-            if (!cacheName.EndsWith(".cache"))
-                cacheName += ".cache";
-            return Path.Combine(BaseDirectory, "cache", DataSet, cacheName);
+            string cacheName = DataSet.Replace("/", ".").Replace("\\", ".") + ".cache";
+            return Path.Combine(BaseDirectory, "cache", "raw", cacheName);
+        }
+
+        public string GetCacheStatusPath()
+        {
+            return Path.Combine(BaseDirectory, "cache", "status.json");
         }
     }
 }

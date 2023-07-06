@@ -9,9 +9,11 @@ namespace CarrotBacktesting.Net.Storage
 {
     public class DataFeedCache
     {
+        public SimulationOptions Options { get; set; }
+
         public DataFeedCache(SimulationOptions options)
         {
-
+            Options = options;
         }
 
         public static bool HasCache()
