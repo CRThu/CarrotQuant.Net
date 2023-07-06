@@ -47,9 +47,7 @@ namespace CarrotBacktesting.Net.Storage
             Options = options;
             MarketDataBuilder MarketDataBuilder = new();
 
-            // TODO 删除Sqlite数据源
             IDataProvider IDataProvider = Options.DataFeedSource switch {
-                //DataFeedSource.Sqlite => new SqliteDataProvider(Options.DataFeedPath!, Options.Mapper),
                 DataFeedSource.Csv => new CsvDataProvider(dataManager, Options.Mapper),
                 _ => throw new NotImplementedException("暂不支持该格式数据源"),
             };
