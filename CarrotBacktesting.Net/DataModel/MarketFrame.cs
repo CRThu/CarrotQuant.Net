@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -22,13 +23,15 @@ namespace CarrotBacktesting.Net.DataModel
         /// key: 股票代码
         /// value: 股票帧
         /// </summary>
-        private Dictionary<string, ShareFrame> ShareFrames { get; init; }
+        public Dictionary<string, ShareFrame> ShareFrames { get; set; }
 
         /// <summary>
         /// 读取股票在<see cref="Time"/>时间的信息帧
         /// </summary>
         /// <param name="stockCode">股票代码</param>
         /// <returns>返回stockCode对应帧,若不存在则返回null</returns>
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
         public ShareFrame? this[string stockCode]
         {
             get
@@ -43,17 +46,29 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 获取帧存储的股票代码
         /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
         public IEnumerable<string> Codes => ShareFrames.Keys;
 
         /// <summary>
         /// 获取股票帧
         /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
         public IEnumerable<ShareFrame> Frames => ShareFrames.Values;
 
         /// <summary>
         /// 获取当前市场股票数量
         /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
         public int Count => ShareFrames.Count;
+
+
+        public MarketFrame()
+        {
+
+        }
 
         /// <summary>
         /// 构造函数

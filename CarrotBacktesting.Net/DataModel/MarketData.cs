@@ -12,7 +12,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// key: 时间
         /// value: 市场帧
         /// </summary>
-        private Dictionary<DateTime, MarketFrame> MarketFrames { get; init; }
+        public Dictionary<DateTime, MarketFrame> MarketFrames { get; set; }
 
         /// <summary>
         /// 当<see cref="MarketFrames"/>新增新数据未更新<see cref="DateTimesCache"/>时则置true

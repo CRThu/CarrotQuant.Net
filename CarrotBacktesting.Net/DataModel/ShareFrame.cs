@@ -63,6 +63,8 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         /// <param name="key">key, 若不存在则创建, 若存在则覆盖</param>
         /// <returns>value, 若key不存在则返回null</returns>
+        [Newtonsoft.Json.JsonIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
         public dynamic? this[string key]
         {
             get

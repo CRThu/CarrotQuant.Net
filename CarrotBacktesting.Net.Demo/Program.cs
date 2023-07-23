@@ -4,9 +4,10 @@ using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Storage;
 using CarrotBacktesting.Net.Strategy;
 using CarrotBackTesting.Net.UnitTest.Common;
+using System;
 using System.Data;
 using System.Diagnostics;
-
+using System.Text.Json;
 
 namespace CarrotBacktesting.Net.Demo
 {
@@ -47,6 +48,26 @@ namespace CarrotBacktesting.Net.Demo
                 + $"回测速度: {runTicksSpeed:F3} Ticks/Sec, "
                 + $"{runKlinesSpeed:F3} KLines/Sec");
 
+            Stopwatch serializeStopwatch = new();
+            Stopwatch deserializeStopwatch = new();
+            serializeStopwatch.Start();
+            var a= JsonSerializer.Serialize(engine.DataFeed.MarketData.MarketFrames);
+            serializeStopwatch.Stop();
+            deserializeStopwatch.Start();
+            var val = JsonSerializer.Deserialize<Dictionary<DateTime, MarketFrame>>(a);
+            deserializeStopwatch.Stop();
+
+            double serializeTicksSpeed = (double)ticksCount / loadStopwatch.ElapsedMilliseconds * 1000;
+            double serializeKlinesSpeed = (double)klinesCount / loadStopwatch.ElapsedMilliseconds * 1000;
+            double deserializeTicksSpeed = (double)ticksCount / runStopwatch.ElapsedMilliseconds * 1000;
+            double deserializeKlinesSpeed = (double)klinesCount / runStopwatch.ElapsedMilliseconds * 1000;
+
+            Console.WriteLine($"序列化耗时: {serializeStopwatch.ElapsedMilliseconds / 1000.0} Sec, "
+                );
+                //+ $"二进制大小: {bin.Length} Bytes");
+            Console.WriteLine($"反序列化耗时: {deserializeStopwatch.ElapsedMilliseconds / 1000.0} Sec, "
+                );
+            //+ $"一致性: {bin.Length} Bytes");
         }
     }
 }
