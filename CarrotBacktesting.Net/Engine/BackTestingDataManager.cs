@@ -107,5 +107,10 @@ namespace CarrotBacktesting.Net.Engine
         {
             return Path.Combine(BaseDirectory, "cache", "status.json");
         }
+
+        public bool IsCacheExist()
+        {
+            return Path.Exists(GetCacheFilePath());
+        }
     }
 }
