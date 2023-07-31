@@ -56,7 +56,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// 其他数据键值对(必须为值类型)
         /// </summary>
-        public Dictionary<string, dynamic>? Params { get; set; }
+        public Dictionary<string, DynamicObject>? Params { get; set; }
 
         /// <summary>
         /// 写入或读取<see cref="ShareFrame"/>中的元素
@@ -90,7 +90,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <param name="volume">成交量</param>
         /// <param name="status">是否正常交易</param>
         /// <param name="kv">其他数据键值对</param>
-        public ShareFrame(string code, DateTime time, double open, double high, double low, double close, double volume, bool status, IDictionary<string, dynamic>? kv = null)
+        public ShareFrame(string code, DateTime time, double open, double high, double low, double close, double volume, bool status, IDictionary<string, DynamicObject>? kv = null)
         {
             Code = code;
             Time = time;
@@ -149,40 +149,9 @@ namespace CarrotBacktesting.Net.DataModel
                     case "Status": Status = DynamicConverter.GetValue<bool>(vals[i]); break;
                     default:
                         Params ??= new();
-                        Params[keys[i]] = vals[i];
-                        break;
-                };
-            }
-
-            if (stockCode is not null)
-                Code = stockCode;
-
-            if (Code == null)
-                throw new NotImplementedException("Code == null");
-        }
-
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        /// <param name="frameDictionary">字典接口导入数据</param>
-        /// <param name="stockCode">股票代码</param>
-        public ShareFrame(IDictionary<string, object> frameDictionary, string? stockCode = null)
-        {
-            foreach (var kv in frameDictionary)
-            {
-                switch (kv.Key)
-                {
-                    case "Code": Code = DynamicConverter.GetValue<string>(kv.Value); break;
-                    case "Time": Time = DynamicConverter.GetValue<DateTime>(kv.Value); break;
-                    case "Open": Open = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "High": High = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "Low": Low = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "Close": Close = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "Volume": Volume = DynamicConverter.GetValue<double>(kv.Value); break;
-                    case "Status": Status = DynamicConverter.GetValue<bool>(kv.Value); break;
-                    default:
-                        Params ??= new();
-                        Params[kv.Key] = kv.Value;
+                        var obj = new DynamicObject();
+                        obj.WriteString(keys[i]);
+                        Params[keys[i]] = obj;
                         break;
                 };
             }
@@ -245,11 +214,29 @@ namespace CarrotBacktesting.Net.DataModel
                             Params ??= new();
                             if (types == null || (types != null && types[i] == null))
                             {
-                                Params[col[i]] = data[i];
+                                var obj = new DynamicObject();
+                                obj.WriteString(data[i]);
+                                Params[col[i]] = obj;
                             }
                             else
                             {
-                                Params[col[i]] = DynamicConverter.GetValue(data[i], types![i]!);
+                                var obj = new DynamicObject();
+                                switch (types![i]!)
+                                {
+                                    case "System.Double":
+                                        obj.WriteDouble(DynamicConverter.GetValue<double>(data[i]));
+                                        break;
+                                    case "System.String":
+                                        obj.WriteString(data[i]);
+                                        break;
+                                    case "System.Boolean":
+                                        obj.WriteBoolean(DynamicConverter.GetValue<bool>(data[i]));
+                                        break;
+                                    default:
+                                        obj.WriteString(data[i]);
+                                        break;
+                                }
+                                Params[col[i]] = obj;
                             }
                             break;
                     };
@@ -276,8 +263,8 @@ namespace CarrotBacktesting.Net.DataModel
         /// <returns>key对应的value, 若key不存在则返回null</returns>
         private dynamic? GetKv(string key)
         {
-            if (Params != null && Params.TryGetValue(key, out dynamic? v))
-                return v;
+            if (Params != null && Params.TryGetValue(key, out DynamicObject? v))
+                return v.Read();
             else
                 return null;
         }

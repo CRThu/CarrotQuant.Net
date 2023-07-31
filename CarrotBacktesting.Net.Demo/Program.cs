@@ -51,10 +51,10 @@ namespace CarrotBacktesting.Net.Demo
             Stopwatch serializeStopwatch = new();
             Stopwatch deserializeStopwatch = new();
             serializeStopwatch.Start();
-            var a= JsonSerializer.Serialize(engine.DataFeed.MarketData.MarketFrames);
+            Json.SerializeToFile(engine.DataFeed.MarketData.MarketFrames, "C:\\Users\\Carrot\\Desktop\\a.json");
             serializeStopwatch.Stop();
             deserializeStopwatch.Start();
-            var val = JsonSerializer.Deserialize<Dictionary<DateTime, MarketFrame>>(a);
+            var val = Json.DeSerializeFromFile<Dictionary<DateTime, MarketFrame>>("C:\\Users\\Carrot\\Desktop\\a.json");
             deserializeStopwatch.Stop();
 
             double serializeTicksSpeed = (double)ticksCount / loadStopwatch.ElapsedMilliseconds * 1000;

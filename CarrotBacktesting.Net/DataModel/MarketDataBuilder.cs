@@ -36,16 +36,6 @@ namespace CarrotBacktesting.Net.DataModel
         }
 
         /// <summary>
-        /// 添加一帧股票数据
-        /// </summary>
-        /// <param name="frameDictionary">字典接口导入数据</param>
-        /// <param name="stockCode">股票代码</param>
-        public void Add(IDictionary<string, object> frameDictionary, string? stockCode = null)
-        {
-            Add(new ShareFrame(frameDictionary, stockCode));
-        }
-
-        /// <summary>
         /// 添加股票帧集合
         /// </summary>
         /// <param name="shareFrames">帧集合</param>
@@ -53,17 +43,6 @@ namespace CarrotBacktesting.Net.DataModel
         {
             foreach (var sf in shareFrames)
                 Add(sf);
-        }
-
-        /// <summary>
-        /// 添加股票帧集合
-        /// </summary>
-        /// <param name="shareFrameDicts">帧字典信息集合</param>
-        /// <param name="stockCode">股票代码</param>
-        public void AddRange(IEnumerable<IDictionary<string, object>> shareFrameDicts, string? stockCode = null)
-        {
-            foreach (var sf in shareFrameDicts)
-                Add(new(sf, stockCode));
         }
 
         /// <summary>

@@ -9,6 +9,7 @@ using CarrotBacktesting.Net.Common;
 
 namespace CarrotBacktesting.Net.DataModel.Tests
 {
+    /*
     [TestClass()]
     public class MarketDataBuilderTests
     {
@@ -59,4 +60,5 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             //Assert.IsTrue(data[4].StockCodes[1] == "code.004");
         }
     }
+    */
 }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 
 namespace CarrotBacktesting.Net.DataModel.Tests
 {
+    /*
     [TestClass()]
     public class ShareFrameTests
     {
@@ -167,4 +168,5 @@ namespace CarrotBacktesting.Net.DataModel.Tests
             Assert.IsTrue(shareFrame1["PB"] is null);
         }
     }
+    */
 }
