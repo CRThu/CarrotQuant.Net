@@ -1,4 +1,5 @@
-﻿using System;
+﻿using MemoryPack;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -16,7 +17,9 @@ namespace CarrotBacktesting.Net.Common
         Boolean
     };
 
-    public class DynamicObject
+
+    [MemoryPackable]
+    public partial class DynamicObject
     {
         public DynamicDataType DataType { get; set; }
 
@@ -24,6 +27,7 @@ namespace CarrotBacktesting.Net.Common
         public double doubleValue;
         public bool boolValue;
 
+        [MemoryPackConstructor]
         public DynamicObject()
         {
             DataType = DynamicDataType.Null;

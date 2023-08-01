@@ -4,9 +4,13 @@ using CarrotBacktesting.Net.Engine;
 using CarrotBacktesting.Net.Storage;
 using CarrotBacktesting.Net.Strategy;
 using CarrotBackTesting.Net.UnitTest.Common;
+using MemoryPack;
+using MemoryPack.Compression;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Data;
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Text.Json;
 
 namespace CarrotBacktesting.Net.Demo
@@ -48,13 +52,44 @@ namespace CarrotBacktesting.Net.Demo
                 + $"回测速度: {runTicksSpeed:F3} Ticks/Sec, "
                 + $"{runKlinesSpeed:F3} KLines/Sec");
 
+
+            var raw = engine.DataFeed.MarketData.MarketFrames;
+
             Stopwatch serializeStopwatch = new();
             Stopwatch deserializeStopwatch = new();
             serializeStopwatch.Start();
-            Json.SerializeToFile(engine.DataFeed.MarketData.MarketFrames, "C:\\Users\\Carrot\\Desktop\\a.json");
+
+            // json
+            //Json.SerializeToFile(raw, "C:\\Users\\Carrot\\Desktop\\a.json");
+
+            // MemoryPack
+            //var bin = MemoryPackSerializer.Serialize(raw);
+
+            // MemoryPack+Compression
+            // Compression(require using)
+            using var compressor = new BrotliCompressor(CompressionLevel.Optimal);
+            MemoryPackSerializer.Serialize(compressor, raw);
+            // Get compressed byte[]
+            var bin = compressor.ToArray();
+
             serializeStopwatch.Stop();
             deserializeStopwatch.Start();
-            var val = Json.DeSerializeFromFile<Dictionary<DateTime, MarketFrame>>("C:\\Users\\Carrot\\Desktop\\a.json");
+
+            // json
+            //var val = Json.DeSerializeFromFile<Dictionary<DateTime, MarketFrame>>("C:\\Users\\Carrot\\Desktop\\a.json");
+
+            // MemoryPack
+            //var val = MemoryPackSerializer.Deserialize<Dictionary<DateTime, MarketFrame>>(bin);
+
+            // MemoryPack+Compression
+            // Decompression(require using)
+            using var decompressor = new BrotliDecompressor();
+
+            // Get decompressed ReadOnlySequence<byte> from ReadOnlySpan<byte> or ReadOnlySequence<byte>
+            var decompressedBuffer = decompressor.Decompress(bin);
+
+            var val = MemoryPackSerializer.Deserialize<Dictionary<DateTime, MarketFrame>>(decompressedBuffer);
+
             deserializeStopwatch.Stop();
 
             double serializeTicksSpeed = (double)ticksCount / loadStopwatch.ElapsedMilliseconds * 1000;
@@ -64,10 +99,26 @@ namespace CarrotBacktesting.Net.Demo
 
             Console.WriteLine($"序列化耗时: {serializeStopwatch.ElapsedMilliseconds / 1000.0} Sec, "
                 );
-                //+ $"二进制大小: {bin.Length} Bytes");
+            //+ $"二进制大小: {bin.Length} Bytes");
             Console.WriteLine($"反序列化耗时: {deserializeStopwatch.ElapsedMilliseconds / 1000.0} Sec, "
                 );
             //+ $"一致性: {bin.Length} Bytes");
+
+            bool isCorrect = true;
+            var rawFirstTime = raw.Keys.First();
+            var rawFirstCode = raw[rawFirstTime].Codes.First();
+            if (raw.Count != val!.Count)
+                isCorrect = false;
+            if (raw[rawFirstTime].Count != val![rawFirstTime].Count)
+                isCorrect = false;
+            if (raw[rawFirstTime][rawFirstCode]!.Close != val![rawFirstTime][rawFirstCode]!.Close)
+                isCorrect = false;
+            if (raw[rawFirstTime][rawFirstCode]!.Params!.Count != val![rawFirstTime][rawFirstCode]!.Params!.Count)
+                isCorrect = false;
+
+            Console.WriteLine($"二进制大小: {bin.Length} Bytes, "
+                + $"一致性: {isCorrect}"
+                );
         }
     }
 }

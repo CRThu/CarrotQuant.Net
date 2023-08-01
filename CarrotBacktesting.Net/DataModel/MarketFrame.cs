@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using MemoryPack;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -11,7 +12,8 @@ namespace CarrotBacktesting.Net.DataModel
     /// <summary>
     /// 市场信息帧类
     /// </summary>
-    public class MarketFrame
+    [MemoryPackable]
+    public partial class MarketFrame
     {
         /// <summary>
         /// 帧日期
@@ -32,6 +34,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <returns>返回stockCode对应帧,若不存在则返回null</returns>
         [Newtonsoft.Json.JsonIgnore]
         [System.Text.Json.Serialization.JsonIgnore]
+        [MemoryPackIgnore]
         public ShareFrame? this[string stockCode]
         {
             get
@@ -48,6 +51,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]
         [System.Text.Json.Serialization.JsonIgnore]
+        [MemoryPackIgnore]
         public IEnumerable<string> Codes => ShareFrames.Keys;
 
         /// <summary>
@@ -55,6 +59,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]
         [System.Text.Json.Serialization.JsonIgnore]
+        [MemoryPackIgnore]
         public IEnumerable<ShareFrame> Frames => ShareFrames.Values;
 
         /// <summary>
@@ -62,9 +67,10 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]
         [System.Text.Json.Serialization.JsonIgnore]
+        [MemoryPackIgnore]
         public int Count => ShareFrames.Count;
 
-
+        [MemoryPackConstructor]
         public MarketFrame()
         {
 

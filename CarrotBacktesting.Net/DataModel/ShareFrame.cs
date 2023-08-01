@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.Net.Common;
+using MemoryPack;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,7 +12,8 @@ namespace CarrotBacktesting.Net.DataModel
     /// <summary>
     /// 股票信息帧类
     /// </summary>
-    public class ShareFrame
+    [MemoryPackable]
+    public partial class ShareFrame
     {
         /// <summary>
         /// 股票代码
@@ -65,6 +67,7 @@ namespace CarrotBacktesting.Net.DataModel
         /// <returns>value, 若key不存在则返回null</returns>
         [Newtonsoft.Json.JsonIgnore]
         [System.Text.Json.Serialization.JsonIgnore]
+        [MemoryPackIgnore]
         public dynamic? this[string key]
         {
             get
@@ -73,6 +76,7 @@ namespace CarrotBacktesting.Net.DataModel
             }
         }
 
+        [MemoryPackConstructor]
         public ShareFrame()
         {
 
