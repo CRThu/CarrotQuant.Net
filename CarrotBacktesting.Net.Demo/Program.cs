@@ -19,6 +19,12 @@ namespace CarrotBacktesting.Net.Demo
     {
         static void Main(string[] args)
         {
+            CsvReader csvReader = new(new SimulationOptions {
+                Fields = new string[] { "开盘价", "最高价", "最低价", "收盘价", "成交量", "成交额", "交易状态" }
+            });
+            csvReader.Load("D:\\Projects\\CarrotQuant.Data\\testbench\\baostock.sz.000422.csv");
+
+            /*
             Console.WriteLine("Hello, World!");
             Stopwatch loadStopwatch = new();
             Stopwatch runStopwatch = new();
@@ -51,6 +57,7 @@ namespace CarrotBacktesting.Net.Demo
             Console.WriteLine($"回测耗时: {runStopwatch.ElapsedMilliseconds / 1000.0} Sec, "
                 + $"回测速度: {runTicksSpeed:F3} Ticks/Sec, "
                 + $"{runKlinesSpeed:F3} KLines/Sec");
+            */
         }
     }
 }
