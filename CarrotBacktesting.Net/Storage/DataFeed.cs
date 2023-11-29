@@ -57,7 +57,7 @@ namespace CarrotBacktesting.Net.Storage
                 Options.StockCodes = IDataProvider.GetAllStockCode();
 
             // TODO 待增加Cache
-            var frames = IDataProvider.GetShareData(Options.StockCodes, Options.Fields!, Options.SimulationStartTime, Options.SimulationEndTime);
+            var frames = IDataProvider.GetShareData(Options.StockCodes);
             MarketDataBuilder.AddRange(frames);
 
             MarketData = MarketDataBuilder.ToMarketData();

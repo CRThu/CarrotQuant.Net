@@ -28,7 +28,7 @@ namespace CarrotBacktesting.Net.Storage
         /// <summary>
         /// Csv操作类实例
         /// </summary>
-        private CsvHelper CsvHelper { get; set; }
+        private CsvReader Reader { get; set; }
 
         /// <summary>
         /// 构造函数
@@ -37,7 +37,7 @@ namespace CarrotBacktesting.Net.Storage
         public CsvDataProvider(SimulationOptions options)
         {
             Options = options!;
-            CsvHelper = new(Options.Mapper);
+            Reader = new(Options);
         }
 
         /// <summary>
@@ -45,16 +45,12 @@ namespace CarrotBacktesting.Net.Storage
         /// </summary>
         /// <param name="stockCode">股票代码</param>
         /// <param name="fields">字段集合</param>
-        /// <param name="startTime">开始时间</param>
-        /// <param name="endTime">结束时间</param>
         /// <returns>股票数据帧集合</returns>
-        public IEnumerable<ShareFrame> GetShareData(string stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
+        public IEnumerable<ShareFrame> GetShareData(string stockCode)
         {
             string filename = Options.DataManager!.GetCsvFilePath(stockCode);
 
-            ShareFrame[] data = CsvHelper.Read(filename, stockCode, fields, startTime, endTime);
-            return data.Where(v => (startTime == null || v.Time >= startTime)
-                                && (endTime == null || v.Time <= endTime));
+            return Reader.Load(filename, stockCode);
         }
 
         /// <summary>
@@ -65,12 +61,12 @@ namespace CarrotBacktesting.Net.Storage
         /// <param name="startTime">开始时间</param>
         /// <param name="endTime">结束时间</param>
         /// <returns>股票数据帧集合</returns>
-        public IEnumerable<ShareFrame> GetShareData(string[] stockCode, string[] fields, DateTime? startTime = null, DateTime? endTime = null)
+        public IEnumerable<ShareFrame> GetShareData(string[] stockCode)
         {
             List<ShareFrame> frames = new();
             for (int i = 0; i < stockCode.Length; i++)
             {
-                var shareframes = GetShareData(stockCode[i], fields, startTime, endTime);
+                var shareframes = GetShareData(stockCode[i]);
                 frames.AddRange(shareframes);
             }
             return frames;

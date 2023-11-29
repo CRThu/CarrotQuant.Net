@@ -16,23 +16,15 @@ namespace CarrotBacktesting.Net.Storage
         /// 获取某支股票数据
         /// </summary>
         /// <param name="stockCode">股票代码</param>
-        /// <param name="fields">字段集合</param>
-        /// <param name="startTime">开始时间</param>
-        /// <param name="endTime">结束时间</param>
         /// <returns>股票数据帧集合</returns>
-        public IEnumerable<ShareFrame> GetShareData(string stockCode, string[] fields,
-            DateTime? startTime = null, DateTime? endTime = null);
+        public IEnumerable<ShareFrame> GetShareData(string stockCode);
 
         /// <summary>
         /// 获取多支股票数据
         /// </summary>
         /// <param name="stockCode">股票代码集合</param>
-        /// <param name="fields">字段集合</param>
-        /// <param name="startTime">开始时间</param>
-        /// <param name="endTime">结束时间</param>
         /// <returns>股票数据帧集合</returns>
-        public IEnumerable<ShareFrame> GetShareData(string[] stockCode, string[] fields,
-            DateTime? startTime = null, DateTime? endTime = null);
+        public IEnumerable<ShareFrame> GetShareData(string[] stockCode);
 
         /// <summary>
         /// 获取目录下所有股票名称
