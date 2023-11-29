@@ -20,9 +20,10 @@ namespace CarrotBacktesting.Net.Demo
         static void Main(string[] args)
         {
             CsvReader csvReader = new(new SimulationOptions {
-                Fields = new string[] { "开盘价", "最高价", "最低价", "收盘价", "成交量", "成交额", "交易状态" },
+                Fields = new string[] { "交易日期", "开盘价", "最高价", "最低价", "收盘价", "成交量", "成交额", "交易状态" },
                 Mapper = new ShareFrameMapper() {
                     MapDict = new Dictionary<string, string> {
+                        ["交易日期"] = "Time",
                         ["开盘价"] = "Open",
                         ["最高价"] = "High",
                         ["最低价"] = "Low",
@@ -44,7 +45,7 @@ namespace CarrotBacktesting.Net.Demo
             csvReader.Options.Mapper.UpdateGlobalBoolString();
             Stopwatch loadStopwatch = new();
             loadStopwatch.Start();
-            var v = csvReader.Load("D:\\Projects\\CarrotQuant.Data\\testbench\\baostock.sz.000422.csv");
+            var v = csvReader.Load("D:\\Projects\\CarrotQuant.Data\\testbench\\bs.sz.000422.csv", "sz.000422");
             loadStopwatch.Stop();
 
             Console.WriteLine($"回测已完成, 共测试 {v.Count()} Ticks, "
@@ -54,7 +55,7 @@ namespace CarrotBacktesting.Net.Demo
             Console.WriteLine($"加载耗时: {loadStopwatch.ElapsedMilliseconds / 1000.0} Sec, "
                 + $"加载速度: {loadTicksSpeed:F3} Ticks/Sec, "
                 + $"{loadKlinesSpeed:F3} KLines/Sec");
-            
+
             /*
             Console.WriteLine("Hello, World!");
             Stopwatch loadStopwatch = new();
