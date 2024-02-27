@@ -6,10 +6,9 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.DataModel
 {
-    // TODO
-    public class MarketInfoStorage
+    public class MarketInternalStorage
     {
-        public MarketInfoStorage()
+        public MarketInternalStorage()
         {
         }
 

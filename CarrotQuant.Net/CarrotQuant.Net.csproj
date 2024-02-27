@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net7.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
 	<UseWPF>true</UseWPF>
 	  <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
 	  <Platforms>AnyCPU</Platforms>

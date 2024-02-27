@@ -21,6 +21,15 @@ namespace CarrotBacktesting.Net.Demo
         {
             //CsvReaderTest.Run();
             EngineTest.Run();
+
+            //Dictionary<(DateTime t, string c), int> kvp = new() {
+            //    { (DateTime.Parse("2023-11-29 23:41:00"), "0"),0 },
+            //    { (DateTime.Parse("2023-11-29 23:41:00"), "1"),1 },
+            //    { (DateTime.Parse("2023-11-29 23:42:00"), "0"),2 },
+            //    { (DateTime.Parse("2023-11-29 23:42:00"), "1"),3 }
+            //};
+            //string c = Console.ReadLine();
+            //kvp.Add((DateTime.Parse("2023-11-29 23:42:00"), c), 0);
         }
     }
 }
