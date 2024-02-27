@@ -19,8 +19,11 @@ namespace CarrotBacktesting.Net.Demo
     {
         static void Main(string[] args)
         {
+            MarketInternalStorageObject obj = new MarketInternalStorageObject();
+            obj.Add();
+
             //CsvReaderTest.Run();
-            EngineTest.Run();
+            //EngineTest.Run();
 
             //Dictionary<(DateTime t, string c), int> kvp = new() {
             //    { (DateTime.Parse("2023-11-29 23:41:00"), "0"),0 },
