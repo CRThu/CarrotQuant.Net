@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace CarrotBacktesting.Net.DataModel
 {
     /// <summary>
-    /// 可高效序列化的数据存储类
+    /// 可高效序列化/反序列化的市场数据存储类
     /// </summary>
     [MemoryPackable]
     public partial class MarketInternalStorageObject
@@ -24,6 +24,26 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         public FrozenDictionary<string, uint> StocksSymbolIndex { get; set; }
 
+        /// <summary>
+        /// TickTime 列表, 存储每Tick具体时间
+        /// </summary>
+        private List<DateTime> TicksTimeList { get; set; }
+
+        /// <summary>
+        /// 对读优化的 TickTime 列表, 存储每Tick具体时间
+        /// </summary>
+        public FrozenSet<DateTime> TicksTime { get; set; }
+
+
+        private List<double> DoubleElementsList { get; set; }
+
+        public List<double> DoubleElements { get; set; }
+
+        private List<string> StringElementsList { get; set; }
+
+        public List<bool> StringElements { get; set; }
+
+
 
         /// <summary>
         /// 构造函数
@@ -32,6 +52,8 @@ namespace CarrotBacktesting.Net.DataModel
         {
             StocksSymbolIndexDict = [];
             StocksSymbolIndex = null;
+            TicksTimeList = new();
+            TicksTime = null;
         }
 
         /// <summary>
@@ -41,9 +63,11 @@ namespace CarrotBacktesting.Net.DataModel
         {
             // Compile
             StocksSymbolIndex = StocksSymbolIndexDict.ToFrozenDictionary();
+            StocksSymbolIndexDict.Clear();
+            TicksTime = TicksTimeList.ToFrozenSet();
+            TicksTimeList.Clear();
 
             // GC Collect
-            StocksSymbolIndexDict.Clear();
             GC.Collect();
         }
 

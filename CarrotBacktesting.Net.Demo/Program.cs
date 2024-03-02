@@ -19,8 +19,8 @@ namespace CarrotBacktesting.Net.Demo
     {
         static void Main(string[] args)
         {
-            MarketInternalStorageObject obj = new MarketInternalStorageObject();
-            obj.Add();
+            //MarketInternalStorageObject obj = new MarketInternalStorageObject();
+            //obj.Add();
 
             //CsvReaderTest.Run();
             //EngineTest.Run();
