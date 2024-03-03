@@ -17,32 +17,19 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// StocksSymbol : Index 的键值对映射存储字典
         /// </summary>
-        private Dictionary<string, uint> StocksSymbolIndexDict { get; set; }
-
-        /// <summary>
-        /// 对读优化的 StocksSymbol : Index 的键值对映射存储字典
-        /// </summary>
-        public FrozenDictionary<string, uint> StocksSymbolIndex { get; set; }
+        private Dictionary<string, uint> StocksSymbolIndex { get; set; }
 
         /// <summary>
         /// TickTime 列表, 存储每Tick具体时间
         /// </summary>
-        private List<DateTime> TicksTimeList { get; set; }
+        private List<DateTime> TicksTime { get; set; }
 
         /// <summary>
-        /// 对读优化的 TickTime 列表, 存储每Tick具体时间
+        /// 
         /// </summary>
-        public FrozenSet<DateTime> TicksTime { get; set; }
+        private List<double> DoubleElements { get; set; }
 
-
-        private List<double> DoubleElementsList { get; set; }
-
-        public List<double> DoubleElements { get; set; }
-
-        private List<string> StringElementsList { get; set; }
-
-        public List<bool> StringElements { get; set; }
-
+        private List<string> StringElements { get; set; }
 
 
         /// <summary>
@@ -50,31 +37,24 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         public MarketInternalStorageObject()
         {
-            StocksSymbolIndexDict = [];
-            StocksSymbolIndex = null;
-            TicksTimeList = new();
-            TicksTime = null;
+            StocksSymbolIndex = [];
+            TicksTime = new();
+            DoubleElements = new();
+            StringElements = new();
         }
 
         /// <summary>
         /// 编译本类
         /// </summary>
-        public void Compile()
+        public static MarketInternalStorageFrozenObject Compile(MarketInternalStorageObject obj)
         {
             // Compile
-            StocksSymbolIndex = StocksSymbolIndexDict.ToFrozenDictionary();
-            StocksSymbolIndexDict.Clear();
-            TicksTime = TicksTimeList.ToFrozenSet();
-            TicksTimeList.Clear();
+            MarketInternalStorageFrozenObject fo = new() {
+                StocksSymbolIndex = obj.StocksSymbolIndex.ToFrozenDictionary(),
+                TicksTime = obj.TicksTime.ToFrozenSet()
+            };
 
-            // GC Collect
-            GC.Collect();
-        }
-
-        [MemoryPackOnSerializing]
-        void OnSerializing()
-        {
-            Compile();
+            return fo;
         }
     }
 }
