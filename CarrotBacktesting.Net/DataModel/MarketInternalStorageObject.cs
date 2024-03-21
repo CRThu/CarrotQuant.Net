@@ -8,15 +8,29 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.DataModel
 {
-    public readonly struct TickInfoStorage
-    : IEquatable<TickInfoStorage>
+    /// <summary>
+    /// 结构体记录Tick在存储结构中的地址偏移和时间信息
+    /// </summary>
+    public readonly struct TickInfoInternalStorage : IEquatable<TickInfoInternalStorage>
     {
+        /// <summary>
+        /// Tick时间
+        /// </summary>
         public DateTime Tick { get; init; }
-        public uint SymbolsMapOffset { get; init; }
+        /// <summary>
+        /// 股票代码-offset映射字典列表索引
+        /// </summary>
+        public uint SymbolsMapIndex { get; init; }
+        /// <summary>
+        /// Numbers中本Tick存储开始地址
+        /// </summary>
         public uint TickNumbersOffset { get; init; }
+        /// <summary>
+        /// Strings中本Tick存储开始地址
+        /// </summary>
         public uint TickStringsOffset { get; init; }
 
-        public bool Equals(TickInfoStorage other) => Tick == other.Tick;
+        public bool Equals(TickInfoInternalStorage other) => Tick == other.Tick;
 
         public override int GetHashCode() => Tick.GetHashCode();
     }
@@ -30,27 +44,27 @@ namespace CarrotBacktesting.Net.DataModel
         /// <summary>
         /// tick内数据列名称和offset位置映射字典
         /// </summary>
-        private Dictionary<string, ushort> ColumnsMap { get; set; }
+        public Dictionary<string, ushort> ColumnsMap { get; set; }
 
         /// <summary>
         /// 股票代码和offset位置映射字典
         /// </summary>
-        private List<Dictionary<string, uint>> SymbolsMaps { get; set; }
+        public List<Dictionary<string, uint>> SymbolsMaps { get; set; }
 
         /// <summary>
-        /// Ticks 列表, 存储每Tick 时间, Tick offset, Symbol offset
+        /// Ticks 列表, 结构体记录Tick在存储结构中的地址偏移和时间信息
         /// </summary>
-        private List<TickInfoStorage> TicksInfos { get; set; }
+        public List<TickInfoInternalStorage> TicksInfos { get; set; }
 
         /// <summary>
         /// 用于存储数字元素
         /// </summary>
-        private List<double> Numbers { get; set; }
+        public List<double> Numbers { get; set; }
 
         /// <summary>
         /// 用于存储字符串元素
         /// </summary>
-        private List<string> Strings { get; set; }
+        public List<string> Strings { get; set; }
 
 
         /// <summary>
@@ -58,21 +72,25 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         public MarketInternalStorageObject()
         {
+            ColumnsMap = [];
             SymbolsMaps = [];
-            TicksStorage = new();
-            NumbersStorage = new();
-            StringsStorage = new();
+            TicksInfos = [];
+            Numbers = [];
+            Strings = [];
         }
 
         /// <summary>
-        /// 编译本类
+        /// 编译本类对访问优化
         /// </summary>
         public static MarketInternalStorageFrozenObject Compile(MarketInternalStorageObject obj)
         {
             // Compile
             MarketInternalStorageFrozenObject fo = new() {
-                StocksSymbolIndex = obj.StocksSymbolIndex.ToFrozenDictionary(),
-                TicksTime = obj.TicksStorage.ToFrozenSet()
+                ColumnsMap = obj.ColumnsMap.ToFrozenDictionary(),
+                SymbolsMaps = obj.SymbolsMaps.Select(m=>m.ToFrozenDictionary()).ToFrozenSet(),
+                TicksInfos = obj.TicksInfos.ToFrozenSet(),
+                Numbers = obj.Numbers.ToFrozenSet(),
+                Strings = obj.Strings.ToFrozenSet()
             };
 
             return fo;

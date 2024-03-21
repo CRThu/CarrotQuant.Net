@@ -15,30 +15,30 @@ namespace CarrotBacktesting.Net.DataModel
     public partial class MarketInternalStorageFrozenObject
     {
         /// <summary>
-        /// 对读优化的 StocksSymbol : Index 的键值对映射存储字典
+        /// tick内数据列名称和offset位置映射字典
         /// </summary>
-        public FrozenDictionary<string, uint>? StocksSymbolIndex { get; set; }
+        required public FrozenDictionary<string, ushort> ColumnsMap { get; init; }
 
         /// <summary>
-        /// 对读优化的 TickTime 列表, 存储每Tick具体时间
+        /// 股票代码和offset位置映射字典
         /// </summary>
-        public FrozenSet<DateTime>? TicksTime { get; set; }
+        required public FrozenSet<FrozenDictionary<string, uint>> SymbolsMaps { get; init; }
 
-        public FrozenSet<bool>? StringElements { get; set; }
-         
-        public FrozenSet<double>? DoubleElements { get; set; }
-
-         
         /// <summary>
-        /// 构造函数
+        /// Ticks 列表, 结构体记录Tick在存储结构中的地址偏移和时间信息
         /// </summary>
-        public MarketInternalStorageFrozenObject()
-        {
-            StocksSymbolIndex = null;
-            TicksTime = null;
-            DoubleElements = null;
-            StringElements = null;
-        }
+        required public FrozenSet<TickInfoInternalStorage> TicksInfos { get; init; }
+
+        /// <summary>
+        /// 用于存储数字元素
+        /// </summary>
+        required public FrozenSet<double> Numbers { get; init; }
+
+        /// <summary>
+        /// 用于存储字符串元素
+        /// </summary>
+        required public FrozenSet<string> Strings { get; init; }
+
 
         [MemoryPackOnSerializing]
         void OnSerializing()
