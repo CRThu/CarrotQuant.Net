@@ -8,6 +8,19 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.Net.DataModel
 {
+    public readonly struct TickInfoStorage
+    : IEquatable<TickInfoStorage>
+    {
+        public DateTime Tick { get; init; }
+        public uint SymbolsMapOffset { get; init; }
+        public uint TickNumbersOffset { get; init; }
+        public uint TickStringsOffset { get; init; }
+
+        public bool Equals(TickInfoStorage other) => Tick == other.Tick;
+
+        public override int GetHashCode() => Tick.GetHashCode();
+    }
+
     /// <summary>
     /// 可高效序列化/反序列化的市场数据存储类
     /// </summary>
@@ -15,21 +28,29 @@ namespace CarrotBacktesting.Net.DataModel
     public partial class MarketInternalStorageObject
     {
         /// <summary>
-        /// StocksSymbol : Index 的键值对映射存储字典
+        /// tick内数据列名称和offset位置映射字典
         /// </summary>
-        private Dictionary<string, uint> StocksSymbolIndex { get; set; }
+        private Dictionary<string, ushort> ColumnsMap { get; set; }
 
         /// <summary>
-        /// TickTime 列表, 存储每Tick具体时间
+        /// 股票代码和offset位置映射字典
         /// </summary>
-        private List<DateTime> TicksTime { get; set; }
+        private List<Dictionary<string, uint>> SymbolsMaps { get; set; }
 
         /// <summary>
-        /// 
+        /// Ticks 列表, 存储每Tick 时间, Tick offset, Symbol offset
         /// </summary>
-        private List<double> DoubleElements { get; set; }
+        private List<TickInfoStorage> TicksInfos { get; set; }
 
-        private List<string> StringElements { get; set; }
+        /// <summary>
+        /// 用于存储数字元素
+        /// </summary>
+        private List<double> Numbers { get; set; }
+
+        /// <summary>
+        /// 用于存储字符串元素
+        /// </summary>
+        private List<string> Strings { get; set; }
 
 
         /// <summary>
@@ -37,10 +58,10 @@ namespace CarrotBacktesting.Net.DataModel
         /// </summary>
         public MarketInternalStorageObject()
         {
-            StocksSymbolIndex = [];
-            TicksTime = new();
-            DoubleElements = new();
-            StringElements = new();
+            SymbolsMaps = [];
+            TicksStorage = new();
+            NumbersStorage = new();
+            StringsStorage = new();
         }
 
         /// <summary>
@@ -51,7 +72,7 @@ namespace CarrotBacktesting.Net.DataModel
             // Compile
             MarketInternalStorageFrozenObject fo = new() {
                 StocksSymbolIndex = obj.StocksSymbolIndex.ToFrozenDictionary(),
-                TicksTime = obj.TicksTime.ToFrozenSet()
+                TicksTime = obj.TicksStorage.ToFrozenSet()
             };
 
             return fo;

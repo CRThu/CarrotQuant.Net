@@ -25,10 +25,10 @@ namespace CarrotBacktesting.Net.DataModel
         public FrozenSet<DateTime>? TicksTime { get; set; }
 
         public FrozenSet<bool>? StringElements { get; set; }
-
+         
         public FrozenSet<double>? DoubleElements { get; set; }
 
-
+         
         /// <summary>
         /// 构造函数
         /// </summary>
