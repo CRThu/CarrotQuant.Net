@@ -3,19 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.1.32210.238
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotQuant.Net", "CarrotQuant.Net\CarrotQuant.Net.csproj", "{22C20D11-5483-432A-9C8A-89D6C1EF8F10}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotBacktesting.NET", "CarrotBacktesting.NET\CarrotBacktesting.NET.csproj", "{DDAAC259-0B4B-479C-ABA4-DDB75B883131}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBacktesting.Net", "CarrotBacktesting.Net\CarrotBacktesting.Net.csproj", "{D5878DEC-E63B-4382-BABA-02374B896891}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotBacktesting.NET.Demo", "CarrotBacktesting.NET.Demo\CarrotBacktesting.NET.Demo.csproj", "{F1768A62-DD4B-40C5-BA74-E8EF09B2302F}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBackTesting.Net.UnitTest", "CarrotBackTesting.Net.UnitTest\CarrotBackTesting.Net.UnitTest.csproj", "{F30174DA-64CB-4836-BC37-46AD944300B2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotBackTesting.Net.UnitTest", "CarrotBackTesting.Net.UnitTest\CarrotBackTesting.Net.UnitTest.csproj", "{D20D309D-4BF8-44CE-A832-E4A05950B8DF}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBacktesting.Net.Benchmark", "CarrotBacktesting.Net.Benchmark\CarrotBacktesting.Net.Benchmark.csproj", "{AB938D33-C542-4400-926B-795AE63AB9DA}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarrotBacktesting.Net.Demo", "CarrotBacktesting.Net.Demo\CarrotBacktesting.Net.Demo.csproj", "{29D2C500-57C6-48C5-9E55-BEC44C596854}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotQuant.DataLib", "CarrotQuant.DataLib\CarrotQuant.DataLib.csproj", "{2CE9457E-B197-4EEF-BBE6-2492EA33C508}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotQuant.DataLib.Demo", "CarrotQuant.DataLib.Demo\CarrotQuant.DataLib.Demo.csproj", "{419C488E-87E1-4BCE-98CD-3E15EA7D908A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotBacktesting.Net.V2", "CarrotBacktesting.Net.V2\CarrotBacktesting.Net.V2.csproj", "{DFD68927-DD89-3462-64F7-174063919D5A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,34 +17,22 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{22C20D11-5483-432A-9C8A-89D6C1EF8F10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{22C20D11-5483-432A-9C8A-89D6C1EF8F10}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{22C20D11-5483-432A-9C8A-89D6C1EF8F10}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{22C20D11-5483-432A-9C8A-89D6C1EF8F10}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D5878DEC-E63B-4382-BABA-02374B896891}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D5878DEC-E63B-4382-BABA-02374B896891}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D5878DEC-E63B-4382-BABA-02374B896891}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D5878DEC-E63B-4382-BABA-02374B896891}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F30174DA-64CB-4836-BC37-46AD944300B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F30174DA-64CB-4836-BC37-46AD944300B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F30174DA-64CB-4836-BC37-46AD944300B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F30174DA-64CB-4836-BC37-46AD944300B2}.Release|Any CPU.Build.0 = Release|Any CPU
-		{AB938D33-C542-4400-926B-795AE63AB9DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{AB938D33-C542-4400-926B-795AE63AB9DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{AB938D33-C542-4400-926B-795AE63AB9DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{AB938D33-C542-4400-926B-795AE63AB9DA}.Release|Any CPU.Build.0 = Release|Any CPU
-		{29D2C500-57C6-48C5-9E55-BEC44C596854}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{29D2C500-57C6-48C5-9E55-BEC44C596854}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{29D2C500-57C6-48C5-9E55-BEC44C596854}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{29D2C500-57C6-48C5-9E55-BEC44C596854}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2CE9457E-B197-4EEF-BBE6-2492EA33C508}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2CE9457E-B197-4EEF-BBE6-2492EA33C508}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2CE9457E-B197-4EEF-BBE6-2492EA33C508}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2CE9457E-B197-4EEF-BBE6-2492EA33C508}.Release|Any CPU.Build.0 = Release|Any CPU
-		{419C488E-87E1-4BCE-98CD-3E15EA7D908A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{419C488E-87E1-4BCE-98CD-3E15EA7D908A}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{419C488E-87E1-4BCE-98CD-3E15EA7D908A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{419C488E-87E1-4BCE-98CD-3E15EA7D908A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DDAAC259-0B4B-479C-ABA4-DDB75B883131}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DDAAC259-0B4B-479C-ABA4-DDB75B883131}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DDAAC259-0B4B-479C-ABA4-DDB75B883131}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DDAAC259-0B4B-479C-ABA4-DDB75B883131}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F1768A62-DD4B-40C5-BA74-E8EF09B2302F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F1768A62-DD4B-40C5-BA74-E8EF09B2302F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F1768A62-DD4B-40C5-BA74-E8EF09B2302F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F1768A62-DD4B-40C5-BA74-E8EF09B2302F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D20D309D-4BF8-44CE-A832-E4A05950B8DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D20D309D-4BF8-44CE-A832-E4A05950B8DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D20D309D-4BF8-44CE-A832-E4A05950B8DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D20D309D-4BF8-44CE-A832-E4A05950B8DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DFD68927-DD89-3462-64F7-174063919D5A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DFD68927-DD89-3462-64F7-174063919D5A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DFD68927-DD89-3462-64F7-174063919D5A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DFD68927-DD89-3462-64F7-174063919D5A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
