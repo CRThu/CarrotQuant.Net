@@ -7,4 +7,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\CarrotBacktesting.NET\CarrotBacktesting.NET.csproj" />
+  </ItemGroup>
+
 </Project>
