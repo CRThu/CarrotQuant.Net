@@ -1,5 +1,6 @@
 ﻿using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Config.Model;
+using CarrotBacktesting.NET.DataFeed;
 using CarrotBacktesting.NET.Utility;
 using System.Xml.Serialization;
 
@@ -35,6 +36,10 @@ namespace CarrotBacktesting.NET.Demo
             //{
             //    Console.WriteLine($"Key: {kvp.Key}, Path: {kvp.Value}");
             //}
+
+            FieldsMapper fieldsMapper = new FieldsMapper(config);
+            Console.WriteLine($"BasicFieldNameMap: {fieldsMapper.BasicFieldNameMap.ToDebugString()}");
+            Console.WriteLine($"ExtendedFieldNameMap: {fieldsMapper.ExtendedFieldNameMap.ToDebugString()}");
         }
     }
 }

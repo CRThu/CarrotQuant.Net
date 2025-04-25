@@ -23,7 +23,7 @@ namespace CarrotBacktesting.NET.Config
             var yamlContent = File.ReadAllText(configPath);
 
             var deserializer = new DeserializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .WithNamingConvention(UnderscoredNamingConvention.Instance)
                 .Build();
 
             var config = deserializer.Deserialize<EnvConfig>(yamlContent);
@@ -35,5 +35,6 @@ namespace CarrotBacktesting.NET.Config
 
             return config;
         }
+
     }
 }
