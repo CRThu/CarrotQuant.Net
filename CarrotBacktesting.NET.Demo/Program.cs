@@ -1,5 +1,5 @@
-﻿using CarrotBacktesting.NET.DataFeed;
-using CarrotBacktesting.NET.DataFeed.Model;
+﻿using CarrotBacktesting.NET.Config;
+using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Utility;
 using System.Xml.Serialization;
 
@@ -15,7 +15,7 @@ namespace CarrotBacktesting.NET.Demo
             EnvConfig config;
             try
             {
-                string configPath = Path.Combine(PathHelper.RuntimeRoot, ".\\CarrotQuant.Data\\v3\\xml\\env.xml");
+                string configPath = Path.Combine(PathHelper.RuntimeRoot, ".\\CarrotQuant.Data\\v3\\yaml\\env.yaml");
                 Console.WriteLine($"Config path: {configPath}");
                 config = EnvConfigLoader.Load(configPath);
 

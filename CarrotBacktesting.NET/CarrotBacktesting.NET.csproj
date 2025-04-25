@@ -4,10 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyVersion>3.0.0.2</AssemblyVersion>
-    <Version></Version>
-    <FileVersion></FileVersion>
-  </PropertyGroup>
+    <AssemblyVersion>3.0.0.4</AssemblyVersion>
+   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <ShouldCreateLogs>True</ShouldCreateLogs>
@@ -33,5 +31,13 @@
     <PackageVersionSettings>None.IncrementWithAutoReset.None</PackageVersionSettings>
     <AssemblyVersionSettings>None.None.None.IncrementWithResetOnIncrease</AssemblyVersionSettings>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="DataFeed\Model\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
 
 </Project>
