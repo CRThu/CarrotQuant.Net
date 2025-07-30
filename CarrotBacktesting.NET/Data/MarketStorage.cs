@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 
 namespace CarrotBacktesting.NET.Data
@@ -17,9 +18,15 @@ namespace CarrotBacktesting.NET.Data
         private readonly SortedDictionary<DateTime, MarketFrame> _marketFrames;
 
         /// <summary>
-        /// 本次加载的所有股票代码(去重)
+        /// 所有股票代码的有序列表
+        /// 数组的索引是这只股票的全局唯一ID
         /// </summary>
-        public IReadOnlyList<string> StockCodes { get; }
+        public IReadOnlyList<string> Symbols { get; }
+
+        /// <summary>
+        /// 从股票代码到其在股票索引的映射
+        /// </summary>
+        public ImmutableDictionary<string, int> SymbolsToIndexMap { get; }
 
         /// <summary>
         /// 本次加载的所有交易日(已排序)
@@ -29,10 +36,18 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 构造函数
         /// </summary>
-        public MarketStorage(SortedDictionary<DateTime, MarketFrame> marketFrames)
+        public MarketStorage(SortedDictionary<DateTime, MarketFrame> marketFrames, List<string> symbols)
         {
             _marketFrames = marketFrames ?? new SortedDictionary<DateTime, MarketFrame>();
-            StockCodes = GetAllStockCodes();
+            Symbols = symbols;
+
+            // 一次性构建映射字典，提高查询效率
+            var map = new Dictionary<string, int>(Symbols.Count);
+            for (int i = 0; i < Symbols.Count; i++)
+            {
+                map[Symbols[i]] = i;
+            }
+            SymbolsToIndexMap = map.ToImmutableDictionary();
         }
 
         /// <summary>
@@ -49,23 +64,6 @@ namespace CarrotBacktesting.NET.Data
         public IEnumerable<MarketFrame> GetFramesEnumerator()
         {
             return _marketFrames.Values;
-        }
-
-        private IReadOnlyList<string> GetAllStockCodes()
-        {
-            if (_marketFrames.Count == 0)
-                return Array.Empty<string>();
-
-            var stockSet = new HashSet<string>();
-            foreach (var frame in _marketFrames.Values)
-            {
-                // 从基础数据中收集
-                foreach (var stockCode in frame.PrimaryData.Keys)
-                {
-                    stockSet.Add(stockCode);
-                }
-            }
-            return stockSet.ToList();
         }
     }
 }

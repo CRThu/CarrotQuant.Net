@@ -16,70 +16,32 @@ namespace CarrotBacktesting.NET.Data
         public DateTime Time { get; }
 
         /// <summary>
-        /// 基础数据字典
-        /// Key: 股票代码, Value: 该股票在本帧的基础数据
+        /// 基础数据数组。数组索引对应于 MarketStorage.Symbols 中的股票索引。
+        /// 使用可空结构体来表示某股票当天是否无数据。
         /// </summary>
-        public IReadOnlyDictionary<string, StockFrame> PrimaryData { get; }
+        public readonly StockFrame?[] PrimaryData;
 
         /// <summary>
         /// 字符串类型的扩展数据
-        /// Key: 字段名 (e.g. "is_st"), Value: (Key: 股票代码, Value: 字段值)
+        /// Key: 字段名, Value: 对应字段的所有股票值数组 (索引与股票列表对齐)
         /// </summary>
-        public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> StringExtendedData { get; }
+        public readonly IReadOnlyDictionary<string, string?[]> StringExtendedData;
 
         /// <summary>
         /// Double类型的扩展数据
-        /// Key: 字段名 (e.g. "pe_ratio"), Value: (Key: 股票代码, Value: 字段值)
+        /// Key: 字段名, Value: 对应字段的所有股票值数组 (索引与股票列表对齐)
         /// </summary>
-        public IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>> DoubleExtendedData { get; }
+        public readonly IReadOnlyDictionary<string, double?[]> DoubleExtendedData;
 
         public MarketFrame(DateTime time,
-                           Dictionary<string, StockFrame> primaryData,
-                           Dictionary<string, IReadOnlyDictionary<string, string>> stringExtendedData,
-                           Dictionary<string, IReadOnlyDictionary<string, double>> doubleExtendedData)
+                           StockFrame?[] primaryData,
+                           Dictionary<string, string?[]> stringExtendedData,
+                           Dictionary<string, double?[]> doubleExtendedData)
         {
             Time = time;
             PrimaryData = primaryData;
             StringExtendedData = stringExtendedData;
             DoubleExtendedData = doubleExtendedData;
-        }
-
-        /// <summary>
-        /// 获取指定股票的基础数据
-        /// </summary>
-        public bool TryGetPrimaryFrame(string stockCode, out StockFrame frame)
-        {
-            return PrimaryData.TryGetValue(stockCode, out frame);
-        }
-
-        /// <summary>
-        /// 获取指定股票的字符串类型扩展数据值
-        /// </summary>
-        public bool TryGetStringValue(string stockCode, string fieldName, out string? value)
-        {
-            if (StringExtendedData.TryGetValue(fieldName, out var stockValues) &&
-                stockValues.TryGetValue(stockCode, out value))
-            {
-                return true;
-            }
-
-            value = default;
-            return false;
-        }
-
-        /// <summary>
-        /// 获取指定股票的Double类型扩展数据值
-        /// </summary>
-        public bool TryGetDoubleValue(string stockCode, string fieldName, out double value)
-        {
-            if (DoubleExtendedData.TryGetValue(fieldName, out var stockValues) &&
-                stockValues.TryGetValue(stockCode, out value))
-            {
-                return true;
-            }
-
-            value = default;
-            return false;
         }
     }
 }
