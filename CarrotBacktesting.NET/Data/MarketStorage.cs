@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Text.Json.Serialization;
 
 namespace CarrotBacktesting.NET.Data
 {
@@ -15,39 +16,34 @@ namespace CarrotBacktesting.NET.Data
         /// Key: 交易日
         /// Value: 当天的市场数据
         /// </summary>
-        private readonly SortedDictionary<DateTime, MarketFrame> _marketFrames;
+        public Dictionary<DateTime, MarketFrame> MarketFrames;
+
+        /// <summary>
+        /// 从股票代码到其在股票索引的映射
+        /// </summary>
+        public Dictionary<string, int> SymbolsMap;
 
         /// <summary>
         /// 所有股票代码的有序列表
         /// 数组的索引是这只股票的全局唯一ID
         /// </summary>
-        public IReadOnlyList<string> Symbols { get; }
-
-        /// <summary>
-        /// 从股票代码到其在股票索引的映射
-        /// </summary>
-        public ImmutableDictionary<string, int> SymbolsToIndexMap { get; }
+        [JsonIgnore]
+        public string[] Symbols => SymbolsMap.OrderBy(kvp => kvp.Value).Select(kvp => kvp.Key).ToArray();
 
         /// <summary>
         /// 本次加载的所有交易日(已排序)
         /// </summary>
-        public IReadOnlyList<DateTime> TradeDates => _marketFrames.Keys.ToList();
+        [JsonIgnore]
+        public IReadOnlyList<DateTime> TradeDates => MarketFrames.Keys.ToList();
 
         /// <summary>
         /// 构造函数
         /// </summary>
-        public MarketStorage(SortedDictionary<DateTime, MarketFrame> marketFrames, List<string> symbols)
+        [JsonConstructor]
+        public MarketStorage(Dictionary<string, int> symbolsMap, Dictionary<DateTime, MarketFrame> marketFrames)
         {
-            _marketFrames = marketFrames ?? new SortedDictionary<DateTime, MarketFrame>();
-            Symbols = symbols;
-
-            // 一次性构建映射字典，提高查询效率
-            var map = new Dictionary<string, int>(Symbols.Count);
-            for (int i = 0; i < Symbols.Count; i++)
-            {
-                map[Symbols[i]] = i;
-            }
-            SymbolsToIndexMap = map.ToImmutableDictionary();
+            SymbolsMap = symbolsMap;
+            MarketFrames = marketFrames;
         }
 
         /// <summary>
@@ -55,7 +51,7 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public bool TryGetFrame(DateTime date, out MarketFrame? frame)
         {
-            return _marketFrames.TryGetValue(date.Date, out frame);
+            return MarketFrames.TryGetValue(date.Date, out frame);
         }
 
         /// <summary>
@@ -63,7 +59,7 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public IEnumerable<MarketFrame> GetFramesEnumerator()
         {
-            return _marketFrames.Values;
+            return MarketFrames.Values;
         }
     }
 }

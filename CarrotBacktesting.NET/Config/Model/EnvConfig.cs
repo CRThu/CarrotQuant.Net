@@ -36,6 +36,7 @@ namespace CarrotBacktesting.NET.Config.Model
     public class RuntimeConfig
     {
         public int ThreadCount { get; set; } = 4;
+        public string ProjectDir { get; set; } = ".";
     }
 
     public class FieldDefinition

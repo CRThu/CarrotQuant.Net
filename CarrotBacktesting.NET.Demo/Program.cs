@@ -1,8 +1,8 @@
 ﻿using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Config.Model;
+using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.DataFeed;
 using CarrotBacktesting.NET.Utility;
-using System.Xml.Serialization;
 
 namespace CarrotBacktesting.NET.Demo
 {
@@ -22,24 +22,25 @@ namespace CarrotBacktesting.NET.Demo
 
                 Console.WriteLine($"Data path: {config.Data.FullPath}");
                 Console.WriteLine($"Thread count: {config.Runtime.ThreadCount}");
+                Console.WriteLine($"Project directory: {config.Runtime.ProjectDir}");
+
+                DataLoader dataLoader = new DataLoader();
+                MarketStorage? ms = dataLoader.LoadData(config);
+
+                if (ms.TradeDates.Any())
+                {
+                    Console.WriteLine($"时间范围: {ms.TradeDates.First():yyyy-MM-dd}  至  {ms.TradeDates.Last():yyyy-MM-dd}");
+                }
+                Console.WriteLine($"股票数量: {ms.Symbols.Length}");
+                Console.WriteLine($"交易日数量: {ms.TradeDates.Count}");
+                Console.WriteLine($"Frame数量: {ms.GetFramesEnumerator().Sum(frame => frame.PrimaryData.Count(stock => stock.HasValue)):N0}");
+
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load config: {ex.Message}");
+                Console.WriteLine($"Failed to load config: {ex}");
                 return;
             }
-
-            // 扫描目录
-            var info = FileScanner.GetFiles(config.Data.FullPath);
-            Console.WriteLine($"Found {info.Count} files.");
-            //foreach (var kvp in info)
-            //{
-            //    Console.WriteLine($"Key: {kvp.Key}, Path: {kvp.Value}");
-            //}
-
-            FieldsMapper fieldsMapper = new FieldsMapper(config);
-            Console.WriteLine($"BasicFieldNameMap: {fieldsMapper.BasicFieldNameMap.ToDebugString()}");
-            Console.WriteLine($"ExtendedFieldNameMap: {fieldsMapper.ExtendedFieldNameMap.ToDebugString()}");
         }
     }
 }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Data
@@ -41,6 +42,7 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public readonly TradeStatus Status;
 
+        [JsonConstructor]
         public StockFrame(double open, double high, double low, double close, double volume, TradeStatus status)
         {
             Open = open;

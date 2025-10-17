@@ -23,8 +23,12 @@ namespace CarrotBacktesting.NET.DataFeed
 
         public Dictionary<string, string> ExtendedFieldNameMap { get; set; } = new();
 
+        public Dictionary<string, FieldDefinition> FieldDefinitions { get; }
+
         public FieldsMapper(EnvConfig config)
         {
+            FieldDefinitions = config.Fields;
+
             config.Fields.ToList().ForEach(x => {
                 if (BasicFieldNameMap.ContainsKey(x.Key))
                 {
