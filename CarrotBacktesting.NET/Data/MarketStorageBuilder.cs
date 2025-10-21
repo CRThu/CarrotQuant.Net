@@ -38,7 +38,7 @@ namespace CarrotBacktesting.NET.Data
             {
                 marketFrames[kvp.Value.Time] = kvp.Value.Build();
             }
-            return new MarketStorage(SymbolsMap, marketFrames);
+            return new MarketStorage(marketFrames, SymbolsMap);
         }
     }
 }

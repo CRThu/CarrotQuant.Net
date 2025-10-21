@@ -1,4 +1,5 @@
-﻿using System;
+﻿using MessagePack;
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -9,29 +10,34 @@ namespace CarrotBacktesting.NET.Data
     /// <br/>
     /// 包含单个时间点上，所有活跃资产的数据。
     /// </summary>
+    [MessagePackObject]
     public class MarketFrame
     {
         /// <summary>
         /// 当前帧的日期时间
         /// </summary>
+        [Key(0)]
         public DateTime Time;
 
         /// <summary>
         /// 基础数据数组。数组索引对应于 MarketStorage.Symbols 中的股票索引。
         /// 使用可空结构体来表示某股票当天是否无数据。
         /// </summary>
+        [Key(1)]
         public StockFrame?[] PrimaryData;
 
         /// <summary>
         /// 字符串类型的扩展数据
         /// Key: 字段名, Value: 对应字段的所有股票值数组 (索引与股票列表对齐)
         /// </summary>
+        [Key(2)]
         public Dictionary<string, string?[]> StringExtendedData;
 
         /// <summary>
         /// Double类型的扩展数据
         /// Key: 字段名, Value: 对应字段的所有股票值数组 (索引与股票列表对齐)
         /// </summary>
+        [Key(3)]
         public Dictionary<string, double?[]> DoubleExtendedData;
 
         [JsonConstructor]

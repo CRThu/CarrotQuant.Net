@@ -1,6 +1,7 @@
 ﻿using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Utility;
+using CarrotBacktesting.NET.Utility.Serialization;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,16 +37,16 @@ namespace CarrotBacktesting.NET.DataFeed
 
         private void UpdateCache(EnvConfig config, MarketStorage data)
         {
-            string fileName = Path.Combine(config.Runtime.ProjectDir, "cache.json");
-            SerializationHelper.SerializeToFile(data, fileName);
+            string fileName = Path.Combine(config.Runtime.ProjectDir, "market.cache");
+            MessagePackSerializationHelper.SerializeToFile(data, fileName);
         }
 
         private MarketStorage? LoadFromCache(EnvConfig config)
         {
-            string fileName = Path.Combine(config.Runtime.ProjectDir, "cache.json");
+            string fileName = Path.Combine(config.Runtime.ProjectDir, "market.cache");
             if (!File.Exists(fileName))
                 return null;
-            return SerializationHelper.DeserializeFromFile<MarketStorage>(fileName);
+            return MessagePackSerializationHelper.DeserializeFromFile<MarketStorage>(fileName);
         }
 
         private MarketStorage? LoadFromSource(EnvConfig config)

@@ -9,12 +9,12 @@ using System.Text.Json;
 using System.Text.Encodings.Web;
 
 
-namespace CarrotBacktesting.NET.Utility
+namespace CarrotBacktesting.NET.Utility.Serialization
 {
     /// <summary>
     /// 提供 JSON 序列化和反序列化的帮助方法。
     /// </summary>
-    public class SerializationHelper
+    public class JsonSerializationHelper
     {
         /// <summary>
         /// 全局 JSON 序列化器选项。
