@@ -1,5 +1,7 @@
-﻿using CarrotBacktesting.NET.Data;
+﻿using CarrotBacktesting.NET.Config.Model;
+using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Engine.Model;
+using CarrotBacktesting.NET.Utility.Serialization;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,6 +18,8 @@ namespace CarrotBacktesting.NET.Engine
     public class BacktestingEngine
     {
         private readonly ISignalStrategy _strategy;
+        private readonly EnvConfig _config;
+
         /// <summary>
         /// 引擎内部统一使用纵向的StockHistory列表进行计算
         /// </summary>
@@ -26,9 +30,10 @@ namespace CarrotBacktesting.NET.Engine
         /// </summary>
         /// <param name="data">加载完毕的市场数据，可以是任意实现IDataStorage的类型</param>
         /// <param name="strategy">要执行的信号策略</param>
-        public BacktestingEngine(IDataStorage data, ISignalStrategy strategy)
+        public BacktestingEngine(IDataStorage data, ISignalStrategy strategy, EnvConfig config)
         {
             _strategy = strategy;
+            _config = config;
 
             Console.WriteLine("Initializing backtesting engine...");
 
@@ -87,7 +92,7 @@ namespace CarrotBacktesting.NET.Engine
         /// <returns>所有触发的信号列表</returns>
         public List<SignalInfo> Run()
         {
-            Console.WriteLine($"Running backtest with strategy: '{_strategy.Name}'...");
+            Console.WriteLine($"回测开始，策略名: '{_strategy.Name}'。");
             var stopwatch = Stopwatch.StartNew();
 
             // 使用线程安全的集合来存储来自不同线程的结果
@@ -119,10 +124,28 @@ namespace CarrotBacktesting.NET.Engine
             });
 
             stopwatch.Stop();
-            Console.WriteLine($"Backtest finished in {stopwatch.Elapsed.TotalSeconds:F2} seconds.");
+            Console.WriteLine($"回测结束，耗时: {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
 
-            // 返回排序后的结果
-            return signals.OrderBy(s => s.Date).ThenBy(s => s.StockCode).ToList();
+            // 排序结果
+            var sortedSignals = signals.OrderBy(s => s.Date).ThenBy(s => s.StockCode).ToList();
+
+            // 保存文件
+            if (!string.IsNullOrWhiteSpace(_config.Out.Signal))
+            {
+                try
+                {
+                    string fileName = Path.Combine(_config.Runtime.ProjectDir, _config.Out.Signal);
+
+                    JsonSerializationHelper.SerializeToFile(sortedSignals, fileName);
+                    Console.WriteLine($"信号已自动保存到: {fileName}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[错误] 引擎保存信号文件失败: {ex.Message}");
+                }
+            }
+
+            return sortedSignals;
         }
     }
 }

@@ -55,7 +55,7 @@ namespace CarrotBacktesting.NET.Demo
 
                 // b. 用加载的数据和策略来实例化引擎
                 //    引擎内部会自动适配 TimeSeries 和 MarketSnapshot 两种数据模式
-                var engine = new BacktestingEngine(ds, strategy);
+                var engine = new BacktestingEngine(ds, strategy, config);
 
                 // c. 运行引擎并获取信号结果
                 //    这个 Signal 结构就是您提到的 SignalInfo
@@ -66,7 +66,7 @@ namespace CarrotBacktesting.NET.Demo
                 Console.WriteLine($"Total signals (SignalInfo) generated: {signals.Count}");
 
                 // (可选) 打印一些信号示例
-                if (signals.Any())
+                if (signals.Count != 0)
                 {
                     Console.WriteLine("First 10 signals:");
                     foreach (var signal in signals.Take(10))

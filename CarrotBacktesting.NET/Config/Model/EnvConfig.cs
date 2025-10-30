@@ -17,6 +17,8 @@ namespace CarrotBacktesting.NET.Config.Model
 
         public RuntimeConfig Runtime { get; set; } = new();
 
+        public OutConfig Out { get; set; } = new();
+
         public Dictionary<string, FieldDefinition> Fields { get; set; } = new();
     }
 
@@ -36,6 +38,11 @@ namespace CarrotBacktesting.NET.Config.Model
     {
         public int ThreadCount { get; set; } = 4;
         public string ProjectDir { get; set; } = ".";
+    }
+
+    public class OutConfig
+    {
+        public string Signal { get; set; } = "signal.json";
     }
 
     public class FieldDefinition

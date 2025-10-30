@@ -13,7 +13,7 @@ namespace CarrotBacktesting.NET.Config
     public static class EnvConfigLoader
     {
 
-        public static EnvConfig Load(string configPath = "env.yaml")
+        public static EnvConfig Load(string configPath)
         {
             if (!File.Exists(configPath))
             {
