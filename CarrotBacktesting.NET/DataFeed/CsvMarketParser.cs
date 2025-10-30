@@ -59,7 +59,7 @@ namespace CarrotBacktesting.NET.DataFeed
                     }
 
                     // 3. 检查StockFrame所需的基本字段是否都已在CSV中找到
-                    var requiredFields = new[] { "time", "open", "high", "low", "close", "volume", "status" };
+                    var requiredFields = new[] { "time", "open", "high", "low", "close", "volume" };
                     foreach (var field in requiredFields)
                     {
                         if (!internalNameToIndexMap.ContainsKey(field))
@@ -76,8 +76,9 @@ namespace CarrotBacktesting.NET.DataFeed
                     int lowIdx = internalNameToIndexMap["low"];
                     int closeIdx = internalNameToIndexMap["close"];
                     int volumeIdx = internalNameToIndexMap["volume"];
-                    int statusIdx = internalNameToIndexMap["status"];
-                    var statusFieldDef = fieldsMapper.FieldDefinitions["status"];
+                    bool hasStatusColumn = internalNameToIndexMap.TryGetValue("status", out var statusIdx);
+                    var statusFieldDef = fieldsMapper.FieldDefinitions.GetValueOrDefault("status");
+
 
                     // 4. 使用 Sylvan 高效地逐行读取数据
                     while (reader.Read())
@@ -92,12 +93,24 @@ namespace CarrotBacktesting.NET.DataFeed
                             double close = reader.GetDouble(closeIdx);
                             double volume = reader.GetDouble(volumeIdx);
 
-                            // 解析交易状态 (逻辑与之前版本相同)
-                            string statusCsvValue = reader.GetString(statusIdx);
-                            TradeStatus tradeStatus = TradeStatus.Unknown;
-                            if (statusFieldDef.ValueMap.TryGetValue(statusCsvValue, out var internalStatusString))
+                            // 解析交易状态
+                            TradeStatus tradeStatus;
+
+                            // ++ 修改点 3: 在循环内部根据列是否存在来决定如何处理 ++
+                            if (hasStatusColumn && statusFieldDef != null)
                             {
-                                Enum.TryParse<TradeStatus>(internalStatusString, true, out tradeStatus);
+                                // 如果 'status' 列存在，则正常解析
+                                string statusCsvValue = reader.GetString(statusIdx);
+                                tradeStatus = TradeStatus.Unknown; // 默认未知
+                                if (statusFieldDef.ValueMap.TryGetValue(statusCsvValue, out var internalStatusString))
+                                {
+                                    Enum.TryParse<TradeStatus>(internalStatusString, true, out tradeStatus);
+                                }
+                            }
+                            else
+                            {
+                                // 如果 'status' 列不存在，则赋予一个默认值
+                                tradeStatus = TradeStatus.Unknown; // 默认未知
                             }
 
                             // 6. 创建StockFrame实例

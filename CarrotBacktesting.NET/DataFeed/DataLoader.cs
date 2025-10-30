@@ -80,7 +80,7 @@ namespace CarrotBacktesting.NET.DataFeed
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException($"数据源目录不存在:{dir}");
 
-            var info = FileScanner.GetFiles(dir);
+            var info = FileScanner.GetFiles(dir, "*.csv");
             Console.WriteLine($"Found {info.Count} files.");
             //foreach (var kvp in info)
             //{
@@ -90,7 +90,7 @@ namespace CarrotBacktesting.NET.DataFeed
             FieldsMapper fieldsMapper = new FieldsMapper(config);
             Console.WriteLine($"BasicFieldNameMap: {fieldsMapper.BasicFieldNameMap.ToDebugString()}");
             Console.WriteLine($"ExtendedFieldNameMap: {fieldsMapper.ExtendedFieldNameMap.ToDebugString()}");
-            
+
             IDataStorageBuilder builder = config.Data.Mode switch
             {
                 StorageMode.TimeSeries => new HistoryStorageBuilder(info.Keys),
