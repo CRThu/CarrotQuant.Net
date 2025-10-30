@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Data
 {
-    public class MarketStorageBuilder
+    public class MarketStorageBuilder : IDataStorageBuilder
     {
         public Dictionary<string, int> SymbolsMap { get; set; } = new Dictionary<string, int>();
 
@@ -31,7 +31,7 @@ namespace CarrotBacktesting.NET.Data
             marketFrame.Add(SymbolsMap[symbol], frame);
         }
 
-        public MarketStorage Build()
+        public IDataStorage Build()
         {
             Dictionary<DateTime, MarketFrame> marketFrames = new Dictionary<DateTime, MarketFrame>();
             foreach (var kvp in Market)

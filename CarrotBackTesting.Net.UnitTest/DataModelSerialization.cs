@@ -47,6 +47,37 @@ namespace CarrotBacktesting.NET.UnitTest
             return new MarketStorage(marketFrames, symbolsMap);
         }
 
+        /// <summary>
+        /// 创建一个用于测试的、确定的 StockHistory 实例。
+        /// </summary>
+        private StockHistory CreateTestStockHistory()
+        {
+            var dates = new List<DateTime>
+            {
+                new DateTime(2025, 10, 29, 0, 0, 0, DateTimeKind.Utc),
+                new DateTime(2025, 10, 30, 0, 0, 0, DateTimeKind.Utc)
+            };
+            var frames = new List<StockFrame> { CreateTestStockFrame(), CreateTestStockFrame() };
+            return new StockHistory("sh.600000", dates, frames);
+        }
+
+        /// <summary>
+        /// 创建一个用于测试的、确定的 HistoryStorage 实例。
+        /// </summary>
+        private HistoryStorage CreateTestHistoryStorage()
+        {
+            var history1 = CreateTestStockHistory();
+            var history2 = new StockHistory("sz.000001", history1.Dates, history1.Data);
+
+            var stockHistories = new Dictionary<string, StockHistory>
+            {
+                { history1.StockCode, history1 },
+                { history2.StockCode, history2 }
+            };
+
+            var globalDates = history1.Dates.Union(history2.Dates).OrderBy(d => d).ToList();
+            return new HistoryStorage(stockHistories, globalDates);
+        }
         #endregion
 
         #region StockFrame Tests
@@ -164,6 +195,93 @@ namespace CarrotBacktesting.NET.UnitTest
             var actualFrame = actual.MarketFrames.First().Value;
             Assert.AreEqual(expectedFrame.Time, actualFrame.Time, $"[{context}] MarketFrame 的时间应相等。");
             CollectionAssert.AreEqual(expectedFrame.PrimaryData, actualFrame.PrimaryData, $"[{context}] MarketFrame 内部的 PrimaryData 应相等。");
+        }
+
+        #endregion
+
+        #region StockHistory Tests
+
+        [TestMethod]
+        public void StockHistory_JsonSerialization_ShouldBeEqual()
+        {
+            // Arrange
+            var original = CreateTestStockHistory();
+
+            // Act
+            string jsonString = JsonSerializationHelper.SerializeToString(original);
+            var deserialized = JsonSerializationHelper.DeserializeFromString<StockHistory>(jsonString);
+
+            // Assert
+            AssertStockHistoryAreEqual(original, deserialized, "JSON");
+        }
+
+        [TestMethod]
+        public void StockHistory_MessagePackSerialization_ShouldBeEqual()
+        {
+            // Arrange
+            var original = CreateTestStockHistory();
+
+            // Act
+            byte[] bytes = MessagePackSerializationHelper.SerializeToBytes(original);
+            var deserialized = MessagePackSerializationHelper.DeserializeFromBytes<StockHistory>(bytes);
+
+            // Assert
+            AssertStockHistoryAreEqual(original, deserialized, "MessagePack");
+        }
+
+        /// <summary>
+        /// 自定义的断言方法，用于深度比较两个 StockHistory 对象。
+        /// </summary>
+        private void AssertStockHistoryAreEqual(StockHistory? expected, StockHistory? actual, string context)
+        {
+            Assert.IsNotNull(actual, $"[{context}] 反序列化后的 StockHistory不应为null。");
+            Assert.AreEqual(expected.StockCode, actual.StockCode, $"[{context}] StockCode 应相等。");
+            CollectionAssert.AreEqual(expected.Dates.ToList(), actual.Dates.ToList(), $"[{context}] Dates 列表应相等。");
+            CollectionAssert.AreEqual(expected.Data.ToList(), actual.Data.ToList(), $"[{context}] Data 列表应相等。");
+        }
+
+        #endregion
+
+        #region HistoryStorage Tests
+
+        [TestMethod]
+        public void HistoryStorage_JsonSerialization_ShouldBeEqual()
+        {
+            // Arrange
+            var original = CreateTestHistoryStorage();
+
+            // Act
+            string jsonString = JsonSerializationHelper.SerializeToString(original);
+            var deserialized = JsonSerializationHelper.DeserializeFromString<HistoryStorage>(jsonString);
+
+            // Assert
+            AssertHistoryStorageAreEqual(original, deserialized, "JSON");
+        }
+
+        [TestMethod]
+        public void HistoryStorage_MessagePackSerialization_ShouldBeEqual()
+        {
+            // Arrange
+            var original = CreateTestHistoryStorage();
+
+            // Act
+            byte[] bytes = MessagePackSerializationHelper.SerializeToBytes(original);
+            var deserialized = MessagePackSerializationHelper.DeserializeFromBytes<HistoryStorage>(bytes);
+
+            // Assert
+            AssertHistoryStorageAreEqual(original, deserialized, "MessagePack");
+        }
+
+        /// <summary>
+        /// 自定义的断言方法，用于深度比较两个 HistoryStorage 对象。
+        /// </summary>
+        private void AssertHistoryStorageAreEqual(HistoryStorage? expected, HistoryStorage? actual, string context)
+        {
+            Assert.IsNotNull(actual, $"[{context}] 反序列化后的 HistoryStorage不应为null。");
+            CollectionAssert.AreEqual(expected.TradeDates.ToList(), actual.TradeDates.ToList(), $"[{context}] GlobalTradeDates 应相等。");
+            Assert.AreEqual(expected.StockHistories.Count, actual.StockHistories.Count, $"[{context}] StockHistories 数量应相等。");
+            // 深度比较其中一个 StockHistory
+            AssertStockHistoryAreEqual(expected.StockHistories.First().Value, actual.StockHistories.First().Value, context);
         }
 
         #endregion

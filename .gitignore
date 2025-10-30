@@ -70,3 +70,5 @@ __pycache__/
 # json config file
 /CarrotQuant.Data/**/json/*
 !/CarrotQuant.Data/**/json/testdata/
+
+*.cache

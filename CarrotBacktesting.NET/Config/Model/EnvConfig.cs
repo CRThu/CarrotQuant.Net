@@ -23,8 +23,7 @@ namespace CarrotBacktesting.NET.Config.Model
     public class DataConfig
     {
         public string RawPath { get; set; } = "";
-
-        public string FullPath => Path.Combine(PathHelper.RuntimeRoot, RawPath);
+        public StorageMode Mode { get; set; } = StorageMode.TimeSeries;
     }
 
     public class CacheConfig
@@ -52,5 +51,17 @@ namespace CarrotBacktesting.NET.Config.Model
         Auto,
         Float,
         String,
+    }
+
+    public enum StorageMode
+    {
+        /// <summary>
+        /// 纵向存储 (按股票时间序列)，适用于大多数策略
+        /// </summary>
+        TimeSeries,
+        /// <summary>
+        /// 横向存储 (按交易日截面)，适用于纯截面策略
+        /// </summary>
+        MarketSnapshot
     }
 }

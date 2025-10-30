@@ -15,13 +15,13 @@ namespace CarrotBacktesting.NET.DataFeed
     public static class CsvMarketParser
     {
         /// <summary>
-        /// 解析单个CSV文件并将其数据添加到MarketStorageBuilder中
+        /// 解析单个CSV文件并将其数据添加到IDataStorageBuilder 中
         /// </summary>
-        /// <param name="msb">市场数据构建器</param>
+        /// <param name="builder">市场数据构建器</param>
         /// <param name="symbol">股票代码</param>
         /// <param name="path">CSV文件路径</param>
         /// <param name="fieldsMapper">字段映射器</param>
-        public static void Parse(MarketStorageBuilder msb, string symbol, string path, FieldsMapper fieldsMapper)
+        public static void Parse(IDataStorageBuilder builder, string symbol, string path, FieldsMapper fieldsMapper)
         {
             // Sylvan CsvDataReader 的配置选项，指定包含标题行
             var options = new CsvDataReaderOptions { HasHeaders = true };
@@ -104,7 +104,7 @@ namespace CarrotBacktesting.NET.DataFeed
                             var frame = new StockFrame(open, high, low, close, volume, tradeStatus);
 
                             // 7. 将创建的Frame添加到构建器中
-                            msb.AddFrame(symbol, time, frame);
+                            builder.AddFrame(symbol, time, frame);
                         }
                         catch (Exception ex)
                         {

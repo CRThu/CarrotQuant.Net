@@ -11,7 +11,7 @@ namespace CarrotBacktesting.NET.Data
     /// 核心市场数据存储容器
     /// </summary>
     [MessagePackObject]
-    public class MarketStorage
+    public class MarketStorage : IDataStorage
     {
         /// <summary>
         /// 市场数据字典, 按时间排序
@@ -33,7 +33,7 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         [IgnoreMember]
         [JsonIgnore]
-        public string[] Symbols => SymbolsMap.OrderBy(kvp => kvp.Value).Select(kvp => kvp.Key).ToArray();
+        public IReadOnlyList<string> Symbols => SymbolsMap.OrderBy(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
 
         /// <summary>
         /// 本次加载的所有交易日(已排序)

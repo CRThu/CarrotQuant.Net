@@ -15,14 +15,14 @@ namespace CarrotBacktesting.NET.Engine.Model
         /// <summary>
         /// 当前股票的时间序列数据
         /// </summary>
-        public StockSeries Series { get; }
+        public StockHistory Series { get; }
 
         /// <summary>
         /// 当前计算点在时间序列中的索引
         /// </summary>
         public int CurrentIndex { get; set; }
 
-        public SignalStrategyContext(StockSeries series)
+        public SignalStrategyContext(StockHistory series)
         {
             Series = series;
         }
@@ -48,5 +48,4 @@ namespace CarrotBacktesting.NET.Engine.Model
         public double? GetClose(int offset) => GetFrame(offset)?.Close;
         public double? GetVolume(int offset) => GetFrame(offset)?.Volume;
     }
-}
 }
