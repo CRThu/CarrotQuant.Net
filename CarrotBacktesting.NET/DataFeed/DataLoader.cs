@@ -4,6 +4,7 @@ using CarrotBacktesting.NET.Utility;
 using CarrotBacktesting.NET.Utility.Serialization;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ namespace CarrotBacktesting.NET.DataFeed
     {
         public IDataStorage? LoadData(EnvConfig config)
         {
+            var stopwatch = Stopwatch.StartNew();
             IDataStorage? ds;
             if (!config.Cache.Enabled)
             {
@@ -26,11 +28,20 @@ namespace CarrotBacktesting.NET.DataFeed
                     ds = LoadFromCache(config);
                     if (ds != null)
                     {
+                        stopwatch.Stop();
+                        Console.WriteLine($"数据从缓存加载完成，耗时: {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
                         return ds;
                     }
+                    Console.WriteLine("未找到缓存或缓存无效，从源文件加载...");
+                }
+                else
+                {
+                    Console.WriteLine("已强制刷新缓存，从源文件加载...");
                 }
                 ds = LoadFromSource(config);
                 UpdateCache(config, ds);
+                stopwatch.Stop();
+                Console.WriteLine($"数据从源文件加载完成，耗时: {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
                 return ds;
             }
         }
