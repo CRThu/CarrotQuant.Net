@@ -3,7 +3,7 @@ using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.DataFeed;
 using CarrotBacktesting.NET.Engine;
-using CarrotBacktesting.NET.Engine.Strategy;
+using CarrotBacktesting.NET.Strategy;
 using CarrotBacktesting.NET.Utility;
 
 namespace CarrotBacktesting.NET.Demo
@@ -55,13 +55,14 @@ namespace CarrotBacktesting.NET.Demo
 
                 // d. 打印最终的信号计数
                 Console.WriteLine("\n--- Backtesting Results ---");
-                Console.WriteLine($"Total signals (SignalInfo) generated: {session.Signals!.Count}");
+                var signals = session.Result!.SignalsResult.GetSignals().ToList();
+                Console.WriteLine($"Total signals (SignalInfo) generated: {signals.Count}");
 
                 // (可选) 打印一些信号示例
-                if (session.Signals!.Count != 0)
+                if (signals.Count != 0)
                 {
                     Console.WriteLine("First 10 signals:");
-                    foreach (var signal in session.Signals!.Take(10))
+                    foreach (var signal in signals.Take(10))
                     {
                         Console.WriteLine($"  - Stock: {signal.StockCode}, Date: {signal.Date:yyyy-MM-dd}");
                     }

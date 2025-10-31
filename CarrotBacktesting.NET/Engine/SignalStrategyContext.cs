@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.NET.Engine.Model
+namespace CarrotBacktesting.NET.Engine
 {
     /// <summary>
     /// 为策略提供数据访问的上下文

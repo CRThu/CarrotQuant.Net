@@ -1,6 +1,6 @@
 ﻿using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
-using CarrotBacktesting.NET.Engine.Model;
+using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Utility.Serialization;
 using System;
 using System.Collections.Concurrent;
@@ -89,14 +89,13 @@ namespace CarrotBacktesting.NET.Engine
         /// <summary>
         /// 运行回测
         /// </summary>
-        /// <returns>所有触发的信号列表</returns>
-        public List<SignalInfo> Run()
+        /// <returns>回测结果</returns>
+        public BacktestingResult Run()
         {
             Console.WriteLine($"回测开始，策略名: '{_strategy.Name}'。");
             var stopwatch = Stopwatch.StartNew();
 
-            // 使用线程安全的集合来存储来自不同线程的结果
-            var signals = new ConcurrentBag<SignalInfo>();
+            BacktestingResult result = new BacktestingResult();
 
             // 引擎的核心计算逻辑总是基于高效的纵向数据(_stockHistories)
             Parallel.ForEach(_stockHistories, history =>
@@ -115,7 +114,7 @@ namespace CarrotBacktesting.NET.Engine
                     // 脉冲逻辑：当本次触发，且上次未触发时，才记录信号
                     if (currentSignalState && !lastSignalState)
                     {
-                        signals.Add(new SignalInfo(history.StockCode, history.Dates[i]));
+                        result.SignalsResult.Store(history.StockCode, history.Dates[i]);
                     }
 
                     // 更新上次触发状态
@@ -126,26 +125,7 @@ namespace CarrotBacktesting.NET.Engine
             stopwatch.Stop();
             Console.WriteLine($"回测结束，耗时: {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
 
-            // 排序结果
-            var sortedSignals = signals.OrderBy(s => s.Date).ThenBy(s => s.StockCode).ToList();
-
-            // 保存文件
-            if (!string.IsNullOrWhiteSpace(_config.Out.Signal))
-            {
-                try
-                {
-                    string fileName = Path.Combine(_config.Runtime.ProjectDir, _config.Out.Signal);
-
-                    JsonSerializationHelper.SerializeToFile(sortedSignals, fileName);
-                    Console.WriteLine($"信号已自动保存到: {fileName}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[错误] 引擎保存信号文件失败: {ex.Message}");
-                }
-            }
-
-            return sortedSignals;
+            return result;
         }
     }
 }

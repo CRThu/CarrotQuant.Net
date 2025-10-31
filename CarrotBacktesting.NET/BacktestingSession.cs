@@ -3,8 +3,9 @@ using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.DataFeed;
 using CarrotBacktesting.NET.Engine;
-using CarrotBacktesting.NET.Engine.Model;
+using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Utility;
+using CarrotBacktesting.NET.Utility.Serialization;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,14 +30,14 @@ namespace CarrotBacktesting.NET
         public IDataStorage? Data { get; private set; }
 
         /// <summary>
-        /// 最新一次策略运行产生的信号
+        /// 
         /// </summary>
-        public List<SignalInfo>? Signals { get; private set; }
+        public BacktestingEngine? Engine { get; private set; }
 
         /// <summary>
         /// 
         /// </summary>
-        public BacktestingEngine? Engine { get; private set; }
+        public BacktestingResult? Result { get; private set; }
 
         /// <summary>
         /// 构造一个新的回测会话
@@ -72,7 +73,31 @@ namespace CarrotBacktesting.NET
                 throw new InvalidOperationException("Data is null");
 
             Engine = new BacktestingEngine(Data, strategy, Config);
-            Signals = Engine.Run();
+            Result = Engine.Run();
+
+            SaveResult();
+        }
+
+        private void SaveResult()
+        {
+            if (Result == null)
+                throw new InvalidOperationException("Result is null");
+
+            // 保存文件
+            if (!string.IsNullOrWhiteSpace(Config.Out.Signal))
+            {
+                try
+                {
+                    string fileName = Path.Combine(Config.Runtime.ProjectDir, Config.Out.Signal);
+
+                    JsonSerializationHelper.SerializeToFile(Result.SignalsResult.GetSignals(), fileName);
+                    Console.WriteLine($"信号已自动保存到: {fileName}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[错误] 引擎保存信号文件失败: {ex.Message}");
+                }
+            }
         }
     }
 }

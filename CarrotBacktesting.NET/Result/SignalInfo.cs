@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.NET.Engine.Model
+namespace CarrotBacktesting.NET.Result
 {
     /// <summary>
     /// 表示一个触发的信号
