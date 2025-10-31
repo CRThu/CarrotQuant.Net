@@ -3,6 +3,7 @@ using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.DataFeed;
 using CarrotBacktesting.NET.Engine;
+using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Strategy;
 using CarrotBacktesting.NET.Utility;
 

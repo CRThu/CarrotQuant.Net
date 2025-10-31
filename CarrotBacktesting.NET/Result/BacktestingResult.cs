@@ -1,17 +1,21 @@
-﻿using System;
+﻿using MessagePack;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Result
 {
+    [MessagePackObject]
     public class BacktestingResult
     {
         /// <summary>
         /// 本次回测生成的信号集合。
         /// 它在构造时就被创建，并可以在回测过程中被填充。
         /// </summary>
+        [Key(0)]
         public SignalSet SignalsResult { get; }
 
         /// <summary>
@@ -20,6 +24,14 @@ namespace CarrotBacktesting.NET.Result
         public BacktestingResult()
         {
             SignalsResult = new SignalSet();
+        }
+
+
+        [JsonConstructor]
+        [SerializationConstructor]
+        public BacktestingResult(SignalSet signalsResult)
+        {
+            SignalsResult = signalsResult;
         }
     }
 }
