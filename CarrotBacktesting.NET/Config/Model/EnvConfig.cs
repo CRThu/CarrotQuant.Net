@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
+using YamlDotNet.Serialization;
 
 namespace CarrotBacktesting.NET.Config.Model
 {
@@ -13,13 +14,15 @@ namespace CarrotBacktesting.NET.Config.Model
     {
         public DataConfig Data { get; set; } = new();
 
+        public Dictionary<string, FieldDefinition> Fields { get; set; } = new();
+
         public CacheConfig Cache { get; set; } = new();
 
         public RuntimeConfig Runtime { get; set; } = new();
 
-        public OutConfig Out { get; set; } = new();
+        public AnalysisConfig Analysis { get; set; } = new();
 
-        public Dictionary<string, FieldDefinition> Fields { get; set; } = new();
+        public OutConfig Out { get; set; } = new();
     }
 
     public class DataConfig
@@ -43,6 +46,18 @@ namespace CarrotBacktesting.NET.Config.Model
     public class OutConfig
     {
         public string Signal { get; set; } = "signal.json";
+    }
+
+    public class AnalysisConfig
+    {
+        public ForwardReturnsConfig ForwardReturns { get; set; } = new();
+        public List<string> Presenters { get; set; } = new();
+    }
+
+    public class ForwardReturnsConfig
+    {
+        public bool Enabled { get; set; } = true;
+        public int BacktestDays { get; set; } = 30;
     }
 
     public class FieldDefinition
