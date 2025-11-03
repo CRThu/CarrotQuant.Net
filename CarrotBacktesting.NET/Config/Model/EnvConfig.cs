@@ -46,12 +46,13 @@ namespace CarrotBacktesting.NET.Config.Model
     public class OutConfig
     {
         public string Signal { get; set; } = "signal.json";
+        public string Plots { get; set; } = "./plots";
     }
 
     public class AnalysisConfig
     {
         public ForwardReturnsConfig ForwardReturns { get; set; } = new();
-        public List<string> Presenters { get; set; } = new();
+        public List<string> Exporters { get; set; } = new();
     }
 
     public class ForwardReturnsConfig

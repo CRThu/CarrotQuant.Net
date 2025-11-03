@@ -68,6 +68,9 @@ namespace CarrotBacktesting.NET.Demo
                         Console.WriteLine($"  - Stock: {signal.StockCode}, Date: {signal.Date:yyyy-MM-dd}");
                     }
                 }
+
+
+                session.Analyze();
             }
             catch (Exception ex)
             {

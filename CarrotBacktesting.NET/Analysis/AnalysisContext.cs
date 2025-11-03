@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.NET.Data;
+﻿using CarrotBacktesting.NET.Config.Model;
+using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Result;
 using System;
 using System.Collections.Generic;
@@ -6,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.NET.Analysis.Model
+namespace CarrotBacktesting.NET.Analysis
 {
     /// <summary>
     /// 在分析流程中传递上下文数据。
@@ -14,6 +15,8 @@ namespace CarrotBacktesting.NET.Analysis.Model
     /// </summary>
     public class AnalysisContext
     {
+
+        public EnvConfig Config { get; }
         public BacktestingResult BacktestResult { get; }
         public IDataStorage Data { get; }
 
@@ -24,8 +27,9 @@ namespace CarrotBacktesting.NET.Analysis.Model
         /// </summary>
         private readonly Dictionary<string, object> _artifacts = new();
 
-        public AnalysisContext(BacktestingResult backtestResult, IDataStorage data)
+        public AnalysisContext(EnvConfig config, BacktestingResult backtestResult, IDataStorage data)
         {
+            Config = config;
             BacktestResult = backtestResult;
             Data = data;
         }

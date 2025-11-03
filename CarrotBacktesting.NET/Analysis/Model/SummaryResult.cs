@@ -9,7 +9,7 @@ namespace CarrotBacktesting.NET.Analysis.Model
     /// <summary>
     /// 存储每日的聚合性能指标。
     /// </summary>
-    public class PerformanceSummary
+    public class SummaryResult
     {
         public int BacktestDays { get; }
         public int ValidSignalCount { get; }
@@ -17,7 +17,7 @@ namespace CarrotBacktesting.NET.Analysis.Model
         public double[] MedianReturns { get; }
         public double[] WinRates { get; }
 
-        public PerformanceSummary(int backtestDays, int validSignalCount, double[] avgReturns, double[] medianReturns, double[] winRates)
+        public SummaryResult(int backtestDays, int validSignalCount, double[] avgReturns, double[] medianReturns, double[] winRates)
         {
             BacktestDays = backtestDays;
             ValidSignalCount = validSignalCount;

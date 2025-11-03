@@ -1,4 +1,5 @@
-﻿using CarrotBacktesting.NET.Config;
+﻿using CarrotBacktesting.NET.Analysis;
+using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.DataFeed;
@@ -98,6 +99,18 @@ namespace CarrotBacktesting.NET
                     Console.WriteLine($"[错误] 引擎保存信号文件失败: {ex.Message}");
                 }
             }
+        }
+
+        public void Analyze()
+        {
+            if (Result is null || Data is null)
+            {
+                Console.WriteLine("没有可供分析的结果或数据。");
+                return;
+            }
+
+            var runner = new AnalysisRunner(Config, Result, Data);
+            runner.Run();
         }
     }
 }
