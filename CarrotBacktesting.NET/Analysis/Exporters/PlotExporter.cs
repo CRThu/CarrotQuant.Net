@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.NET.Analysis.Presenters
+namespace CarrotBacktesting.NET.Analysis.Exporters
 {
     public class PlotExporter : IExporter
     {
