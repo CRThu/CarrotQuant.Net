@@ -22,10 +22,14 @@ namespace CarrotBacktesting.NET.Analysis
             _context = new AnalysisContext(config, result, data);
 
             // 根据配置动态构建分析器和表现器列表
-            if (config.Analysis.ForwardReturns.Enabled)
+            foreach (var analyzer in config.Analysis.Analyzers)
             {
-                _analyzers.Add(new ForwardReturnsAnalyzer(config.Analysis.ForwardReturns));
-                _analyzers.Add(new SummaryAnalyzer());
+                switch (analyzer)
+                {
+                    case "signal_analyzer":
+                        _analyzers.Add(new SignalAnalyzer(config.Analysis));
+                        break;
+                }
             }
 
             foreach (var exporterName in config.Analysis.Exporters)
@@ -44,7 +48,7 @@ namespace CarrotBacktesting.NET.Analysis
 
         public void Run()
         {
-            Console.WriteLine("\n--- 5. 开始回测分析 ---");
+            Console.WriteLine("\n--- 开始回测分析 ---");
             // 依次执行所有分析器
             foreach (var analyzer in _analyzers)
             {

@@ -17,11 +17,10 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
         public void Export(AnalysisContext context)
         {
             // 从上下文中获取所有需要的数据
-            var summary = context.GetArtifact<SummaryResult>();
-            var returnsResult = context.GetArtifact<ForwardReturnsResult>();
+            var summary = context.GetArtifact<SignalReport>();
             var signals = context.BacktestResult.SignalsResult.Signals.ToList();
 
-            if (summary is null || returnsResult is null || signals.Count == 0)
+            if (summary is null || signals.Count == 0)
             {
                 Console.WriteLine("[ScottPlot] 缺少必要的分析数据，无法生成图表。");
                 return;
@@ -33,14 +32,14 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
             // 确保输出目录存在
             _plotDirectory = Path.Combine(context.Config.Runtime.ProjectDir, context.Config.Out.Plots);
             Directory.CreateDirectory(_plotDirectory);
-            _backtestDays = returnsResult.BacktestDays;
+            _backtestDays = summary.BacktestDays;
 
             Console.WriteLine($"[ScottPlot] 开始生成图表，将保存到: {Path.GetFullPath(_plotDirectory)}");
 
             // 依次调用绘图方法
-            CreatePerformanceOverviewPlot(summary, returnsResult.Returns.Count);
-            CreateDistributionTimelinePlot(returnsResult, signals);
-            CreateHeatmapPlot(returnsResult);
+            CreatePerformanceOverviewPlot(summary, summary.Returns.Count);
+            CreateDistributionTimelinePlot(summary, signals);
+            CreateHeatmapPlot(summary);
 
             Console.WriteLine("[ScottPlot] 图表生成完成。");
         }
@@ -48,7 +47,7 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
         /// <summary>
         /// 绘制【策略表现概览图】
         /// </summary>
-        private void CreatePerformanceOverviewPlot(SummaryResult summary, int validSignalCount)
+        private void CreatePerformanceOverviewPlot(SignalReport summary, int validSignalCount)
         {
             var plt = new Plot();
             plt.Title($"策略在 T+1 至 T+{_backtestDays} 日的表现 (基于 {validSignalCount} 个信号)");
@@ -60,9 +59,9 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
             var leftAxis = plt.Axes.Left;
             leftAxis.Label.Text = "收益率";
             //leftAxis.TickGenerator.LabelFormatter = y => $"{y:P1}";
-            var avgReturnLine = plt.Add.Scatter(days, summary.AvgReturns);
+            var avgReturnLine = plt.Add.Scatter(days, summary.AvgReturns.ToArray());
             avgReturnLine.Label = "平均收益率";
-            var medianReturnLine = plt.Add.Scatter(days, summary.MedianReturns);
+            var medianReturnLine = plt.Add.Scatter(days, summary.MedianReturns.ToArray());
             medianReturnLine.Label = "收益率中位数";
             medianReturnLine.LineStyle.Pattern = LinePattern.Dashed;
             plt.Add.HorizontalLine(0, 1, Colors.Gray, LinePattern.Dashed);
@@ -71,7 +70,7 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
             //var rightAxis = plt.Add.Axis.Right();
             //rightAxis.Label.Text = "胜率";
             //rightAxis.TickGenerator.LabelFormatter = y => $"{y:P0}";
-            var winRateLine = plt.Add.Scatter(days, summary.WinRates);
+            var winRateLine = plt.Add.Scatter(days, summary.WinRates.ToArray());
             winRateLine.Label = "胜率";
             //winRateLine.Axes.YAxis = rightAxis; // 关键：将胜率线关联到右轴
             winRateLine.Color = Colors.Green;
@@ -84,7 +83,7 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
         /// <summary>
         /// 绘制【信号收益时序分布图】
         /// </summary>
-        private void CreateDistributionTimelinePlot(ForwardReturnsResult returnsResult, IReadOnlyList<Result.SignalInfo> signals)
+        private void CreateDistributionTimelinePlot(SignalReport returnsResult, IReadOnlyList<Result.SignalInfo> signals)
         {
             const int timelinePlotDay = 18; // 可配置
             if (timelinePlotDay > _backtestDays) return;
@@ -149,7 +148,7 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
         /// <summary>
         /// 绘制【收益率分布热力图】
         /// </summary>
-        private void CreateHeatmapPlot(ForwardReturnsResult returnsResult)
+        private void CreateHeatmapPlot(SignalReport returnsResult)
         {
             const double binStepPercent = 3;
             const double coarseThresholdPercent = 30;

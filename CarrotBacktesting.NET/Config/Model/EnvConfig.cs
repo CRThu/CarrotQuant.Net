@@ -51,14 +51,9 @@ namespace CarrotBacktesting.NET.Config.Model
 
     public class AnalysisConfig
     {
-        public ForwardReturnsConfig ForwardReturns { get; set; } = new();
+        public int SignalAnalysisDays { get; set; } = 30;
+        public List<string> Analyzers { get; set; } = new();
         public List<string> Exporters { get; set; } = new();
-    }
-
-    public class ForwardReturnsConfig
-    {
-        public bool Enabled { get; set; } = true;
-        public int BacktestDays { get; set; } = 30;
     }
 
     public class FieldDefinition

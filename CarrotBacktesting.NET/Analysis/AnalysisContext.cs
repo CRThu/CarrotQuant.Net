@@ -15,7 +15,6 @@ namespace CarrotBacktesting.NET.Analysis
     /// </summary>
     public class AnalysisContext
     {
-
         public EnvConfig Config { get; }
         public BacktestingResult BacktestResult { get; }
         public IDataStorage Data { get; }

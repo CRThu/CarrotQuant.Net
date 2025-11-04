@@ -13,7 +13,7 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
 
         public void Export(AnalysisContext context)
         {
-            var summary = context.GetArtifact<SummaryResult>();
+            var summary = context.GetArtifact<SignalReport>();
             if (summary == null) return;
 
             Console.WriteLine("\n" + new string('=', 50));
@@ -35,20 +35,20 @@ namespace CarrotBacktesting.NET.Analysis.Presenters
             PrintPeakAnalysis(summary);
         }
 
-        private void PrintPeakAnalysis(SummaryResult summary)
+        private void PrintPeakAnalysis(SignalReport summary)
         {
             if (summary.ValidSignalCount == 0) return;
 
             var maxAvgReturn = summary.AvgReturns.Max();
-            int dayMaxAvg = Array.IndexOf(summary.AvgReturns, maxAvgReturn) + 1;
+            int dayMaxAvg = Array.IndexOf(summary.AvgReturns.ToArray(), maxAvgReturn) + 1;
             var winRateAtMaxAvg = summary.WinRates[dayMaxAvg - 1];
 
             var maxMedianReturn = summary.MedianReturns.Max();
-            int dayMaxMedian = Array.IndexOf(summary.MedianReturns, maxMedianReturn) + 1;
+            int dayMaxMedian = Array.IndexOf(summary.MedianReturns.ToArray(), maxMedianReturn) + 1;
             var winRateAtMaxMedian = summary.WinRates[dayMaxMedian - 1];
 
             var maxWinRate = summary.WinRates.Max();
-            int dayMaxWin = Array.IndexOf(summary.WinRates, maxWinRate) + 1;
+            int dayMaxWin = Array.IndexOf(summary.WinRates.ToArray(), maxWinRate) + 1;
 
             Console.WriteLine("\n" + new string('=', 50));
             Console.WriteLine("策略最佳持有期分析 (各指标峰值)");
