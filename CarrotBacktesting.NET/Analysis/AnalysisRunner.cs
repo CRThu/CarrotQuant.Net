@@ -21,29 +21,15 @@ namespace CarrotBacktesting.NET.Analysis
         {
             _context = new AnalysisContext(config, result, data);
 
-            // 根据配置动态构建分析器和表现器列表
-            foreach (var analyzer in config.Analysis.Analyzers)
-            {
-                switch (analyzer)
-                {
-                    case "signal_analyzer":
-                        _analyzers.Add(new SignalAnalyzer(config.Analysis));
-                        break;
-                }
-            }
+            // 根据配置动态构建分析器和导出器列表
+            if (config.Analysis.UseSignalAnalyzer)
+                _analyzers.Add(new SignalAnalyzer());
 
-            foreach (var exporterName in config.Analysis.Exporters)
-            {
-                switch (exporterName)
-                {
-                    case "console":
-                        _exporters.Add(new ConsoleExporter());
-                        break;
-                    case "plot":
-                        _exporters.Add(new PlotExporter());
-                        break;
-                }
-            }
+            if (config.Analysis.UseConsoleExporter)
+                _exporters.Add(new ConsoleExporter());
+
+            if (config.Analysis.UsePlotExporter)
+                _exporters.Add(new PlotExporter());
         }
 
         public void Run()

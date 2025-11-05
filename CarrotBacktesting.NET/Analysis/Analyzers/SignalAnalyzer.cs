@@ -18,21 +18,14 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
     public class SignalAnalyzer : IAnalyzer
     {
         public string Name => nameof(SignalAnalyzer);
-        private readonly int _backtestDays;
-
-        /// <summary>
-        /// 构造函数，从配置中读取回测天数。
-        /// </summary>
-        public SignalAnalyzer(AnalysisConfig config)
-        {
-            _backtestDays = config.SignalAnalysisDays;
-        }
+        private int _backtestDays;
 
         /// <summary>
         /// 执行分析的核心方法。
         /// </summary>
         public void Analyze(AnalysisContext context)
         {
+            _backtestDays = context.Config.Analysis.SignalAnalysisDays;
             var signals = context.BacktestResult.SignalsResult.GetSignals().ToList();
             if (signals.Count == 0)
             {

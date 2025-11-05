@@ -46,14 +46,15 @@ namespace CarrotBacktesting.NET.Config.Model
     public class OutConfig
     {
         public string Signal { get; set; } = "signal.json";
-        public string Plots { get; set; } = "./plots";
+        public string Exporter { get; set; } = "report";
     }
 
     public class AnalysisConfig
     {
         public int SignalAnalysisDays { get; set; } = 30;
-        public List<string> Analyzers { get; set; } = new();
-        public List<string> Exporters { get; set; } = new();
+        public bool UseSignalAnalyzer { get; set; } = true;
+        public bool UseConsoleExporter { get; set; } = true;
+        public bool UsePlotExporter { get; set; } = true;
     }
 
     public class FieldDefinition

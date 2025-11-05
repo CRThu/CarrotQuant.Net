@@ -71,4 +71,7 @@ __pycache__/
 /CarrotQuant.Data/**/json/*
 !/CarrotQuant.Data/**/json/testdata/
 
-*.cache
+# file out
+/CarrotQuant.Data/*.cache
+/CarrotQuant.Data/signal.json
+/CarrotQuant.Data/report

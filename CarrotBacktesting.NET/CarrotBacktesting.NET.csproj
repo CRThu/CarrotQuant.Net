@@ -4,7 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyVersion>3.0.74.0</AssemblyVersion>
+    <AssemblyVersion>3.0.86.0</AssemblyVersion>
    </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -33,6 +33,7 @@
   <ItemGroup>
     <PackageReference Include="MessagePack" Version="3.1.4" />
     <PackageReference Include="ScottPlot" Version="5.1.57" />
+    <PackageReference Include="Spectre.Console" Version="0.53.0" />
     <PackageReference Include="Sylvan.Data.Csv" Version="1.4.2" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>

@@ -30,7 +30,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             // TODO
 
             // 确保输出目录存在
-            _plotDirectory = Path.Combine(context.Config.Runtime.ProjectDir, context.Config.Out.Plots);
+            _plotDirectory = Path.Combine(context.Config.Runtime.ProjectDir, context.Config.Out.Exporter);
             Directory.CreateDirectory(_plotDirectory);
             _backtestDays = summary.BacktestDays;
 

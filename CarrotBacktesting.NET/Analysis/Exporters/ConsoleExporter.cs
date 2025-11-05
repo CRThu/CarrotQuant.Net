@@ -1,5 +1,7 @@
 ﻿using CarrotBacktesting.NET.Analysis.Model;
+using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Utility;
+using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,63 +13,66 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
     public class ConsoleExporter : IExporter
     {
         public string Name => nameof(ConsoleExporter);
-        
+
         /// <summary>
         /// 导出器的入口方法
         /// </summary>
         public void Export(AnalysisContext context)
         {
             // 从上下文中获取核心分析报告
+
             var report = context.GetArtifact<SignalReport>();
             if (report == null || report.ValidSignalCount == 0)
             {
-                Console.WriteLine("[ConsoleExporter] 没有有效的信号报告可供打印。");
+                AnsiConsole.MarkupLine("[yellow1][ConsoleExporter] 没有有效的信号报告可供输出。[/]");
                 return;
             }
 
-            Console.WriteLine();
+            // 1. 实时输出到控制台
+            //AnsiConsole.MarkupLine("\n[bold springgreen3]正在打印实时分析报告到控制台...[/]");
+            //RenderReport(AnsiConsole.Console, report, context);
 
-            PrintDailySummary(report);
-            PrintPeakAnalysis(report);
+            // 2. 捕获输出并写入文件
+            string dir = Path.Combine(context.Config.Runtime.ProjectDir, context.Config.Out.Exporter);
+            Directory.CreateDirectory(dir);
+            var recorder = new Recorder(AnsiConsole.Console);
+            RenderReport(recorder, report, context);
+
+            try
+            {
+                const string darkThemeCss = @"
+<style>
+body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospace; }
+</style>";
+                string finalHtml = darkThemeCss + recorder.ExportHtml();
+
+                string filePath = Path.Combine(dir, "summary.html");
+                File.WriteAllText(filePath, finalHtml);
+                AnsiConsole.MarkupLine($"[bold springgreen3]分析报告已成功保存到: [link]{Path.GetFullPath(filePath)}[/][/]");
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[bold indianred]错误: 保存文本报告失败: {ex.Message}[/]");
+            }
+        }
+
+        private void RenderReport(IAnsiConsole console, SignalReport report, AnalysisContext context)
+        {
+            console.WriteLine();
+            
+            PrintPeakAnalysis(console, report);
+            PrintDailySummary(console, report);
 
             // 月度分析需要原始信号的时间信息
             var signals = context.BacktestResult.SignalsResult.GetSignals();
-            PrintMonthlyReturns(report, signals.ToList());
-        }
-
-        /// <summary>
-        /// 打印每日表现统计表格
-        /// </summary>
-        private void PrintDailySummary(SignalReport report)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine(new string('=', 55));
-            sb.AppendLine($"策略在 T+1 至 T+{report.BacktestDays} 期间的每日表现统计");
-            sb.AppendLine($"基于 {report.ValidSignalCount} 个有效信号");
-            sb.AppendLine(new string('=', 55));
-
-            // 打印表头
-            sb.AppendLine($"{"持有天数",-10} | {"平均收益率",-12} | {"收益率中位数",-14} | {"胜率",-10}");
-            sb.AppendLine(new string('-', 55));
-
-            // 循环打印每一行数据
-            for (int i = 0; i < report.BacktestDays; i++)
-            {
-                sb.AppendLine($"{"T+" + (i + 1),-10} | {report.AvgReturns[i],-12:P2} | {report.MedianReturns[i],-14:P2} | {report.WinRates[i],-10:P2}");
-            }
-            Console.WriteLine(sb.ToString());
+            PrintMonthlyReturns(console, report, signals.ToList());
         }
 
         /// <summary>
         /// 打印最佳持有期分析
         /// </summary>
-        private void PrintPeakAnalysis(SignalReport report)
+        private void PrintPeakAnalysis(IAnsiConsole console, SignalReport report)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine(new string('=', 50));
-            sb.AppendLine("策略最佳持有期分析 (各指标峰值)");
-            sb.AppendLine(new string('=', 50));
-
             // 计算平均收益率峰值
             var maxAvgReturn = report.AvgReturns.Max();
             int dayMaxAvg = Array.IndexOf(report.AvgReturns.ToArray(), maxAvgReturn) + 1;
@@ -82,35 +87,59 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             var maxWinRate = report.WinRates.Max();
             int dayMaxWin = Array.IndexOf(report.WinRates.ToArray(), maxWinRate) + 1;
 
-            sb.AppendLine($"平均收益率峰值: {maxAvgReturn:P2} (T+{dayMaxAvg}, 当日胜率 {winRateAtMaxAvg:P2})");
-            sb.AppendLine($"收益率中位数峰值: {maxMedianReturn:P2} (T+{dayMaxMedian}, 当日胜率 {winRateAtMaxMedian:P2})");
-            sb.AppendLine($"(参考) 胜率峰值: {maxWinRate:P2} (T+{dayMaxWin})");
-            sb.AppendLine(new string('-', 50));
-            Console.WriteLine(sb.ToString());
+            console.Write(new Rule("策略最佳持有期分析 (各指标峰值)"));
+
+            console.MarkupLine($"平均收益率峰值: [springgreen3]{maxAvgReturn:P2}[/] ([yellow1]T+{dayMaxAvg}[/], 当日胜率 [deepskyblue1]{winRateAtMaxAvg:P2}[/])");
+            console.MarkupLine($"收益率中位数峰值: [springgreen3]{maxMedianReturn:P2}[/] ([yellow1]T+{dayMaxMedian}[/], 当日胜率 [deepskyblue1]{winRateAtMaxMedian:P2}[/])");
+            console.MarkupLine($"(参考) 胜率峰值: [deepskyblue1]{maxWinRate:P2}[/] ([yellow1]T+{dayMaxWin}[/])");
+            console.WriteLine();
+        }
+
+        /// <summary>
+        /// 打印每日表现统计表格
+        /// </summary>
+        private void PrintDailySummary(IAnsiConsole console, SignalReport report)
+        {
+            console.Write(new Rule());
+
+            var table = new Table()
+                .Border(TableBorder.Rounded)
+                .Title($"策略在 T+1 至 T+{report.BacktestDays} 期间的每日表现统计")
+                .Caption($"基于 {report.ValidSignalCount} 个有效信号")
+                .AddColumn("持有天数")
+                .AddColumn(new TableColumn("平均收益率").RightAligned())
+                .AddColumn(new TableColumn("收益率中位数").RightAligned())
+                .AddColumn(new TableColumn("胜率").RightAligned());
+
+            for (int i = 0; i < report.BacktestDays; i++)
+            {
+                string avgReturnColor = report.AvgReturns[i] > 0 ? "springgreen3" : "indianred";
+                string medianReturnColor = report.MedianReturns[i] > 0 ? "springgreen3" : "indianred";
+                table.AddRow(
+                    $"T+{i + 1}",
+                    $"[{avgReturnColor}]{report.AvgReturns[i]:P2}[/]",
+                    $"[{medianReturnColor}]{report.MedianReturns[i]:P2}[/]",
+                    $"[deepskyblue1]{report.WinRates[i]:P2}[/]"
+                );
+            }
+            console.Write(table);
         }
 
         /// <summary>
         /// 打印 T+X 月度收益统计
         /// </summary>
-        private void PrintMonthlyReturns(SignalReport report, List<Result.SignalInfo> signals)
+        private void PrintMonthlyReturns(IAnsiConsole console, SignalReport report, List<Result.SignalInfo> signals)
         {
             // 找到最佳平均收益率的持有天数
             var maxAvgReturn = report.AvgReturns.Max();
             int bestDay = Array.IndexOf(report.AvgReturns.ToArray(), maxAvgReturn); // 索引 (0-based)
 
-            var sb = new StringBuilder();
-            sb.AppendLine(new string('=', 50));
-            sb.AppendLine($"策略信号在 T+{bestDay + 1} 的月度收益统计");
-            sb.AppendLine(new string('=', 50));
-
-            // 将信号的日期和其在最佳持有期的收益率配对
             var returnsWithDate = signals.Zip(report.Returns, (signal, returns) => new
             {
                 Date = signal.Date,
                 Return = returns[bestDay]
             });
 
-            // 按年和月进行分组
             var monthlyStats = returnsWithDate
                 .GroupBy(x => new { x.Date.Year, x.Date.Month })
                 .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
@@ -119,19 +148,30 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     Month = new DateTime(g.Key.Year, g.Key.Month, 1),
                     SignalCount = g.Count(),
                     AvgReturn = g.Average(x => x.Return),
-                    MedianReturn = g.Select(x => x.Return).Median() // 需要一个Median扩展方法
+                    MedianReturn = g.Select(x => x.Return).Median()
                 });
 
-            // 打印表头
-            sb.AppendLine($"{"月份",-10} | {"信号数",-8} | {"月度平均收益",-15} | {"月度中位数收益",-18}");
-            sb.AppendLine(new string('-', 60));
+            console.Write(new Rule());
+            var table = new Table()
+                .Border(TableBorder.Rounded)
+                .Title($"策略信号在 T+{bestDay + 1} 的月度收益统计")
+                .AddColumn("月份")
+                .AddColumn(new TableColumn("信号数").RightAligned())
+                .AddColumn(new TableColumn("月度平均收益").RightAligned())
+                .AddColumn(new TableColumn("月度中位数收益").RightAligned());
 
-            // 循环打印每个月的数据
             foreach (var stat in monthlyStats)
             {
-                sb.AppendLine($"{stat.Month:yyyy-MM} | {stat.SignalCount,-8} | {stat.AvgReturn,-15:P2} | {stat.MedianReturn,-18:P2}");
+                string avgReturnColor = stat.AvgReturn > 0 ? "springgreen3" : "indianred";
+                string medianReturnColor = stat.MedianReturn > 0 ? "springgreen3" : "indianred";
+                table.AddRow(
+                    $"{stat.Month:yyyy-MM}",
+                    $"{stat.SignalCount}",
+                    $"[{avgReturnColor}]{stat.AvgReturn:P2}[/]",
+                    $"[{medianReturnColor}]{stat.MedianReturn:P2}[/]"
+                );
             }
-            Console.WriteLine(sb.ToString());
+            console.Write(table);
         }
     }
 }
