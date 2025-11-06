@@ -146,7 +146,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             rightAxis.LabelText = "月度统计收益率";
             //rightAxis.LabelFontColor = Color.FromHex("#f5cba7");
             //rightAxis.TickLabelStyle.ForeColor = Color.FromHex("#f5cba7");
-            //rightAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic() { LabelFormatter = y => $"{y:P1}" };
+            rightAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic() { LabelFormatter = y => $"{y:P1}" };
 
             var monthlyStats = scatterData
                 .GroupBy(d => new DateTime(d.Date.Year, d.Date.Month, 1))
@@ -175,23 +175,6 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 monthMedianLine.LineStyle.Pattern = LinePattern.DenselyDashed; // 对应 '--'
                 monthMedianLine.MarkerStyle.Shape = MarkerShape.Cross; // 对应 'x'
                 monthMedianLine.MarkerStyle.Size = 5;
-            }
-
-            // --- Y轴刻度对齐 ---
-            plt.RenderInMemory(); // 第一次渲染以自动确定范围和左轴刻度
-
-            double[] leftTicks = leftAxis.TickGenerator.Ticks.Where(x => x.IsMajor).Select(x => x.Position).ToArray();
-            var leftRange = leftAxis.Range;
-            var rightRange = rightAxis.Range;
-
-            if (leftRange.HasBeenSet && rightRange.HasBeenSet && leftRange.Span != 0)
-            {
-                double[] rightTicks = leftTicks
-                    .Select(t => rightRange.Min + ((t - leftRange.Min) / leftRange.Span) * rightRange.Span)
-                    .ToArray();
-
-                var manualTicks = rightTicks.Select(position => new Tick(position, $"{position:P1}")).ToArray();
-                rightAxis.TickGenerator = new ScottPlot.TickGenerators.NumericManual(manualTicks);
             }
 
             plt.Legend.IsVisible = true;
