@@ -19,8 +19,8 @@ namespace CarrotBacktesting.NET.Demo
             {
                 // --- 1. 加载配置 ---
                 Console.WriteLine("Loading config...");
-                string configPath = Path.Combine(PathHelper.RuntimeRoot, ".\\CarrotQuant.Data\\v3\\yaml\\env.yaml");
-                Console.WriteLine($"Config path: {configPath}");
+                string configPath = ".\\CarrotQuant.Data\\v3\\yaml\\env.yaml";
+                //Console.WriteLine($"Config path: {configPath}");
                 BacktestingSession session = new BacktestingSession(configPath);
 
                 Console.WriteLine($"Data path: {session.Config.Data.RawPath}");

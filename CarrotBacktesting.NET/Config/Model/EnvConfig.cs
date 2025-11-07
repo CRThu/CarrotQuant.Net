@@ -23,6 +23,41 @@ namespace CarrotBacktesting.NET.Config.Model
         public AnalysisConfig Analysis { get; set; } = new();
 
         public OutConfig Out { get; set; } = new();
+
+        [YamlIgnore]
+        private string _envFileDirectory = string.Empty;
+
+        /// <summary>
+        /// (内部方法) 在加载配置后，由 EnvConfigLoader 调用，用于设置路径解析的基准目录。
+        /// </summary>
+        internal void SetBaseDirectory(string envFilePath)
+        {
+            _envFileDirectory = Path.GetDirectoryName(envFilePath) ?? string.Empty;
+        }
+        
+        /// <summary>
+        /// 将配置文件中的相对路径，转换为基于项目目录的完整物理路径。
+        /// </summary>
+        /// <param name="pathInConfig">在env.yaml中配置的路径</param>
+        /// <returns>完整的物理路径</returns>
+        public string ResolvePath(string? pathInConfig)
+        {
+            if (string.IsNullOrWhiteSpace(pathInConfig))
+            {
+                return string.Empty;
+            }
+
+            // 步骤 a: 解析项目目录 (ProjectDir)
+            // Path.GetFullPath 会自动处理 project_dir 是绝对路径还是相对路径
+            string projectFullPath = Path.GetFullPath(Runtime.ProjectDir);
+
+            // 步骤 b: 将最终路径与解析好的项目目录合并
+            // Path.Combine 会正确处理 pathInConfig 是绝对路径的情况
+            // (如果 pathInConfig 是 "C:\...", 它会忽略 projectFullPath)
+            string finalPath = Path.Combine(projectFullPath, pathInConfig);
+
+            return Path.GetFullPath(finalPath);
+        }
     }
 
     public class DataConfig

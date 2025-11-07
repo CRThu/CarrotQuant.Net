@@ -55,7 +55,7 @@ namespace CarrotBacktesting.NET.DataFeed
 
         private void UpdateCache(EnvConfig config, IDataStorage data)
         {
-            string fileName = Path.Combine(config.Runtime.ProjectDir, GetCacheFileName(config.Data.Mode));
+            string fileName = config.ResolvePath(GetCacheFileName(config.Data.Mode));
 
             // 根据实际类型调用序列化
             if (data is HistoryStorage hs)
@@ -87,7 +87,7 @@ namespace CarrotBacktesting.NET.DataFeed
 
         private IDataStorage? LoadFromSource(EnvConfig config)
         {
-            string dir = config.Data.RawPath;
+            string dir = config.ResolvePath(config.Data.RawPath);
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException($"数据源目录不存在:{dir}");
 

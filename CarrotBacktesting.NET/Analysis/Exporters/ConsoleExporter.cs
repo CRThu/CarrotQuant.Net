@@ -33,8 +33,10 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             //RenderReport(AnsiConsole.Console, report, context);
 
             // 2. 捕获输出并写入文件
-            string dir = Path.Combine(context.Config.Runtime.ProjectDir, context.Config.Out.Exporter);
-            Directory.CreateDirectory(dir);
+            string outputDir = context.Config.ResolvePath(context.Config.Out.Exporter);
+            string htmlPath = Path.Combine(outputDir, "summary.html");
+            Directory.CreateDirectory(Path.GetDirectoryName(htmlPath)!);
+             
             var recorder = new Recorder(AnsiConsole.Console);
             RenderReport(recorder, report, context);
 
@@ -46,9 +48,8 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
 </style>";
                 string finalHtml = darkThemeCss + recorder.ExportHtml();
 
-                string filePath = Path.Combine(dir, "summary.html");
-                File.WriteAllText(filePath, finalHtml);
-                AnsiConsole.MarkupLine($"[bold springgreen3]分析报告已成功保存到: [link]{Path.GetFullPath(filePath)}[/][/]");
+                File.WriteAllText(htmlPath, finalHtml);
+                AnsiConsole.MarkupLine($"[bold springgreen3]分析报告已成功保存到: [link]{Path.GetFullPath(htmlPath)}[/][/]");
             }
             catch (Exception ex)
             {

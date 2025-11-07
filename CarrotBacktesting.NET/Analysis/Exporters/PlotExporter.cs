@@ -29,8 +29,9 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             }
 
             // 确保输出目录存在
-            _plotDirectory = Path.Combine(context.Config.Runtime.ProjectDir, context.Config.Out.Exporter);
+            _plotDirectory = context.Config.ResolvePath(context.Config.Out.Exporter);
             Directory.CreateDirectory(_plotDirectory);
+
             _backtestDays = summary.BacktestDays;
 
             Console.WriteLine($"[ScottPlot] 开始生成图表，将保存到: {Path.GetFullPath(_plotDirectory)}");
@@ -82,7 +83,10 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             plt.Legend.IsVisible = true;
             plt.Legend.Alignment = Alignment.UpperLeft;
-            plt.SavePng(Path.Combine(_plotDirectory, "1_信号表现概览图.png"), 2880, 1720);
+
+            string plotPath = Path.Combine(_plotDirectory, "1_信号表现概览图.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
+            plt.SavePng(plotPath, 2880, 1720);
         }
 
         /// <summary>
@@ -179,7 +183,10 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             plt.Legend.IsVisible = true;
             plt.Legend.Alignment = Alignment.UpperLeft;
-            plt.SavePng(Path.Combine(_plotDirectory, "2_信号收益分布与月度趋势图.png"), 2880, 1720);
+
+            string plotPath = Path.Combine(_plotDirectory, "2_信号收益分布与月度趋势图.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
+            plt.SavePng(plotPath, 2880, 1720);
         }
 
         /// <summary>
@@ -270,7 +277,10 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             plt.Axes.Margins(0, 0);
             plt.Axes.Frame(false);
-            plt.SavePng(Path.Combine(_plotDirectory, "3_信号收益率分布热力图.png"), 2880, 1720);
+            
+            string plotPath = Path.Combine(_plotDirectory, "3_信号收益率分布热力图.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
+            plt.SavePng(plotPath, 2880, 1720);
         }
 
         // 热力图的辅助方法

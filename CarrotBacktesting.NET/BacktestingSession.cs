@@ -46,7 +46,16 @@ namespace CarrotBacktesting.NET
         /// <param name="configPath">env.yaml 配置文件路径</param>
         public BacktestingSession(string configPath)
         {
-            Config = EnvConfigLoader.Load(configPath);
+            string? foundPath = PathHelper.FindPathUpwards(configPath);
+
+            if (string.IsNullOrWhiteSpace(foundPath))
+            {
+                throw new FileNotFoundException($"无法在当前目录或上级目录中找到配置文件: {configPath}");
+            }
+
+            Console.WriteLine($"成功定位配置文件: {foundPath}");
+
+            Config = EnvConfigLoader.Load(foundPath);
 
             if (Config == null)
                 throw new InvalidOperationException("Config is null");
@@ -89,7 +98,7 @@ namespace CarrotBacktesting.NET
             {
                 try
                 {
-                    string fileName = Path.Combine(Config.Runtime.ProjectDir, Config.Out.Signal);
+                    string fileName = Config.ResolvePath(Config.Out.Signal);
 
                     JsonSerializationHelper.SerializeToFile(Result.SignalsResult.GetSignals(), fileName);
                     Console.WriteLine($"信号已自动保存到: {fileName}");

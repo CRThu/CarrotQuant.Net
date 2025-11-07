@@ -28,6 +28,11 @@ namespace CarrotBacktesting.NET.Config
 
             var config = deserializer.Deserialize<EnvConfig>(yamlContent);
 
+            if (config is null)
+                throw new InvalidOperationException("Failed to deserialize configuration file.");
+
+            config.SetBaseDirectory(Path.GetFullPath(configPath));
+
             if (string.IsNullOrWhiteSpace(config.Data.RawPath))
             {
                 throw new InvalidOperationException("Data path configuration is required");
