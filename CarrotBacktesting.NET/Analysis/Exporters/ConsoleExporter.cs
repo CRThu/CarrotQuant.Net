@@ -36,7 +36,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             string outputDir = context.Config.ResolvePath(context.Config.Out.Exporter);
             string htmlPath = Path.Combine(outputDir, "summary.html");
             Directory.CreateDirectory(Path.GetDirectoryName(htmlPath)!);
-             
+
             var recorder = new Recorder(AnsiConsole.Console);
             RenderReport(recorder, report, context);
 
@@ -60,7 +60,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         private void RenderReport(IAnsiConsole console, SignalReport report, AnalysisContext context)
         {
             console.WriteLine();
-            
+
             PrintPeakAnalysis(console, report);
             PrintDailySummary(console, report);
 
@@ -156,32 +156,62 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             var monthlyStats = returnsWithDate
                 .GroupBy(x => new { x.Date.Year, x.Date.Month })
                 .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
-                .Select(g => new
+                .Select(g =>
                 {
-                    Month = new DateTime(g.Key.Year, g.Key.Month, 1),
-                    SignalCount = g.Count(),
-                    AvgReturn = g.Average(x => x.Return),
-                    MedianReturn = g.Select(x => x.Return).Median()
+                    // 将当月的所有收益率提取到一个列表中，避免重复枚举
+                    var monthlyReturns = g.Select(x => x.Return).ToList();
+                    // 分离出盈利和亏损的部分
+                    var winningReturns = monthlyReturns.Where(r => r > 0).ToList();
+                    var losingReturns = monthlyReturns.Where(r => r < 0).ToList();
+
+                    // 计算平均盈利和亏损
+                    var avgWin = winningReturns.Any() ? winningReturns.Average() : 0;
+                    var avgLoss = losingReturns.Any() ? losingReturns.Average() : 0;
+
+                    // 计算盈亏比
+                    var winLossRatio = (avgLoss < 0) ? avgWin / Math.Abs(avgLoss) : 0;
+
+                    // 返回一个包含所有新旧指标的匿名对象
+                    return new
+                    {
+                        Month = new DateTime(g.Key.Year, g.Key.Month, 1),
+                        SignalCount = monthlyReturns.Count,
+                        AvgReturn = monthlyReturns.Average(),
+                        MedianReturn = monthlyReturns.Median(),
+                        WinRate = (double)winningReturns.Count / monthlyReturns.Count,
+                        AvgWin = avgWin,
+                        AvgLoss = avgLoss,
+                        WinLossRatio = winLossRatio
+                    };
                 });
 
             console.Write(new Rule());
             var table = new Table()
                 .Border(TableBorder.Rounded)
-                .Title($"策略信号在 T+{bestDay + 1} 的月度收益统计")
+                .Title($"策略信号在 T+{bestDay + 1} 的月度表现统计")
                 .AddColumn("月份")
                 .AddColumn(new TableColumn("信号数").RightAligned())
                 .AddColumn(new TableColumn("月度平均收益").RightAligned())
-                .AddColumn(new TableColumn("月度中位数收益").RightAligned());
+                .AddColumn(new TableColumn("月度中位数收益").RightAligned())
+                .AddColumn(new TableColumn("胜率").RightAligned())
+                .AddColumn(new TableColumn("月度平均盈利").RightAligned())
+                .AddColumn(new TableColumn("月度平均亏损").RightAligned())
+                .AddColumn(new TableColumn("月度盈亏比").RightAligned());
 
             foreach (var stat in monthlyStats)
             {
                 string avgReturnColor = stat.AvgReturn > 0 ? "springgreen3" : "indianred";
                 string medianReturnColor = stat.MedianReturn > 0 ? "springgreen3" : "indianred";
+
                 table.AddRow(
                     $"{stat.Month:yyyy-MM}",
                     $"{stat.SignalCount}",
                     $"[{avgReturnColor}]{stat.AvgReturn:P2}[/]",
-                    $"[{medianReturnColor}]{stat.MedianReturn:P2}[/]"
+                    $"[{medianReturnColor}]{stat.MedianReturn:P2}[/]",
+                    $"[deepskyblue1]{stat.WinRate:P2}[/]",
+                    $"[springgreen3]{stat.AvgWin:P2}[/]",
+                    $"[indianred]{stat.AvgLoss:P2}[/]",
+                    $"[deepskyblue1]{stat.WinLossRatio:F2}[/]"
                 );
             }
             console.Write(table);
