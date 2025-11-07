@@ -94,6 +94,12 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             console.MarkupLine($"收益率中位数峰值: [springgreen3]{maxMedianReturn:P2}[/] ([yellow1]T+{dayMaxMedian}[/], 当日胜率 [deepskyblue1]{winRateAtMaxMedian:P2}[/])");
             console.MarkupLine($"(参考) 胜率峰值: [deepskyblue1]{maxWinRate:P2}[/] ([yellow1]T+{dayMaxWin}[/])");
             console.WriteLine();
+
+            console.Write(new Rule($"最佳持有期 (T+{dayMaxAvg}) 详细指标:"));
+            console.MarkupLine($"平均盈利:[springgreen3] {report.AvgWinReturns[dayMaxAvg - 1]:P2}[/]");
+            console.MarkupLine($"平均亏损:[indianred] {report.AvgLossReturns[dayMaxAvg - 1]:P2}[/]");
+            console.MarkupLine($"盈亏比:[deepskyblue1] {report.WinLossRatio[dayMaxAvg - 1]:F2}[/]");
+            console.WriteLine();
         }
 
         /// <summary>
@@ -110,7 +116,10 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
                 .AddColumn("持有天数")
                 .AddColumn(new TableColumn("平均收益率").RightAligned())
                 .AddColumn(new TableColumn("收益率中位数").RightAligned())
-                .AddColumn(new TableColumn("胜率").RightAligned());
+                .AddColumn(new TableColumn("胜率").RightAligned())
+                .AddColumn(new TableColumn("平均盈利").RightAligned())
+                .AddColumn(new TableColumn("平均亏损").RightAligned())
+                .AddColumn(new TableColumn("盈亏比").RightAligned());
 
             for (int i = 0; i < report.BacktestDays; i++)
             {
@@ -120,7 +129,10 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
                     $"T+{i + 1}",
                     $"[{avgReturnColor}]{report.AvgReturns[i]:P2}[/]",
                     $"[{medianReturnColor}]{report.MedianReturns[i]:P2}[/]",
-                    $"[deepskyblue1]{report.WinRates[i]:P2}[/]"
+                    $"[deepskyblue1]{report.WinRates[i]:P2}[/]",
+                    $"[springgreen3]{report.AvgWinReturns[i]:P2}[/]",
+                    $"[indianred]{report.AvgLossReturns[i]:P2}[/]",
+                    $"[deepskyblue1]{report.WinLossRatio[i]:F2}[/]"
                 );
             }
             console.Write(table);

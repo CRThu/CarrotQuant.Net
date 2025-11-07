@@ -23,9 +23,9 @@ namespace CarrotBacktesting.NET.Demo
                 //Console.WriteLine($"Config path: {configPath}");
                 BacktestingSession session = new BacktestingSession(configPath);
 
-                Console.WriteLine($"Data path: {session.Config.Data.RawPath}");
-                Console.WriteLine($"Thread count: {session.Config.Runtime.ThreadCount}");
                 Console.WriteLine($"Project directory: {session.Config.Runtime.ProjectDir}");
+                Console.WriteLine($"Data path: {session.Config.ResolvePath(session.Config.Data.RawPath)}");
+                Console.WriteLine($"Thread count: {session.Config.Runtime.ThreadCount}");
 
                 // --- 2. 加载数据 ---
                 Console.WriteLine("\nLoading data...");

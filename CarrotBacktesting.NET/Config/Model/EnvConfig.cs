@@ -49,7 +49,8 @@ namespace CarrotBacktesting.NET.Config.Model
 
             // 步骤 a: 解析项目目录 (ProjectDir)
             // Path.GetFullPath 会自动处理 project_dir 是绝对路径还是相对路径
-            string projectFullPath = Path.GetFullPath(Runtime.ProjectDir);
+            // 如果是相对路径，它会相对于 _envFileDirectory 进行解析
+            string projectFullPath = Path.GetFullPath(Path.Combine(_envFileDirectory, Runtime.ProjectDir));
 
             // 步骤 b: 将最终路径与解析好的项目目录合并
             // Path.Combine 会正确处理 pathInConfig 是绝对路径的情况

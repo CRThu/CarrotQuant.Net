@@ -45,6 +45,21 @@ namespace CarrotBacktesting.NET.Analysis.Model
         public IReadOnlyList<double> WinRates { get; }
 
         /// <summary>
+        /// 每日的平均盈利数组，长度为 BacktestDays。
+        /// </summary>
+        public IReadOnlyList<double> AvgWinReturns { get; }
+
+        /// <summary>
+        /// 每日的平均亏损数组，长度为 BacktestDays。
+        /// </summary>
+        public IReadOnlyList<double> AvgLossReturns { get; }
+
+        /// <summary>
+        /// 每日的盈亏比数组 (平均盈利 / |平均亏损|)，长度为 BacktestDays。
+        /// </summary>
+        public IReadOnlyList<double> WinLossRatio { get; }
+
+        /// <summary>
         /// 构造函数，在内部完成所有统计计算。
         /// </summary>
         /// <param name="returns">从原始信号计算出的详细收益率矩阵。</param>
@@ -59,6 +74,9 @@ namespace CarrotBacktesting.NET.Analysis.Model
             var avgReturns = new double[backtestDays];
             var medianReturns = new double[backtestDays];
             var winRates = new double[backtestDays];
+            var avgWinReturns = new double[backtestDays];
+            var avgLossReturns = new double[backtestDays];
+            var winLossRatio = new double[backtestDays];
 
             if (returns.Count > 0)
             {
@@ -77,6 +95,18 @@ namespace CarrotBacktesting.NET.Analysis.Model
                     medianReturns[day] = sortedReturns.Count % 2 == 0 ?
                         (sortedReturns[mid - 1] + sortedReturns[mid]) / 2.0 :
                         sortedReturns[mid];
+
+                    // 计算平均盈利、亏损
+                    var winningReturns = returnsOnDayN.Where(r => r > 0).ToList();
+                    var losingReturns = returnsOnDayN.Where(r => r < 0).ToList();
+
+                    // 计算平均盈利 (如果没有任何盈利的交易，则为0)
+                    avgWinReturns[day] = winningReturns.Count != 0 ? winningReturns.Average() : 0;
+                    // 计算平均亏损 (如果没有任何亏损的交易，则为0)
+                    avgLossReturns[day] = losingReturns.Count != 0 ? losingReturns.Average() : 0;
+
+                    // 计算盈亏比 (平均盈利 / 平均亏损的绝对值)
+                    winLossRatio[day] = avgWinReturns[day] / Math.Abs(avgLossReturns[day]);
                 }
             }
 
@@ -84,6 +114,9 @@ namespace CarrotBacktesting.NET.Analysis.Model
             AvgReturns = avgReturns;
             MedianReturns = medianReturns;
             WinRates = winRates;
+            AvgWinReturns = avgWinReturns;
+            AvgLossReturns = avgLossReturns;
+            WinLossRatio = winLossRatio;
         }
     }
 }
