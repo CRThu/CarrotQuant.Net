@@ -12,15 +12,6 @@ namespace CarrotBacktesting.NET.Result
     public class BacktestingResult
     {
         /// <summary>
-        /// 本次回测生成的信号集合。
-        /// 它在构造时就被创建，并可以在回测过程中被填充。
-        /// </summary>
-        [Key(1)]
-        [Obsolete]
-        public SignalSet SignalsResult { get; }
-
-
-        /// <summary>
         /// 本次回测生成的所有已完成的交易列表。
         /// </summary>
         [Key(0)]
@@ -31,16 +22,14 @@ namespace CarrotBacktesting.NET.Result
         /// </summary>
         public BacktestingResult()
         {
-            SignalsResult = new SignalSet();
             Trades = new List<Trade>();
         }
 
-
-        //[JsonConstructor]
-        //[SerializationConstructor]
-        //public BacktestingResult(SignalSet signalsResult)
-        //{
-        //    SignalsResult = signalsResult;
-        //}
+        [JsonConstructor]
+        [SerializationConstructor]
+        public BacktestingResult(List<Trade> trades)
+        {
+            Trades = trades;
+        }
     }
 }
