@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Result
 {
+    [Obsolete]
     [MessagePackObject]
     public class SignalSet
     {

@@ -22,6 +22,11 @@ namespace CarrotBacktesting.NET.Engine
         /// </summary>
         public int CurrentIndex { get; set; }
 
+        /// <summary>
+        /// 当前计算点的时间
+        /// </summary>
+        public DateTime CurrentDate => Series.Dates[CurrentIndex];
+
         public SignalStrategyContext(StockHistory series)
         {
             Series = series;

@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.NET.Engine;
+using CarrotBacktesting.NET.Result;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,13 +11,18 @@ namespace CarrotBacktesting.NET.Strategy
     /// <summary>
     /// 空策略
     /// </summary>
-    public class EmptyStrategy : ISignalStrategy
+    public class EmptyStrategy : ITradeStrategy
     {
         public string Name => nameof(EmptyStrategy);
 
-        public bool CheckSignal(SignalStrategyContext context)
+        public string? CheckEntry(SignalStrategyContext context)
         {
-            return false;
+            return null;
+        }
+
+        public string? CheckExit(SignalStrategyContext context, Trade trade)
+        {
+            return null;
         }
     }
 }

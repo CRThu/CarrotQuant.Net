@@ -1,6 +1,7 @@
 ﻿using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Result;
+using CarrotBacktesting.NET.Strategy;
 using CarrotBacktesting.NET.Utility.Serialization;
 using System;
 using System.Collections.Concurrent;
@@ -13,11 +14,11 @@ using System.Threading.Tasks;
 namespace CarrotBacktesting.NET.Engine
 {
     /// <summary>
-    /// 回测引擎，负责执行策略并生成信号
+    /// 交易模拟引擎，负责执行策略并生成完整的交易列表。
     /// </summary>
-    public class BacktestingEngine
+    public class TradeEngine
     {
-        private readonly ISignalStrategy _strategy;
+        private readonly ITradeStrategy _strategy;
         private readonly EnvConfig _config;
 
         /// <summary>
@@ -30,7 +31,7 @@ namespace CarrotBacktesting.NET.Engine
         /// </summary>
         /// <param name="data">加载完毕的市场数据，可以是任意实现IDataStorage的类型</param>
         /// <param name="strategy">要执行的信号策略</param>
-        public BacktestingEngine(IDataStorage data, ISignalStrategy strategy, EnvConfig config)
+        public TradeEngine(IDataStorage data, ITradeStrategy strategy, EnvConfig config)
         {
             _strategy = strategy;
             _config = config;
@@ -87,43 +88,63 @@ namespace CarrotBacktesting.NET.Engine
         }
 
         /// <summary>
-        /// 运行回测
+        /// 运行交易模拟
         /// </summary>
         /// <returns>回测结果</returns>
         public BacktestingResult Run()
         {
-            Console.WriteLine($"回测开始，策略名: '{_strategy.Name}'。");
+            Console.WriteLine($"交易模拟开始，策略名: '{_strategy.Name}'。");
             var stopwatch = Stopwatch.StartNew();
 
-            BacktestingResult result = new BacktestingResult();
+            var result = new BacktestingResult();
+            var completedTrades = new ConcurrentBag<Trade>();
 
             // 引擎的核心计算逻辑总是基于高效的纵向数据(_stockHistories)
             Parallel.ForEach(_stockHistories, history =>
             {
+                if (history.Data.Count == 0) return;
+
+                Trade? currentTrade = null;
                 var context = new SignalStrategyContext(history);
-                bool lastSignalState = false; // 用于生成脉冲信号
 
                 // 开始循环
                 for (int i = 0; i < history.Data.Count; i++)
                 {
                     context.CurrentIndex = i;
+                    double currentPrice = context.GetClose(0) ?? 0;
+                    if (currentPrice <= 0) continue; // 价格无效，跳过
 
-                    // 调用策略判断当前是否触发
-                    bool currentSignalState = _strategy.CheckSignal(context);
-
-                    // 脉冲逻辑：当本次触发，且上次未触发时，才记录信号
-                    if (currentSignalState && !lastSignalState)
+                    if (currentTrade == null)
                     {
-                        result.SignalsResult.Store(history.StockCode, history.Dates[i]);
+                        // 【空仓状态】
+                        string? entryReason = _strategy.CheckEntry(context);
+                        if (entryReason != null)
+                        {
+                            // 开仓
+                            currentTrade = new Trade(history.StockCode, entryReason, context.CurrentDate, currentPrice);
+                        }
                     }
-
-                    // 更新上次触发状态
-                    lastSignalState = currentSignalState;
+                    else
+                    {
+                        // 【持仓状态】
+                        // 1. 更新持仓状态
+                        currentTrade.UpdateOnNewBar(context);
+                        // 2. 检查平仓信号
+                        string? exitReason = _strategy.CheckExit(context, currentTrade);
+                        if (exitReason != null)
+                        {
+                            currentTrade.Close(exitReason, context.CurrentDate, currentPrice);
+                            completedTrades.Add(currentTrade);// 记录已完成的交易
+                            currentTrade = null;// 恢复到空仓状态
+                        }
+                    }
                 }
             });
 
+            result.Trades.AddRange(completedTrades.OrderBy(t => t.EntryDate));
+
             stopwatch.Stop();
-            Console.WriteLine($"回测结束，耗时: {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
+            Console.WriteLine($"交易模拟结束，共完成 {result.Trades.Count} 笔交易，耗时: {stopwatch.Elapsed.TotalSeconds:F3} 秒。");
 
             return result;
         }

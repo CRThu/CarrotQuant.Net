@@ -52,7 +52,7 @@ namespace CarrotBacktesting.NET.Demo
 
                 // a. 实例化您的策略
                 var strategy = new VolumeSignalStrategy();
-                session.RunSignal(strategy);
+                session.RunTrades(strategy);
 
                 // d. 打印最终的信号计数
                 Console.WriteLine("\n--- Backtesting Results ---");

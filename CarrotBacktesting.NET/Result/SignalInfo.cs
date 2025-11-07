@@ -12,6 +12,7 @@ namespace CarrotBacktesting.NET.Result
     /// </summary>
     /// <param name="StockCode">股票代码</param>
     /// <param name="Date">触发日期</param>
+    [Obsolete]
     [MessagePackObject]
     public readonly record struct SignalInfo(
         [property: Key(0)] string StockCode,
