@@ -25,6 +25,9 @@ namespace CarrotBacktesting.NET.Analysis
             if (config.Analysis.UseSignalAnalyzer)
                 _analyzers.Add(new SignalAnalyzer());
 
+            if (config.Analysis.UseTradeAnalyzer)
+                _analyzers.Add(new TradeAnalyzer());
+
             if (config.Analysis.UseConsoleExporter)
                 _exporters.Add(new ConsoleExporter());
 

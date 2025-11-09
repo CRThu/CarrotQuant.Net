@@ -26,7 +26,7 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
         public void Analyze(AnalysisContext context)
         {
             _backtestDays = context.Config.Analysis.SignalAnalysisDays;
-            var signals = context.BacktestResult.SignalsResult.GetSignals().ToList();
+            var signals = context.BacktestResult.Trades.Select(t => new SignalInfo(t.StockCode, t.EntryDate)).ToList();
             if (signals.Count == 0)
             {
                 Console.WriteLine("没有信号可供分析。");
