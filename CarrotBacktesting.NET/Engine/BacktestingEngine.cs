@@ -35,53 +35,9 @@ namespace CarrotBacktesting.NET.Engine
 
             Console.WriteLine("Initializing backtesting engine...");
 
-            // --- 适配器模式 ---
-            // 无论传入的是哪种数据结构，引擎都将其适配为内部需要的List<StockHistory>
-            if (data is HistoryStorage hs)
-            {
-                // 模式1: 数据已经是纵向的(TimeSeries)，直接使用，零开销。
-                Console.WriteLine("Data is in TimeSeries mode. Engine ready.");
-                _stockHistories = hs.StockHistories.Values.ToList();
-            }
-            else if (data is MarketStorage ms)
-            {
-                // 模式2: 数据是横向的(MarketSnapshot)，在引擎初始化时进行一次性转换。
-                // 这保证了后续策略计算的高性能，同时兼容了横向数据结构。
-                Console.WriteLine("Data is in MarketSnapshot mode. Converting to TimeSeries for strategy calculation...");
-                _stockHistories = new List<StockHistory>(ms.Symbols.Count);
-                var globalDates = ms.TradeDates;
+            _stockHistories = StorageConverter.ToStockHistories(data);
 
-                // 并行转换以提高效率
-                Parallel.ForEach(ms.Symbols, symbol =>
-                {
-                    int stockIndex = ms.SymbolsMap[symbol];
-                    var dates = new List<DateTime>();
-                    var frames = new List<StockFrame>();
-
-                    // 遍历所有交易日，为当前股票提取数据
-                    for (int i = 0; i < globalDates.Count; i++)
-                    {
-                        if (ms.TryGetFrame(globalDates[i], out var frame) &&
-                            stockIndex < frame.PrimaryData.Length && // 安全检查
-                            frame.PrimaryData[stockIndex].HasValue)
-                        {
-                            dates.Add(globalDates[i]);
-                            frames.Add(frame.PrimaryData[stockIndex].Value);
-                        }
-                    }
-
-                    // 线程安全地添加到列表中
-                    lock (_stockHistories)
-                    {
-                        _stockHistories.Add(new StockHistory(symbol, dates, frames));
-                    }
-                });
-                Console.WriteLine("Conversion completed. Engine ready.");
-            }
-            else
-            {
-                throw new ArgumentException("Unsupported IDataStorage implementation.", nameof(data));
-            }
+            Console.WriteLine("Engine ready.");
         }
 
         /// <summary>
