@@ -5,6 +5,7 @@ using CarrotBacktesting.NET.DataFeed;
 using CarrotBacktesting.NET.Engine;
 using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Strategy;
+using CarrotBacktesting.NET.Strategy.Examples;
 using CarrotBacktesting.NET.Utility;
 
 namespace CarrotBacktesting.NET.Demo
@@ -52,7 +53,8 @@ namespace CarrotBacktesting.NET.Demo
 
                 // a. 实例化您的策略
                 var strategy = new VolumeSignalStrategy();
-                session.RunTrades(strategy);
+                //var strategy = new PriceStrategy();
+                session.Run(strategy);
 
                 // d. 打印最终的信号计数
                 Console.WriteLine("\n--- Backtesting Results ---");
@@ -60,18 +62,15 @@ namespace CarrotBacktesting.NET.Demo
                         .Select(t => new SignalInfo(t.StockCode, t.EntryDate)).ToList();
                 Console.WriteLine($"Total signals (SignalInfo) generated: {signals.Count}");
 
-                // (可选) 打印一些信号示例
-                if (signals.Count != 0)
-                {
-                    Console.WriteLine("First 10 signals:");
-                    foreach (var signal in signals.Take(10))
-                    {
-                        Console.WriteLine($"  - Stock: {signal.StockCode}, Date: {signal.Date:yyyy-MM-dd}");
-                    }
-                }
-
-
-                session.Analyze();
+                //// (可选) 打印一些信号示例
+                //if (signals.Count != 0)
+                //{
+                //    Console.WriteLine("First 10 signals:");
+                //    foreach (var signal in signals.Take(10))
+                //    {
+                //        Console.WriteLine($"  - Stock: {signal.StockCode}, Date: {signal.Date:yyyy-MM-dd}");
+                //    }
+                //}
             }
             catch (Exception ex)
             {

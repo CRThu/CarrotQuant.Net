@@ -61,7 +61,7 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
             var report = new SignalReport(allReturnsOverTime, _backtestDays);
 
             stopwatch.Stop();
-            Console.WriteLine($"性能分析完成，耗时 {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
+            Console.WriteLine($"性能分析完成，有效信号数: {allReturnsOverTime.Count}，耗时 {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
 
             // --- 第三步：将最终的统一报告存入上下文 ---
             context.SetArtifact(report);

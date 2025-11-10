@@ -34,7 +34,7 @@ namespace CarrotBacktesting.NET
         /// <summary>
         /// 
         /// </summary>
-        public TradeEngine? Engine { get; private set; }
+        public BacktestingEngine? Engine { get; private set; }
 
         /// <summary>
         /// 
@@ -78,15 +78,16 @@ namespace CarrotBacktesting.NET
         /// 使用指定的策略运行交易模拟
         /// </summary>
         /// <param name="strategy">要运行的信号策略</param>
-        public void RunTrades(ITradeStrategy strategy)
+        public void Run(IStrategy strategy)
         {
             if (Data == null)
                 throw new InvalidOperationException("Data is null");
 
-            Engine = new TradeEngine(Data, strategy, Config);
-            Result = Engine.Run();
+            Engine = new BacktestingEngine(Data, Config);
+            Result = Engine.Run(strategy);
 
             SaveResult();
+            Analyze();
         }
 
         private void SaveResult()

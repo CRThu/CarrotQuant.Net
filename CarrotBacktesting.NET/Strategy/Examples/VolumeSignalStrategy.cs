@@ -6,16 +6,16 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CarrotBacktesting.NET.Strategy
+namespace CarrotBacktesting.NET.Strategy.Examples
 {
     /// <summary>
     /// 演示策略：当日成交量 > 前5日平均成交量的2.5倍
     /// </summary>
-    public class VolumeSignalStrategy : ITradeStrategy
+    public class VolumeSignalStrategy : ISignalStrategy
     {
         public string Name => nameof(VolumeSignalStrategy);
 
-        public string? CheckEntry(SignalStrategyContext context)
+        public string? CheckSignal(SignalStrategyContext context)
         {
             // 获取当日成交量
             double? currentVolume = context.GetVolume(0);
@@ -50,11 +50,6 @@ namespace CarrotBacktesting.NET.Strategy
             {
                 return "Volume";
             }
-            return null;
-        }
-
-        public string? CheckExit(SignalStrategyContext context, Trade trade)
-        {
             return null;
         }
     }

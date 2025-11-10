@@ -9,15 +9,10 @@ using System.Threading.Tasks;
 namespace CarrotBacktesting.NET.Strategy
 {
     /// <summary>
-    /// 定义一个完整交易策略的唯一接口，包含开仓和平仓逻辑。
+    /// 用于【交易模拟模式】的策略接口，包含开仓和平仓逻辑。
     /// </summary>
-    public interface ITradeStrategy
+    public interface ITradeStrategy : IStrategy
     {
-        /// <summary>
-        /// 策略名称
-        /// </summary>
-        string Name { get; }
-
         /// <summary>
         /// 检查是否应该【开仓】(Entry)。
         /// 只在当前【空仓】时被引擎调用。
