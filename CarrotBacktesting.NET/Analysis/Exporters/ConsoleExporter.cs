@@ -32,6 +32,8 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             {
                 if (signalReport.ValidSignalCount == 0)
                     AnsiConsole.MarkupLine("[yellow1][ConsoleExporter] 没有有效的信号报告可供输出。[/]");
+                else
+                    recorder.Write(new Rule("[bold blue]T+N 信号表现分析[/]").Centered());
 
                 RenderSignalReport(recorder, signalReport, context);
             }
@@ -66,42 +68,6 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         }
 
         /// <summary>
-        /// 渲染交易统计报告
-        /// </summary>
-        private void RenderTradeReport(IAnsiConsole console, TradeReport report)
-        {
-            console.Write(new Rule("核心交易性能指标"));
-
-            var grid = new Grid()
-                .AddColumn(new GridColumn().RightAligned().PadRight(1)) // 键列：右对齐，右边距1
-                .AddColumn(); // 值列
-
-            // 添加所有核心指标行
-            grid.AddRow("[bold]总交易次数:[/]", $"[cyan]{report.TotalTrades}[/]");
-            grid.AddRow("[bold]胜率:[/]", $"[deepskyblue1]{report.WinRate:P2}[/]");
-            grid.AddRow("[bold]平均收益率:[/]", $"[{(report.AverageReturn >= 0 ? "springgreen3" : "indianred")}]{report.AverageReturn:P2}[/]");
-            grid.AddRow("[bold]中位数收益率:[/]", $"[{(report.MedianReturn >= 0 ? "magenta" : "indianred")}]{report.MedianReturn:P2}[/]");
-            grid.AddRow("[bold]平均盈利:[/]", $"[springgreen3]{report.AverageWinReturn:P2}[/]");
-            grid.AddRow("[bold]平均亏损:[/]", $"[indianred]{report.AverageLossReturn:P2}[/]");
-            grid.AddRow("[bold]盈亏比:[/]", $"[yellow1]{report.WinLossRatio:F2}[/]");
-            grid.AddRow("[bold]平均持仓周期:[/]", $"[deepskyblue1]{report.AverageHoldingPeriod:F2} 天[/]");
-            grid.AddEmptyRow();
-
-            // --- 卖点评估指标 ---
-
-            grid.AddRow("[bold underline]交易效率评估 (Trade Efficiency)[/]", "");
-            grid.AddRow("[bold]平均交易效率:[/]", $"[cyan]{report.AverageTradeEfficiency:P2}[/]");
-            grid.AddRow("[bold]中位数交易效率:[/]", $"[cyan]{report.MedianTradeEfficiency:P2}[/]");
-
-            console.Write(
-                new Panel(grid)
-                    .Header("交易统计摘要")
-                    .Expand() // Panel 宽度自动扩展以适应内容
-            );
-            console.WriteLine(); // 添加一个空行
-        }
-
-        /// <summary>
         /// 专门渲染T+N信号表现报告
         /// </summary>
         private void RenderSignalReport(IAnsiConsole console, SignalReport report, AnalysisContext context)
@@ -113,6 +79,15 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
 
             // 月度分析需要原始信号的时间信息
             PrintMonthlyReturns(console, report, context.BacktestResult.Trades);
+        }
+
+        /// <summary>
+        /// 渲染交易分析的两个核心部分：总体摘要和月度统计。
+        /// </summary>
+        private void RenderTradeReport(IAnsiConsole console, TradeReport report)
+        {
+            RenderTradeSummaryReport(console, report);
+            RenderMonthlyPerformanceReport(console, report);
         }
 
         /// <summary>
@@ -263,6 +238,43 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             console.Write(table);
         }
 
+
+        /// <summary>
+        /// 渲染交易统计报告
+        /// </summary>
+        private void RenderTradeSummaryReport(IAnsiConsole console, TradeReport report)
+        {
+            console.Write(new Rule("核心交易性能指标"));
+
+            var grid = new Grid()
+                .AddColumn(new GridColumn().RightAligned().PadRight(1)) // 键列：右对齐，右边距1
+                .AddColumn(); // 值列
+
+            // 添加所有核心指标行
+            grid.AddRow("[bold]总交易次数:[/]", $"[cyan]{report.TotalTrades}[/]");
+            grid.AddRow("[bold]胜率:[/]", $"[deepskyblue1]{report.WinRate:P2}[/]");
+            grid.AddRow("[bold]平均收益率:[/]", $"[{(report.AverageReturn >= 0 ? "springgreen3" : "indianred")}]{report.AverageReturn:P2}[/]");
+            grid.AddRow("[bold]中位数收益率:[/]", $"[{(report.MedianReturn >= 0 ? "magenta" : "indianred")}]{report.MedianReturn:P2}[/]");
+            grid.AddRow("[bold]平均盈利:[/]", $"[springgreen3]{report.AverageWinReturn:P2}[/]");
+            grid.AddRow("[bold]平均亏损:[/]", $"[indianred]{report.AverageLossReturn:P2}[/]");
+            grid.AddRow("[bold]盈亏比:[/]", $"[yellow1]{report.WinLossRatio:F2}[/]");
+            grid.AddRow("[bold]平均持仓周期:[/]", $"[deepskyblue1]{report.AverageHoldingPeriod:F2} 天[/]");
+            grid.AddEmptyRow();
+
+            // --- 卖点评估指标 ---
+
+            grid.AddRow("[bold underline]交易效率评估 (Trade Efficiency)[/]", "");
+            grid.AddRow("[bold]平均交易效率:[/]", $"[cyan]{report.AverageTradeEfficiency:P2}[/]");
+            grid.AddRow("[bold]中位数交易效率:[/]", $"[cyan]{report.MedianTradeEfficiency:P2}[/]");
+
+            console.Write(
+                new Panel(grid)
+                    .Header("交易统计摘要")
+                    .Expand() // Panel 宽度自动扩展以适应内容
+            );
+            console.WriteLine(); // 添加一个空行
+        }
+
         /// <summary>
         /// 渲染卖出时机/踏空分析报告
         /// </summary>
@@ -288,6 +300,45 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
                     $"[{avgReturnColor}]{report.AvgReturns[i]:P2}[/]",
                     $"[{medianReturnColor}]{report.MedianReturns[i]:P2}[/]",
                     $"[deepskyblue1]{report.WinRates[i]:P2}[/]"
+                );
+            }
+            console.Write(table);
+        }
+
+
+        /// <summary>
+        /// 渲染按月分组的交易表现报告
+        /// </summary>
+        private void RenderMonthlyPerformanceReport(IAnsiConsole console, TradeReport report)
+        {
+            if (report.MonthlyStats == null || !report.MonthlyStats.Any()) return;
+
+            console.Write(new Rule("[yellow bold]按月度统计交易表现[/]").Justify(Justify.Center));
+
+            var table = new Table()
+                .Border(TableBorder.Rounded)
+                .AddColumn("月份")
+                .AddColumn(new TableColumn("交易次数").RightAligned())
+                .AddColumn(new TableColumn("月度平均收益").RightAligned())
+                .AddColumn(new TableColumn("月度中位数收益").RightAligned())
+                .AddColumn(new TableColumn("胜率").RightAligned())
+                .AddColumn(new TableColumn("月度平均盈利").RightAligned())
+                .AddColumn(new TableColumn("月度平均亏损").RightAligned())
+                .AddColumn(new TableColumn("月度盈亏比").RightAligned());
+
+            foreach (var stat in report.MonthlyStats)
+            {
+                string avgReturnColor = stat.AverageReturn > 0 ? "springgreen3" : "indianred";
+                string medianReturnColor = stat.MedianReturn > 0 ? "springgreen3" : "indianred";
+                table.AddRow(
+                    $"{stat.Month:yyyy-MM}",
+                    $"{stat.TradeCount}",
+                    $"[{avgReturnColor}]{stat.AverageReturn:P2}[/]",
+                    $"[{medianReturnColor}]{stat.MedianReturn:P2}[/]",
+                    $"[deepskyblue1]{stat.WinRate:P2}[/]",
+                    $"[springgreen3]{stat.AverageWin:P2}[/]",
+                    $"[indianred]{stat.AverageLoss:P2}[/]",
+                    $"[deepskyblue1]{stat.WinLossRatio:F2}[/]"
                 );
             }
             console.Write(table);
