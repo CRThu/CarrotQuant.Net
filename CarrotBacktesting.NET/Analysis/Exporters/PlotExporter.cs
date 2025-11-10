@@ -21,10 +21,9 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         {
             // 从上下文中获取所有需要的数据
             var summary = context.GetArtifact<SignalReport>();
-            var signals = context.BacktestResult.Trades
-                    .Select(t => new SignalInfo(t.StockCode, t.EntryDate)).ToList();
+            var trades = context.BacktestResult.Trades;
 
-            if (summary is null || signals.Count == 0)
+            if (summary is null || trades.Count == 0)
             {
                 Console.WriteLine("[ScottPlot] 缺少必要的分析数据，无法生成图表。");
                 return;
@@ -40,7 +39,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             // 依次调用绘图方法
             CreatePerformanceOverviewPlot(summary);
-            CreateDistributionTimelinePlot(summary, signals);
+            CreateDistributionTimelinePlot(summary, trades);
             CreateHeatmapPlot(summary);
 
             Console.WriteLine("[ScottPlot] 图表生成完成。");
@@ -94,7 +93,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【信号收益分布与月度趋势图】
         /// </summary>
-        private void CreateDistributionTimelinePlot(SignalReport returnsResult, IReadOnlyList<Result.SignalInfo> signals)
+        private void CreateDistributionTimelinePlot(SignalReport returnsResult, List<Trade> trades)
         {
             int timelinePlotDay = returnsResult.AvgReturns.ToList().IndexOf(returnsResult.AvgReturns.Max()) + 1;
             if (timelinePlotDay > _backtestDays) return;
@@ -110,7 +109,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             var scatterData = new List<(DateTime Date, double Return)>();
             for (int i = 0; i < returnsResult.Returns.Count; i++)
             {
-                scatterData.Add((signals[i].Date, returnsResult.Returns[i][timelinePlotDay - 1]));
+                scatterData.Add((trades[i].EntryDate, returnsResult.Returns[i][timelinePlotDay - 1]));
             }
 
             // 左Y轴 - 散点图

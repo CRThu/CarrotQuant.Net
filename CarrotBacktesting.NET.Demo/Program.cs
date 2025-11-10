@@ -18,7 +18,7 @@ namespace CarrotBacktesting.NET.Demo
 
             try
             {
-                // --- 1. 加载配置 ---
+                // 加载配置
                 Console.WriteLine("Loading config...");
                 string configPath = ".\\CarrotQuant.Data\\v3\\yaml\\env.yaml";
                 //Console.WriteLine($"Config path: {configPath}");
@@ -28,7 +28,7 @@ namespace CarrotBacktesting.NET.Demo
                 Console.WriteLine($"Data path: {session.Config.ResolvePath(session.Config.Data.RawPath)}");
                 Console.WriteLine($"Thread count: {session.Config.Runtime.ThreadCount}");
 
-                // --- 2. 加载数据 ---
+                // 加载数据
                 Console.WriteLine("\nLoading data...");
                 session.Load();
 
@@ -48,29 +48,19 @@ namespace CarrotBacktesting.NET.Demo
                     Console.WriteLine($"Frame数量: {ms.GetFramesEnumerator().Sum(frame => frame.PrimaryData.Count(stock => stock.HasValue)):N0}");
                 }
 
-                // --- 3. 运行信号回测引擎 ---
                 Console.WriteLine("\n--- Backtesting Start ---");
 
-                // a. 实例化您的策略
+                // 实例化您的策略
                 var strategy = new VolumeSignalStrategy();
                 //var strategy = new PriceStrategy();
+
+                // 运行信号回测引擎
                 session.Run(strategy);
 
-                // d. 打印最终的信号计数
+                // 打印最终的信号计数
                 Console.WriteLine("\n--- Backtesting Results ---");
-                var signals = session.Result!.Trades
-                        .Select(t => new SignalInfo(t.StockCode, t.EntryDate)).ToList();
-                Console.WriteLine($"Total signals (SignalInfo) generated: {signals.Count}");
-
-                //// (可选) 打印一些信号示例
-                //if (signals.Count != 0)
-                //{
-                //    Console.WriteLine("First 10 signals:");
-                //    foreach (var signal in signals.Take(10))
-                //    {
-                //        Console.WriteLine($"  - Stock: {signal.StockCode}, Date: {signal.Date:yyyy-MM-dd}");
-                //    }
-                //}
+                var trades = session.Result!.Trades;
+                Console.WriteLine($"Total signals generated: {trades.Count}");
             }
             catch (Exception ex)
             {

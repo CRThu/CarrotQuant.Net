@@ -26,27 +26,27 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
         public void Analyze(AnalysisContext context)
         {
             _backtestDays = context.Config.Analysis.SignalAnalysisDays;
-            var signals = context.BacktestResult.Trades.Select(t => new SignalInfo(t.StockCode, t.EntryDate)).ToList();
-            if (signals.Count == 0)
+            var trades = context.BacktestResult.Trades;
+            if (trades.Count == 0)
             {
                 Console.WriteLine("没有信号可供分析。");
                 return;
             }
 
             // --- 第一步：计算详细的收益率矩阵 (原 ForwardReturnsAnalyzer 的工作) ---
-            Console.WriteLine($"开始为 {signals.Count} 个信号计算未来 {_backtestDays} 日的性能表现...");
+            Console.WriteLine($"开始为 {trades.Count} 个信号计算未来 {_backtestDays} 日的性能表现...");
             var stopwatch = Stopwatch.StartNew();
 
-            var allReturnsOverTime = new List<double[]>(signals.Count);
+            var allReturnsOverTime = new List<double[]>(trades.Count);
 
             // 目前只支持最高效的纵向数据模式
             if (context.Data is HistoryStorage hs)
             {
-                foreach (var signal in signals)
+                foreach (var trade in trades)
                 {
-                    if (hs.StockHistories.TryGetValue(signal.StockCode, out var history))
+                    if (hs.StockHistories.TryGetValue(trade.StockCode, out var history))
                     {
-                        var returns = CalculateReturnsForSignal(signal, history);
+                        var returns = CalculateReturnsForSignal(trade, history);
                         if (returns != null)
                             allReturnsOverTime.Add(returns);
                     }
@@ -70,22 +70,22 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
         /// <summary>
         /// 为单个信号计算其未来N天的收益率序列。
         /// </summary>
-        private double[]? CalculateReturnsForSignal(SignalInfo signal, StockHistory history)
+        private double[]? CalculateReturnsForSignal(Trade trade, StockHistory history)
         {
             // 使用二分查找定位信号日
-            int signalIndex = history.Dates.ToList().BinarySearch(signal.Date);
-            if (signalIndex < 0) return null;
+            int tradeIndex = history.Dates.ToList().BinarySearch(trade.EntryDate);
+            if (tradeIndex < 0) return null;
 
             // 检查是否有足够的数据
-            if (signalIndex + _backtestDays >= history.Data.Count) return null;
+            if (tradeIndex + _backtestDays >= history.Data.Count) return null;
 
-            double closeT0 = history.Data[signalIndex].Close;
+            double closeT0 = history.Data[tradeIndex].Close;
             if (closeT0 <= 0) return null;
 
             var returns = new double[_backtestDays];
             for (int i = 0; i < _backtestDays; i++)
             {
-                double closeTn = history.Data[signalIndex + 1 + i].Close;
+                double closeTn = history.Data[tradeIndex + 1 + i].Close;
                 returns[i] = (closeTn - closeT0) / closeT0;
             }
             return returns;

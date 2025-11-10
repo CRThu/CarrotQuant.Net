@@ -5,6 +5,7 @@ using CarrotBacktesting.NET.Utility;
 using Spectre.Console;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -98,9 +99,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             PrintDailySummary(console, report);
 
             // 月度分析需要原始信号的时间信息
-            var signals = context.BacktestResult.Trades
-                    .Select(t => new SignalInfo(t.StockCode, t.EntryDate));
-            PrintMonthlyReturns(console, report, signals.ToList());
+            PrintMonthlyReturns(console, report, context.BacktestResult.Trades);
         }
 
         /// <summary>
@@ -175,15 +174,15 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 打印 T+X 月度收益统计
         /// </summary>
-        private void PrintMonthlyReturns(IAnsiConsole console, SignalReport report, List<Result.SignalInfo> signals)
+        private void PrintMonthlyReturns(IAnsiConsole console, SignalReport report, List<Trade> trades)
         {
             // 找到最佳平均收益率的持有天数
             var maxAvgReturn = report.AvgReturns.Max();
             int bestDay = Array.IndexOf(report.AvgReturns.ToArray(), maxAvgReturn); // 索引 (0-based)
 
-            var returnsWithDate = signals.Zip(report.Returns, (signal, returns) => new
+            var returnsWithDate = trades.Zip(report.Returns, (signal, returns) => new
             {
-                Date = signal.Date,
+                Date = signal.EntryDate,
                 Return = returns[bestDay]
             });
 
