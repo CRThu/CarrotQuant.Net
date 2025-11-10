@@ -75,10 +75,18 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             grid.AddRow("[bold]总交易次数:[/]", $"[cyan]{report.TotalTrades}[/]");
             grid.AddRow("[bold]胜率:[/]", $"[deepskyblue1]{report.WinRate:P2}[/]");
             grid.AddRow("[bold]平均收益率:[/]", $"[{(report.AverageReturn >= 0 ? "springgreen3" : "indianred")}]{report.AverageReturn:P2}[/]");
+            grid.AddRow("[bold]中位数收益率:[/]", $"[{(report.MedianReturn >= 0 ? "magenta" : "indianred")}]{report.MedianReturn:P2}[/]");
             grid.AddRow("[bold]平均盈利:[/]", $"[springgreen3]{report.AverageWinReturn:P2}[/]");
             grid.AddRow("[bold]平均亏损:[/]", $"[indianred]{report.AverageLossReturn:P2}[/]");
             grid.AddRow("[bold]盈亏比:[/]", $"[yellow1]{report.WinLossRatio:F2}[/]");
             grid.AddRow("[bold]平均持仓周期:[/]", $"[deepskyblue1]{report.AverageHoldingPeriod:F2} 天[/]");
+            grid.AddEmptyRow();
+
+            // --- 卖点评估指标 ---
+
+            grid.AddRow("[bold underline]交易效率评估 (Trade Efficiency)[/]", "");
+            grid.AddRow("[bold]平均交易效率:[/]", $"[cyan]{report.AverageTradeEfficiency:P2}[/]");
+            grid.AddRow("[bold]中位数交易效率:[/]", $"[cyan]{report.MedianTradeEfficiency:P2}[/]");
 
             console.Write(
                 new Panel(grid)

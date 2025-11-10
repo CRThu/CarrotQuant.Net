@@ -63,6 +63,36 @@ namespace CarrotBacktesting.NET.Result
         /// </summary>
         [Key(9)] public double HighestPriceSinceEntry { get; private set; }
 
+        /// <summary>
+        /// 对最终盈利的交易计算平仓效率 (Trade Efficiency)。
+        /// 公式: (实际利润) / (最大潜在利润)
+        /// 衡量卖点捕获潜在利润的能力。
+        /// </summary>
+        [JsonIgnore, IgnoreMember]
+        public double? TradeEfficiency
+        {
+            get
+            {
+                if (!IsClosed || !Return.HasValue) return null;
+
+                // 1. 如果最终没有盈利，则效率指标不适用
+                if (Return.Value <= 0) return null;
+
+                // 2. 计算最大潜在利润
+                double maxPotentialProfit = HighestPriceSinceEntry - EntryPrice;
+
+                // 3. 只有当最大潜在利润为正时，比率才有意义
+                if (maxPotentialProfit > 0)
+                {
+                    double actualProfit = ExitPrice.GetValueOrDefault() - EntryPrice;
+                    // 确保结果不会因为浮点数精度问题略大于1
+                    return Math.Min(1.0, actualProfit / maxPotentialProfit);
+                }
+
+                return null;
+            }
+        }
+
         [JsonConstructor]
         [SerializationConstructor]
         public Trade(string stockCode, string entryReason, DateTime entryDate, double entryPrice, string? exitReason, DateTime? exitDate, double? exitPrice, bool isClosed, int holdingPeriod, double highestPriceSinceEntry)

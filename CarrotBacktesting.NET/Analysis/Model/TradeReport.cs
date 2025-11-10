@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.NET.Result;
+using CarrotBacktesting.NET.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,6 +21,20 @@ namespace CarrotBacktesting.NET.Analysis.Model
         public double WinLossRatio { get; }
         public double AverageHoldingPeriod { get; }
 
+        /// <summary>
+        /// 所有已平仓交易的收益率中位数。
+        /// </summary>
+        public double MedianReturn { get; }
+
+        /// <summary>
+        /// 所有盈利交易的平均交易效率。
+        /// </summary>
+        public double AverageTradeEfficiency { get; }
+
+        /// <summary>
+        /// 所有盈利交易的交易效率中位数。
+        /// </summary>
+        public double MedianTradeEfficiency { get; }
 
         public TradeReport(List<Trade> trades)
         {
@@ -35,6 +50,7 @@ namespace CarrotBacktesting.NET.Analysis.Model
 
             WinRate = (double)winningTrades.Count / closedTrades.Count;
             AverageReturn = closedTrades.Average(t => t.Return) ?? 0;
+            MedianReturn = closedTrades.Select(t => t.Return!.Value).Median();
             AverageWinReturn = winningTrades.Any() ? winningTrades.Average(t => t.Return) ?? 0 : 0;
             AverageLossReturn = losingTrades.Any() ? losingTrades.Average(t => t.Return) ?? 0 : 0;
 
@@ -42,6 +58,18 @@ namespace CarrotBacktesting.NET.Analysis.Model
                 WinLossRatio = AverageWinReturn / System.Math.Abs(AverageLossReturn);
 
             AverageHoldingPeriod = closedTrades.Average(t => t.HoldingPeriod);
+
+            var efficiencies = closedTrades
+                .Select(t => t.TradeEfficiency)
+                .Where(d => d.HasValue) // 过滤掉可能为null的情况
+                .Select(d => d!.Value)
+                .ToList();
+
+            if (efficiencies.Any())
+            {
+                AverageTradeEfficiency = efficiencies.Average();
+                MedianTradeEfficiency = efficiencies.Median();
+            }
         }
     }
 }
