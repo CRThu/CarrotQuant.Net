@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.NET.Analysis.Model;
+using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Utility;
 using CarrotBacktesting.NET.Utility.ScottPlot;
 using ScottPlot;
@@ -20,7 +21,8 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         {
             // 从上下文中获取所有需要的数据
             var summary = context.GetArtifact<SignalReport>();
-            var signals = context.BacktestResult.SignalsResult.Signals.ToList();
+            var signals = context.BacktestResult.Trades
+                    .Select(t => new SignalInfo(t.StockCode, t.EntryDate)).ToList();
 
             if (summary is null || signals.Count == 0)
             {

@@ -1,5 +1,6 @@
 ﻿using CarrotBacktesting.NET.Analysis.Model;
 using CarrotBacktesting.NET.Config.Model;
+using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Utility;
 using Spectre.Console;
 using System;
@@ -19,26 +20,27 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// </summary>
         public void Export(AnalysisContext context)
         {
-            // 从上下文中获取核心分析报告
-
-            var report = context.GetArtifact<SignalReport>();
-            if (report == null || report.ValidSignalCount == 0)
-            {
-                AnsiConsole.MarkupLine("[yellow1][ConsoleExporter] 没有有效的信号报告可供输出。[/]");
-                return;
-            }
-
-            // 1. 实时输出到控制台
-            //AnsiConsole.MarkupLine("\n[bold springgreen3]正在打印实时分析报告到控制台...[/]");
-            //RenderReport(AnsiConsole.Console, report, context);
-
-            // 2. 捕获输出并写入文件
             string outputDir = context.Config.ResolvePath(context.Config.Out.Exporter);
             string htmlPath = Path.Combine(outputDir, "summary.html");
             Directory.CreateDirectory(Path.GetDirectoryName(htmlPath)!);
 
             var recorder = new Recorder(AnsiConsole.Console);
-            RenderReport(recorder, report, context);
+
+            // 从上下文中获取核心分析报告
+            var tradeReport = context.GetArtifact<TradeReport>();
+            if (tradeReport != null)
+            {
+                RenderTradeReport(recorder, tradeReport);
+            }
+
+            var report = context.GetArtifact<SignalReport>();
+            if (report != null)
+            {
+                if (report.ValidSignalCount == 0)
+                    AnsiConsole.MarkupLine("[yellow1][ConsoleExporter] 没有有效的信号报告可供输出。[/]");
+
+                RenderSignalReport(recorder, report, context);
+            }
 
             try
             {
@@ -57,7 +59,38 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             }
         }
 
-        private void RenderReport(IAnsiConsole console, SignalReport report, AnalysisContext context)
+        /// <summary>
+        /// 渲染交易统计报告
+        /// </summary>
+        private void RenderTradeReport(IAnsiConsole console, TradeReport report)
+        {
+            console.Write(new Rule("[yellow bold]核心交易性能指标[/]"));
+
+            var grid = new Grid()
+                .AddColumn(new GridColumn().RightAligned().PadRight(1)) // 键列：右对齐，右边距1
+                .AddColumn(); // 值列
+
+            // 添加所有核心指标行
+            grid.AddRow("[bold]总交易次数:[/]", $"[cyan]{report.TotalTrades}[/]");
+            grid.AddRow("[bold]胜率:[/]", $"[deepskyblue1]{report.WinRate:P2}[/]");
+            grid.AddRow("[bold]平均收益率:[/]", $"[{(report.AverageReturn >= 0 ? "springgreen3" : "indianred")}]{report.AverageReturn:P2}[/]");
+            grid.AddRow("[bold]平均盈利:[/]", $"[springgreen3]{report.AverageWinReturn:P2}[/]");
+            grid.AddRow("[bold]平均亏损:[/]", $"[indianred]{report.AverageLossReturn:P2}[/]");
+            grid.AddRow("[bold]盈亏比:[/]", $"[yellow1]{report.WinLossRatio:F2}[/]");
+            grid.AddRow("[bold]平均持仓周期:[/]", $"[deepskyblue1]{report.AverageHoldingPeriod:F2} 天[/]");
+
+            console.Write(
+                new Panel(grid)
+                    .Header("交易统计摘要")
+                    .Expand() // Panel 宽度自动扩展以适应内容
+            );
+            console.WriteLine(); // 添加一个空行
+        }
+
+        /// <summary>
+        /// 专门渲染T+N信号表现报告
+        /// </summary>
+        private void RenderSignalReport(IAnsiConsole console, SignalReport report, AnalysisContext context)
         {
             console.WriteLine();
 
@@ -65,7 +98,8 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             PrintDailySummary(console, report);
 
             // 月度分析需要原始信号的时间信息
-            var signals = context.BacktestResult.SignalsResult.GetSignals();
+            var signals = context.BacktestResult.Trades
+                    .Select(t => new SignalInfo(t.StockCode, t.EntryDate));
             PrintMonthlyReturns(console, report, signals.ToList());
         }
 

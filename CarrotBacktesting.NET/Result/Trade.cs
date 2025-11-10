@@ -16,12 +16,33 @@ namespace CarrotBacktesting.NET.Result
     public class Trade
     {
         // --- 核心属性 ---
+        /// <summary>
+        /// 股票代码
+        /// </summary>
         [Key(0)] public string StockCode { get; }
+        /// <summary>
+        /// 开仓原因，由策略的 CheckEntry 方法返回。
+        /// </summary>
         [Key(1)] public string EntryReason { get; }
+        /// <summary>
+        /// 开仓日期
+        /// </summary>
         [Key(2)] public DateTime EntryDate { get; }
+        /// <summary>
+        /// 开仓价格
+        /// </summary>
         [Key(3)] public double EntryPrice { get; }
+        /// <summary>
+        /// 平仓原因，由策略的 CheckExit 方法返回。
+        /// </summary>
         [Key(4)] public string? ExitReason { get; private set; }
+        /// <summary>
+        /// 平仓日期
+        /// </summary>
         [Key(5)] public DateTime? ExitDate { get; private set; }
+        /// <summary>
+        /// 平仓价格
+        /// </summary>
         [Key(6)] public double? ExitPrice { get; private set; }
 
         // --- 状态与统计属性 ---

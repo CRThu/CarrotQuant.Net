@@ -56,7 +56,8 @@ namespace CarrotBacktesting.NET.Demo
 
                 // d. 打印最终的信号计数
                 Console.WriteLine("\n--- Backtesting Results ---");
-                var signals = session.Result!.SignalsResult.GetSignals().ToList();
+                var signals = session.Result!.Trades
+                        .Select(t => new SignalInfo(t.StockCode, t.EntryDate)).ToList();
                 Console.WriteLine($"Total signals (SignalInfo) generated: {signals.Count}");
 
                 // (可选) 打印一些信号示例
