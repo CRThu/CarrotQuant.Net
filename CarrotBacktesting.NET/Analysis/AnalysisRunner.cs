@@ -28,6 +28,9 @@ namespace CarrotBacktesting.NET.Analysis
             if (config.Analysis.UseTradeAnalyzer)
                 _analyzers.Add(new TradeAnalyzer());
 
+            if (config.Analysis.UseExitTimingAnalyzer)
+                _analyzers.Add(new ExitTimingAnalyzer());
+
             if (config.Analysis.UseConsoleExporter)
                 _exporters.Add(new ConsoleExporter());
 

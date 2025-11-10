@@ -90,6 +90,7 @@ namespace CarrotBacktesting.NET.Config.Model
         public int SignalAnalysisDays { get; set; } = 30;
         public bool UseSignalAnalyzer { get; set; } = true;
         public bool UseTradeAnalyzer { get; set; } = true;
+        public bool UseExitTimingAnalyzer { get; set; } = true;
         public bool UseConsoleExporter { get; set; } = true;
         public bool UsePlotExporter { get; set; } = true;
     }

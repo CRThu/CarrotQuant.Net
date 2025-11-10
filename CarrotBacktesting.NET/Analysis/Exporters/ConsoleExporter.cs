@@ -27,20 +27,25 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             var recorder = new Recorder(AnsiConsole.Console);
 
-            // 从上下文中获取核心分析报告
+            var signalReport = context.GetArtifact<SignalReport>();
+            if (signalReport != null)
+            {
+                if (signalReport.ValidSignalCount == 0)
+                    AnsiConsole.MarkupLine("[yellow1][ConsoleExporter] 没有有效的信号报告可供输出。[/]");
+
+                RenderSignalReport(recorder, signalReport, context);
+            }
+
             var tradeReport = context.GetArtifact<TradeReport>();
             if (tradeReport != null)
             {
                 RenderTradeReport(recorder, tradeReport);
             }
 
-            var report = context.GetArtifact<SignalReport>();
-            if (report != null)
+            var exitTimingReport = context.GetArtifact<ExitTimingReport>();
+            if (exitTimingReport != null)
             {
-                if (report.ValidSignalCount == 0)
-                    AnsiConsole.MarkupLine("[yellow1][ConsoleExporter] 没有有效的信号报告可供输出。[/]");
-
-                RenderSignalReport(recorder, report, context);
+                RenderExitTimingReport(recorder, exitTimingReport);
             }
 
             try
@@ -65,7 +70,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// </summary>
         private void RenderTradeReport(IAnsiConsole console, TradeReport report)
         {
-            console.Write(new Rule("[yellow bold]核心交易性能指标[/]"));
+            console.Write(new Rule("核心交易性能指标"));
 
             var grid = new Grid()
                 .AddColumn(new GridColumn().RightAligned().PadRight(1)) // 键列：右对齐，右边距1
@@ -253,6 +258,36 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
                     $"[springgreen3]{stat.AvgWin:P2}[/]",
                     $"[indianred]{stat.AvgLoss:P2}[/]",
                     $"[deepskyblue1]{stat.WinLossRatio:F2}[/]"
+                );
+            }
+            console.Write(table);
+        }
+
+        /// <summary>
+        /// 渲染卖出时机/踏空分析报告
+        /// </summary>
+        private void RenderExitTimingReport(IAnsiConsole console, ExitTimingReport report)
+        {
+            console.Write(new Rule("卖出时机分析 (平仓后T+N日表现)").Centered());
+
+            var table = new Table()
+                .Border(TableBorder.Rounded)
+                .Caption($"[grey]基于 {report.ValidExitCount} 个有效平仓点[/]")
+                .AddColumn("平仓后天数")
+                .AddColumn(new TableColumn("平均后续收益").RightAligned())
+                .AddColumn(new TableColumn("中位数后续收益").RightAligned())
+                .AddColumn(new TableColumn("后续上涨概率").RightAligned());
+
+            for (int i = 0; i < report.BacktestDays; i++)
+            {
+                string avgReturnColor = report.AvgReturns[i] > 0 ? "springgreen3" : "indianred";
+                string medianReturnColor = report.MedianReturns[i] > 0 ? "springgreen3" : "indianred";
+
+                table.AddRow(
+                    $"T+{i + 1}",
+                    $"[{avgReturnColor}]{report.AvgReturns[i]:P2}[/]",
+                    $"[{medianReturnColor}]{report.MedianReturns[i]:P2}[/]",
+                    $"[deepskyblue1]{report.WinRates[i]:P2}[/]"
                 );
             }
             console.Write(table);
