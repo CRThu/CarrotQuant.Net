@@ -97,7 +97,7 @@ namespace CarrotBacktesting.NET.Engine
             var stopwatch = Stopwatch.StartNew();
 
             var result = new BacktestingResult();
-            var completedTrades = new ConcurrentBag<Trade>();
+            var trades = new ConcurrentBag<Trade>();
 
             // 引擎的核心计算逻辑总是基于高效的纵向数据(_stockHistories)
             Parallel.ForEach(_stockHistories, history =>
@@ -122,6 +122,7 @@ namespace CarrotBacktesting.NET.Engine
                         {
                             // 开仓
                             currentTrade = new Trade(history.StockCode, entryReason, context.CurrentDate, currentPrice);
+                            trades.Add(currentTrade);
                         }
                     }
                     else
@@ -134,17 +135,19 @@ namespace CarrotBacktesting.NET.Engine
                         if (exitReason != null)
                         {
                             currentTrade.Close(exitReason, context.CurrentDate, currentPrice);
-                            completedTrades.Add(currentTrade);// 记录已完成的交易
                             currentTrade = null;// 恢复到空仓状态
                         }
                     }
                 }
             });
-
-            result.Trades.AddRange(completedTrades.OrderBy(t => t.EntryDate));
+            result.Trades.AddRange(trades.OrderBy(t => t.EntryDate));
 
             stopwatch.Stop();
-            Console.WriteLine($"交易模拟结束，共完成 {result.Trades.Count} 笔交易，耗时: {stopwatch.Elapsed.TotalSeconds:F3} 秒。");
+            int closedCount = result.Trades.Count(t => t.IsClosed);
+            int openCount = result.Trades.Count - closedCount;
+            Console.WriteLine($"交易模拟结束，共产生 {result.Trades.Count} 笔交易 " +
+                              $"({closedCount} 笔已平仓, {openCount} 笔未平仓)，" +
+                              $"耗时: {stopwatch.Elapsed.TotalSeconds:F3} 秒。");
 
             return result;
         }
