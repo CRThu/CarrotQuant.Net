@@ -19,30 +19,33 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
         public void Export(AnalysisContext context)
         {
-            // 从上下文中获取所有需要的数据
-            var summary = context.GetArtifact<SignalReport>();
-            var trades = context.BacktestResult.Trades;
-
-            if (summary is null || trades.Count == 0)
-            {
-                Console.WriteLine("[ScottPlot] 缺少必要的分析数据，无法生成图表。");
-                return;
-            }
-
             // 确保输出目录存在
             _plotDirectory = context.Config.ResolvePath(context.Config.Out.Exporter);
             Directory.CreateDirectory(_plotDirectory);
 
-            _backtestDays = summary.BacktestDays;
+            Console.WriteLine($"[PlotExporter] 开始生成图表，将保存到: {Path.GetFullPath(_plotDirectory)}");
 
-            Console.WriteLine($"[ScottPlot] 开始生成图表，将保存到: {Path.GetFullPath(_plotDirectory)}");
+            // a. 渲染 T+N 信号表现图
+            var signalReport = context.GetArtifact<SignalReport>();
+            if (signalReport != null)
+            {
+                _backtestDays = signalReport.BacktestDays;
+                var tradesForSignal = context.BacktestResult.Trades; // 获取用于匹配日期的交易列表
 
-            // 依次调用绘图方法
-            CreatePerformanceOverviewPlot(summary);
-            CreateDistributionTimelinePlot(summary, trades);
-            CreateHeatmapPlot(summary);
+                CreatePerformanceOverviewPlot(signalReport);
+                CreateDistributionTimelinePlot(signalReport, tradesForSignal);
+                CreateHeatmapPlot(signalReport);
+            }
 
-            Console.WriteLine("[ScottPlot] 图表生成完成。");
+            // b. 渲染交易月度表现图
+            var tradeReport = context.GetArtifact<TradeReport>();
+            if (tradeReport != null)
+            {
+                var tradesForSignal = context.BacktestResult.Trades; // 获取用于匹配日期的交易列表
+                CreateMonthlyTradePerformancePlot(tradeReport, tradesForSignal);
+            }
+
+            Console.WriteLine("[PlotExporter] 图表生成完成。");
         }
 
         /// <summary>
@@ -278,7 +281,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             plt.Axes.Margins(0, 0);
             plt.Axes.Frame(false);
-            
+
             string plotPath = Path.Combine(_plotDirectory, "3_信号收益率分布热力图.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plt.SavePng(plotPath, 2880, 1720);
@@ -332,6 +335,105 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 }
             }
             return counts;
+        }
+
+        /// <summary>
+        /// 绘制按月统计的交易表现图
+        /// </summary>
+        private void CreateMonthlyTradePerformancePlot(TradeReport report, List<Trade> trades)
+        {
+            var result = report.MonthlyStats;
+
+            var plt = new Plot();
+            plt.ScaleFactor = 2;
+            plt.Font.Set("Microsoft YaHei UI");
+            plt.Title($"按月统计交易表现 (基于 {trades.Count} 个信号)");
+            plt.Axes.DateTimeTicksBottom();
+            plt.XLabel("月份");
+
+            // 准备散点图数据
+            var scatterData = new List<(DateTime Date, double Return)>();
+            for (int i = 0; i < trades.Count; i++)
+            {
+                scatterData.Add((trades[i].EntryDate, trades[i].Return ?? 0));
+            }
+
+            // 左Y轴 - 散点图
+            var leftAxis = plt.Axes.Left;
+            leftAxis.Label.Text = $"单次信号收益率";
+            leftAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic() { LabelFormatter = y => $"{y:P1}" };
+            //leftAxis.Label.ForeColor = Color.FromHex("#aed6f1");
+            //leftAxis.TickLabelStyle.ForeColor = Color.FromHex("#aed6f1");
+
+            // 步骤3: 绘制散点图 (分组着色)
+            var positiveReturns = scatterData.Where(d => d.Return > 0).ToList();
+            var negativeReturns = scatterData.Where(d => d.Return <= 0).ToList();
+
+            if (positiveReturns.Count != 0)
+            {
+                var scatterPos = plt.Add.Scatter(
+                    positiveReturns.Select(p => p.Date.ToOADate()).ToArray(),
+                    positiveReturns.Select(p => p.Return).ToArray());
+                scatterPos.Color = Color.FromHex("#2ecc71").WithAlpha(0.5);
+                scatterPos.LegendText = "盈利信号 (左轴)";
+                scatterPos.MarkerStyle.Size = 5;
+                scatterPos.LineStyle.Width = 0;
+            }
+            if (negativeReturns.Count != 0)
+            {
+                var scatterNeg = plt.Add.Scatter(
+                    negativeReturns.Select(p => p.Date.ToOADate()).ToArray(),
+                    negativeReturns.Select(p => p.Return).ToArray());
+                scatterNeg.Color = Color.FromHex("#e74c3c").WithAlpha(0.5);
+                scatterNeg.LegendText = "亏损信号 (左轴)";
+                scatterNeg.MarkerStyle.Size = 5;
+                scatterNeg.LineStyle.Width = 0;
+            }
+
+            plt.Add.HorizontalLine(0, 1, Colors.Gray, LinePattern.DenselyDashed);
+
+            // 右Y轴 - 月度统计
+            var rightAxis = plt.Axes.AddRightAxis();
+            rightAxis.LabelText = "月度统计收益率";
+            //rightAxis.LabelFontColor = Color.FromHex("#f5cba7");
+            //rightAxis.TickLabelStyle.ForeColor = Color.FromHex("#f5cba7");
+            rightAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic() { LabelFormatter = y => $"{y:P1}" };
+
+            var monthlyStats = scatterData
+                .GroupBy(d => new DateTime(d.Date.Year, d.Date.Month, 1))
+                .Select(g => new { Month = g.Key, Avg = g.Average(x => x.Return), Median = g.Select(x => x.Return).Median() })
+                .OrderBy(x => x.Month).ToList();
+
+            if (monthlyStats.Count != 0)
+            {
+                var monthDates = monthlyStats.Select(m => m.Month.ToOADate()).ToArray();
+                var monthAvgs = monthlyStats.Select(m => m.Avg).ToArray();
+                var monthMedians = monthlyStats.Select(m => m.Median).ToArray();
+
+                var monthAvgLine = plt.Add.Scatter(monthDates, monthAvgs);
+                monthAvgLine.LegendText = "月度平均收益 (右轴)";
+                monthAvgLine.Axes.YAxis = rightAxis; // 关联到右轴
+                monthAvgLine.Color = Color.FromHex("#f1c40f");
+                monthAvgLine.LineStyle.Width = 2f;
+                monthAvgLine.MarkerStyle.Shape = MarkerShape.OpenCircle; // 对应 'o'
+                monthAvgLine.MarkerStyle.Size = 5;
+
+                var monthMedianLine = plt.Add.Scatter(monthDates, monthMedians);
+                monthMedianLine.LegendText = "月度中位数收益 (右轴)";
+                monthMedianLine.Axes.YAxis = rightAxis; // 关联到右轴
+                monthMedianLine.Color = Color.FromHex("#e67e22");
+                monthMedianLine.LineStyle.Width = 2;
+                monthMedianLine.LineStyle.Pattern = LinePattern.DenselyDashed; // 对应 '--'
+                monthMedianLine.MarkerStyle.Shape = MarkerShape.Cross; // 对应 'x'
+                monthMedianLine.MarkerStyle.Size = 5;
+            }
+
+            plt.Legend.IsVisible = true;
+            plt.Legend.Alignment = Alignment.UpperLeft;
+
+            string plotPath = Path.Combine(_plotDirectory, "4_交易月度表现图.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
+            plt.SavePng(plotPath, 2880, 1720);
         }
     }
 }
