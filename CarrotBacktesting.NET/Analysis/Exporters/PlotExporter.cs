@@ -198,8 +198,8 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// </summary>
         private void CreateHeatmapPlot(SignalReport returnsResult)
         {
-            const double binStepPercent = 3;
-            const double coarseThresholdPercent = 30;
+            const double binStepPercent = 2;
+            const double coarseThresholdPercent = 24;
 
             // 1. 智能分箱
             var (bins, labels) = CreateSmartBins(binStepPercent, coarseThresholdPercent);
@@ -212,8 +212,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 var counts = BinData(returnsOnDay, bins);
                 for (int binIdx = 0; binIdx < counts.Length; binIdx++)
                 {
-                    // 将数量转换为百分比，并反转Y轴
-                    heatmapData[labels.Length - 1 - binIdx, day] = (double)counts[binIdx] / returnsResult.Returns.Count * 100;
+                    heatmapData[binIdx, day] = (double)counts[binIdx] / returnsResult.Returns.Count * 100;
                 }
             }
 
