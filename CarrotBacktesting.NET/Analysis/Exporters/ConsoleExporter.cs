@@ -44,12 +44,6 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 RenderTradeReport(recorder, tradeReport);
             }
 
-            var exitTimingReport = context.GetArtifact<ExitTimingReport>();
-            if (exitTimingReport != null)
-            {
-                RenderExitTimingReport(recorder, exitTimingReport);
-            }
-
             try
             {
                 const string darkThemeCss = @"
@@ -88,6 +82,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         {
             RenderTradeSummaryReport(console, report);
             RenderMonthlyPerformanceReport(console, report);
+            RenderExitTimingReport(console, report);
         }
 
         /// <summary>
@@ -278,28 +273,28 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 渲染卖出时机/踏空分析报告
         /// </summary>
-        private void RenderExitTimingReport(IAnsiConsole console, ExitTimingReport report)
+        private void RenderExitTimingReport(IAnsiConsole console, TradeReport report)
         {
             console.Write(new Rule("卖出时机分析 (平仓后T+N日表现)").Centered());
 
             var table = new Table()
                 .Border(TableBorder.Rounded)
-                .Caption($"[grey]基于 {report.ValidExitCount} 个有效平仓点[/]")
+                .Caption($"[grey]基于 {report.ExitValidCount} 个有效平仓点[/]")
                 .AddColumn("平仓后天数")
                 .AddColumn(new TableColumn("平均后续收益").RightAligned())
                 .AddColumn(new TableColumn("中位数后续收益").RightAligned())
                 .AddColumn(new TableColumn("后续上涨概率").RightAligned());
 
-            for (int i = 0; i < report.BacktestDays; i++)
+            for (int i = 0; i < report.ExitTimingBacktestDays; i++)
             {
-                string avgReturnColor = report.AvgReturns[i] > 0 ? "springgreen3" : "indianred";
-                string medianReturnColor = report.MedianReturns[i] > 0 ? "springgreen3" : "indianred";
+                string avgReturnColor = report.ExitTimingAvgReturns[i] > 0 ? "springgreen3" : "indianred";
+                string medianReturnColor = report.ExitTimingMedianReturns[i] > 0 ? "springgreen3" : "indianred";
 
                 table.AddRow(
                     $"T+{i + 1}",
-                    $"[{avgReturnColor}]{report.AvgReturns[i]:P2}[/]",
-                    $"[{medianReturnColor}]{report.MedianReturns[i]:P2}[/]",
-                    $"[deepskyblue1]{report.WinRates[i]:P2}[/]"
+                    $"[{avgReturnColor}]{report.ExitTimingAvgReturns[i]:P2}[/]",
+                    $"[{medianReturnColor}]{report.ExitTimingMedianReturns[i]:P2}[/]",
+                    $"[deepskyblue1]{report.ExitTimingWinRates[i]:P2}[/]"
                 );
             }
             console.Write(table);

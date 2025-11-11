@@ -57,7 +57,37 @@ namespace CarrotBacktesting.NET.Analysis.Model
         #endregion
 
 
-        public TradeReport(List<Trade> trades)
+        #region 卖点时机分析指标
+
+        /// <summary>
+        /// 用于统计的有效平仓点数量。
+        /// </summary>
+        public int ExitValidCount { get; }
+
+        /// <summary>
+        /// 用于卖点时机分析的回测天数 (N)。
+        /// </summary>
+        public int ExitTimingBacktestDays { get; }
+
+        /// <summary>
+        /// 平仓后每日的平均后续收益率数组。
+        /// </summary>
+        public IReadOnlyList<double> ExitTimingAvgReturns { get; }
+
+        /// <summary>
+        /// 平仓后每日的中位数后续收益率数组。
+        /// </summary>
+        public IReadOnlyList<double> ExitTimingMedianReturns { get; }
+
+        /// <summary>
+        /// 平仓后每日的后续上涨概率数组。
+        /// </summary>
+        public IReadOnlyList<double> ExitTimingWinRates { get; }
+
+        #endregion
+
+
+        public TradeReport(List<Trade> trades, List<double[]>? exitTimingReturns, int exitTimingBacktestDays)
         {
             MonthlyStats = new List<MonthlyPerformanceStat>();
 
@@ -96,7 +126,8 @@ namespace CarrotBacktesting.NET.Analysis.Model
             MonthlyStats = closedTrades
                 .GroupBy(t => new { t.EntryDate.Year, t.EntryDate.Month })
                 .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
-                .Select(g => {
+                .Select(g =>
+                {
                     var monthlyReturns = g.Select(t => t.Return!.Value).ToList();
                     var monthlyWinningReturns = monthlyReturns.Where(r => r > 0).ToList();
                     var monthlyLosingReturns = monthlyReturns.Where(r => r < 0).ToList();
@@ -115,6 +146,29 @@ namespace CarrotBacktesting.NET.Analysis.Model
                         winLossRatio
                     );
                 }).ToList();
+
+            // 处理和存储卖点时机分析的结果
+            ExitTimingBacktestDays = exitTimingBacktestDays;
+
+            var avgReturns = new double[exitTimingBacktestDays];
+            var medianReturns = new double[exitTimingBacktestDays];
+            var winRates = new double[exitTimingBacktestDays];
+
+            if (exitTimingReturns != null && exitTimingReturns.Count > 0)
+            {
+                for (int day = 0; day < exitTimingBacktestDays; day++)
+                {
+                    var returnsOnDayN = exitTimingReturns.Select(r => r[day]).ToList();
+                    avgReturns[day] = returnsOnDayN.Average();
+                    medianReturns[day] = returnsOnDayN.Median();
+                    winRates[day] = (double)returnsOnDayN.Count(r => r > 0) / returnsOnDayN.Count;
+                }
+            }
+
+            ExitValidCount = exitTimingReturns?.Count ?? 0;
+            ExitTimingAvgReturns = avgReturns;
+            ExitTimingMedianReturns = medianReturns;
+            ExitTimingWinRates = winRates;
         }
     }
 }
