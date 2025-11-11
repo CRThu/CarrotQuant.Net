@@ -212,7 +212,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 var counts = BinData(returnsOnDay, bins);
                 for (int binIdx = 0; binIdx < counts.Length; binIdx++)
                 {
-                    heatmapData[binIdx, day] = (double)counts[binIdx] / returnsResult.Returns.Count * 100;
+                    heatmapData[labels.Length - 1 - binIdx, day] = (double)counts[binIdx] / returnsResult.Returns.Count * 100;
                 }
             }
 
@@ -251,7 +251,8 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 for (int x = 0; x < heatmapData.GetLength(1); x++)
                 {
                     var value = heatmapData[y, x];
-                    var txt = plt.Add.Text(value.ToString("F1"), x, y);
+                    double plotY = heatmapData.GetLength(0) - 1 - y;
+                    var txt = plt.Add.Text(value.ToString("F1"), x, plotY);
                     txt.Alignment = Alignment.MiddleCenter;
                     txt.LabelFontSize = 18;
                     txt.LabelFontColor = Colors.White;
