@@ -75,3 +75,5 @@ __pycache__/
 /CarrotQuant.Data/*.cache
 /CarrotQuant.Data/signal.json
 /CarrotQuant.Data/report
+
+/verify/summary/*
