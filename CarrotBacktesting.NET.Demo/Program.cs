@@ -22,13 +22,13 @@ namespace CarrotBacktesting.NET.Demo
                 BacktestingSession.Create(configPath)
                     .LoadData()
 
-                    //.Run(new VolumeSignalStrategy())
-                    //.SaveResult()
-                    //.Analyze();
-
-                    .Run(new PriceStrategy())
+                    .Run(new VolumeSignalStrategy())
                     .SaveResult()
                     .Analyze();
+
+                    //.Run(new PriceStrategy())
+                    //.SaveResult()
+                    //.Analyze();
             }
             catch (Exception ex)
             {
