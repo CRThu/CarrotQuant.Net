@@ -87,11 +87,11 @@ namespace CarrotBacktesting.NET.DataFeed
                         {
                             // 5. 根据索引直接获取强类型数据，性能远高于 string.Split 和 double.Parse
                             string time = reader.GetString(timeIdx);
-                            double open = reader.GetDouble(openIdx);
-                            double high = reader.GetDouble(highIdx);
-                            double low = reader.GetDouble(lowIdx);
-                            double close = reader.GetDouble(closeIdx);
-                            double volume = reader.GetDouble(volumeIdx);
+                            double open = GetDoubleOrDefault(reader, openIdx, path);
+                            double high = GetDoubleOrDefault(reader, highIdx, path);
+                            double low = GetDoubleOrDefault(reader, lowIdx, path);
+                            double close = GetDoubleOrDefault(reader, closeIdx, path);
+                            double volume = GetDoubleOrDefault(reader, volumeIdx, path);
 
                             // 解析交易状态
                             TradeStatus tradeStatus;
@@ -133,6 +133,24 @@ namespace CarrotBacktesting.NET.DataFeed
             {
                 // 处理文件读取等IO异常
                 Console.WriteLine($"[Error] Failed to read or process file {path}: {ex.Message}");
+            }
+        }
+
+        private static double GetDoubleOrDefault(CsvDataReader reader, int index, string path = "<unknown>")
+        {
+            try
+            {
+                return reader.GetDouble(index);
+            }
+            catch (FormatException ex)
+            {
+                if (string.IsNullOrEmpty(reader.GetString(index)))
+                {
+                    Console.WriteLine($"[Warning] Error parsing line {reader.RowNumber} in file {path}: {ex.Message}");
+                    return 0.0;
+                }
+                else
+                    throw;
             }
         }
     }
