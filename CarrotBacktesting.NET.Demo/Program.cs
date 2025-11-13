@@ -7,6 +7,8 @@ using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Strategy;
 using CarrotBacktesting.NET.Strategy.Examples;
 using CarrotBacktesting.NET.Utility;
+using CarrotBacktesting.NET.Utility.ScottPlot;
+using ScottPlot;
 using Spectre.Console;
 
 namespace CarrotBacktesting.NET.Demo
