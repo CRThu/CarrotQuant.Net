@@ -7,6 +7,7 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
     public static class PlotHelper
     {
         /*
+        // heatmap
         double[,] data = new double[,]
         {
             { 9.5,   2.1,   5.8,   8.0 },
@@ -21,6 +22,22 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
         PlotHelper.Heatmap(plot, data, annoFormat:"F1", cLabel: "百分比");
         plot.SavePng("out.png", 2880, 1720);
         return;
+
+
+        // scatter
+        Random rand = new Random(123);
+        double[] x1 = Enumerable.Range(1, 500).Select(i => (double)i).ToArray();
+        double[] y1 = x1.Select(x => 2.0 * x + 1.0 + (rand.NextDouble() - 0.5) * 48.0).ToArray();
+        double[] y2 = x1.Select(x => x * x / 150.0 + 20.0 + (rand.NextDouble() - 0.5) * 120.0).ToArray();
+        double[] y3 = x1.Select(x => 15.0 + (rand.NextDouble() - 0.5) * 300.0).ToArray();
+        Plot plot = new Plot();
+        PlotHelper.SetStyle(plot, "标题", "X轴", "Y轴");
+        PlotHelper.Scatter(plot, x1, y1, legend: "数据1", color: "#003366");
+        PlotHelper.Scatter(plot, x1, y2, legend: "数据2", color: "#D23104");
+        PlotHelper.Scatter(plot, x1, y3, legend: "数据3", color: "#1cbb5e");
+        plot.SavePng("out.png", 2880, 1720);
+        return;
+
         */
 
         public static void SetStyle(Plot plot, string? title = null, string? xLabel = null, string? yLabel = null)
@@ -33,6 +50,9 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
                 plot.XLabel(xLabel);
             if (yLabel != null)
                 plot.YLabel(yLabel);
+
+            plot.Legend.IsVisible = true;
+            plot.Legend.Alignment = Alignment.UpperLeft;
         }
 
         /// <summary>
@@ -120,6 +140,17 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             );
             plot.Axes.Frame(false);
         }
-    }
 
+        public static global::ScottPlot.Plottables.Scatter Scatter(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float markerSize = 5.0f, MarkerShape markerShape = MarkerShape.FilledCircle)
+        {
+            var scatter = plot.Add.Scatter(xdata, ydata);
+            if(color != null)
+                scatter.Color = Color.FromHex(color).WithAlpha(alpha);
+            scatter.LegendText = legend ?? string.Empty;
+            scatter.MarkerStyle.Size = markerSize;
+            scatter.LineStyle.Width = 0;
+
+            return scatter;
+        }
+    }
 }
