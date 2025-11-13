@@ -35,6 +35,24 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
                 plot.YLabel(yLabel);
         }
 
+        /// <summary>
+        /// 向 Plot 对象中添加热图。
+        /// </summary>
+        /// <param name="plot">要向其添加热图的 Plot 对象。</param>
+        /// <param name="data">一个二维数组，包含了每个单元格的数值。数组的 [0,0] 索引对应于热图的左上角。</param>
+        /// <param name="xLabels">（可选）用于X轴刻度的字符串标签数组。如果提供，其长度必须与 <paramref name="data"/> 的第二维长度匹配。</param>
+        /// <param name="yLabels">（可选）用于Y轴刻度的字符串标签数组。如果提供，其长度必须与 <paramref name="data"/> 的第一维长度匹配。</param>
+        /// <param name="cLabel">（可选）显示在颜色条旁边的标签文本。</param>
+        /// <param name="v">（可选）一个元组 (min, mid, max)，用于定义颜色映射的范围和中心点。
+        /// <list type="bullet">
+        /// <item><description><c>min</c>: 对应颜色图起始端的数值。</description></item>
+        /// <item><description><c>mid</c>: 对应颜色图中心点的数值。</description></item>
+        /// <item><description><c>max</c>: 对应颜色图结束端的数值。</description></item>
+        /// </list>
+        /// 如果为 null，将根据数据自动计算范围。
+        /// </param>
+        /// <param name="annoFormat">（可选）用于在每个单元格上显示数值的格式化字符串。例如, "F1" 表示一位小数。如果为 null，则不显示注解。</param>
+        /// <param name="lineWidth">（可选）单元格之间分割线的宽度（以像素为单位）。</param>
         public static void Heatmap(Plot plot, double[,] data, string[]? xLabels = null, string[]? yLabels = null, string? cLabel = null, (double min, double mid, double max)? v = null, string? annoFormat = null, float lineWidth = 1.0f)
         {
             var heatmap = plot.Add.Heatmap(data);
