@@ -1,5 +1,6 @@
 using System;
 using ScottPlot;
+using ScottPlot.Plottables;
 
 namespace CarrotBacktesting.NET.Utility.ScottPlot
 {
@@ -7,25 +8,25 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
     public static class PlotHelper
     {
         /*
-        // heatmap
-        double[,] data = new double[,]
-        {
-            { 9.5,   2.1,   5.8,   8.0 },
-            { 8.8,   3.3,   6.5,   7.5 },
-            { 7.1,   4.0,   7.2,   5.1 },
-            { 5.0,   5.5,   4.9,   3.0 },
-            { 2.0,   1.5,   3.1,   0.5 }
-        };
+            // heatmap
+            double[,] data = new double[,]
+            {
+                { 9.5,   2.1,   5.8,   8.0 },
+                { 8.8,   3.3,   6.5,   7.5 },
+                { 7.1,   4.0,   7.2,   5.1 },
+                { 5.0,   5.5,   4.9,   3.0 },
+                { 2.0,   1.5,   3.1,   0.5 }
+            };
+    
+            Plot plot = new Plot();
+            PlotHelper.SetStyle(plot, "标题", "X轴", "Y轴");
+            PlotHelper.Heatmap(plot, data, annoFormat:"F1", cLabel: "百分比");
+            plot.SavePng("out.png", 2880, 1720);
+            return;
 
-        Plot plot = new Plot();
-        PlotHelper.SetStyle(plot, "标题", "X轴", "Y轴");
-        PlotHelper.Heatmap(plot, data, annoFormat:"F1", cLabel: "百分比");
-        plot.SavePng("out.png", 2880, 1720);
-        return;
 
-
-        // scatter
-        Random rand = new Random(123);
+            // scatter
+            Random rand = new Random(123);
             double[] x1 = Enumerable.Range(1, 500).Select(i => (double)i).ToArray();
             double[] y1 = x1.Select(x => 2.0 * x + 1.0 + (rand.NextDouble() - 0.5) * 96.0).ToArray();
             double[] x2 = Enumerable.Range(1, 200).Select(i => (double)i * 2.5).ToArray();
@@ -40,8 +41,7 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             plot.SavePng("out.png", 2880, 1720);
             return;
         
-        // scatter datetime
-        
+            // scatter datetime
             Random rand = new Random(123);
             double[] x1 = Enumerable.Range(1, 500).Select(i => (double)i).ToArray();
             DateTime[] d1 = x1.Select(x => new DateTime(2025, 11, 14, 0, 0, 0).AddDays(x)).ToArray();
@@ -52,6 +52,20 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             plot.SavePng("out.png", 2880, 1720);
             return;
         
+            // hist
+            Random rand = new Random(123);
+
+            int count = 300;
+            double mean = 100.0;
+            double stdDev = 5.0;
+            double[] data = Enumerable.Range(0, count).Select(_ => mean + stdDev * Math.Sqrt(-2.0 * Math.Log(1.0 - rand.NextDouble())) * Math.Sin(2.0 * Math.PI * (1.0 - rand.NextDouble()))).ToArray();
+            
+            Plot plot = new Plot();
+            PlotHelper.SetStyle(plot, "标题", "X轴", "分布");
+            PlotHelper.Hist(plot, data);
+            plot.SavePng("out.png", 2880, 1720);
+            return;
+
         */
 
         public static void SetStyle(Plot plot, string? title = null, string? xLabel = null, string? yLabel = null, string? rightLabel = null)
@@ -90,7 +104,7 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
         /// <param name="annoFormat">（可选）用于在每个单元格上显示数值的格式化字符串。例如, "F1" 表示一位小数。如果为 null，则不显示注解。</param>
         /// <param name="lineWidth">（可选）单元格之间分割线的宽度（以像素为单位）。</param>
         /// <returns>热图 Heatmap 对象</returns>
-        public static global::ScottPlot.Plottables.Heatmap Heatmap(Plot plot, double[,] data, string[]? xLabels = null, string[]? yLabels = null, string? cLabel = null, (double min, double mid, double max)? v = null, string? annoFormat = null, float lineWidth = 1.0f)
+        public static Heatmap Heatmap(Plot plot, double[,] data, string[]? xLabels = null, string[]? yLabels = null, string? cLabel = null, (double min, double mid, double max)? v = null, string? annoFormat = null, float lineWidth = 1.0f)
         {
             var heatmap = plot.Add.Heatmap(data);
             var coolwarm = new Coolwarm();
@@ -160,11 +174,13 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             return heatmap;
         }
 
-        public static global::ScottPlot.Plottables.Scatter Scatter(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
+        public static Scatter Scatter(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
         {
             var scatter = plot.Add.Scatter(xdata, ydata);
             if (color != null)
-                scatter.Color = Color.FromHex(color).WithAlpha(alpha);
+                scatter.Color = Color.FromHex(color);
+            if (alpha != null)
+                scatter.Color = scatter.Color.WithAlpha(alpha.Value);
             scatter.LegendText = legend ?? string.Empty;
             scatter.MarkerStyle.Size = markerSize;
             scatter.MarkerStyle.Shape = markerShape;
@@ -176,18 +192,39 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             return scatter;
         }
 
-        public static global::ScottPlot.Plottables.Scatter Scatter(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
+        public static Scatter Scatter(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
         {
             var scatter = Scatter(plot, xdate.Select(d => d.ToOADate()).ToArray(), ydata, legend, color, alpha, markerSize, lineWidth, markerShape, yAxis);
             plot.Axes.DateTimeTicksBottom();
             return scatter;
         }
 
-        public static global::ScottPlot.Plottables.Scatter Line(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float lineWidth = 2.0f, Edge yAxis = Edge.Left)
+        public static Scatter Line(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float lineWidth = 2.0f, Edge yAxis = Edge.Left)
         => Scatter(plot, xdata, ydata, legend, color, alpha, 0.0f, lineWidth, MarkerShape.FilledCircle, yAxis);
-        
-        public static global::ScottPlot.Plottables.Scatter Line(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float lineWidth = 2.0f, Edge yAxis = Edge.Left)
+
+        public static Scatter Line(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float lineWidth = 2.0f, Edge yAxis = Edge.Left)
         => Scatter(plot, xdate, ydata, legend, color, alpha, 0.0f, lineWidth, MarkerShape.FilledCircle, yAxis);
-        
+
+        public static HistogramBars Hist(Plot plot, double[] data, string? color = null, double? alpha = null, double barWidth = 1.0f, int? binCount = null, double? binSize = null)
+        {
+            global::ScottPlot.Statistics.Histogram? histData = null;
+            if (binCount != null)
+                histData = global::ScottPlot.Statistics.Histogram.WithBinSize(2, data);
+            if (binSize != null)
+                histData = global::ScottPlot.Statistics.Histogram.WithBinCount(50, data);
+            if (histData == null)
+                histData = global::ScottPlot.Statistics.Histogram.WithBinCount(HistogramHelper.CalculateFDBins(data), data);
+            HistogramBars histPlot = plot.Add.Histogram(histData);
+            Bar[] bars = histPlot.Bars;
+            for (int i = 0; i < bars.Length; i++)
+            {
+                if (color != null)
+                    bars[i].FillColor = Color.FromHex(color);
+                if (alpha != null)
+                    bars[i].FillColor = bars[i].FillColor.WithAlpha(alpha.Value);
+            }
+            histPlot.BarWidthFraction = barWidth;
+            return histPlot;
+        }
     }
 }
