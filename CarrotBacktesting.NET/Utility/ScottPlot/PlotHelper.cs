@@ -26,30 +26,46 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
 
         // scatter
         Random rand = new Random(123);
-        double[] x1 = Enumerable.Range(1, 500).Select(i => (double)i).ToArray();
-        double[] y1 = x1.Select(x => 2.0 * x + 1.0 + (rand.NextDouble() - 0.5) * 48.0).ToArray();
-        double[] y2 = x1.Select(x => x * x / 150.0 + 20.0 + (rand.NextDouble() - 0.5) * 120.0).ToArray();
-        double[] y3 = x1.Select(x => 15.0 + (rand.NextDouble() - 0.5) * 300.0).ToArray();
-        Plot plot = new Plot();
-        PlotHelper.SetStyle(plot, "标题", "X轴", "Y轴");
-        PlotHelper.Scatter(plot, x1, y1, legend: "数据1", color: "#003366");
-        PlotHelper.Scatter(plot, x1, y2, legend: "数据2", color: "#D23104");
-        PlotHelper.Scatter(plot, x1, y3, legend: "数据3", color: "#1cbb5e");
-        plot.SavePng("out.png", 2880, 1720);
-        return;
-
+            double[] x1 = Enumerable.Range(1, 500).Select(i => (double)i).ToArray();
+            double[] y1 = x1.Select(x => 2.0 * x + 1.0 + (rand.NextDouble() - 0.5) * 96.0).ToArray();
+            double[] x2 = Enumerable.Range(1, 200).Select(i => (double)i * 2.5).ToArray();
+            double[] y2 = x2.Select(x => x * x / 240.0 + 45.0 + (rand.NextDouble() - 0.5) * 120.0).ToArray();
+            double[] x3 = Enumerable.Range(100, 300).Select(i => (double)i).ToArray();
+            double[] y3 = x3.Select(x => -15.0 * x - 1500.0 + (rand.NextDouble() - 0.5) * 300.0).ToArray();
+            Plot plot = new Plot();
+            PlotHelper.SetStyle(plot, "标题", "X轴", "Y轴", "数据3.Y轴");
+            PlotHelper.Scatter(plot, x1, y1, legend: "数据1", color: "#003366");
+            PlotHelper.Scatter(plot, x2, y2, legend: "数据2", color: "#D23104", markerSize: 10, lineWidth: 2, markerShape: MarkerShape.Eks);
+            PlotHelper.Scatter(plot, x3, y3, legend: "数据3", color: "#1cbb5e", yAxis: Edge.Right);
+            plot.SavePng("out.png", 2880, 1720);
+            return;
+        
+        // scatter datetime
+        
+            Random rand = new Random(123);
+            double[] x1 = Enumerable.Range(1, 500).Select(i => (double)i).ToArray();
+            DateTime[] d1 = x1.Select(x => new DateTime(2025, 11, 14, 0, 0, 0).AddDays(x)).ToArray();
+            double[] y1 = x1.Select(x => 2.0 * x + 1.0 + (rand.NextDouble() - 0.5) * 96.0).ToArray();
+            Plot plot = new Plot();
+            PlotHelper.SetStyle(plot, "标题", "X轴时间", "Y轴");
+            PlotHelper.Scatter(plot, d1, y1, legend: "数据1", color: "#003366");
+            plot.SavePng("out.png", 2880, 1720);
+            return;
+        
         */
 
-        public static void SetStyle(Plot plot, string? title = null, string? xLabel = null, string? yLabel = null)
+        public static void SetStyle(Plot plot, string? title = null, string? xLabel = null, string? yLabel = null, string? rightLabel = null)
         {
             plot.ScaleFactor = 2;
             plot.Font.Set("Microsoft YaHei UI");
             if (title != null)
                 plot.Title(title);
             if (xLabel != null)
-                plot.XLabel(xLabel);
+                plot.Axes.Left.Label.Text = xLabel;
             if (yLabel != null)
-                plot.YLabel(yLabel);
+                plot.Axes.Bottom.Label.Text = yLabel;
+            if (rightLabel != null)
+                plot.Axes.Right.Label.Text = rightLabel;
 
             plot.Legend.IsVisible = true;
             plot.Legend.Alignment = Alignment.UpperLeft;
@@ -73,7 +89,8 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
         /// </param>
         /// <param name="annoFormat">（可选）用于在每个单元格上显示数值的格式化字符串。例如, "F1" 表示一位小数。如果为 null，则不显示注解。</param>
         /// <param name="lineWidth">（可选）单元格之间分割线的宽度（以像素为单位）。</param>
-        public static void Heatmap(Plot plot, double[,] data, string[]? xLabels = null, string[]? yLabels = null, string? cLabel = null, (double min, double mid, double max)? v = null, string? annoFormat = null, float lineWidth = 1.0f)
+        /// <returns>热图 Heatmap 对象</returns>
+        public static global::ScottPlot.Plottables.Heatmap Heatmap(Plot plot, double[,] data, string[]? xLabels = null, string[]? yLabels = null, string? cLabel = null, (double min, double mid, double max)? v = null, string? annoFormat = null, float lineWidth = 1.0f)
         {
             var heatmap = plot.Add.Heatmap(data);
             var coolwarm = new Coolwarm();
@@ -139,17 +156,30 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
                 top: -0.5
             );
             plot.Axes.Frame(false);
+
+            return heatmap;
         }
 
-        public static global::ScottPlot.Plottables.Scatter Scatter(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float markerSize = 5.0f, MarkerShape markerShape = MarkerShape.FilledCircle)
+        public static global::ScottPlot.Plottables.Scatter Scatter(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
         {
             var scatter = plot.Add.Scatter(xdata, ydata);
-            if(color != null)
+            if (color != null)
                 scatter.Color = Color.FromHex(color).WithAlpha(alpha);
             scatter.LegendText = legend ?? string.Empty;
             scatter.MarkerStyle.Size = markerSize;
-            scatter.LineStyle.Width = 0;
+            scatter.MarkerStyle.Shape = markerShape;
+            scatter.LineStyle.Width = lineWidth;
 
+            if (yAxis == Edge.Right)
+                scatter.Axes.YAxis = plot.Axes.Right;
+
+            return scatter;
+        }
+
+        public static global::ScottPlot.Plottables.Scatter Scatter(Plot plot, DateTime[] dates, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
+        {
+            var scatter = Scatter(plot, dates.Select(d => d.ToOADate()).ToArray(), ydata, legend, color, alpha, markerSize, lineWidth, markerShape, yAxis);
+            plot.Axes.DateTimeTicksBottom();
             return scatter;
         }
     }
