@@ -4,7 +4,9 @@ using ScottPlot.Plottables;
 
 namespace CarrotBacktesting.NET.Utility.ScottPlot
 {
-
+    /// <summary>
+    /// 用于 ScottPlot 图表的创建的静态辅助方法。
+    /// </summary>
     public static class PlotHelper
     {
         /*
@@ -68,6 +70,14 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
 
         */
 
+        /// <summary>
+        /// 为 Plot 对象应用一套统一的视觉样式。
+        /// </summary>
+        /// <param name="plot">要应用样式的 Plot 对象。</param>
+        /// <param name="title">（可选）图表的总标题。</param>
+        /// <param name="xLabel">（可选）X轴（底部）的标签文本。</param>
+        /// <param name="yLabel">（可选）Y轴（左侧）的标签文本。</param>
+        /// <param name="rightLabel">（可选）右侧Y轴的标签文本。</param>
         public static void SetStyle(Plot plot, string? title = null, string? xLabel = null, string? yLabel = null, string? rightLabel = null)
         {
             plot.ScaleFactor = 2;
@@ -86,24 +96,17 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
         }
 
         /// <summary>
-        /// 向 Plot 对象中添加热图。
+        /// 向 Plot 对象中添加一个样式统一的热力图。
         /// </summary>
-        /// <param name="plot">要向其添加热图的 Plot 对象。</param>
-        /// <param name="data">一个二维数组，包含了每个单元格的数值。数组的 [0,0] 索引对应于热图的左上角。</param>
+        /// <param name="plot">要向其添加热力图的 Plot 对象。</param>
+        /// <param name="data">一个二维数组，包含了每个单元格的数值。数组的 [0,0] 索引对应于热力图的左上角。</param>
         /// <param name="xLabels">（可选）用于X轴刻度的字符串标签数组。如果提供，其长度必须与 <paramref name="data"/> 的第二维长度匹配。</param>
-        /// <param name="yLabels">（可选）用于Y轴刻度的字符串标签数组。如果提供，其长度必须与 <paramref name="data"/> 的第一维长度匹配。</param>
+        /// <param name="yLabels">（可选）用于Y轴刻度的字符串标签数组。如果提供，其长度必须与 <paramref name="data"/> 的第一维长度匹配，顺序为从上到下。</param>
         /// <param name="cLabel">（可选）显示在颜色条旁边的标签文本。</param>
-        /// <param name="v">（可选）一个元组 (min, mid, max)，用于定义颜色映射的范围和中心点。
-        /// <list type="bullet">
-        /// <item><description><c>min</c>: 对应颜色图起始端的数值。</description></item>
-        /// <item><description><c>mid</c>: 对应颜色图中心点的数值。</description></item>
-        /// <item><description><c>max</c>: 对应颜色图结束端的数值。</description></item>
-        /// </list>
-        /// 如果为 null，将根据数据自动计算范围。
-        /// </param>
+        /// <param name="v">（可选）一个元组 (min, mid, max)，用于定义颜色映射的范围和中心点。</param>
         /// <param name="annoFormat">（可选）用于在每个单元格上显示数值的格式化字符串。例如, "F1" 表示一位小数。如果为 null，则不显示注解。</param>
         /// <param name="lineWidth">（可选）单元格之间分割线的宽度（以像素为单位）。</param>
-        /// <returns>热图 Heatmap 对象</returns>
+        /// <returns>创建的 Heatmap 对象，以便进行进一步的自定义。</returns>
         public static Heatmap Heatmap(Plot plot, double[,] data, string[]? xLabels = null, string[]? yLabels = null, string? cLabel = null, (double min, double mid, double max)? v = null, string? annoFormat = null, float lineWidth = 1.0f)
         {
             var heatmap = plot.Add.Heatmap(data);
@@ -174,7 +177,22 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             return heatmap;
         }
 
-        public static Scatter Scatter(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
+        /// <summary>
+        /// 向 Plot 对象中添加一个散点图或折线图。
+        /// </summary>
+        /// <param name="plot">要向其添加图表的 Plot 对象。</param>
+        /// <param name="xdata">X轴的数据数组。</param>
+        /// <param name="ydata">Y轴的数据数组。</param>
+        /// <param name="legend">（可选）此数据系列在图例中显示的名称。</param>
+        /// <param name="color">（可选）颜色，格式为十六进制字符串 (如 "#FF0000")。</param>
+        /// <param name="alpha">（可选）透明度，范围从 0.0 (完全透明) 到 1.0 (完全不透明)。</param>
+        /// <param name="markerSize">（可选）数据点标记的大小。设置为 0 可隐藏标记。</param>
+        /// <param name="markerShape">（可选）数据点标记的形状。</param>
+        /// <param name="lineWidth">（可选）连接数据点的线条宽度。设置为 0 可绘制纯散点图。</param>
+        /// <param name="linePattern">（可选）线条的样式（如虚线、点线等）。</param>
+        /// <param name="yAxis">（可选）指定此数据系列关联的Y轴（左轴或右轴）。</param>
+        /// <returns>创建的 Scatter 对象，以便进行进一步的自定义。</returns>
+        public static Scatter Scatter(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 5.0f, MarkerShape markerShape = MarkerShape.FilledCircle, float lineWidth = 0.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
         {
             var scatter = plot.Add.Scatter(xdata, ydata);
             if (color != null)
@@ -185,6 +203,7 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             scatter.MarkerStyle.Size = markerSize;
             scatter.MarkerStyle.Shape = markerShape;
             scatter.LineStyle.Width = lineWidth;
+            scatter.LineStyle.Pattern = linePattern ?? LinePattern.Solid;
 
             if (yAxis == Edge.Right)
                 scatter.Axes.YAxis = plot.Axes.Right;
@@ -192,19 +211,42 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             return scatter;
         }
 
-        public static Scatter Scatter(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
+        /// <summary>
+        /// 向 Plot 对象中添加一个使用日期时间作为X轴的散点图或折线图。
+        /// </summary>
+        /// <inheritdoc cref="Scatter(Plot, double[], double[], string, string, double?, float, MarkerShape, float, LinePattern?, Edge)"/>
+        public static Scatter Scatter(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 5.0f, MarkerShape markerShape = MarkerShape.FilledCircle, float lineWidth = 0.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
         {
-            var scatter = Scatter(plot, xdate.Select(d => d.ToOADate()).ToArray(), ydata, legend, color, alpha, markerSize, lineWidth, markerShape, yAxis);
+            var scatter = Scatter(plot, xdate.Select(d => d.ToOADate()).ToArray(), ydata, legend, color, alpha, markerSize, markerShape, lineWidth, linePattern, yAxis);
             plot.Axes.DateTimeTicksBottom();
             return scatter;
         }
 
-        public static Scatter Line(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float lineWidth = 2.0f, Edge yAxis = Edge.Left)
-        => Scatter(plot, xdata, ydata, legend, color, alpha, 0.0f, lineWidth, MarkerShape.FilledCircle, yAxis);
+        /// <summary>
+        /// 向 Plot 对象中添加一条折线图 (无数据点标记)。
+        /// </summary>
+        /// <inheritdoc cref="Scatter(Plot, double[], double[], string, string, double?, float, MarkerShape, float, LinePattern?, Edge)"/>
+        public static Scatter Line(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float lineWidth = 2.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
+        => Scatter(plot, xdata, ydata, legend, color, alpha, 0.0f, MarkerShape.FilledCircle, lineWidth, linePattern, yAxis);
 
-        public static Scatter Line(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float lineWidth = 2.0f, Edge yAxis = Edge.Left)
-        => Scatter(plot, xdate, ydata, legend, color, alpha, 0.0f, lineWidth, MarkerShape.FilledCircle, yAxis);
+        /// <summary>
+        /// 向 Plot 对象中添加一条使用日期时间作为X轴的折线图 (无数据点标记)。
+        /// </summary>
+        /// <inheritdoc cref="Scatter(Plot, DateTime[], double[], string, string, double?, float, MarkerShape, float, LinePattern?, Edge)"/>
+        public static Scatter Line(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float lineWidth = 2.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
+        => Scatter(plot, xdate, ydata, legend, color, alpha, 0.0f, MarkerShape.FilledCircle, lineWidth, linePattern, yAxis);
 
+        /// <summary>
+        /// 向 Plot 对象中添加一个直方图。
+        /// </summary>
+        /// <param name="plot">要向其添加图表的 Plot 对象。</param>
+        /// <param name="data">用于生成直方图的一维原始数据数组。</param>
+        /// <param name="color">（可选）条形的颜色，格式为十六进制字符串。</param>
+        /// <param name="alpha">（可选）条形的透明度。</param>
+        /// <param name="barWidth">（可选）条形宽度的比例，1.0 表示条形之间没有间隙。</param>
+        /// <param name="binCount">（可选）指定直方图的条柱数量。</param>
+        /// <param name="binSize">（可选）指定每个条柱的宽度。</param>
+        /// <returns>创建的 HistogramBars 对象，以便进行进一步的自定义。</returns>
         public static HistogramBars Hist(Plot plot, double[] data, string? color = null, double? alpha = null, double barWidth = 1.0f, int? binCount = null, double? binSize = null)
         {
             global::ScottPlot.Statistics.Histogram? histData = null;
