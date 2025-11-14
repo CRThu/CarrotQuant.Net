@@ -176,11 +176,18 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             return scatter;
         }
 
-        public static global::ScottPlot.Plottables.Scatter Scatter(Plot plot, DateTime[] dates, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
+        public static global::ScottPlot.Plottables.Scatter Scatter(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float markerSize = 5.0f, float lineWidth = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, Edge yAxis = Edge.Left)
         {
-            var scatter = Scatter(plot, dates.Select(d => d.ToOADate()).ToArray(), ydata, legend, color, alpha, markerSize, lineWidth, markerShape, yAxis);
+            var scatter = Scatter(plot, xdate.Select(d => d.ToOADate()).ToArray(), ydata, legend, color, alpha, markerSize, lineWidth, markerShape, yAxis);
             plot.Axes.DateTimeTicksBottom();
             return scatter;
         }
+
+        public static global::ScottPlot.Plottables.Scatter Line(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float lineWidth = 2.0f, Edge yAxis = Edge.Left)
+        => Scatter(plot, xdata, ydata, legend, color, alpha, 0.0f, lineWidth, MarkerShape.FilledCircle, yAxis);
+        
+        public static global::ScottPlot.Plottables.Scatter Line(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double alpha = 0.5, float lineWidth = 2.0f, Edge yAxis = Edge.Left)
+        => Scatter(plot, xdate, ydata, legend, color, alpha, 0.0f, lineWidth, MarkerShape.FilledCircle, yAxis);
+        
     }
 }
