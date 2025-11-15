@@ -198,21 +198,18 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// </summary>
         private void CreateHeatmapPlot(SignalReport returnsResult)
         {
-            const double binStepPercent = 2;
-            const double coarseThresholdPercent = 24;
-
             // 1. 智能分箱
-            var (bins, labels) = CreateSmartBins(binStepPercent, coarseThresholdPercent);
+            var (bins, labels) = HistogramHelper.GetBins(0.02, -0.24, 0.24);
 
             // 2. 数据处理
             var heatmapData = new double[labels.Length, _backtestDays];
             for (int day = 0; day < _backtestDays; day++)
             {
                 var returnsOnDay = returnsResult.Returns.Select(r => r[day]);
-                var counts = BinData(returnsOnDay, bins);
+                var counts = returnsOnDay.ToHist(bins);
                 for (int binIdx = 0; binIdx < counts.Length; binIdx++)
                 {
-                    heatmapData[labels.Length - 1 - binIdx, day] = (double)counts[binIdx] / returnsResult.Returns.Count * 100;
+                    heatmapData[binIdx, day] = (double)counts[binIdx] / returnsResult.Returns.Count * 100;
                 }
             }
 
@@ -285,56 +282,6 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             string plotPath = Path.Combine(_plotDirectory, "3_信号收益率分布热力图.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plt.SavePng(plotPath, 2880, 1720);
-        }
-
-        // 热力图的辅助方法
-        (double[] bins, string[] labels) CreateSmartBins(double binStepPercent, double coarseThresholdPercent)
-        {
-            double step = binStepPercent / 100.0;
-            double threshold = coarseThresholdPercent / 100.0;
-            List<double> fineBins = new();
-            for (double i = -threshold; i <= threshold; i += step)
-            {
-                fineBins.Add(i);
-            }
-
-            var bins = new List<double> { double.NegativeInfinity };
-            bins.AddRange(fineBins);
-            bins.Add(double.PositiveInfinity);
-            bins = bins.Distinct().ToList(); // 确保唯一性
-
-            var labels = new List<string>();
-            for (int i = 0; i < bins.Count - 1; i++)
-            {
-                double lower = bins[i];
-                double upper = bins[i + 1];
-                if (double.IsNegativeInfinity(lower))
-                    labels.Add($"<{upper:P0}");
-                else if (double.IsPositiveInfinity(upper))
-                    labels.Add($">{lower:P0}");
-                else if (upper > 0)
-                    labels.Add($"+{upper:P0}");
-                else
-                    labels.Add($"{lower:P0}");
-            }
-            return (bins.ToArray(), labels.ToArray());
-        }
-
-        int[] BinData(IEnumerable<double> data, double[] bins)
-        {
-            int[] counts = new int[bins.Length - 1];
-            foreach (var value in data)
-            {
-                for (int i = 0; i < bins.Length - 1; i++)
-                {
-                    if (value >= bins[i] && value < bins[i + 1])
-                    {
-                        counts[i]++;
-                        break;
-                    }
-                }
-            }
-            return counts;
         }
 
         /// <summary>

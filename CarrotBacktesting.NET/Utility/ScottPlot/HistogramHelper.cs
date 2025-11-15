@@ -1,10 +1,65 @@
+using ScottPlot.Palettes;
 using System;
 
 namespace CarrotBacktesting.NET.Utility.ScottPlot
 {
-
     public static class HistogramHelper
     {
+        public static (double[] bins, string[] labels) GetBins(double binSize, double firstBin, double lastBin, string format = "P0")
+        {
+            if (lastBin <= firstBin)
+                throw new ArgumentException($"{lastBin} must be greater than {nameof(firstBin)}");
+
+            // -4~+4  -Inf~-4   -4~-2   -2~0    0~+2    +2~+4   +4~+Inf
+            // bin:   -Inf      -4      -2      0       +2      +4
+            // disp:  <-4       -4      -2      +2      +4      >+4
+            int binCount = (int)((lastBin - firstBin) / binSize) + 2;
+
+            var bins = new double[binCount];
+            bins[0] = double.NegativeInfinity;
+            for (int i = 1; i < bins.Length; i++)
+            {
+                bins[i] = firstBin + (i - 1) * binSize;
+            }
+
+            var labels = new string[binCount];
+            for (int i = 1; i < bins.Length - 1; i++)
+            {
+                double lower = bins[i];
+                double upper = bins[i + 1];
+                if (bins[i] >= 0)
+                    labels[i] = $"+{upper.ToString(format)}";
+                else
+                    labels[i] = $"{lower.ToString(format)}";
+            }
+            labels[0] = $"<{bins[1].ToString(format)}";
+            labels[binCount - 1] = $">{bins[binCount - 1].ToString(format)}";
+            return (bins, labels);
+        }
+
+        /// <summary>
+        /// 将一维数据根据给定的分箱边界进行计数(每一个分箱值为其左侧最小值)
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="bins"></param>
+        /// <returns></returns>
+        public static int[] ToHist(this IEnumerable<double> data, double[] bins)
+        {
+            int[] counts = new int[bins.Length];
+            foreach (var value in data)
+            {
+                for (int i = bins.Length - 1; i >= 0; i--)
+                {
+                    if (value >= bins[i])
+                    {
+                        counts[i]++;
+                        break;
+                    }
+                }
+            }
+            return counts;
+        }
+
         /// <summary>
         /// 使用 Freedman-Diaconis Rule 计算直方图的推荐分箱数量。
         /// </summary>
@@ -59,7 +114,7 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
         /// <summary>
         /// 辅助方法：计算分位数（使用 Type 7 / R-7 近似）
         /// </summary>
-        private static double GetQuantile(double[] sortedData, double probability)
+        public static double GetQuantile(double[] sortedData, double probability)
         {
             int N = sortedData.Length;
             // 计算索引 j = p * (N - 1)
