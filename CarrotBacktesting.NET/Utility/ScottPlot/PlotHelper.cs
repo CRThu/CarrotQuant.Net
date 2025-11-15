@@ -85,9 +85,9 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
             if (title != null)
                 plot.Title(title);
             if (xLabel != null)
-                plot.Axes.Left.Label.Text = xLabel;
+                plot.Axes.Bottom.Label.Text = xLabel;
             if (yLabel != null)
-                plot.Axes.Bottom.Label.Text = yLabel;
+                plot.Axes.Left.Label.Text = yLabel;
             if (rightLabel != null)
                 plot.Axes.Right.Label.Text = rightLabel;
 
@@ -226,15 +226,29 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
         /// 向 Plot 对象中添加一条折线图 (无数据点标记)。
         /// </summary>
         /// <inheritdoc cref="Scatter(Plot, double[], double[], string, string, double?, float, MarkerShape, float, LinePattern?, Edge)"/>
-        public static Scatter Line(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float lineWidth = 2.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
-        => Scatter(plot, xdata, ydata, legend, color, alpha, 0.0f, MarkerShape.FilledCircle, lineWidth, linePattern, yAxis);
+        public static Scatter Line(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, float lineWidth = 1.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
+        => Scatter(plot, xdata, ydata, legend, color, alpha, markerSize, markerShape, lineWidth, linePattern, yAxis);
 
         /// <summary>
         /// 向 Plot 对象中添加一条使用日期时间作为X轴的折线图 (无数据点标记)。
         /// </summary>
         /// <inheritdoc cref="Scatter(Plot, DateTime[], double[], string, string, double?, float, MarkerShape, float, LinePattern?, Edge)"/>
-        public static Scatter Line(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float lineWidth = 2.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
-        => Scatter(plot, xdate, ydata, legend, color, alpha, 0.0f, MarkerShape.FilledCircle, lineWidth, linePattern, yAxis);
+        public static Scatter Line(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 0.0f, MarkerShape markerShape = MarkerShape.FilledCircle, float lineWidth = 1.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
+        => Scatter(plot, xdate, ydata, legend, color, alpha, markerSize, markerShape, lineWidth, linePattern, yAxis);
+
+        /// <summary>
+        /// 向 Plot 对象中添加一条折线图 (无数据点标记)。
+        /// </summary>
+        /// <inheritdoc cref="Scatter(Plot, double[], double[], string, string, double?, float, MarkerShape, float, LinePattern?, Edge)"/>
+        public static Scatter ScatterLine(Plot plot, double[] xdata, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 5.0f, MarkerShape markerShape = MarkerShape.FilledCircle, float lineWidth = 1.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
+        => Scatter(plot, xdata, ydata, legend, color, alpha, markerSize, markerShape, lineWidth, linePattern, yAxis);
+
+        /// <summary>
+        /// 向 Plot 对象中添加一条使用日期时间作为X轴的折线图 (无数据点标记)。
+        /// </summary>
+        /// <inheritdoc cref="Scatter(Plot, DateTime[], double[], string, string, double?, float, MarkerShape, float, LinePattern?, Edge)"/>
+        public static Scatter ScatterLine(Plot plot, DateTime[] xdate, double[] ydata, string? legend = null, string? color = null, double? alpha = null, float markerSize = 5.0f, MarkerShape markerShape = MarkerShape.FilledCircle, float lineWidth = 1.0f, LinePattern? linePattern = null, Edge yAxis = Edge.Left)
+        => Scatter(plot, xdate, ydata, legend, color, alpha, markerSize, markerShape, lineWidth, linePattern, yAxis);
 
         /// <summary>
         /// 向 Plot 对象中添加一个直方图。

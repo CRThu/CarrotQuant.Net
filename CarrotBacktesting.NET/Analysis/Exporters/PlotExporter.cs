@@ -53,44 +53,32 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// </summary>
         private void CreatePerformanceOverviewPlot(SignalReport returnsResult)
         {
-            var plt = new Plot();
-            plt.ScaleFactor = 2;
-            plt.Font.Set("Microsoft YaHei UI");
-
-            plt.Title($"信号在 T+1 至 T+{_backtestDays} 日的表现 (基于 {returnsResult.Returns.Count} 个信号)");
-            plt.XLabel("持有天数 (T+N)");
+            string title = $"信号在 T+1 至 T+{_backtestDays} 日的表现 (基于 {returnsResult.Returns.Count} 个信号)";
+            string xLabel = "持有天数 (T+N)";
+            string yLabel = "收益率";
+            string yRightLabel = "胜率";
+            var plot = new Plot();
+            PlotHelper.SetStyle(plot, title, xLabel, yLabel, yRightLabel);
 
             double[] days = Enumerable.Range(1, _backtestDays).Select(d => (double)d).ToArray();
 
             // 左Y轴 - 收益率
-            var leftAxis = plt.Axes.Left;
-            leftAxis.Label.Text = "收益率";
-            // 以百分比格式显示刻度标签
+            var leftAxis = plot.Axes.Left;
             leftAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic() { LabelFormatter = y => $"{y:P1}" };
 
-            var avgReturnLine = plt.Add.Scatter(days, returnsResult.AvgReturns.ToArray());
-            avgReturnLine.LegendText = "平均收益率";
-            var medianReturnLine = plt.Add.Scatter(days, returnsResult.MedianReturns.ToArray());
-            medianReturnLine.LegendText = "收益率中位数";
-            plt.Add.HorizontalLine(0, 1, Colors.Gray, LinePattern.Dashed);
-
             // 右Y轴 - 胜率
-            var rightAxis = plt.Axes.Right;
-            rightAxis.Label.Text = "胜率";
+            var rightAxis = plot.Axes.Right;
             rightAxis.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic() { LabelFormatter = y => $"{y:P1}" };
 
-            var winRateLine = plt.Add.Scatter(days, returnsResult.WinRates.ToArray());
-            winRateLine.LegendText = "胜率";
-            winRateLine.LineStyle.Pattern = LinePattern.DenselyDashed;
-            winRateLine.Axes.YAxis = rightAxis;
-            winRateLine.Color = Colors.Green;
+            PlotHelper.ScatterLine(plot, days, returnsResult.AvgReturns.ToArray(), "平均收益率");
+            PlotHelper.ScatterLine(plot, days, returnsResult.MedianReturns.ToArray(), "中位数收益率");
+            PlotHelper.ScatterLine(plot, days, returnsResult.WinRates.ToArray(), "胜率", color: "#008000", linePattern: LinePattern.DenselyDashed, yAxis: Edge.Right);
 
-            plt.Legend.IsVisible = true;
-            plt.Legend.Alignment = Alignment.UpperLeft;
+            plot.Add.HorizontalLine(0, 1, Colors.Gray, LinePattern.Dashed);
 
             string plotPath = Path.Combine(_plotDirectory, "1_信号表现概览图.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
-            plt.SavePng(plotPath, 2880, 1720);
+            plot.SavePng(plotPath, 2880, 1720);
         }
 
         /// <summary>
