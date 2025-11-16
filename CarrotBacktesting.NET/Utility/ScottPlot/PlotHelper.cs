@@ -78,7 +78,7 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
         /// <param name="xLabel">（可选）X轴（底部）的标签文本。</param>
         /// <param name="yLabel">（可选）Y轴（左侧）的标签文本。</param>
         /// <param name="rightLabel">（可选）右侧Y轴的标签文本。</param>
-        public static void SetStyle(Plot plot, string? title = null, string? xLabel = null, string? yLabel = null, string? rightLabel = null)
+        public static void SetStyle(Plot plot, string? title = null, string? xLabel = null, string? yLabel = null, string? rightLabel = null, string? yTickFormat = null, string? rightTickFormat = null)
         {
             plot.ScaleFactor = 2;
             plot.Font.Set("Microsoft YaHei UI");
@@ -90,6 +90,10 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
                 plot.Axes.Left.Label.Text = yLabel;
             if (rightLabel != null)
                 plot.Axes.Right.Label.Text = rightLabel;
+            if (yTickFormat != null)
+                plot.Axes.Left.TickGenerator = new global::ScottPlot.TickGenerators.NumericAutomatic() { LabelFormatter = y => y.ToString(yTickFormat) };
+            if (rightTickFormat != null)
+                plot.Axes.Right.TickGenerator = new global::ScottPlot.TickGenerators.NumericAutomatic() { LabelFormatter = y => y.ToString(rightTickFormat) };
 
             plot.Legend.IsVisible = true;
             plot.Legend.Alignment = Alignment.UpperLeft;
