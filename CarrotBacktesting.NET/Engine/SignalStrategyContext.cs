@@ -52,5 +52,18 @@ namespace CarrotBacktesting.NET.Engine
         public double? GetLow(int offset) => GetFrame(offset)?.Low;
         public double? GetClose(int offset) => GetFrame(offset)?.Close;
         public double? GetVolume(int offset) => GetFrame(offset)?.Volume;
+
+        public double? GetValue(string column, int offset)
+        {
+            return column.ToLower() switch
+            {
+                "open" => GetOpen(offset),
+                "high" => GetHigh(offset),
+                "low" => GetLow(offset),
+                "close" => GetClose(offset),
+                "volume" => GetVolume(offset),
+                _ => null,
+            };
+        }
     }
 }

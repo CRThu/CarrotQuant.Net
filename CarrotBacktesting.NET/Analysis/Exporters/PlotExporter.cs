@@ -159,7 +159,8 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         private void CreateHeatmapPlot(SignalReport returnsResult)
         {
             // 1. 智能分箱
-            var (bins, labels) = HistogramHelper.GetBins(0.02, -0.24, 0.24);
+            //var (bins, labels) = HistogramHelper.GetBins(0.02, -0.24, 0.24);
+            var (bins, labels) = HistogramHelper.GetBins(0.03, -0.30, 0.30);
 
             // 2. 数据处理,翻转
             var heatmapData = new double[labels.Length, _backtestDays];
