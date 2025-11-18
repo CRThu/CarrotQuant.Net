@@ -102,16 +102,18 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 PlotHelper.Scatter(plot,
                     positiveReturns.Select(p => p.Date).ToArray(),
                     positiveReturns.Select(p => p.Return).ToArray(),
-                    legend: "盈利信号 (左轴)",
-                    color: "#2ecc71", alpha: 0.5);
+                    legend: "盈利信号",
+                    color: "#2ecc71", alpha: 0.5,
+                    yAxis: Edge.Right);
             }
             if (negativeReturns.Count != 0)
             {
                 PlotHelper.Scatter(plot,
                     negativeReturns.Select(p => p.Date).ToArray(),
                     negativeReturns.Select(p => p.Return).ToArray(),
-                    legend: "亏损信号 (左轴)",
-                    color: "#e74c3c", alpha: 0.5);
+                    legend: "亏损信号",
+                    color: "#e74c3c", alpha: 0.5,
+                    yAxis: Edge.Right);
             }
 
             var monthlyStats = scatterData
@@ -128,24 +130,22 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 PlotHelper.ScatterLine(plot,
                     monthDates,
                     monthAvgs,
-                    legend: "月度平均收益 (右轴)",
+                    legend: "月度平均收益",
                     color: "#f1c40f",
-                    markerShape: MarkerShape.OpenCircle,
-                    yAxis: Edge.Right);
+                    markerShape: MarkerShape.OpenCircle);
                 PlotHelper.ScatterLine(plot,
                     monthDates,
                     monthMedians,
-                    legend: "月度中位数收益 (右轴)",
+                    legend: "月度中位数收益",
                     color: "#e67e22",
                     markerShape: MarkerShape.Eks,
-                    linePattern: LinePattern.DenselyDashed,
-                    yAxis: Edge.Right);
+                    linePattern: LinePattern.DenselyDashed);
             }
 
             string title = $"信号在 T+{timelinePlotDay} 的收益分布与月度趋势 (基于 {returnsResult.Returns.Count} 个信号)";
             string xLabel = "信号日期";
-            string yLabel = $"单次信号收益率 (T+{timelinePlotDay})";
-            string yRightLabel = "月度统计收益率";
+            string yLabel = $"月度统计收益率";
+            string yRightLabel = $"单次信号收益率 (T+{timelinePlotDay})";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel, yRightLabel, yTickFormat: "P1", rightTickFormat: "P1");
 
             string plotPath = Path.Combine(_plotDirectory, "2_信号收益分布与月度趋势图.png");
@@ -159,18 +159,18 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         private void CreateHeatmapPlot(SignalReport returnsResult)
         {
             // 1. 智能分箱
-            //var (bins, labels) = HistogramHelper.GetBins(0.02, -0.24, 0.24);
-            var (bins, labels) = HistogramHelper.GetBins(0.03, -0.30, 0.30);
+            var (bins, labels) = HistogramHelper.GetBins(0.02, -0.24, 0.24);
+            //var (bins, labels) = HistogramHelper.GetBins(0.03, -0.30, 0.30);
 
             // 2. 数据处理,翻转
             var heatmapData = new double[labels.Length, _backtestDays];
             for (int day = 0; day < _backtestDays; day++)
             {
                 var returnsOnDay = returnsResult.Returns.Select(r => r[day]);
-                var counts = returnsOnDay.ToHist(bins);
+                var counts = returnsOnDay.ToHist(bins, normalize: true);
                 for (int binIdx = 0; binIdx < counts.Length; binIdx++)
                 {
-                    heatmapData[counts.Length - 1 - binIdx, day] = (double)counts[binIdx] / returnsResult.Returns.Count * 100;
+                    heatmapData[counts.Length - 1 - binIdx, day] = counts[binIdx] * 100;
                 }
             }
 
@@ -220,8 +220,9 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 PlotHelper.Scatter(plot,
                     positiveReturns.Select(p => p.Date).ToArray(),
                     positiveReturns.Select(p => p.Return).ToArray(),
-                    legend: "盈利信号 (左轴)",
-                    color: "#2ecc71", alpha: 0.5);
+                    legend: "盈利信号",
+                    color: "#2ecc71", alpha: 0.5,
+                    yAxis: Edge.Right);
             }
 
             if (negativeReturns.Count != 0)
@@ -229,8 +230,9 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 PlotHelper.Scatter(plot,
                     negativeReturns.Select(p => p.Date).ToArray(),
                     negativeReturns.Select(p => p.Return).ToArray(),
-                    legend: "亏损信号 (左轴)",
-                    color: "#e74c3c", alpha: 0.5);
+                    legend: "亏损信号",
+                    color: "#e74c3c", alpha: 0.5,
+                    yAxis: Edge.Right);
             }
             plot.Add.HorizontalLine(0, 1, Colors.Gray, LinePattern.DenselyDashed);
 
@@ -248,24 +250,22 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 PlotHelper.ScatterLine(plot,
                     monthDates,
                     monthAvgs,
-                    legend: "月度平均收益 (右轴)",
+                    legend: "月度平均收益",
                     color: "#f1c40f",
-                    markerShape: MarkerShape.OpenCircle,
-                    yAxis: Edge.Right);
+                    markerShape: MarkerShape.OpenCircle);
                 PlotHelper.ScatterLine(plot,
                     monthDates,
                     monthMedians,
-                    legend: "月度中位数收益 (右轴)",
+                    legend: "月度中位数收益",
                     color: "#e67e22",
                     markerShape: MarkerShape.Eks,
-                    linePattern: LinePattern.DenselyDashed,
-                    yAxis: Edge.Right);
+                    linePattern: LinePattern.DenselyDashed);
             }
 
             string title = $"按月统计交易表现 (基于 {trades.Count} 个信号)";
             string xLabel = "月份";
-            string yLabel = "单次信号收益率";
-            string rightLabel = "月度统计收益率";
+            string yLabel = "月度统计收益率";
+            string rightLabel = "单次信号收益率";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel, rightLabel, yTickFormat: "P1", rightTickFormat: "P1");
 
             string plotPath = Path.Combine(_plotDirectory, "4_交易月度表现图.png");

@@ -38,25 +38,66 @@ namespace CarrotBacktesting.NET.Utility.ScottPlot
         }
 
         /// <summary>
-        /// 将一维数据根据给定的分箱边界进行计数(每一个分箱值为其左侧最小值)
+        /// 将一维数据根据给定的分箱边界进行计数（或权重累加）。
+        /// (每一个分箱[i]值为其左侧最小值，即统计满足 data[j] >= bins[i] 且 data[j] < bins[i+1] (如果存在) 的数据点。)
+        /// 注意：如果一个值小于所有 bins，它将被忽略。如果一个值大于或等于最大的 bins，它将计入最大的那个 bins。
         /// </summary>
-        /// <param name="data"></param>
-        /// <param name="bins"></param>
-        /// <returns></returns>
-        public static int[] ToHist(this IEnumerable<double> data, double[] bins)
+        /// <param name="data">要分箱的一维数据。</param>
+        /// <param name="bins">分箱的边界数组。应是升序排列的。</param>
+        /// <param name="weights">可选参数：对应 data 的权重数组。如果提供，长度必须与 data 相同。</param>
+        /// <param name="normalize">可选参数：如果为 true，则将结果归一化，使其总和为 1.0（即输出百分比/比例）。</param>
+        /// <returns>一个 double 数组，包含每个分箱的计数或权重累加值。数组长度与 bins 相同。</returns>
+        public static double[] ToHist(this IEnumerable<double> data, double[] bins, IEnumerable<double>? weights = null, bool normalize = false)
         {
-            int[] counts = new int[bins.Length];
-            foreach (var value in data)
+            double[] counts = new double[bins.Length];
+
+            // 如果提供了权重，则将数据和权重配对，否则将数据和默认权重 1 配对
+            var dw = weights == null
+                ? data.Select(value => (value, weight: 1.0))
+                : data.Zip(weights, (value, weight) => (value, weight));
+
+            // 假设 bins 数组已按升序排列
+            foreach (var item in dw)
             {
+                var value = item.value;
+                var weight = item.weight;
+
+                // 从最大的分箱边界开始（数组的末尾）向前查找。
+                // 这是为了实现 [bin_i, bin_{i+1}) 的分箱逻辑，
+                // 且最后一个分箱是 [bin_n, +∞)。
                 for (int i = bins.Length - 1; i >= 0; i--)
                 {
                     if (value >= bins[i])
                     {
-                        counts[i]++;
+                        // 找到了第一个满足条件的 bin[i]，则将其权重累加到 counts[i]
+                        counts[i] += weight;
                         break;
                     }
                 }
             }
+
+            // 如果 normalize 为 true，则进行归一化处理
+            if (normalize)
+            {
+                // 计算所有分箱计数的总和
+                double totalSum = 0;
+                foreach (var count in counts)
+                {
+                    totalSum += count;
+                }
+
+                // 检查总和是否大于 0，避免除以零
+                if (totalSum > 0)
+                {
+                    for (int i = 0; i < counts.Length; i++)
+                    {
+                        // 将每个分箱值除以总和，实现归一化
+                        counts[i] /= totalSum;
+                    }
+                }
+                // 如果 totalSum 为 0，则 counts 数组保持全零，这是正确的。
+            }
+            
             return counts;
         }
 
