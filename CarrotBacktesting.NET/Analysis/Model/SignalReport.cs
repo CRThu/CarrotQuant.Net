@@ -1,4 +1,6 @@
-﻿using System;
+﻿using CarrotBacktesting.NET.Result;
+using CarrotBacktesting.NET.Utility;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,22 +9,42 @@ using System.Threading.Tasks;
 namespace CarrotBacktesting.NET.Analysis.Model
 {
     /// <summary>
-    /// 封装了信号表现的核心分析结果。
-    /// 包含了详细的逐笔收益率数据和聚合后的总体统计摘要。
+    /// 信号性能统计指标容器
+    /// </summary>
+    public record SignalPerf(
+        int SignalCount,        // 样本数量
+        double WinRate,         // 胜率
+        double AvgReturn,       // 平均收益率
+        double MedianReturn,    // 中位数收益率
+        double AvgWin,          // 平均盈利
+        double AvgLoss,         // 平均亏损
+        double WinLossRatio     // 盈亏比
+    );
+
+    /// <summary>
+    /// 单个时间周期 (T+X) 的信号分析报告。
     /// </summary>
     public class SignalReport
     {
         /// <summary>
-        /// 回测统计的总天数 (N)。
+        /// 该收益率对应的时间。
         /// </summary>
-        public int BacktestDays { get; }
+        public IReadOnlyList<DateTime> Dates { get; }
 
         /// <summary>
-        /// 详细的收益率矩阵。
-        /// 外层List代表每个信号，内层double[]代表该信号未来N天的收益率。
-        /// 这是所有统计计算和高级可视化的数据源。
+        /// 该持有天数下的原始收益率列表。
         /// </summary>
-        public IReadOnlyList<double[]> Returns { get; }
+        public IReadOnlyList<double> Returns { get; }
+
+        /// <summary>
+        /// 该持有天数下的全局统计表现。
+        /// </summary>
+        public SignalPerf Global { get; }
+
+        /// <summary>
+        /// 该持有天数下的月度统计表现。
+        /// </summary>
+        public IReadOnlyList<(DateTime Month, SignalPerf Perf)> Monthly { get; }
 
         /// <summary>
         /// 用于统计的有效信号数量。
@@ -30,93 +52,76 @@ namespace CarrotBacktesting.NET.Analysis.Model
         public int ValidSignalCount => Returns.Count;
 
         /// <summary>
-        /// 每日的平均收益率数组，长度为 BacktestDays。
-        /// </summary>
-        public IReadOnlyList<double> AvgReturns { get; }
-
-        /// <summary>
-        /// 每日的收益率中位数数组，长度为 BacktestDays。
-        /// </summary>
-        public IReadOnlyList<double> MedianReturns { get; }
-
-        /// <summary>
-        /// 每日的胜率数组，长度为 BacktestDays。
-        /// </summary>
-        public IReadOnlyList<double> WinRates { get; }
-
-        /// <summary>
-        /// 每日的平均盈利数组，长度为 BacktestDays。
-        /// </summary>
-        public IReadOnlyList<double> AvgWinReturns { get; }
-
-        /// <summary>
-        /// 每日的平均亏损数组，长度为 BacktestDays。
-        /// </summary>
-        public IReadOnlyList<double> AvgLossReturns { get; }
-
-        /// <summary>
-        /// 每日的盈亏比数组 (平均盈利 / |平均亏损|)，长度为 BacktestDays。
-        /// </summary>
-        public IReadOnlyList<double> WinLossRatio { get; }
-
-        /// <summary>
         /// 构造函数，在内部完成所有统计计算。
         /// </summary>
-        /// <param name="returns">从原始信号计算出的详细收益率矩阵。</param>
-        /// <param name="backtestDays">回测天数。</param>
-        public SignalReport(List<double[]> returns, int backtestDays)
+        /// <param name="returns">该天数对应的所有信号收益率列表</param>
+        /// <param name="trades">原始交易列表 (用于获取日期进行月度分组)</param>
+        public SignalReport(IEnumerable<double> returns, List<Trade> trades)
         {
-            // 存储基础数据
-            Returns = returns;
-            BacktestDays = backtestDays;
+            // 1. 保存原始数据
+            Dates = trades.Select(d => d.EntryDate).ToList();
+            var returnsList = returns.ToList();
+            Returns = returnsList;
 
-            // --- 在构造时立即进行统计聚合计算 ---
-            var avgReturns = new double[backtestDays];
-            var medianReturns = new double[backtestDays];
-            var winRates = new double[backtestDays];
-            var avgWinReturns = new double[backtestDays];
-            var avgLossReturns = new double[backtestDays];
-            var winLossRatio = new double[backtestDays];
+            // 2. 计算全局表现
+            Global = GetPerf(returnsList);
 
-            if (returns.Count > 0)
+            // 3. 计算月度表现
+            var monthlyList = new List<(DateTime, SignalPerf)>();
+            if (trades != null && trades.Count == returnsList.Count && returnsList.Count > 0)
             {
-                for (int day = 0; day < backtestDays; day++)
+                // 将日期与当前 Horizon 的收益率对齐
+                var signalData = Dates.Zip(returnsList, (date, ret) => new
                 {
-                    // 提取 T+(day+1) 这一天的所有信号收益率
-                    var returnsOnDayN = returns.Select(signalReturns => signalReturns[day]).ToList();
+                    Date = date,
+                    Return = ret
+                });
 
-                    // 计算统计指标
-                    avgReturns[day] = returnsOnDayN.Average();
-                    winRates[day] = (double)returnsOnDayN.Count(r => r > 0) / returnsOnDayN.Count;
+                monthlyList = signalData
+                    .GroupBy(x => new { x.Date.Year, x.Date.Month })
+                    .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
+                    .Select(g =>
+                    {
+                        var monthDate = new DateTime(g.Key.Year, g.Key.Month, 1);
+                        var samples = g.Select(x => x.Return);
+                        return (monthDate, GetPerf(samples));
+                    })
+                    .ToList();
+            }
+            Monthly = monthlyList;
+        }
 
-                    // 计算中位数
-                    var sortedReturns = returnsOnDayN.OrderBy(r => r).ToList();
-                    int mid = sortedReturns.Count / 2;
-                    medianReturns[day] = sortedReturns.Count % 2 == 0 ?
-                        (sortedReturns[mid - 1] + sortedReturns[mid]) / 2.0 :
-                        sortedReturns[mid];
+        /// <summary>
+        /// 核心统计逻辑：输入一组收益率样本，返回统计对象。
+        /// </summary>
+        private static SignalPerf GetPerf(IEnumerable<double> samples)
+        {
+            var list = samples.ToList(); // 固化列表
+            int count = list.Count;
 
-                    // 计算平均盈利、亏损
-                    var winningReturns = returnsOnDayN.Where(r => r > 0).ToList();
-                    var losingReturns = returnsOnDayN.Where(r => r < 0).ToList();
-
-                    // 计算平均盈利 (如果没有任何盈利的交易，则为0)
-                    avgWinReturns[day] = winningReturns.Count != 0 ? winningReturns.Average() : 0;
-                    // 计算平均亏损 (如果没有任何亏损的交易，则为0)
-                    avgLossReturns[day] = losingReturns.Count != 0 ? losingReturns.Average() : 0;
-
-                    // 计算盈亏比 (平均盈利 / 平均亏损的绝对值)
-                    winLossRatio[day] = avgWinReturns[day] / Math.Abs(avgLossReturns[day]);
-                }
+            if (count == 0)
+            {
+                return new SignalPerf(0, 0, 0, 0, 0, 0, 0);
             }
 
-            // 将计算结果赋给只读属性
-            AvgReturns = avgReturns;
-            MedianReturns = medianReturns;
-            WinRates = winRates;
-            AvgWinReturns = avgWinReturns;
-            AvgLossReturns = avgLossReturns;
-            WinLossRatio = winLossRatio;
+            double avg = list.Average();
+            var median = list.Median();
+            var wins = list.Where(r => r > 0).ToList();
+            var losses = list.Where(r => r < 0).ToList();
+            double winRate = (double)wins.Count / count;
+            double avgWin = wins.Count != 0 ? wins.Average() : 0;
+            double avgLoss = losses.Count != 0 ? losses.Average() : 0;
+            double ratio = avgWin / Math.Abs(avgLoss == 0 ? 1 : avgLoss);
+
+            return new SignalPerf(
+                SignalCount: count,
+                WinRate: winRate,
+                AvgReturn: avg,
+                MedianReturn: median,
+                AvgWin: avgWin,
+                AvgLoss: avgLoss,
+                WinLossRatio: ratio
+            );
         }
     }
 }

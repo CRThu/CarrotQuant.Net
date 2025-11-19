@@ -27,14 +27,12 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             Console.WriteLine($"[PlotExporter] 开始生成图表，将保存到: {Path.GetFullPath(_plotDirectory)}");
 
             // a. 渲染 T+N 信号表现图
-            var signalReport = context.GetArtifact<SignalReport>();
-            if (signalReport != null)
+            var signalReport = context.GetArtifact<SignalReport[]>();
+            if (signalReport != null && signalReport.Length > 0)
             {
-                _backtestDays = signalReport.BacktestDays;
-                var tradesForSignal = context.BacktestResult.Trades; // 获取用于匹配日期的交易列表
-
+                _backtestDays = signalReport.Length;
                 CreatePerformanceOverviewPlot(signalReport);
-                CreateDistributionTimelinePlot(signalReport, tradesForSignal);
+                CreateDistributionTimelinePlot(signalReport);
                 CreateHeatmapPlot(signalReport);
             }
 
@@ -52,18 +50,28 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【信号表现概览图】
         /// </summary>
-        private void CreatePerformanceOverviewPlot(SignalReport returnsResult)
+        private void CreatePerformanceOverviewPlot(SignalReport[] reports)
         {
-            var plot = new Plot();
-            double[] days = Enumerable.Range(1, _backtestDays).Select(d => (double)d).ToArray();
+            if (reports.Length == 0) return;
 
-            PlotHelper.ScatterLine(plot, days, returnsResult.AvgReturns.ToArray(), "平均收益率");
-            PlotHelper.ScatterLine(plot, days, returnsResult.MedianReturns.ToArray(), "中位数收益率");
-            PlotHelper.ScatterLine(plot, days, returnsResult.WinRates.ToArray(), "胜率", color: "#008000", linePattern: LinePattern.DenselyDashed, yAxis: Edge.Right);
+            var plot = new Plot();
+            // X轴：1, 2, ..., N
+            double[] days = Enumerable.Range(1, reports.Length).Select(d => (double)d).ToArray();
+
+            // 从数组中提取各天数的全局指标
+            double[] avgReturns = reports.Select(r => r.Global.AvgReturn).ToArray();
+            double[] medianReturns = reports.Select(r => r.Global.MedianReturn).ToArray();
+            double[] winRates = reports.Select(r => r.Global.WinRate).ToArray();
+
+            PlotHelper.ScatterLine(plot, days, avgReturns, "平均收益率");
+            PlotHelper.ScatterLine(plot, days, medianReturns, "中位数收益率");
+            PlotHelper.ScatterLine(plot, days, winRates, "胜率", color: "#008000", linePattern: LinePattern.DenselyDashed, yAxis: Edge.Right);
 
             plot.Add.HorizontalLine(0, 1, Colors.Gray, LinePattern.Dashed);
 
-            string title = $"信号在 T+1 至 T+{_backtestDays} 日的表现 (基于 {returnsResult.Returns.Count} 个信号)";
+            int signalCount = reports[0].ValidSignalCount;
+
+            string title = $"信号在 T+1 至 T+{reports.Length} 日的表现 (基于 {signalCount} 个信号)";
             string xLabel = "持有天数 (T+N)";
             string yLabel = "收益率";
             string yRightLabel = "胜率";
@@ -77,18 +85,21 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【信号收益分布与月度趋势图】
         /// </summary>
-        private void CreateDistributionTimelinePlot(SignalReport returnsResult, List<Trade> trades)
+        private void CreateDistributionTimelinePlot(SignalReport[] reports)
         {
-            int timelinePlotDay = returnsResult.AvgReturns.ToList().IndexOf(returnsResult.AvgReturns.Max()) + 1;
-            if (timelinePlotDay > _backtestDays) return;
+            if (reports.Length == 0) return;
+
+            // 1. 找到平均收益率最高的那个周期的报告
+            var bestReport = reports.MaxBy(r => r.Global.AvgReturn)!;
+            int timelinePlotDay = Array.IndexOf(reports, bestReport) + 1;
 
             var plot = new Plot();
 
-            // 准备散点图数据
+            // 2. 准备散点图数据
             var scatterData = new List<(DateTime Date, double Return)>();
-            for (int i = 0; i < returnsResult.Returns.Count; i++)
+            for (int i = 0; i < bestReport.Returns.Count; i++)
             {
-                scatterData.Add((trades[i].EntryDate, returnsResult.Returns[i][timelinePlotDay - 1]));
+                scatterData.Add((bestReport.Dates[i], bestReport.Returns[i]));
             }
 
             plot.Add.HorizontalLine(0, 1, Colors.Gray, LinePattern.DenselyDashed);
@@ -142,7 +153,9 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     linePattern: LinePattern.DenselyDashed);
             }
 
-            string title = $"信号在 T+{timelinePlotDay} 的收益分布与月度趋势 (基于 {returnsResult.Returns.Count} 个信号)";
+            int signalCount = reports[0].ValidSignalCount;
+
+            string title = $"信号在 T+{timelinePlotDay} 的收益分布与月度趋势 (基于 {signalCount} 个信号)";
             string xLabel = "信号日期";
             string yLabel = $"月度统计收益率";
             string yRightLabel = $"单次信号收益率 (T+{timelinePlotDay})";
@@ -156,7 +169,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【收益率分布热力图】
         /// </summary>
-        private void CreateHeatmapPlot(SignalReport returnsResult)
+        private void CreateHeatmapPlot(SignalReport[] reports)
         {
             // 1. 智能分箱
             var (bins, labels) = HistogramHelper.GetBins(0.02, -0.24, 0.24);
@@ -166,7 +179,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             var heatmapData = new double[labels.Length, _backtestDays];
             for (int day = 0; day < _backtestDays; day++)
             {
-                var returnsOnDay = returnsResult.Returns.Select(r => r[day]);
+                var returnsOnDay = reports[day].Returns;
                 var counts = returnsOnDay.ToHist(bins, normalize: true);
                 for (int binIdx = 0; binIdx < counts.Length; binIdx++)
                 {
@@ -185,7 +198,9 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 v: (0, 3, 10),
                 annoFormat: "F1");
 
-            string title = $"信号后 T+1 至 T+{_backtestDays} 日收益率分布热力图 (基于 {returnsResult.Returns.Count} 个信号)";
+            int signalCount = reports[0].ValidSignalCount;
+
+            string title = $"信号后 T+1 至 T+{_backtestDays} 日收益率分布热力图 (基于 {signalCount} 个信号)";
             string xLabel = "持有天数";
             string yLabel = "收益率区间";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel);

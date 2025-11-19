@@ -13,7 +13,7 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
 {
     /// <summary>
     /// 统一的性能分析器。
-    /// 负责计算信号的未来N期收益率，并生成一份包含详细数据和统计摘要的性能报告。
+    /// 负责计算信号的未来N期收益率，并生成按持有天数(T+N)分组的性能报告列表。
     /// </summary>
     public class SignalAnalyzer : IAnalyzer
     {
@@ -33,10 +33,11 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
                 return;
             }
 
-            // --- 第一步：计算详细的收益率矩阵 (原 ForwardReturnsAnalyzer 的工作) ---
+            // --- 第一步：计算详细的收益率矩阵 ---
             Console.WriteLine($"开始为 {trades.Count} 个信号计算未来 {_backtestDays} 日的性能表现...");
             var stopwatch = Stopwatch.StartNew();
 
+            // 存储结构：List<double[]>，外层是信号，内层是天数 [T+1, T+2, ..., T+N]
             var allReturnsOverTime = new List<double[]>(trades.Count);
 
             // 目前只支持最高效的纵向数据模式
@@ -57,14 +58,27 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
                 throw new NotImplementedException("性能分析器当前仅在 TimeSeries 存储模式下高效运行。");
             }
 
-            // --- 第二步：创建统一的性能报告 (原 SummaryAnalyzer 的工作被移入其构造函数) ---
-            var report = new SignalReport(allReturnsOverTime, _backtestDays);
+            // --- 第二步：数据透视 (Pivot) 与 报告生成 ---
+            // 将数据从 "按信号分组" 转换为 "按持有天数分组"
+            // 最终生成 SignalReport[]，索引 0 对应 T+1，索引 4 对应 T+5
+            var reports = new SignalReport[_backtestDays];
+
+            for (int i = 0; i < _backtestDays; i++)
+            {
+                // 提取所有信号在 T+(i+1) 这一天的收益率
+                // 使用 Select 投影出第 i 列
+                var returnsForDay = allReturnsOverTime.Select(r => r[i]);
+
+                // 创建该持有天数的独立报告
+                reports[i] = new SignalReport(returnsForDay, trades);
+            }
 
             stopwatch.Stop();
             Console.WriteLine($"性能分析完成，有效信号数: {allReturnsOverTime.Count}，耗时 {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
 
-            // --- 第三步：将最终的统一报告存入上下文 ---
-            context.SetArtifact(report);
+            // --- 第三步：将报告列表存入上下文 ---
+            // 注意：现在存入的是 SignalReport[]
+            context.SetArtifact(reports);
         }
 
         /// <summary>
