@@ -42,6 +42,14 @@ namespace CarrotBacktesting.NET.Analysis.Model
         public SignalPerf Global { get; }
 
         /// <summary>
+        /// 该持有天数下的时间加权统计表现 (月度等权)。
+        /// <para>
+        /// 计算方法：对 Monthly 中所有月份的指标求平均。
+        /// </para>
+        /// </summary>
+        public SignalPerf WeightedGlobal { get; }
+
+        /// <summary>
         /// 该持有天数下的月度统计表现。
         /// </summary>
         public IReadOnlyList<(DateTime Month, SignalPerf Perf)> Monthly { get; }
@@ -55,12 +63,11 @@ namespace CarrotBacktesting.NET.Analysis.Model
         /// 构造函数，在内部完成所有统计计算。
         /// </summary>
         /// <param name="returns">该天数对应的所有信号收益率列表</param>
-        /// <param name="trades">原始交易列表 (用于获取日期进行月度分组)</param>
-        public SignalReport(IEnumerable<double> returns, List<Trade> trades)
+        public SignalReport(IEnumerable<(DateTime dates, double returns)> returns)
         {
             // 1. 保存原始数据
-            Dates = trades.Select(d => d.EntryDate).ToList();
-            var returnsList = returns.ToList();
+            Dates = returns.Select(d => d.dates).ToList();
+            var returnsList = returns.Select(r=>r.returns).ToList();
             Returns = returnsList;
 
             // 2. 计算全局表现
@@ -68,7 +75,7 @@ namespace CarrotBacktesting.NET.Analysis.Model
 
             // 3. 计算月度表现
             var monthlyList = new List<(DateTime, SignalPerf)>();
-            if (trades != null && trades.Count == returnsList.Count && returnsList.Count > 0)
+            if (returnsList.Count > 0)
             {
                 // 将日期与当前 Horizon 的收益率对齐
                 var signalData = Dates.Zip(returnsList, (date, ret) => new
@@ -89,6 +96,9 @@ namespace CarrotBacktesting.NET.Analysis.Model
                     .ToList();
             }
             Monthly = monthlyList;
+
+            // 4. 计算时间加权表现 (基于 Monthly 列表的平均值)
+            WeightedGlobal = GetWeightedPerf(monthlyList, Global.SignalCount);
         }
 
         /// <summary>
@@ -118,6 +128,38 @@ namespace CarrotBacktesting.NET.Analysis.Model
                 WinRate: winRate,
                 AvgReturn: avg,
                 MedianReturn: median,
+                AvgWin: avgWin,
+                AvgLoss: avgLoss,
+                WinLossRatio: ratio
+            );
+        }
+
+        /// <summary>
+        /// 计算时间加权指标 (月度等权平均)
+        /// </summary>
+        private static SignalPerf GetWeightedPerf(List<(DateTime Month, SignalPerf Perf)> monthly, int totalSignals)
+        {
+            if (monthly.Count == 0)
+            {
+                return new SignalPerf(0, 0, 0, 0, 0, 0, 0);
+            }
+
+            // 对所有月份的各项指标求算术平均
+            // 比如：1月胜率 0.9，2月胜率 0.1。不管1月有多少信号，月度平均胜率就是 0.5。
+            double avgWinRate = monthly.Average(m => m.Perf.WinRate);
+            double avgReturn = monthly.Average(m => m.Perf.AvgReturn);
+            double avgMedian = monthly.Average(m => m.Perf.MedianReturn); // 中位数的平均值，作为“典型月度中位数”的近似
+            double avgWin = monthly.Average(m => m.Perf.AvgWin);
+            double avgLoss = monthly.Average(m => m.Perf.AvgLoss);
+
+            // 重新计算综合盈亏比
+            double ratio = avgWin / Math.Abs(avgLoss == 0 ? 1 : avgLoss);
+
+            return new SignalPerf(
+                SignalCount: totalSignals, // 总信号数保持不变
+                WinRate: avgWinRate,
+                AvgReturn: avgReturn,
+                MedianReturn: avgMedian,
                 AvgWin: avgWin,
                 AvgLoss: avgLoss,
                 WinLossRatio: ratio

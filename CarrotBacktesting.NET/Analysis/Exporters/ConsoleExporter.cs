@@ -68,9 +68,12 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         {
             console.WriteLine();
 
-            PrintPeakAnalysis(console, report);
-            PrintDailySummary(console, report);
+            PrintPeakAnalysis(console, report, weighted: false);
+            PrintDailySummary(console, report, weighted: false);
             PrintMonthlyReturns(console, report);
+
+            PrintPeakAnalysis(console, report, weighted: true);
+            PrintDailySummary(console, report, weighted: true);
         }
 
         /// <summary>
@@ -86,30 +89,33 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 打印最佳持有期分析
         /// </summary>
-        private void PrintPeakAnalysis(IAnsiConsole console, SignalReport[] reports)
+        private void PrintPeakAnalysis(IAnsiConsole console, SignalReport[] reports, bool weighted = false)
         {
             if (reports.Length == 0) return;
 
+            Func<SignalReport, SignalPerf> getPerf = weighted ? r => r.WeightedGlobal : r => r.Global;
+            string weightedText = weighted ? "时间加权" : "信号加权";
+
             // 1. 寻找各项指标的峰值所在的报告对象
             // MaxBy 返回的是整个 SignalReport 对象
-            var bestAvgReport = reports.MaxBy(r => r.Global.AvgReturn)!;
-            var bestMedianReport = reports.MaxBy(r => r.Global.MedianReturn)!;
-            var bestWinRateReport = reports.MaxBy(r => r.Global.WinRate)!;
+            var bestAvgReport = reports.MaxBy(r => getPerf(r).AvgReturn)!;
+            var bestMedianReport = reports.MaxBy(r => getPerf(r).MedianReturn)!;
+            var bestWinRateReport = reports.MaxBy(r => getPerf(r).WinRate)!;
 
             // 获取对应的天数 (数组索引 + 1)
             int dayMaxAvg = Array.IndexOf(reports, bestAvgReport) + 1;
             int dayMaxMedian = Array.IndexOf(reports, bestMedianReport) + 1;
             int dayMaxWin = Array.IndexOf(reports, bestWinRateReport) + 1;
 
-            console.Write(new Rule("策略最佳持有期分析 (各指标峰值)"));
+            console.Write(new Rule($"策略最佳持有期分析 ({weightedText})"));
 
-            console.MarkupLine($"平均收益率峰值: [springgreen3]{bestAvgReport.Global.AvgReturn:P2}[/] ([yellow1]T+{dayMaxAvg}[/], 当日胜率 [deepskyblue1]{bestAvgReport.Global.WinRate:P2}[/])");
-            console.MarkupLine($"收益率中位数峰值: [springgreen3]{bestMedianReport.Global.MedianReturn:P2}[/] ([yellow1]T+{dayMaxMedian}[/], 当日胜率 [deepskyblue1]{bestMedianReport.Global.WinRate:P2}[/])");
-            console.MarkupLine($"(参考) 胜率峰值: [deepskyblue1]{bestWinRateReport.Global.WinRate:P2}[/] ([yellow1]T+{dayMaxWin}[/])");
+            console.MarkupLine($"平均收益率峰值: [springgreen3]{getPerf(bestAvgReport).AvgReturn:P2}[/] ([yellow1]T+{dayMaxAvg}[/], 当日胜率 [deepskyblue1]{getPerf(bestAvgReport).WinRate:P2}[/])");
+            console.MarkupLine($"收益率中位数峰值: [springgreen3]{getPerf(bestMedianReport).MedianReturn:P2}[/] ([yellow1]T+{dayMaxMedian}[/], 当日胜率 [deepskyblue1]{getPerf(bestMedianReport).WinRate:P2}[/])");
+            console.MarkupLine($"(参考) 胜率峰值: [deepskyblue1]{getPerf(bestWinRateReport).WinRate:P2}[/] ([yellow1]T+{dayMaxWin}[/])");
             console.WriteLine();
 
             // 使用平均收益率最高的那个周期的详细数据
-            var bestGlobal = bestAvgReport.Global;
+            var bestGlobal = getPerf(bestAvgReport);
             console.Write(new Rule($"最佳持有期 (T+{dayMaxAvg}) 详细指标:"));
             console.MarkupLine($"平均盈利:[springgreen3] {bestGlobal.AvgWin:P2}[/]");
             console.MarkupLine($"平均亏损:[indianred] {bestGlobal.AvgLoss:P2}[/]");
@@ -120,7 +126,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 打印每日表现统计
         /// </summary>
-        private void PrintDailySummary(IAnsiConsole console, SignalReport[] reports)
+        private void PrintDailySummary(IAnsiConsole console, SignalReport[] reports, bool weighted = false)
         {
             if (reports.Length == 0) return;
 
@@ -128,9 +134,10 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
 
             int validCount = reports[0].ValidSignalCount;
 
+            string titleType = weighted ? "时间加权" : "信号加权";
             var table = new Table()
                 .Border(TableBorder.Rounded)
-                .Title($"策略在 T+1 至 T+{reports.Length} 期间的每日表现统计")
+                .Title($"策略在 T+1 至 T+{reports.Length} 期间的每日表现统计({titleType})")
                 .Caption($"基于 {validCount} 个有效信号")
                 .AddColumn("持有天数")
                 .AddColumn(new TableColumn("平均收益率").RightAligned())
@@ -143,7 +150,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             for (int i = 0; i < reports.Length; i++)
             {
                 var r = reports[i];
-                var g = r.Global;
+                var g = weighted ? r.WeightedGlobal : r.Global;
 
                 string avgReturnColor = g.AvgReturn > 0 ? "springgreen3" : "indianred";
                 string medianReturnColor = g.MedianReturn > 0 ? "springgreen3" : "indianred";
@@ -290,8 +297,8 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
                 .AddColumn(new TableColumn("月度平均收益").RightAligned())
                 .AddColumn(new TableColumn("月度中位数收益").RightAligned())
                 .AddColumn(new TableColumn("胜率").RightAligned())
-                .AddColumn(new TableColumn("月度平均盈利").RightAligned())
-                .AddColumn(new TableColumn("月度平均亏损").RightAligned())
+                //.AddColumn(new TableColumn("月度平均盈利").RightAligned())
+                //.AddColumn(new TableColumn("月度平均亏损").RightAligned())
                 .AddColumn(new TableColumn("月度盈亏比").RightAligned());
 
             foreach (var stat in report.MonthlyStats)
@@ -304,8 +311,8 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
                     $"[{avgReturnColor}]{stat.AverageReturn:P2}[/]",
                     $"[{medianReturnColor}]{stat.MedianReturn:P2}[/]",
                     $"[deepskyblue1]{stat.WinRate:P2}[/]",
-                    $"[springgreen3]{stat.AverageWin:P2}[/]",
-                    $"[indianred]{stat.AverageLoss:P2}[/]",
+                    //$"[springgreen3]{stat.AverageWin:P2}[/]",
+                    //$"[indianred]{stat.AverageLoss:P2}[/]",
                     $"[deepskyblue1]{stat.WinLossRatio:F2}[/]"
                 );
             }

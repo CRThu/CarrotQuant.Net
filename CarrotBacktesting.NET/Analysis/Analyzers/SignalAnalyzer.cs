@@ -37,8 +37,8 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
             Console.WriteLine($"开始为 {trades.Count} 个信号计算未来 {_backtestDays} 日的性能表现...");
             var stopwatch = Stopwatch.StartNew();
 
-            // 存储结构：List<double[]>，外层是信号，内层是天数 [T+1, T+2, ..., T+N]
-            var allReturnsOverTime = new List<double[]>(trades.Count);
+            // 存储结构：List<(DateTime, double[])>，外层是信号，内层是天数 [T+1, T+2, ..., T+N]
+            var allReturnsOverTime = new List<(DateTime dates, double[] returns)>(trades.Count);
 
             // 目前只支持最高效的纵向数据模式
             if (context.Data is HistoryStorage hs)
@@ -49,7 +49,7 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
                     {
                         var returns = CalculateReturnsForSignal(trade, history);
                         if (returns != null)
-                            allReturnsOverTime.Add(returns);
+                            allReturnsOverTime.Add((trade.EntryDate, returns));
                     }
                 }
             }
@@ -66,11 +66,10 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
             for (int i = 0; i < _backtestDays; i++)
             {
                 // 提取所有信号在 T+(i+1) 这一天的收益率
-                // 使用 Select 投影出第 i 列
-                var returnsForDay = allReturnsOverTime.Select(r => r[i]);
+                var returnsForDay = allReturnsOverTime.Select(r => (r.dates, r.returns[i]));
 
                 // 创建该持有天数的独立报告
-                reports[i] = new SignalReport(returnsForDay, trades);
+                reports[i] = new SignalReport(returnsForDay);
             }
 
             stopwatch.Stop();
