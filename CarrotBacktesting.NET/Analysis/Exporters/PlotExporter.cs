@@ -31,9 +31,11 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             if (signalReport != null && signalReport.Length > 0)
             {
                 _backtestDays = signalReport.Length;
-                CreatePerformanceOverviewPlot(signalReport);
+                CreatePerformanceOverviewPlot(signalReport, weighted: false);
+                CreatePerformanceOverviewPlot(signalReport, weighted: true);
                 CreateDistributionTimelinePlot(signalReport);
-                CreateHeatmapPlot(signalReport);
+                CreateHeatmapPlot(signalReport, weighted: false);
+                CreateHeatmapPlot(signalReport, weighted: true);
             }
 
             // b. 渲染交易月度表现图
@@ -50,18 +52,22 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【信号表现概览图】
         /// </summary>
-        private void CreatePerformanceOverviewPlot(SignalReport[] reports)
+        private void CreatePerformanceOverviewPlot(SignalReport[] reports, bool weighted = false)
         {
             if (reports.Length == 0) return;
+
+            // 1. 定义数据选择器、模式标签和文件名后缀
+            Func<SignalReport, SignalPerf> getPerf = weighted ? r => r.WeightedGlobal : r => r.Global;
+            string modeLabel = weighted ? "时间加权" : "信号加权";
 
             var plot = new Plot();
             // X轴：1, 2, ..., N
             double[] days = Enumerable.Range(1, reports.Length).Select(d => (double)d).ToArray();
 
             // 从数组中提取各天数的全局指标
-            double[] avgReturns = reports.Select(r => r.Global.AvgReturn).ToArray();
-            double[] medianReturns = reports.Select(r => r.Global.MedianReturn).ToArray();
-            double[] winRates = reports.Select(r => r.Global.WinRate).ToArray();
+            double[] avgReturns = reports.Select(r => getPerf(r).AvgReturn).ToArray();
+            double[] medianReturns = reports.Select(r => getPerf(r).MedianReturn).ToArray();
+            double[] winRates = reports.Select(r => getPerf(r).WinRate).ToArray();
 
             PlotHelper.ScatterLine(plot, days, avgReturns, "平均收益率");
             PlotHelper.ScatterLine(plot, days, medianReturns, "中位数收益率");
@@ -71,13 +77,13 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             int signalCount = reports[0].ValidSignalCount;
 
-            string title = $"信号在 T+1 至 T+{reports.Length} 日的表现 (基于 {signalCount} 个信号)";
+            string title = $"信号在 T+1 至 T+{reports.Length} 日的表现 (基于 {signalCount} 个信号, {modeLabel})";
             string xLabel = "持有天数 (T+N)";
             string yLabel = "收益率";
             string yRightLabel = "胜率";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel, yRightLabel, yTickFormat: "P1", rightTickFormat: "P1");
 
-            string plotPath = Path.Combine(_plotDirectory, "1_信号表现概览图.png");
+            string plotPath = Path.Combine(_plotDirectory, $"1_信号表现概览图_{modeLabel}.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
         }
@@ -127,16 +133,13 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     yAxis: Edge.Right);
             }
 
-            var monthlyStats = scatterData
-                .GroupBy(d => new DateTime(d.Date.Year, d.Date.Month, 1))
-                .Select(g => new { Month = g.Key, Avg = g.Average(x => x.Return), Median = g.Select(x => x.Return).Median() })
-                .OrderBy(x => x.Month).ToList();
+            var monthlyStats = bestReport.Monthly;
 
             if (monthlyStats.Count != 0)
             {
                 var monthDates = monthlyStats.Select(m => m.Month).ToArray();
-                var monthAvgs = monthlyStats.Select(m => m.Avg).ToArray();
-                var monthMedians = monthlyStats.Select(m => m.Median).ToArray();
+                var monthAvgs = monthlyStats.Select(m => m.Perf.AvgReturn).ToArray();
+                var monthMedians = monthlyStats.Select(m => m.Perf.MedianReturn).ToArray();
 
                 PlotHelper.ScatterLine(plot,
                     monthDates,
@@ -169,21 +172,49 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【收益率分布热力图】
         /// </summary>
-        private void CreateHeatmapPlot(SignalReport[] reports)
+        private void CreateHeatmapPlot(SignalReport[] reports, bool weighted = false)
         {
+            if (reports.Length == 0) return;
+
             // 1. 智能分箱
             var (bins, labels) = HistogramHelper.GetBins(0.02, -0.24, 0.24);
-            //var (bins, labels) = HistogramHelper.GetBins(0.03, -0.30, 0.30);
 
-            // 2. 数据处理,翻转
-            var heatmapData = new double[labels.Length, _backtestDays];
-            for (int day = 0; day < _backtestDays; day++)
+            // 2. 准备数据容器
+            var heatmapData = new double[labels.Length, reports.Length];
+
+            // 3. 遍历每一天 (T+1 ... T+N)
+            for (int day = 0; day < reports.Length; day++)
             {
-                var returnsOnDay = reports[day].Returns;
-                var counts = returnsOnDay.ToHist(bins, normalize: true);
-                for (int binIdx = 0; binIdx < counts.Length; binIdx++)
+                var r = reports[day];
+                double[]? weights = null;
+
+                if (weighted)
                 {
-                    heatmapData[counts.Length - 1 - binIdx, day] = counts[binIdx] * 100;
+                    // 默认 weights 为 null，对应 weighted = false (信号加权)
+                    weights = new double[r.ValidSignalCount];
+
+                    // 按月分组索引
+                    var monthlyGroups = r.Dates
+                        .Select((date, index) => new { Date = date, Index = index })
+                        .GroupBy(x => new { x.Date.Year, x.Date.Month });
+
+                    foreach (var group in monthlyGroups)
+                    {
+                        double weightPerSignal = 1.0 / group.Count();
+                        foreach (var item in group)
+                        {
+                            weights[item.Index] = weightPerSignal;
+                        }
+                    }
+                }
+
+                var finalDistribution = r.Returns.ToHist(bins, weights, normalize: true);
+
+                // 4. 填充热力图矩阵 (翻转Y轴，并转换为 0-100 的数值)
+                for (int binIdx = 0; binIdx < finalDistribution.Length; binIdx++)
+                {
+                    // heatmapData[行, 列]
+                    heatmapData[labels.Length - 1 - binIdx, day] = finalDistribution[binIdx] * 100;
                 }
             }
 
@@ -200,12 +231,14 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             int signalCount = reports[0].ValidSignalCount;
 
-            string title = $"信号后 T+1 至 T+{_backtestDays} 日收益率分布热力图 (基于 {signalCount} 个信号)";
+            string modeLabel = weighted ? "时间加权" : "信号加权";
+
+            string title = $"信号后 T+1 至 T+{_backtestDays} 日收益率分布热力图 (基于 {signalCount} 个信号, {modeLabel})";
             string xLabel = "持有天数";
             string yLabel = "收益率区间";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel);
 
-            string plotPath = Path.Combine(_plotDirectory, "3_信号收益率分布热力图.png");
+            string plotPath = Path.Combine(_plotDirectory, $"3_信号收益率分布热力图_{modeLabel}.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
         }
