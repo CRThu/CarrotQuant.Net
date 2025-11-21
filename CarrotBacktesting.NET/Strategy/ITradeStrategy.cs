@@ -18,13 +18,13 @@ namespace CarrotBacktesting.NET.Strategy
         /// 只在当前【空仓】时被引擎调用。
         /// </summary>
         /// <returns>如果应该开仓，返回一个描述原因的字符串；否则返回 null。</returns>
-        string? CheckEntry(SignalStrategyContext context);
+        SignalResult? CheckEntry(SignalStrategyContext context);
 
         /// <summary>
         /// 检查是否应该【平仓】(Exit)。
         /// 只在当前【持仓】时被引擎调用。
         /// </summary>
         /// <returns>如果应该平仓，返回一个描述原因的字符串；否则返回 null。</returns>
-        string? CheckExit(SignalStrategyContext context, Trade trade);
+        SignalResult? CheckExit(SignalStrategyContext context, Trade trade);
     }
 }

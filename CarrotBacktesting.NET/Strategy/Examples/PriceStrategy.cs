@@ -15,7 +15,7 @@ namespace CarrotBacktesting.NET.Strategy.Examples
     {
         public string Name => "简单交易策略(持5天卖)";
 
-        public string? CheckEntry(SignalStrategyContext context)
+        public SignalResult? CheckEntry(SignalStrategyContext context)
         {
             // 简单逻辑：如果收盘价比昨天高，就买入
             double? close0 = context.GetClose(0);
@@ -28,7 +28,7 @@ namespace CarrotBacktesting.NET.Strategy.Examples
             return null;
         }
 
-        public string? CheckExit(SignalStrategyContext context, Trade trade)
+        public SignalResult? CheckExit(SignalStrategyContext context, Trade trade)
         {
             // 简单逻辑：持有期达到5天就卖出
             if (trade.HoldingPeriod >= 5)

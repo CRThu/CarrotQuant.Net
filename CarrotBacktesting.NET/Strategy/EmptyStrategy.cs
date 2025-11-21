@@ -15,12 +15,12 @@ namespace CarrotBacktesting.NET.Strategy
     {
         public string Name => nameof(EmptyStrategy);
 
-        public string? CheckEntry(SignalStrategyContext context)
+        public SignalResult? CheckEntry(SignalStrategyContext context)
         {
             return null;
         }
 
-        public string? CheckExit(SignalStrategyContext context, Trade trade)
+        public SignalResult? CheckExit(SignalStrategyContext context, Trade trade)
         {
             return null;
         }

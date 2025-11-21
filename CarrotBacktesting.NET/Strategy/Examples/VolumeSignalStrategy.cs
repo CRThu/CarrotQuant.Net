@@ -15,7 +15,7 @@ namespace CarrotBacktesting.NET.Strategy.Examples
     {
         public string Name => nameof(VolumeSignalStrategy);
 
-        public string? CheckSignal(SignalStrategyContext context)
+        public SignalResult? CheckSignal(SignalStrategyContext context)
         {
             // 获取当日成交量
             double? currentVolume = context.GetVolume(0);

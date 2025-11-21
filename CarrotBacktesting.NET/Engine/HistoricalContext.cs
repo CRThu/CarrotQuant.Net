@@ -27,6 +27,7 @@ namespace CarrotBacktesting.NET.Engine
 
         public double? Close(int relativeOffset) => GetValue("close", relativeOffset);
         public double? High(int relativeOffset) => GetValue("high", relativeOffset);
+        public double? Low(int relativeOffset) => GetValue("low", relativeOffset);
         public double? Volume(int relativeOffset) => GetValue("volume", relativeOffset);
     }
 }

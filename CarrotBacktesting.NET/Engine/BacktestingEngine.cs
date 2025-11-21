@@ -82,16 +82,16 @@ namespace CarrotBacktesting.NET.Engine
                     context.CurrentIndex = i;
 
                     // 调用策略判断当前是否触发
-                    string? entryReason = strategy.CheckSignal(context);
+                    var entryResult = strategy.CheckSignal(context);
 
-                    bool currentSignalState = (entryReason != null);
+                    bool currentSignalState = (entryResult != null);
                     if (currentSignalState && !lastSignalState)
                     {
                         double price = context.GetClose(0) ?? 0;
                         if (price > 0)
                         {
                             // 只有在脉冲点才记录信号
-                            signals.Add(new Trade(history.StockCode, entryReason!, context.CurrentDate, price));
+                            signals.Add(new Trade(history.StockCode, entryResult!.Value.Group, entryResult!.Value.Reason, context.CurrentDate, price));
                         }
                     }
 
@@ -132,11 +132,11 @@ namespace CarrotBacktesting.NET.Engine
                     if (currentTrade == null)
                     {
                         // 【空仓状态】
-                        string? entryReason = strategy.CheckEntry(context);
-                        if (entryReason != null)
+                        SignalResult? entryResult = strategy.CheckEntry(context);
+                        if (entryResult != null)
                         {
                             // 开仓
-                            currentTrade = new Trade(history.StockCode, entryReason, context.CurrentDate, currentPrice);
+                            currentTrade = new Trade(history.StockCode, entryResult.Value.Group, entryResult.Value.Reason, context.CurrentDate, currentPrice);
                         }
                     }
                     else
@@ -145,10 +145,10 @@ namespace CarrotBacktesting.NET.Engine
                         // 1. 更新持仓状态
                         currentTrade.UpdateOnNewBar(context);
                         // 2. 检查平仓信号
-                        string? exitReason = strategy.CheckExit(context, currentTrade);
-                        if (exitReason != null)
+                        SignalResult? exitResult = strategy.CheckExit(context, currentTrade);
+                        if (exitResult != null)
                         {
-                            currentTrade.Close(exitReason, context.CurrentDate, currentPrice);
+                            currentTrade.Close(exitResult.Value.Group, exitResult.Value.Reason, context.CurrentDate, currentPrice);
                             completedTrades.Add(currentTrade);
                             currentTrade = null;// 恢复到空仓状态
                         }
