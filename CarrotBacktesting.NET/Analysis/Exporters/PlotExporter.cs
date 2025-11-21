@@ -27,23 +27,39 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             Console.WriteLine($"[PlotExporter] 开始生成图表，将保存到: {Path.GetFullPath(_plotDirectory)}");
 
             // a. 渲染 T+N 信号表现图
-            var signalReport = context.GetArtifact<SignalReport[]>();
-            if (signalReport != null && signalReport.Length > 0)
+            var signalResult = context.GetArtifact<SignalAnalysisResult>();
+            if (signalResult != null)
             {
-                _backtestDays = signalReport.Length;
-                CreatePerformanceOverviewPlot(signalReport, weighted: false);
-                CreatePerformanceOverviewPlot(signalReport, weighted: true);
-                CreateDistributionTimelinePlot(signalReport);
-                CreateHeatmapPlot(signalReport, weighted: false);
-                CreateHeatmapPlot(signalReport, weighted: true);
+                foreach (var groupName in signalResult.Groups.Keys)
+                {
+                    var reports = signalResult[groupName];
+                    if (reports.Length > 0)
+                    {
+                        _backtestDays = reports.Length;
+                        CreatePerformanceOverviewPlot(reports, groupName, weighted: false);
+                        CreatePerformanceOverviewPlot(reports, groupName, weighted: true);
+                        CreateDistributionTimelinePlot(reports, groupName);
+                        CreateHeatmapPlot(reports, groupName, weighted: false);
+                        CreateHeatmapPlot(reports, groupName, weighted: true);
+                    }
+                }
             }
 
             // b. 渲染交易月度表现图
-            var tradeReport = context.GetArtifact<TradeReport>();
-            if (tradeReport != null)
+            var tradeResult = context.GetArtifact<TradeAnalysisResult>();
+            if (tradeResult != null)
             {
-                var tradesForSignal = context.BacktestResult.Trades; // 获取用于匹配日期的交易列表
-                CreateMonthlyTradePerformancePlot(tradeReport, tradesForSignal);
+                var allTrades = context.BacktestResult.Trades;
+
+                foreach (var groupName in tradeResult.Groups.Keys)
+                {
+                    var report = tradeResult[groupName];
+
+                    var groupTrades = groupName == "Total"
+                        ? allTrades
+                        : allTrades.Where(t => t.EntryGroup == groupName).ToList();
+                    CreateMonthlyTradePerformancePlot(report, groupTrades, groupName);
+                }
             }
 
             Console.WriteLine("[PlotExporter] 图表生成完成。");
@@ -52,7 +68,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【信号表现概览图】
         /// </summary>
-        private void CreatePerformanceOverviewPlot(SignalReport[] reports, bool weighted = false)
+        private void CreatePerformanceOverviewPlot(SignalReport[] reports, string groupName, bool weighted = false)
         {
             if (reports.Length == 0) return;
 
@@ -77,13 +93,13 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             int signalCount = reports[0].ValidSignalCount;
 
-            string title = $"信号在 T+1 至 T+{reports.Length} 日的表现 (基于 {signalCount} 个信号, {modeLabel})";
+            string title = $"[{groupName}] 信号在 T+1 至 T+{reports.Length} 日的表现 (基于 {signalCount} 个信号, {modeLabel})";
             string xLabel = "持有天数 (T+N)";
             string yLabel = "收益率";
             string yRightLabel = "胜率";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel, yRightLabel, yTickFormat: "P1", rightTickFormat: "P1");
 
-            string plotPath = Path.Combine(_plotDirectory, $"1_信号表现概览图_{modeLabel}.png");
+            string plotPath = Path.Combine(_plotDirectory, $"[{groupName}] 1_信号表现概览图_{modeLabel}.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
         }
@@ -91,7 +107,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【信号收益分布与月度趋势图】
         /// </summary>
-        private void CreateDistributionTimelinePlot(SignalReport[] reports)
+        private void CreateDistributionTimelinePlot(SignalReport[] reports, string groupName)
         {
             if (reports.Length == 0) return;
 
@@ -105,7 +121,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             var scatterData = new List<(DateTime Date, double Return)>();
             for (int i = 0; i < bestReport.Returns.Count; i++)
             {
-                scatterData.Add((bestReport.Dates[i], bestReport.Returns[i]));
+                scatterData.Add((bestReport.Trades[i].EntryDate, bestReport.Returns[i]));
             }
 
             plot.Add.HorizontalLine(0, 1, Colors.Gray, LinePattern.DenselyDashed);
@@ -158,13 +174,13 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             int signalCount = reports[0].ValidSignalCount;
 
-            string title = $"信号在 T+{timelinePlotDay} 的收益分布与月度趋势 (基于 {signalCount} 个信号)";
+            string title = $"[{groupName}] 信号在 T+{timelinePlotDay} 的收益分布与月度趋势 (基于 {signalCount} 个信号)";
             string xLabel = "信号日期";
             string yLabel = $"月度统计收益率";
             string yRightLabel = $"单次信号收益率 (T+{timelinePlotDay})";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel, yRightLabel, yTickFormat: "P1", rightTickFormat: "P1");
 
-            string plotPath = Path.Combine(_plotDirectory, "2_信号收益分布与月度趋势图.png");
+            string plotPath = Path.Combine(_plotDirectory, $"[{groupName}] 2_信号收益分布与月度趋势图.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
         }
@@ -172,7 +188,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【收益率分布热力图】
         /// </summary>
-        private void CreateHeatmapPlot(SignalReport[] reports, bool weighted = false)
+        private void CreateHeatmapPlot(SignalReport[] reports, string groupName, bool weighted = false)
         {
             if (reports.Length == 0) return;
 
@@ -194,8 +210,8 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     weights = new double[r.ValidSignalCount];
 
                     // 按月分组索引
-                    var monthlyGroups = r.Dates
-                        .Select((date, index) => new { Date = date, Index = index })
+                    var monthlyGroups = r.Trades
+                        .Select((trade, index) => new { Date = trade.EntryDate, Index = index })
                         .GroupBy(x => new { x.Date.Year, x.Date.Month });
 
                     foreach (var group in monthlyGroups)
@@ -233,12 +249,12 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             string modeLabel = weighted ? "时间加权" : "信号加权";
 
-            string title = $"信号后 T+1 至 T+{_backtestDays} 日收益率分布热力图 (基于 {signalCount} 个信号, {modeLabel})";
+            string title = $"[{groupName}] 信号后 T+1 至 T+{_backtestDays} 日收益率分布热力图 (基于 {signalCount} 个信号, {modeLabel})";
             string xLabel = "持有天数";
             string yLabel = "收益率区间";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel);
 
-            string plotPath = Path.Combine(_plotDirectory, $"3_信号收益率分布热力图_{modeLabel}.png");
+            string plotPath = Path.Combine(_plotDirectory, $"[{groupName}] 3_信号收益率分布热力图_{modeLabel}.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
         }
@@ -246,7 +262,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制按月统计的交易表现图
         /// </summary>
-        private void CreateMonthlyTradePerformancePlot(TradeReport report, List<Trade> trades)
+        private void CreateMonthlyTradePerformancePlot(TradeReport report, List<Trade> trades, string groupName)
         {
             var result = report.MonthlyStats;
 
@@ -310,13 +326,13 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     linePattern: LinePattern.DenselyDashed);
             }
 
-            string title = $"按月统计交易表现 (基于 {trades.Count} 个信号)";
+            string title = $"[{groupName}] 按月统计交易表现 (基于 {trades.Count} 个信号)";
             string xLabel = "月份";
             string yLabel = "月度统计收益率";
             string rightLabel = "单次信号收益率";
             PlotHelper.SetStyle(plot, title, xLabel, yLabel, rightLabel, yTickFormat: "P1", rightTickFormat: "P1");
 
-            string plotPath = Path.Combine(_plotDirectory, "4_交易月度表现图.png");
+            string plotPath = Path.Combine(_plotDirectory, $"[{groupName}] 4_交易月度表现图.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
         }

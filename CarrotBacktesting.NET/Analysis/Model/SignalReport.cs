@@ -29,7 +29,7 @@ namespace CarrotBacktesting.NET.Analysis.Model
         /// <summary>
         /// 该收益率对应的时间。
         /// </summary>
-        public IReadOnlyList<DateTime> Dates { get; }
+        public IReadOnlyList<Trade> Trades { get; }
 
         /// <summary>
         /// 该持有天数下的原始收益率列表。
@@ -63,10 +63,10 @@ namespace CarrotBacktesting.NET.Analysis.Model
         /// 构造函数，在内部完成所有统计计算。
         /// </summary>
         /// <param name="returns">该天数对应的所有信号收益率列表</param>
-        public SignalReport(IEnumerable<(DateTime dates, double returns)> returns)
+        public SignalReport(IEnumerable<(Trade trade, double returns)> returns)
         {
             // 1. 保存原始数据
-            Dates = returns.Select(d => d.dates).ToList();
+            Trades = returns.Select(t => t.trade).ToList();
             var returnsList = returns.Select(r=>r.returns).ToList();
             Returns = returnsList;
 
@@ -78,9 +78,9 @@ namespace CarrotBacktesting.NET.Analysis.Model
             if (returnsList.Count > 0)
             {
                 // 将日期与当前 Horizon 的收益率对齐
-                var signalData = Dates.Zip(returnsList, (date, ret) => new
+                var signalData = Trades.Zip(returnsList, (trade, ret) => new
                 {
-                    Date = date,
+                    Date = trade.EntryDate,
                     Return = ret
                 });
 

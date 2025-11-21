@@ -26,22 +26,35 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             Directory.CreateDirectory(Path.GetDirectoryName(htmlPath)!);
 
             var recorder = new Recorder(AnsiConsole.Console);
-
-            var signalReport = context.GetArtifact<SignalReport[]>();
-            if (signalReport != null && signalReport.Length > 0)
+            var signalResult = context.GetArtifact<SignalAnalysisResult>();
+            if (signalResult != null)
             {
-                if (signalReport[0].Global.SignalCount == 0)
-                    AnsiConsole.MarkupLine("[yellow1][ConsoleExporter] 没有有效的信号报告可供输出。[/]");
-                else
-                    recorder.Write(new Rule("[bold blue]T+N 信号表现分析[/]").Centered());
+                foreach (var groupName in signalResult.Groups.Keys)
+                {
+                    var reports = signalResult[groupName];
+                    if (reports != null && reports.Length > 0)
+                    {
+                        if (reports[0].Global.SignalCount == 0)
+                            AnsiConsole.MarkupLine("[yellow1][ConsoleExporter] 没有有效的信号报告可供输出。[/]");
+                        else
+                            recorder.Write(new Rule("[bold blue]T+N 信号表现分析[/]").Centered());
 
-                RenderSignalReport(recorder, signalReport, context);
+                        RenderSignalReport(recorder, reports, groupName);
+                    }
+                }
             }
 
-            var tradeReport = context.GetArtifact<TradeReport>();
-            if (tradeReport != null)
+            var tradeResult = context.GetArtifact<TradeAnalysisResult>();
+            if (tradeResult != null)
             {
-                RenderTradeReport(recorder, tradeReport);
+                foreach (var groupName in tradeResult.Groups.Keys)
+                {
+                    var report = tradeResult[groupName];
+                    if (report != null)
+                    {
+                        RenderTradeReport(recorder, report, groupName);
+                    }
+                }
             }
 
             try
@@ -64,32 +77,32 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 专门渲染T+N信号表现报告
         /// </summary>
-        private void RenderSignalReport(IAnsiConsole console, SignalReport[] report, AnalysisContext context)
+        private void RenderSignalReport(IAnsiConsole console, SignalReport[] report, string groupName)
         {
             console.WriteLine();
 
-            PrintPeakAnalysis(console, report, weighted: false);
-            PrintDailySummary(console, report, weighted: false);
-            PrintMonthlyReturns(console, report);
+            PrintPeakAnalysis(console, report, groupName, weighted: false);
+            PrintDailySummary(console, report, groupName, weighted: false);
+            PrintMonthlyReturns(console, report, groupName);
 
-            PrintPeakAnalysis(console, report, weighted: true);
-            PrintDailySummary(console, report, weighted: true);
+            PrintPeakAnalysis(console, report, groupName, weighted: true);
+            PrintDailySummary(console, report, groupName, weighted: true);
         }
 
         /// <summary>
         /// 渲染交易分析的两个核心部分：总体摘要和月度统计。
         /// </summary>
-        private void RenderTradeReport(IAnsiConsole console, TradeReport report)
+        private void RenderTradeReport(IAnsiConsole console, TradeReport report, string groupName)
         {
-            RenderTradeSummaryReport(console, report);
-            RenderMonthlyPerformanceReport(console, report);
-            RenderExitTimingReport(console, report);
+            RenderTradeSummaryReport(console, report, groupName);
+            RenderMonthlyPerformanceReport(console, report, groupName);
+            RenderExitTimingReport(console, report, groupName);
         }
 
         /// <summary>
         /// 打印最佳持有期分析
         /// </summary>
-        private void PrintPeakAnalysis(IAnsiConsole console, SignalReport[] reports, bool weighted = false)
+        private void PrintPeakAnalysis(IAnsiConsole console, SignalReport[] reports, string groupName, bool weighted = false)
         {
             if (reports.Length == 0) return;
 
@@ -107,7 +120,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             int dayMaxMedian = Array.IndexOf(reports, bestMedianReport) + 1;
             int dayMaxWin = Array.IndexOf(reports, bestWinRateReport) + 1;
 
-            console.Write(new Rule($"策略最佳持有期分析 ({weightedText})"));
+            console.Write(new Rule($"[[{groupName}]] 策略最佳持有期分析 ({weightedText})"));
 
             console.MarkupLine($"平均收益率峰值: [springgreen3]{getPerf(bestAvgReport).AvgReturn:P2}[/] ([yellow1]T+{dayMaxAvg}[/], 当日胜率 [deepskyblue1]{getPerf(bestAvgReport).WinRate:P2}[/])");
             console.MarkupLine($"收益率中位数峰值: [springgreen3]{getPerf(bestMedianReport).MedianReturn:P2}[/] ([yellow1]T+{dayMaxMedian}[/], 当日胜率 [deepskyblue1]{getPerf(bestMedianReport).WinRate:P2}[/])");
@@ -126,7 +139,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 打印每日表现统计
         /// </summary>
-        private void PrintDailySummary(IAnsiConsole console, SignalReport[] reports, bool weighted = false)
+        private void PrintDailySummary(IAnsiConsole console, SignalReport[] reports, string groupName, bool weighted = false)
         {
             if (reports.Length == 0) return;
 
@@ -137,7 +150,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             string titleType = weighted ? "时间加权" : "信号加权";
             var table = new Table()
                 .Border(TableBorder.Rounded)
-                .Title($"策略在 T+1 至 T+{reports.Length} 期间的每日表现统计({titleType})")
+                .Title($"[[{groupName}]] 策略在 T+1 至 T+{reports.Length} 期间的每日表现统计({titleType})")
                 .Caption($"基于 {validCount} 个有效信号")
                 .AddColumn("持有天数")
                 .AddColumn(new TableColumn("平均收益率").RightAligned())
@@ -171,7 +184,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 打印 T+X 月度收益统计
         /// </summary>
-        private void PrintMonthlyReturns(IAnsiConsole console, SignalReport[] reports)
+        private void PrintMonthlyReturns(IAnsiConsole console, SignalReport[] reports, string groupName)
         {
             if (reports.Length == 0) return;
 
@@ -182,7 +195,7 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
             console.Write(new Rule());
             var table = new Table()
                 .Border(TableBorder.Rounded)
-                .Title($"策略信号在 T+{bestDay} 的月度表现统计")
+                .Title($"[[{groupName}]] 策略信号在 T+{bestDay} 的月度表现统计")
                 .AddColumn("月份")
                 .AddColumn(new TableColumn("信号数").RightAligned())
                 .AddColumn(new TableColumn("月度平均收益").RightAligned())
@@ -217,9 +230,9 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 渲染交易统计报告
         /// </summary>
-        private void RenderTradeSummaryReport(IAnsiConsole console, TradeReport report)
+        private void RenderTradeSummaryReport(IAnsiConsole console, TradeReport report, string groupName)
         {
-            console.Write(new Rule("核心交易性能指标"));
+            console.Write(new Rule($"[[{groupName}]] 核心交易性能指标"));
 
             var grid = new Grid()
                 .AddColumn(new GridColumn().RightAligned().PadRight(1)) // 键列：右对齐，右边距1
@@ -253,9 +266,9 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 渲染卖出时机/踏空分析报告
         /// </summary>
-        private void RenderExitTimingReport(IAnsiConsole console, TradeReport report)
+        private void RenderExitTimingReport(IAnsiConsole console, TradeReport report, string groupName)
         {
-            console.Write(new Rule("卖出时机分析 (平仓后T+N日表现)").Centered());
+            console.Write(new Rule($"[[{groupName}]] 卖出时机分析 (平仓后T+N日表现)").Centered());
 
             var table = new Table()
                 .Border(TableBorder.Rounded)
@@ -284,11 +297,11 @@ body { background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospa
         /// <summary>
         /// 渲染按月分组的交易表现报告
         /// </summary>
-        private void RenderMonthlyPerformanceReport(IAnsiConsole console, TradeReport report)
+        private void RenderMonthlyPerformanceReport(IAnsiConsole console, TradeReport report, string groupName)
         {
             if (report.MonthlyStats == null || !report.MonthlyStats.Any()) return;
 
-            console.Write(new Rule("[yellow bold]按月度统计交易表现[/]").Justify(Justify.Center));
+            console.Write(new Rule($"[[{groupName}]] [yellow bold]按月度统计交易表现[/]").Justify(Justify.Center));
 
             var table = new Table()
                 .Border(TableBorder.Rounded)

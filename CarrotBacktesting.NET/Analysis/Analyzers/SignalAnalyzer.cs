@@ -20,64 +20,82 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
         public string Name => nameof(SignalAnalyzer);
         private int _backtestDays;
 
-        /// <summary>
-        /// 执行分析的核心方法。
-        /// </summary>
         public void Analyze(AnalysisContext context)
         {
             _backtestDays = context.Config.Analysis.SignalAnalysisDays;
             var trades = context.BacktestResult.Trades;
+
             if (trades.Count == 0)
             {
                 Console.WriteLine("没有信号可供分析。");
                 return;
             }
 
-            // --- 第一步：计算详细的收益率矩阵 ---
-            Console.WriteLine($"开始为 {trades.Count} 个信号计算未来 {_backtestDays} 日的性能表现...");
-            var stopwatch = Stopwatch.StartNew();
-
-            // 存储结构：List<(DateTime, double[])>，外层是信号，内层是天数 [T+1, T+2, ..., T+N]
-            var allReturnsOverTime = new List<(DateTime dates, double[] returns)>(trades.Count);
-
-            // 目前只支持最高效的纵向数据模式
-            if (context.Data is HistoryStorage hs)
-            {
-                foreach (var trade in trades)
-                {
-                    if (hs.StockHistories.TryGetValue(trade.StockCode, out var history))
-                    {
-                        var returns = CalculateReturnsForSignal(trade, history);
-                        if (returns != null)
-                            allReturnsOverTime.Add((trade.EntryDate, returns));
-                    }
-                }
-            }
-            else
+            // 检查数据模式
+            if (context.Data is not HistoryStorage hs)
             {
                 throw new NotImplementedException("性能分析器当前仅在 TimeSeries 存储模式下高效运行。");
             }
 
-            // --- 第二步：数据透视 (Pivot) 与 报告生成 ---
-            // 将数据从 "按信号分组" 转换为 "按持有天数分组"
-            // 最终生成 SignalReport[]，索引 0 对应 T+1，索引 4 对应 T+5
+            Console.WriteLine($"开始执行信号分组分析 (未来 {_backtestDays} 日)...");
+            var stopwatch = Stopwatch.StartNew();
+
+            // 1. 预计算所有交易的收益率 (缓存层)
+            // 这样后续分组时不需要重复查询 HistoryStorage
+            var allReturnsCache = new List<(Trade trade, double[] returns)>(trades.Count);
+
+            foreach (var trade in trades)
+            {
+                if (hs.StockHistories.TryGetValue(trade.StockCode, out var history))
+                {
+                    var returns = CalculateReturnsForSignal(trade, history);
+                    if (returns != null)
+                        allReturnsCache.Add((trade, returns));
+                }
+            }
+
+            // 2. 准备结果容器
+            var finalResult = new SignalAnalysisResult();
+
+            // 3. 生成 [Total] 分组
+            if (allReturnsCache.Count > 1)
+            {
+                finalResult.Add("Total", GenerateReportsFromCache(allReturnsCache));
+            }
+
+            // 4. 生成各子分组
+            var subGroups = allReturnsCache
+                .Where(x => !string.IsNullOrEmpty(x.trade.EntryGroup) && x.trade.EntryGroup.ToLower() != "default")
+                .GroupBy(x => x.trade.EntryGroup);
+
+            foreach (var group in subGroups)
+            {
+                // group 是 IGrouping<string, (Trade, double[])>
+                // ToList() 后变成 List<(Trade, double[])>，正好可以直接传入生成方法
+                finalResult.Add(group.Key, GenerateReportsFromCache(group.ToList()));
+            }
+
+            stopwatch.Stop();
+            Console.WriteLine($"信号分析完成，共生成 {finalResult.Groups.Count} 个分组报告，耗时 {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
+
+            // 5. 存入 Context (使用强类型)
+            context.SetArtifact(finalResult);
+        }
+
+        /// <summary>
+        /// 核心逻辑：根据缓存的 (Trade, Returns) 列表生成 T+N 报告数组
+        /// </summary>
+        private SignalReport[] GenerateReportsFromCache(List<(Trade trade, double[] returns)> cacheSubset)
+        {
             var reports = new SignalReport[_backtestDays];
 
             for (int i = 0; i < _backtestDays; i++)
             {
-                // 提取所有信号在 T+(i+1) 这一天的收益率
-                var returnsForDay = allReturnsOverTime.Select(r => (r.dates, r.returns[i]));
-
-                // 创建该持有天数的独立报告
-                reports[i] = new SignalReport(returnsForDay);
+                var info = cacheSubset.Select(x => (x.trade, x.returns[i]));
+                reports[i] = new SignalReport(info);
             }
 
-            stopwatch.Stop();
-            Console.WriteLine($"性能分析完成，有效信号数: {allReturnsOverTime.Count}，耗时 {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
-
-            // --- 第三步：将报告列表存入上下文 ---
-            // 注意：现在存入的是 SignalReport[]
-            context.SetArtifact(reports);
+            return reports;
         }
 
         /// <summary>
