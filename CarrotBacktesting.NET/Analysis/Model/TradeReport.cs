@@ -90,6 +90,9 @@ namespace CarrotBacktesting.NET.Analysis.Model
         public TradeReport(List<Trade> trades, List<double[]>? exitTimingReturns, int exitTimingBacktestDays)
         {
             MonthlyStats = new List<MonthlyPerformanceStat>();
+            ExitTimingAvgReturns = Array.Empty<double>();
+            ExitTimingMedianReturns = Array.Empty<double>();
+            ExitTimingWinRates = Array.Empty<double>();
 
             if (trades == null || !trades.Any()) return;
 
