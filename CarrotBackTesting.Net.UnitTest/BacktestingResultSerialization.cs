@@ -22,15 +22,15 @@ namespace CarrotBacktesting.NET.UnitTest
             var result = new BacktestingResult();
            
             // 创建一笔已平仓的交易
-            var trade1 = new Trade("AAPL", "Entry", new DateTime(2025, 11, 01), 150.0);
-            trade1.Close("Exit", new DateTime(2025, 11, 05), 160.0);
+            var trade1 = new Trade("AAPL", "Default", "Entry", new DateTime(2025, 11, 01), 150.0);
+            trade1.Close("Default", "Exit", new DateTime(2025, 11, 05), 160.0);
 
             // 创建另一笔已平仓的交易
-            var trade2 = new Trade("GOOG", "Entry", new DateTime(2025, 10, 30), 2800.0);
-            trade2.Close("Exit", new DateTime(2025, 11, 10), 2750.0);
+            var trade2 = new Trade("GOOG", "Default", "Entry", new DateTime(2025, 10, 30), 2800.0);
+            trade2.Close("Default", "Exit", new DateTime(2025, 11, 10), 2750.0);
 
             // 创建一笔未平仓的交易
-            var trade3 = new Trade("MSFT", "Entry", new DateTime(2025, 11, 03), 300.0);
+            var trade3 = new Trade("MSFT", "Default", "Entry", new DateTime(2025, 11, 03), 300.0);
 
             // 以任意顺序添加到结果中
             result.Trades.Add(trade1);
