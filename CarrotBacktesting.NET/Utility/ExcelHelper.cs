@@ -124,26 +124,41 @@ namespace CarrotBacktesting.NET.Utility
         }
 
         /// <summary>
-        /// 插入图片并锚定到指定位置
+        /// 插入图片并缩放到适合指定的单元格范围
         /// </summary>
-        public static void InsertImage(IXLWorksheet ws, string? imagePath, int targetRow, int targetCol = 15, double scale = 0.4)
+        /// <param name="ws">工作表</param>
+        /// <param name="imagePath">图片路径</param>
+        /// <param name="fromRow">起始行</param>
+        /// <param name="fromCol">起始列</param>
+        /// <param name="toRow">结束行 (可选)</param>
+        /// <param name="toCol">结束列 (可选)</param>
+        public static void InsertImage(IXLWorksheet ws, string? imagePath, int fromRow, int fromCol, int? toRow = null, int? toCol = null)
         {
             if (string.IsNullOrEmpty(imagePath) || !File.Exists(imagePath))
             {
-                ws.Cell(targetRow, targetCol).Value = $"[图片缺失]: {imagePath ?? "null"}";
+                ws.Cell(fromRow, fromCol).Value = $"[图片缺失]: {imagePath ?? "null"}";
                 return;
             }
 
             try
             {
                 var image = ws.AddPicture(imagePath);
-                // 锚定到指定行列
-                image.MoveTo(ws.Cell(targetRow, targetCol));
-                image.Scale(scale);
+                var anchorCell = ws.Cell(fromRow, fromCol);
+                
+                if (toRow.HasValue && toCol.HasValue)
+                {
+                    // 如果指定了结束范围，锚定到范围
+                    image.MoveTo(anchorCell, ws.Cell(toRow.Value, toCol.Value));
+                }
+                else
+                {
+                    // 默认缩放到一个大概范围 (比如占据 15 行 x 6 列)
+                    image.MoveTo(anchorCell, ws.Cell(fromRow + 20, fromCol + 8));
+                }
             }
             catch (Exception ex)
             {
-                ws.Cell(targetRow, targetCol).Value = $"[图片插入失败]: {ex.Message}";
+                ws.Cell(fromRow, fromCol).Value = $"[图片插入失败]: {ex.Message}";
             }
         }
     }

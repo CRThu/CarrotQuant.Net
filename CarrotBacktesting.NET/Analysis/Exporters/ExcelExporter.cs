@@ -244,28 +244,24 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             ExcelHelper.ApplyColorScale(ws.Range(5, 2, 5 + reports.Length - 1, 2)); // 信号加权收益
             ExcelHelper.ApplyColorScale(ws.Range(5, 8, 5 + reports.Length - 1, 8)); // 时间加权收益
 
-            // --- 区域2: 可视化 Plots ---
+            // --- 区域3: 可视化 Plots ---
             int plotCol = 14; 
-            double plotScale = 0.28; // 稍微调小一点，防止重叠
-            int rowGap = 28; // 每张图间隔 28 行
+            int rowHeight = 22; // 每张图占据的行数
 
             // 1. 信号加权 T+N 概览
-            ExcelHelper.InsertImage(ws, context.GetFileArtifact($"Plot_{groupName}_Overview_Signal"), 3, plotCol, plotScale);
+            ExcelHelper.InsertImage(ws, context.GetFileArtifact($"Plot_{groupName}_Overview_Signal"), 3, plotCol, 3 + rowHeight - 2, plotCol + 10);
             
             // 2. 时间加权 T+N 概览
-            ExcelHelper.InsertImage(ws, context.GetFileArtifact($"Plot_{groupName}_Overview_Weighted"), 3 + rowGap, plotCol, plotScale);
+            ExcelHelper.InsertImage(ws, context.GetFileArtifact($"Plot_{groupName}_Overview_Weighted"), 3 + rowHeight, plotCol, 3 + rowHeight * 2 - 2, plotCol + 10);
             
             // 3. 信号加权分布热力图
-            ExcelHelper.InsertImage(ws, context.GetFileArtifact($"Plot_{groupName}_Heatmap_Signal"), 3 + rowGap * 2, plotCol, plotScale);
+            ExcelHelper.InsertImage(ws, context.GetFileArtifact($"Plot_{groupName}_Heatmap_Signal"), 3 + rowHeight * 2, plotCol, 3 + rowHeight * 3 - 2, plotCol + 10);
 
             // 4. 时间加权分布热力图
-            ExcelHelper.InsertImage(ws, context.GetFileArtifact($"Plot_{groupName}_Heatmap_Weighted"), 3 + rowGap * 3, plotCol, plotScale);
+            ExcelHelper.InsertImage(ws, context.GetFileArtifact($"Plot_{groupName}_Heatmap_Weighted"), 3 + rowHeight * 3, plotCol, 3 + rowHeight * 4 - 2, plotCol + 10);
 
+            // 自动列宽处理
             ws.Columns().AdjustToContents();
-            foreach (var col in ws.Columns())
-            {
-                if (col.Width > 20) col.Width = 20;
-            }
         }
 
         private void CreateMonthlyAnalysisSheet(XLWorkbook workbook, string groupName, SignalReport[] reports, AnalysisContext context)
@@ -301,9 +297,9 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             ExcelHelper.ApplyColorScale(ws.Range(4, 3, lastRow - 1, 3));
             
-            // 插入月度信号趋势图 (Timeline Plot)，这是用户要求的“信号月度图”
+            // 插入月度信号趋势图 (Timeline Plot)，缩放到合适范围
             string? signalTimelinePlot = context.GetFileArtifact($"Plot_{groupName}_Timeline");
-            ExcelHelper.InsertImage(ws, signalTimelinePlot, 3, 11, 0.35);
+            ExcelHelper.InsertImage(ws, signalTimelinePlot, 3, 11, 25, 20);
 
             ws.Columns().AdjustToContents();
         }
