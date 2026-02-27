@@ -15,13 +15,19 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
     public class ConsoleExporter : IExporter
     {
         public string Name => nameof(ConsoleExporter);
+        private bool _saveHtml = true;
+
+        public void Init(ExporterConfig config)
+        {
+            _saveHtml = config.SaveHtml;
+        }
 
         /// <summary>
         /// 导出器的入口方法
         /// </summary>
         public void Export(AnalysisContext context)
         {
-            string outputDir = context.Config.ResolvePath(context.Config.Out.Exporter);
+            string outputDir = context.Config.ResolvePath(context.Config.Out.Dir);
             string htmlPath = Path.Combine(outputDir, "summary.html");
             Directory.CreateDirectory(Path.GetDirectoryName(htmlPath)!);
 

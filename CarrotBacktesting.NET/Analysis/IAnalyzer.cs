@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using CarrotBacktesting.NET.Config.Model;
+using System;
 
 namespace CarrotBacktesting.NET.Analysis
 {
@@ -12,6 +9,11 @@ namespace CarrotBacktesting.NET.Analysis
     public interface IAnalyzer
     {
         string Name { get; }
+
+        /// <summary>
+        /// 初始化分析器，接受配置参数
+        /// </summary>
+        void Init(AnalyzerConfig config);
 
         /// <summary>
         /// 执行分析

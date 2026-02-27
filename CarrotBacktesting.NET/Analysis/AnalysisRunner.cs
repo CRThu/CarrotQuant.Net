@@ -1,13 +1,9 @@
-﻿using CarrotBacktesting.NET.Analysis.Analyzers;
-using CarrotBacktesting.NET.Analysis.Exporters;
-using CarrotBacktesting.NET.Config.Model;
+﻿using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Result;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Analysis
 {
@@ -21,32 +17,66 @@ namespace CarrotBacktesting.NET.Analysis
         {
             _context = new AnalysisContext(config, result, data);
 
-            // 根据配置动态构建分析器和导出器列表
-            if (config.Analysis.UseSignalAnalyzer)
-                _analyzers.Add(new SignalAnalyzer());
+            // 遍历配置中的分析器列表，动态实例化并初始化
+            foreach (var analyzerConfig in config.Analysis.Analyzers)
+            {
+                var analyzer = CreateInstance<IAnalyzer>(analyzerConfig.Type);
+                analyzer.Init(analyzerConfig);
+                _analyzers.Add(analyzer);
+            }
 
-            if (config.Analysis.UseTradeAnalyzer)
-                _analyzers.Add(new TradeAnalyzer());
+            // 遍历配置中的导出器列表，动态实例化并初始化
+            foreach (var exporterConfig in config.Analysis.Exporters)
+            {
+                var exporter = CreateInstance<IExporter>(exporterConfig.Type);
+                exporter.Init(exporterConfig);
+                _exporters.Add(exporter);
+            }
+        }
 
-            if (config.Analysis.UseConsoleExporter)
-                _exporters.Add(new ConsoleExporter());
+        /// <summary>
+        /// 动态创建实例的工厂方法
+        /// </summary>
+        private T CreateInstance<T>(string type) where T : class
+        {
+            var typeLower = type.ToLowerInvariant();
+            var fullName = typeof(T).FullName;
 
-            if (config.Analysis.UsePlotExporter)
-                _exporters.Add(new PlotExporter());
+            // 根据类型名称创建对应的实例
+            object? instance = typeLower switch
+            {
+                "signalanalyzer" => fullName == typeof(IAnalyzer).FullName ? new Analyzers.SignalAnalyzer() : null,
+                "tradeanalyzer" => fullName == typeof(IAnalyzer).FullName ? new Analyzers.TradeAnalyzer() : null,
+                "consoleexporter" => fullName == typeof(IExporter).FullName ? new Exporters.ConsoleExporter() : null,
+                "plotexporter" => fullName == typeof(IExporter).FullName ? new Exporters.PlotExporter() : null,
+                "signalexporter" => fullName == typeof(IExporter).FullName ? new Exporters.SignalExporter() : null,
+                "excelexporter" => fullName == typeof(IExporter).FullName ? new Exporters.ExcelExporter() : null,
+                _ => null
+            };
+
+            if (instance is not T result)
+            {
+                throw new InvalidOperationException($"无法创建类型 '{type}' 的实例: 未知的{typeof(T).Name}类型");
+            }
+
+            return result;
         }
 
         public void Run()
         {
             Console.WriteLine("\n--- 开始回测分析 ---");
+
             // 依次执行所有分析器
             foreach (var analyzer in _analyzers)
             {
+                Console.WriteLine($"[AnalysisRunner] 执行分析器: {analyzer.Name}");
                 analyzer.Analyze(_context);
             }
 
-            // 依次执行所有表现器
+            // 依次执行所有导出器
             foreach (var exporter in _exporters)
             {
+                Console.WriteLine($"[AnalysisRunner] 执行导出器: {exporter.Name}");
                 exporter.Export(_context);
             }
         }

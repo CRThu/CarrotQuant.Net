@@ -25,11 +25,9 @@ namespace CarrotBacktesting.NET.Demo
                     .LoadData()
 
                     .Run(new VolumeSignalStrategy())
-                    .SaveResult()
                     .Analyze();
 
                     //.Run(new PriceStrategy())
-                    //.SaveResult()
                     //.Analyze();
             }
             catch (Exception ex)

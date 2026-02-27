@@ -18,11 +18,15 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
     public class SignalAnalyzer : IAnalyzer
     {
         public string Name => nameof(SignalAnalyzer);
-        private int _backtestDays;
+        private int _backtestDays = 30;
+
+        public void Init(AnalyzerConfig config)
+        {
+            _backtestDays = config.Days;
+        }
 
         public void Analyze(AnalysisContext context)
         {
-            _backtestDays = context.Config.Analysis.SignalAnalysisDays;
             var trades = context.BacktestResult.Trades;
 
             if (trades.Count == 0)

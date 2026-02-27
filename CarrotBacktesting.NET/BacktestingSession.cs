@@ -127,41 +127,6 @@ namespace CarrotBacktesting.NET
             return this;
         }
 
-        /// <summary>
-        /// 将上一次运行的结果保存到文件。
-        /// </summary>
-        /// <returns>返回会话实例本身，以支持链式调用。</returns>
-        public BacktestingSession SaveResult()
-        {
-            if (Result == null)
-            {
-                Console.WriteLine("没有可供保存的回测结果。");
-                return this;
-            }
-            if (Result.Trades.Count == 0)
-            {
-                Console.WriteLine("没有产生任何交易。");
-                return this;
-            }
-
-            if (!string.IsNullOrWhiteSpace(Config.Out.Signal))
-            {
-                try
-                {
-                    string fileName = Config.ResolvePath(Config.Out.Signal);
-                    Directory.CreateDirectory(Path.GetDirectoryName(fileName)!);
-                    JsonSerializationHelper.SerializeToFile(Result.Trades, fileName);
-                    Console.WriteLine($"交易列表已自动保存到: {fileName}");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[错误] 保存交易文件失败: {ex.Message}");
-                }
-            }
-
-            return this;
-        }
-
 
         #region Summary Printers (摘要打印方法)
 

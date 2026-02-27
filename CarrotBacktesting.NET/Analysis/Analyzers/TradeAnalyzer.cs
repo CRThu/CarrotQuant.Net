@@ -1,17 +1,23 @@
 ﻿using CarrotBacktesting.NET.Analysis.Model;
+using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Result;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CarrotBacktesting.NET.Analysis.Analyzers
 {
     public class TradeAnalyzer : IAnalyzer
     {
         public string Name => nameof(TradeAnalyzer);
+        private int _exitTimingDays = 30;
+
+        public void Init(AnalyzerConfig config)
+        {
+            _exitTimingDays = config.ExitDays;
+        }
+
         public void Analyze(AnalysisContext context)
         {
             var trades = context.BacktestResult.Trades;
@@ -30,7 +36,7 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
             }
 
             var finalResult = new TradeAnalysisResult();
-            int exitTimingDays = context.Config.Analysis.SignalAnalysisDays;
+            int exitTimingDays = _exitTimingDays;
 
             // 1. 生成 [Total] 分组
             finalResult.Add("Total", GenerateReport(trades, hs, exitTimingDays));

@@ -26,6 +26,11 @@ namespace CarrotBacktesting.NET.Analysis
         /// </summary>
         private readonly Dictionary<string, object> _artifacts = new();
 
+        /// <summary>
+        /// 存储生成的物理文件路径，供后续 Exporter 消费
+        /// </summary>
+        private readonly Dictionary<string, string> _fileArtifacts = new();
+
         public AnalysisContext(EnvConfig config, BacktestingResult backtestResult, IDataStorage data)
         {
             Config = config;
@@ -51,6 +56,22 @@ namespace CarrotBacktesting.NET.Analysis
                 return artifact as T;
             }
             return null;
+        }
+
+        /// <summary>
+        /// 存储生成的物理文件路径
+        /// </summary>
+        public void SetFileArtifact(string key, string path)
+        {
+            _fileArtifacts[key] = path;
+        }
+
+        /// <summary>
+        /// 获取已存储的文件路径
+        /// </summary>
+        public string? GetFileArtifact(string key)
+        {
+            return _fileArtifacts.TryGetValue(key, out var path) ? path : null;
         }
     }
 }

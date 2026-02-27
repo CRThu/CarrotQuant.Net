@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.NET.Analysis.Model;
+using CarrotBacktesting.NET.Config.Model;
 using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Utility;
 using CarrotBacktesting.NET.Utility.ScottPlot;
@@ -17,16 +18,23 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         public string Name => nameof(PlotExporter);
         private string _plotDirectory = "plots";
         private int _backtestDays = 30;
+        private AnalysisContext? _context;
+
+        public void Init(ExporterConfig config)
+        {
+            _plotDirectory = config.Dir;
+        }
 
         public void Export(AnalysisContext context)
         {
-            // 确保输出目录存在
-            _plotDirectory = context.Config.ResolvePath(context.Config.Out.Exporter);
+            _context = context;
+
+            string baseDir = context.Config.ResolvePath(context.Config.Out.Dir);
+            _plotDirectory = Path.Combine(baseDir, _plotDirectory);
             Directory.CreateDirectory(_plotDirectory);
 
             Console.WriteLine($"[PlotExporter] 开始生成图表，将保存到: {Path.GetFullPath(_plotDirectory)}");
 
-            // a. 渲染 T+N 信号表现图
             var signalResult = context.GetArtifact<SignalAnalysisResult>();
             if (signalResult != null)
             {
@@ -36,16 +44,15 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     if (reports.Length > 0)
                     {
                         _backtestDays = reports.Length;
-                        CreatePerformanceOverviewPlot(reports, groupName, weighted: false);
-                        CreatePerformanceOverviewPlot(reports, groupName, weighted: true);
-                        CreateDistributionTimelinePlot(reports, groupName);
-                        CreateHeatmapPlot(reports, groupName, weighted: false);
-                        CreateHeatmapPlot(reports, groupName, weighted: true);
+                        CreatePerformanceOverviewPlot(context, reports, groupName, weighted: false);
+                        CreatePerformanceOverviewPlot(context, reports, groupName, weighted: true);
+                        CreateDistributionTimelinePlot(context, reports, groupName);
+                        CreateHeatmapPlot(context, reports, groupName, weighted: false);
+                        CreateHeatmapPlot(context, reports, groupName, weighted: true);
                     }
                 }
             }
 
-            // b. 渲染交易月度表现图
             var tradeResult = context.GetArtifact<TradeAnalysisResult>();
             if (tradeResult != null)
             {
@@ -58,7 +65,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     var groupTrades = groupName == "Total"
                         ? allTrades
                         : allTrades.Where(t => t.EntryGroup == groupName).ToList();
-                    CreateMonthlyTradePerformancePlot(report, groupTrades, groupName);
+                    CreateMonthlyTradePerformancePlot(context, report, groupTrades, groupName);
                 }
             }
 
@@ -68,19 +75,16 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
         /// <summary>
         /// 绘制【信号表现概览图】
         /// </summary>
-        private void CreatePerformanceOverviewPlot(SignalReport[] reports, string groupName, bool weighted = false)
+        private void CreatePerformanceOverviewPlot(AnalysisContext context, SignalReport[] reports, string groupName, bool weighted = false)
         {
             if (reports.Length == 0) return;
 
-            // 1. 定义数据选择器、模式标签和文件名后缀
             Func<SignalReport, SignalPerf> getPerf = weighted ? r => r.WeightedGlobal : r => r.Global;
             string modeLabel = weighted ? "时间加权" : "信号加权";
 
             var plot = new Plot();
-            // X轴：1, 2, ..., N
             double[] days = Enumerable.Range(1, reports.Length).Select(d => (double)d).ToArray();
 
-            // 从数组中提取各天数的全局指标
             double[] avgReturns = reports.Select(r => getPerf(r).AvgReturn).ToArray();
             double[] medianReturns = reports.Select(r => getPerf(r).MedianReturn).ToArray();
             double[] winRates = reports.Select(r => getPerf(r).WinRate).ToArray();
@@ -102,12 +106,15 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             string plotPath = Path.Combine(_plotDirectory, $"[{groupName}] 1_信号表现概览图_{modeLabel}.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
+
+            string key = $"Plot_{groupName}_Overview_{(weighted ? "Weighted" : "Signal")}";
+            context.SetFileArtifact(key, plotPath);
         }
 
         /// <summary>
         /// 绘制【信号收益分布与月度趋势图】
         /// </summary>
-        private void CreateDistributionTimelinePlot(SignalReport[] reports, string groupName)
+        private void CreateDistributionTimelinePlot(AnalysisContext context, SignalReport[] reports, string groupName)
         {
             if (reports.Length == 0) return;
 
@@ -170,7 +177,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     color: "#e67e22",
                     markerShape: MarkerShape.Eks,
                     linePattern: LinePattern.DenselyDashed);
-            }
+           }
 
             int signalCount = reports[0].ValidSignalCount;
 
@@ -183,12 +190,14 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             string plotPath = Path.Combine(_plotDirectory, $"[{groupName}] 2_信号收益分布与月度趋势图.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
+
+            context.SetFileArtifact($"Plot_{groupName}_Timeline", plotPath);
         }
 
         /// <summary>
         /// 绘制【收益率分布热力图】
         /// </summary>
-        private void CreateHeatmapPlot(SignalReport[] reports, string groupName, bool weighted = false)
+        private void CreateHeatmapPlot(AnalysisContext context, SignalReport[] reports, string groupName, bool weighted = false)
         {
             if (reports.Length == 0) return;
 
@@ -208,7 +217,6 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 {
                     // 默认 weights 为 null，对应 weighted = false (信号加权)
                     weights = new double[r.ValidSignalCount];
-
                     // 按月分组索引
                     var monthlyGroups = r.Trades
                         .Select((trade, index) => new { Date = trade.EntryDate, Index = index })
@@ -246,9 +254,7 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 annoFormat: "F1");
 
             int signalCount = reports[0].ValidSignalCount;
-
             string modeLabel = weighted ? "时间加权" : "信号加权";
-
             string title = $"[{groupName}] 信号后 T+1 至 T+{_backtestDays} 日收益率分布热力图 (基于 {signalCount} 个信号, {modeLabel})";
             string xLabel = "持有天数";
             string yLabel = "收益率区间";
@@ -257,15 +263,16 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             string plotPath = Path.Combine(_plotDirectory, $"[{groupName}] 3_信号收益率分布热力图_{modeLabel}.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
+
+            string key = $"Plot_{groupName}_Heatmap_{(weighted ? "Weighted" : "Signal")}";
+            context.SetFileArtifact(key, plotPath);
         }
 
         /// <summary>
         /// 绘制按月统计的交易表现图
         /// </summary>
-        private void CreateMonthlyTradePerformancePlot(TradeReport report, List<Trade> trades, string groupName)
+        private void CreateMonthlyTradePerformancePlot(AnalysisContext context, TradeReport report, List<Trade> trades, string groupName)
         {
-            var result = report.MonthlyStats;
-
             var plot = new Plot();
 
             // 准备散点图数据
@@ -288,7 +295,6 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                     color: "#2ecc71", alpha: 0.5,
                     yAxis: Edge.Right);
             }
-
             if (negativeReturns.Count != 0)
             {
                 PlotHelper.Scatter(plot,
@@ -335,6 +341,8 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             string plotPath = Path.Combine(_plotDirectory, $"[{groupName}] 4_交易月度表现图.png");
             Directory.CreateDirectory(Path.GetDirectoryName(plotPath)!);
             plot.SavePng(plotPath, 2880, 1720);
+
+            context.SetFileArtifact($"Plot_{groupName}_Monthly", plotPath);
         }
     }
 }

@@ -81,17 +81,39 @@ namespace CarrotBacktesting.NET.Config.Model
 
     public class OutConfig
     {
-        public string Signal { get; set; } = "signal.json";
-        public string Exporter { get; set; } = "report";
+        public string Dir { get; set; } = "report";
     }
 
     public class AnalysisConfig
     {
-        public int SignalAnalysisDays { get; set; } = 30;
-        public bool UseSignalAnalyzer { get; set; } = true;
-        public bool UseTradeAnalyzer { get; set; } = true;
-        public bool UseConsoleExporter { get; set; } = true;
-        public bool UsePlotExporter { get; set; } = true;
+        public List<AnalyzerConfig> Analyzers { get; set; } = new()
+        {
+            new() { Type = "SignalAnalyzer", Days = 30 },
+            new() { Type = "TradeAnalyzer", ExitDays = 30 }
+        };
+
+        public List<ExporterConfig> Exporters { get; set; } = new()
+        {
+            new() { Type = "ConsoleExporter", SaveHtml = true },
+            new() { Type = "PlotExporter", Dir = "plots" },
+            new() { Type = "SignalExporter", File = "signals.json" },
+            new() { Type = "ExcelExporter", File = "report.xlsx" }
+        };
+    }
+
+    public class AnalyzerConfig
+    {
+        public string Type { get; set; } = string.Empty;
+        public int Days { get; set; } = 30;
+        public int ExitDays { get; set; } = 30;
+    }
+
+    public class ExporterConfig
+    {
+        public string Type { get; set; } = string.Empty;
+        public bool SaveHtml { get; set; } = true;
+        public string Dir { get; set; } = string.Empty;
+        public string File { get; set; } = string.Empty;
     }
 
     public class FieldDefinition

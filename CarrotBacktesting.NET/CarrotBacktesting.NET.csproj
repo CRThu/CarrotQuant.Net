@@ -31,6 +31,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.104.1" />
     <PackageReference Include="MessagePack" Version="3.1.4" />
     <PackageReference Include="ScottPlot" Version="5.1.57" />
     <PackageReference Include="Spectre.Console" Version="0.53.0" />
