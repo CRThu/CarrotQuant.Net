@@ -262,6 +262,11 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             // 自动列宽处理
             ws.Columns().AdjustToContents();
+            // 针对可能的中文宽度计算偏差，额外增加一小段余量
+            foreach (var col in ws.Columns().Where(c => c.ColumnNumber() < plotCol))
+            {
+                col.Width += 2;
+            }
         }
 
         private void CreateMonthlyAnalysisSheet(XLWorkbook workbook, string groupName, SignalReport[] reports, AnalysisContext context)
@@ -302,6 +307,10 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             ExcelHelper.InsertImage(ws, signalTimelinePlot, 3, 11, 25, 20);
 
             ws.Columns().AdjustToContents();
+            foreach (var col in ws.Columns().Where(c => c.ColumnNumber() < 11))
+            {
+                col.Width += 2;
+            }
         }
 
         private void CreateAllTradesSheet(XLWorkbook workbook, AnalysisContext context)
@@ -348,6 +357,10 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             ws.RangeUsed().SetAutoFilter();
             ws.SheetView.FreezeRows(1);
             ws.Columns().AdjustToContents();
+            foreach (var col in ws.Columns())
+            {
+                col.Width += 2;
+            }
         }
 
         private void CreateExitTimingSheet(XLWorkbook workbook, string groupName, AnalysisContext context)
@@ -384,6 +397,10 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
 
             // 可视化辅助
             ws.Columns().AdjustToContents();
+            foreach (var col in ws.Columns())
+            {
+                col.Width += 2;
+            }
         }
     }
 }
