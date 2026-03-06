@@ -113,13 +113,13 @@ namespace CarrotBacktesting.NET
         /// <returns>返回会话实例本身</returns>
         public BacktestingSession Analyze()
         {
-            if (Result is null || Data is null)
+            if (Result is null || Data is null || Engine is null)
             {
-                Console.WriteLine("没有可供分析的结果或数据。");
+                Console.WriteLine("没有可供分析的结果或数据（请确保已运行回测）。");
                 return this;
             }
-
-            var runner = new AnalysisRunner(Config, Result, Data);
+ 
+            var runner = new AnalysisRunner(Config, Result, Data, Engine.StockHistories);
             runner.Run();
 
             PrintAnalysisSummary();

@@ -27,19 +27,11 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
                 return;
             }
 
-            // 检查数据模式
-            if (context.Data is not HistoryStorage hs)
-            {
-                // 如果不是 HistoryStorage，目前暂不进行深度分析，或者仅做基础统计
-                // 这里为了简化，假设必须是 HS
-                return;
-            }
-
             var finalResult = new TradeAnalysisResult();
             int exitTimingDays = _exitTimingDays;
 
             // 1. 生成 [Total] 分组
-            finalResult.Add("Total", GenerateReport(trades, hs, exitTimingDays));
+            finalResult.Add("Total", GenerateReport(trades, context.StockHistories, exitTimingDays));
 
             // 2. 生成各子分组
             var subGroups = trades
@@ -48,7 +40,7 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
 
             foreach (var group in subGroups)
             {
-                finalResult.Add(group.Key, GenerateReport(group.ToList(), hs, exitTimingDays));
+                finalResult.Add(group.Key, GenerateReport(group.ToList(), context.StockHistories, exitTimingDays));
             }
 
             // 3. 存入 Context
@@ -58,13 +50,10 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
         /// <summary>
         /// 核心逻辑：为指定的交易列表生成完整的交易报告
         /// </summary>
-        private TradeReport GenerateReport(List<Trade> tradesSubset, HistoryStorage historyStorage, int backtestDays)
+        private TradeReport GenerateReport(List<Trade> tradesSubset, IReadOnlyDictionary<string, StockHistory> stockHistories, int backtestDays)
         {
             // 计算卖点时机 (Exit Timing)
-            // 注意：这里对每个子集都重新计算了一次 ExitTiming。
-            // 虽然可以通过缓存优化，但考虑到已平仓交易数量通常远小于信号数量，
-            // 且 ExitTiming 计算量不大，直接重算代码更简洁。
-            var exitTimingReturns = CalculateExitTimingReturns(tradesSubset, historyStorage, backtestDays);
+            var exitTimingReturns = CalculateExitTimingReturns(tradesSubset, stockHistories, backtestDays);
 
             return new TradeReport(tradesSubset, exitTimingReturns, backtestDays);
         }
@@ -72,14 +61,14 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
         /// <summary>
         /// 计算所有平仓点之后的T+N日收益率。
         /// </summary>
-        private List<double[]> CalculateExitTimingReturns(List<Trade> trades, HistoryStorage historyStorage, int backtestDays)
+        private List<double[]> CalculateExitTimingReturns(List<Trade> trades, IReadOnlyDictionary<string, StockHistory> stockHistories, int backtestDays)
         {
             var allReturnsOverTime = new List<double[]>();
             var closedTrades = trades.Where(t => t.IsClosed && t.ExitDate.HasValue);
 
             foreach (var trade in closedTrades)
             {
-                if (historyStorage.StockHistories.TryGetValue(trade.StockCode, out var history))
+                if (stockHistories.TryGetValue(trade.StockCode, out var history))
                 {
                     int exitIndex = history.Dates.ToList().BinarySearch(trade.ExitDate!.Value);
                     if (exitIndex < 0) continue;

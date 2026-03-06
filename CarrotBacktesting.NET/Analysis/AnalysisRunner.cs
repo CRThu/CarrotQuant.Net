@@ -13,9 +13,9 @@ namespace CarrotBacktesting.NET.Analysis
         private readonly List<IAnalyzer> _analyzers = new();
         private readonly List<IExporter> _exporters = new();
 
-        public AnalysisRunner(EnvConfig config, BacktestingResult result, IDataStorage data)
+        public AnalysisRunner(EnvConfig config, BacktestingResult result, IDataStorage data, IReadOnlyDictionary<string, StockHistory> stockHistories)
         {
-            _context = new AnalysisContext(config, result, data);
+            _context = new AnalysisContext(config, result, data, stockHistories);
 
             // 遍历配置中的分析器列表，动态实例化并初始化
             foreach (var analyzerConfig in config.Analysis.Analyzers)

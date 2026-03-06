@@ -35,22 +35,15 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
                 return;
             }
 
-            // 检查数据模式
-            if (context.Data is not HistoryStorage hs)
-            {
-                throw new NotImplementedException("性能分析器当前仅在 TimeSeries 存储模式下高效运行。");
-            }
-
             Console.WriteLine($"开始执行信号分组分析 (未来 {_backtestDays} 日)...");
             var stopwatch = Stopwatch.StartNew();
 
             // 1. 预计算所有交易的收益率 (缓存层)
-            // 这样后续分组时不需要重复查询 HistoryStorage
             var allReturnsCache = new List<(Trade trade, double[] returns)>(trades.Count);
 
             foreach (var trade in trades)
             {
-                if (hs.StockHistories.TryGetValue(trade.StockCode, out var history))
+                if (context.StockHistories.TryGetValue(trade.StockCode, out var history))
                 {
                     var returns = CalculateReturnsForSignal(trade, history);
                     if (returns != null)
@@ -62,7 +55,7 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
             var finalResult = new SignalAnalysisResult();
 
             // 3. 生成 [Total] 分组
-            if (allReturnsCache.Count > 1)
+            if (allReturnsCache.Count > 0)
             {
                 finalResult.Add("Total", GenerateReportsFromCache(allReturnsCache));
             }
@@ -74,15 +67,13 @@ namespace CarrotBacktesting.NET.Analysis.Analyzers
 
             foreach (var group in subGroups)
             {
-                // group 是 IGrouping<string, (Trade, double[])>
-                // ToList() 后变成 List<(Trade, double[])>，正好可以直接传入生成方法
                 finalResult.Add(group.Key, GenerateReportsFromCache(group.ToList()));
             }
 
             stopwatch.Stop();
             Console.WriteLine($"信号分析完成，共生成 {finalResult.Groups.Count} 个分组报告，耗时 {stopwatch.Elapsed.TotalSeconds:F2} 秒。");
 
-            // 5. 存入 Context (使用强类型)
+            // 5. 存入 Context
             context.SetArtifact(finalResult);
         }
 

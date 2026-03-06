@@ -20,6 +20,11 @@ namespace CarrotBacktesting.NET.Analysis
         public IDataStorage Data { get; }
 
         /// <summary>
+        /// 全局对齐的股票历史序列
+        /// </summary>
+        public IReadOnlyDictionary<string, StockHistory> StockHistories { get; }
+
+        /// <summary>
         /// 存储各个分析器产出物的通用字典。
         /// Key: 产出物的类型名 (e.g., "ForwardReturnsResult")
         /// Value: 产出物实例
@@ -31,11 +36,12 @@ namespace CarrotBacktesting.NET.Analysis
         /// </summary>
         private readonly Dictionary<string, string> _fileArtifacts = new();
 
-        public AnalysisContext(EnvConfig config, BacktestingResult backtestResult, IDataStorage data)
+        public AnalysisContext(EnvConfig config, BacktestingResult backtestResult, IDataStorage data, IReadOnlyDictionary<string, StockHistory> stockHistories)
         {
             Config = config;
             BacktestResult = backtestResult;
             Data = data;
+            StockHistories = stockHistories;
         }
 
         /// <summary>

@@ -1,4 +1,5 @@
 ﻿using CarrotBacktesting.NET.Data;
+using CarrotBacktesting.NET.Result;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,6 +24,16 @@ namespace CarrotBacktesting.NET.Engine
         public int CurrentIndex { get; set; }
 
         /// <summary>
+        /// 信号回测状态 (脉冲判断)
+        /// </summary>
+        public bool LastSignalState { get; set; }
+
+        /// <summary>
+        /// 交易回测状态 (持仓模拟)
+        /// </summary>
+        public Trade? CurrentTrade { get; set; }
+
+        /// <summary>
         /// 当前计算点的时间
         /// </summary>
         public DateTime CurrentDate => Series.Dates[CurrentIndex];
@@ -42,7 +53,8 @@ namespace CarrotBacktesting.NET.Engine
             int index = CurrentIndex + offset;
             if (index >= 0 && index < Series.Data.Count)
             {
-                return Series.Data[index];
+                var frame = Series.Data[index];
+                return frame;
             }
             return null;
         }

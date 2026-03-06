@@ -24,18 +24,28 @@ namespace CarrotBacktesting.NET.Engine
         /// 引擎内部统一使用纵向的StockHistory列表进行计算
         /// </summary>
         private readonly List<StockHistory> _stockHistories;
+        private readonly IReadOnlyDictionary<string, StockHistory> _stockHistoryDict;
+
+        /// <summary>
+        /// 对齐后的个股历史数据字典 (v4.7 高性能缓存)
+        /// </summary>
+        public IReadOnlyDictionary<string, StockHistory> StockHistories => _stockHistoryDict;
+
+        private readonly IDataStorage _data;
 
         /// <summary>
         /// 构造回测引擎
         /// </summary>
-        /// <param name="data">加载完毕的市场数据，可以是任意实现IDataStorage的类型</param>
+        /// <param name="data">加载完毕的市场数据，跨越多只股票</param>
         public BacktestingEngine(IDataStorage data, EnvConfig config)
         {
             _config = config;
+            _data = data;
 
             Console.WriteLine("Initializing backtesting engine...");
 
             _stockHistories = StorageConverter.ToStockHistories(data);
+            _stockHistoryDict = _stockHistories.ToDictionary(h => h.StockCode);
 
             Console.WriteLine("Engine ready.");
         }
@@ -70,40 +80,60 @@ namespace CarrotBacktesting.NET.Engine
             var result = new BacktestingResult();
             var signals = new ConcurrentBag<Trade>();
 
+            var contexts = _stockHistories.Select(h => new SignalStrategyContext(h)).ToList();
+            int totalDays = _data.TradeDates.Count;
 
-            Parallel.ForEach(_stockHistories, history =>
+            if (_config.Data.Mode == StorageMode.TimeSeries)
             {
-                if (history.Data.Count == 0) return;
-                var context = new SignalStrategyContext(history);
-                bool lastSignalState = false;
-
-                for (int i = 0; i < history.Data.Count; i++)
+                // 纵向路径 (先股后天)
+                Parallel.ForEach(contexts, ctx =>
                 {
-                    context.CurrentIndex = i;
-
-                    // 调用策略判断当前是否触发
-                    var entryResult = strategy.CheckSignal(context);
-
-                    bool currentSignalState = (entryResult != null);
-                    if (currentSignalState && !lastSignalState)
+                    for (int i = 0; i < totalDays; i++)
                     {
-                        double price = context.GetClose(0) ?? 0;
-                        if (price > 0)
-                        {
-                            // 只有在脉冲点才记录信号
-                            signals.Add(new Trade(history.StockCode, entryResult!.Value.Group, entryResult!.Value.Reason, context.CurrentDate, price));
-                        }
+                        ExecuteSignalLogic(ctx, i, strategy, signals);
                     }
-
-                    // 更新上次触发状态
-                    lastSignalState = currentSignalState;
+                });
+            }
+            else
+            {
+                // 横向路径 (先天后股)
+                for (int i = 0; i < totalDays; i++)
+                {
+                    int dayIndex = i;
+                    Parallel.ForEach(contexts, ctx =>
+                    {
+                        ExecuteSignalLogic(ctx, dayIndex, strategy, signals);
+                    });
                 }
-            });
+            }
 
-            result.Trades.AddRange(signals.OrderBy(t => t.EntryDate));
+            result.Trades.AddRange(signals.OrderBy(t => t.EntryDate).ThenBy(t => t.StockCode));
             stopwatch.Stop();
             Console.WriteLine($"信号生成结束，共产生 {result.Trades.Count} 个买入信号，耗时: {stopwatch.Elapsed.TotalSeconds:F3} 秒。");
             return result;
+        }
+
+        private void ExecuteSignalLogic(SignalStrategyContext ctx, int i, ISignalStrategy strategy, ConcurrentBag<Trade> signals)
+        {
+            ctx.CurrentIndex = i;
+            if (ctx.GetFrame(0)?.Status == TradeStatus.Halted) return;
+
+            // 调用策略判断当前是否触发
+            var entryResult = strategy.CheckSignal(ctx);
+
+            bool currentSignalState = (entryResult != null);
+            if (currentSignalState && !ctx.LastSignalState)
+            {
+                double price = ctx.GetClose(0) ?? 0;
+                if (price > 0)
+                {
+                    // 只有在脉冲点才记录信号
+                    signals.Add(new Trade(ctx.Series.StockCode, entryResult!.Value.Group, entryResult!.Value.Reason, ctx.CurrentDate, price));
+                }
+            }
+
+            // 更新上次触发状态
+            ctx.LastSignalState = currentSignalState;
         }
 
         private BacktestingResult RunTrade(ITradeStrategy strategy)
@@ -112,62 +142,78 @@ namespace CarrotBacktesting.NET.Engine
             var stopwatch = Stopwatch.StartNew();
             var result = new BacktestingResult();
             var completedTrades = new ConcurrentBag<Trade>();
-            var openTrades = new ConcurrentBag<Trade>();
 
-            // 引擎的核心计算逻辑总是基于高效的纵向数据(_stockHistories)
-            Parallel.ForEach(_stockHistories, history =>
+            var contexts = _stockHistories.Select(h => new SignalStrategyContext(h)).ToList();
+            int totalDays = _data.TradeDates.Count;
+
+            if (_config.Data.Mode == StorageMode.TimeSeries)
             {
-                if (history.Data.Count == 0) return;
-
-                Trade? currentTrade = null;
-                var context = new SignalStrategyContext(history);
-
-                // 开始循环
-                for (int i = 0; i < history.Data.Count; i++)
+                // 纵向路径 (先股后天)
+                Parallel.ForEach(contexts, ctx =>
                 {
-                    context.CurrentIndex = i;
-                    double currentPrice = context.GetClose(0) ?? 0;
-                    if (currentPrice <= 0) continue; // 价格无效，跳过
-
-                    if (currentTrade == null)
+                    for (int i = 0; i < totalDays; i++)
                     {
-                        // 【空仓状态】
-                        SignalResult? entryResult = strategy.CheckEntry(context);
-                        if (entryResult != null)
-                        {
-                            // 开仓
-                            currentTrade = new Trade(history.StockCode, entryResult.Value.Group, entryResult.Value.Reason, context.CurrentDate, currentPrice);
-                        }
+                        ExecuteTradeLogic(ctx, i, strategy, completedTrades);
                     }
-                    else
-                    {
-                        // 【持仓状态】
-                        // 1. 更新持仓状态
-                        currentTrade.UpdateOnNewBar(context);
-                        // 2. 检查平仓信号
-                        SignalResult? exitResult = strategy.CheckExit(context, currentTrade);
-                        if (exitResult != null)
-                        {
-                            currentTrade.Close(exitResult.Value.Group, exitResult.Value.Reason, context.CurrentDate, currentPrice);
-                            completedTrades.Add(currentTrade);
-                            currentTrade = null;// 恢复到空仓状态
-                        }
-
-                    }
-                }
-                if (currentTrade != null)
+                    if (ctx.CurrentTrade != null) completedTrades.Add(ctx.CurrentTrade);
+                });
+            }
+            else
+            {
+                // 横向路径 (先天后股)
+                for (int i = 0; i < totalDays; i++)
                 {
-                    openTrades.Add(currentTrade);
+                    int dayIndex = i;
+                    Parallel.ForEach(contexts, ctx =>
+                    {
+                        ExecuteTradeLogic(ctx, dayIndex, strategy, completedTrades);
+                    });
                 }
-            });
+                // 最后收割所有未平仓
+                foreach (var ctx in contexts)
+                {
+                    if (ctx.CurrentTrade != null) completedTrades.Add(ctx.CurrentTrade);
+                }
+            }
 
-            result.Trades.AddRange(completedTrades.OrderBy(t => t.EntryDate));
-            result.Trades.AddRange(openTrades.OrderBy(t => t.EntryDate));
+            result.Trades.AddRange(completedTrades.OrderBy(t => t.EntryDate).ThenBy(t => t.StockCode));
             stopwatch.Stop();
-            Console.WriteLine($"交易模拟结束，共产生 {result.Trades.Count} 笔交易 " +
-                $"({completedTrades.Count} 已平仓, {openTrades.Count} 未平仓)，" +
-                $"耗时: {stopwatch.Elapsed.TotalSeconds:F3} 秒。");
+            Console.WriteLine($"交易模拟结束，共产生 {result.Trades.Count} 笔交易，耗时: {stopwatch.Elapsed.TotalSeconds:F3} 秒。");
             return result;
+        }
+
+        private void ExecuteTradeLogic(SignalStrategyContext ctx, int i, ITradeStrategy strategy, ConcurrentBag<Trade> completedTrades)
+        {
+            ctx.CurrentIndex = i;
+            if (ctx.GetFrame(0)?.Status == TradeStatus.Halted) return;
+
+            double currentPrice = ctx.GetClose(0) ?? 0;
+            if (currentPrice <= 0) return;
+
+            if (ctx.CurrentTrade == null)
+            {
+                // 【空仓状态】
+                SignalResult? entryResult = strategy.CheckEntry(ctx);
+                if (entryResult != null)
+                {
+                    // 开仓
+                    ctx.CurrentTrade = new Trade(ctx.Series.StockCode, entryResult.Value.Group, entryResult.Value.Reason, ctx.CurrentDate, currentPrice);
+                }
+            }
+            else
+            {
+                // 【持仓状态】
+                // 1. 更新持仓状态
+                ctx.CurrentTrade.UpdateOnNewBar(ctx);
+                // 2. 检查平仓信号
+                SignalResult? exitResult = strategy.CheckExit(ctx, ctx.CurrentTrade);
+                if (exitResult != null)
+                {
+                    ctx.CurrentTrade.Close(exitResult.Value.Group, exitResult.Value.Reason, ctx.CurrentDate, currentPrice);
+                    completedTrades.Add(ctx.CurrentTrade);
+                    ctx.CurrentTrade = null; // 恢复到空仓状态
+                }
+            }
         }
     }
 }

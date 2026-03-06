@@ -33,6 +33,7 @@ namespace CarrotBacktesting.NET.Data
         public IDataStorage Build()
         {
             var stockHistories = new Dictionary<string, StockHistory>();
+            var globalTradeDates = _globalDates.OrderBy(d => d).ToList();
 
             foreach (var kvp in _tempData)
             {
@@ -40,15 +41,33 @@ namespace CarrotBacktesting.NET.Data
                 // 按日期对每支股票的数据进行排序
                 var sortedData = kvp.Value.OrderBy(d => d.Item1).ToList();
 
-                var dates = sortedData.Select(d => d.Item1).ToList();
-                var frames = sortedData.Select(d => d.Item2).ToList();
+                var alignedDates = new List<DateTime>(globalTradeDates.Count);
+                var alignedFrames = new List<StockFrame>(globalTradeDates.Count);
 
-                stockHistories[stockCode] = new StockHistory(stockCode, dates, frames);
+                int sourceIdx = 0;
+                // 双指针对齐算法
+                for (int i = 0; i < globalTradeDates.Count; i++)
+                {
+                    DateTime targetDate = globalTradeDates[i];
+                    alignedDates.Add(targetDate);
+
+                    if (sourceIdx < sortedData.Count && sortedData[sourceIdx].Item1 == targetDate)
+                    {
+                        // 匹配日期
+                        alignedFrames.Add(sortedData[sourceIdx].Item2);
+                        sourceIdx++;
+                    }
+                    else
+                    {
+                        // 缺失日期，填充停牌帧
+                        alignedFrames.Add(new StockFrame(0, 0, 0, 0, 0, TradeStatus.Halted));
+                    }
+                }
+
+                stockHistories[stockCode] = new StockHistory(stockCode, alignedDates, alignedFrames);
             }
 
-            var tradeDates = _globalDates.OrderBy(d => d).ToList();
-
-            return new HistoryStorage(stockHistories, tradeDates);
+            return new HistoryStorage(stockHistories, globalTradeDates);
         }
     }
 }
