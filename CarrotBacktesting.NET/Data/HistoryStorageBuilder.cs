@@ -45,7 +45,8 @@ namespace CarrotBacktesting.NET.Data
                 var alignedFrames = new List<StockFrame>(globalTradeDates.Count);
 
                 int sourceIdx = 0;
-                // 双指针对齐算法
+                StockFrame? lastValidFrame = null;
+                // 双指针对齐算法 (v4.8 Forward Fill 优化)
                 for (int i = 0; i < globalTradeDates.Count; i++)
                 {
                     DateTime targetDate = globalTradeDates[i];
@@ -53,14 +54,26 @@ namespace CarrotBacktesting.NET.Data
 
                     if (sourceIdx < sortedData.Count && sortedData[sourceIdx].Item1 == targetDate)
                     {
-                        // 匹配日期
-                        alignedFrames.Add(sortedData[sourceIdx].Item2);
+                        // 匹配日期，更新最近有效帧
+                        var frame = sortedData[sourceIdx].Item2;
+                        alignedFrames.Add(frame);
+                        lastValidFrame = frame;
                         sourceIdx++;
                     }
                     else
                     {
-                        // 缺失日期，填充停牌帧
-                        alignedFrames.Add(new StockFrame(0, 0, 0, 0, 0, TradeStatus.Halted));
+                        // 缺失日期/停牌，依据 Forward Fill 策略补全
+                        if (lastValidFrame.HasValue)
+                        {
+                            double lastClose = lastValidFrame.Value.Close;
+                            // 价格向前填充，成交量为 0，状态为 Halted
+                            alignedFrames.Add(new StockFrame(lastClose, lastClose, lastClose, lastClose, 0, TradeStatus.Halted));
+                        }
+                        else
+                        {
+                            // 上市前无有效价格，填充零值
+                            alignedFrames.Add(new StockFrame(0, 0, 0, 0, 0, TradeStatus.Halted));
+                        }
                     }
                 }
 
