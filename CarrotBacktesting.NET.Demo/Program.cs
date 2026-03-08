@@ -23,7 +23,8 @@ namespace CarrotBacktesting.NET.Demo
                 string configPath = ".\\CarrotQuant.Data\\v3\\yaml\\env.yaml";
                 BacktestingSession.Create(configPath)
                     .LoadData()
-                    .Run(new MarketHeatStrategy())
+                    .Run(new MarketTrendStrategy())
+                    //.Run(new MarketHeatStrategy())
                     //.Run(new VolumeSignalStrategy())
                     //.Run(new PriceStrategy())
                     .Analyze();
