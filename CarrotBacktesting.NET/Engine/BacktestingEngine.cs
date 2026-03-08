@@ -68,23 +68,27 @@ namespace CarrotBacktesting.NET.Engine
             }
 
             // 2. 管线分支：根据策略核心职责执行对应的回测循环
-            return strategy switch
+            var result = strategy switch
             {
                 ITradeStrategy tradeStrategy => RunTrade(tradeStrategy),
                 ISignalStrategy signalStrategy => RunSignal(signalStrategy),
                 IMarketStrategy => HandleMarketOnlyRun(),
                 _ => throw new ArgumentException($"策略 '{strategy.Name}' 未实现任何支持的执行接口 (ITradeStrategy/ISignalStrategy)。")
             };
+
+            // 3. 注入每日市场结果 (v4.1)
+            result.DailyMarketResults = _marketCache;
+            return result;
         }
 
         private BacktestingResult HandleMarketOnlyRun()
         {
             Console.WriteLine("Strategy is strictly Market-based. Pipeline execution finished.");
-            return new BacktestingResult();
+            return new BacktestingResult(new List<Trade>(), _marketCache);
         }
 
         /// <summary>
-        /// 预执行市场扫描，并缓存每日市场结果
+        /// 预执行市场扫描，并缓存每日市场结果 (v4.2 矩阵切片重构)
         /// </summary>
         private void PreScanMarket(IMarketStrategy marketStrategy)
         {
@@ -92,23 +96,36 @@ namespace CarrotBacktesting.NET.Engine
             Console.WriteLine($"[Pipeline] 正在计算市场宏观环境: {marketStrategy.Name}");
             var stopwatch = Stopwatch.StartNew();
 
-            foreach (var date in _data.TradeDates)
+            int totalDays = _data.TradeDates.Count;
+            int stockCount = _stockHistories.Count;
+
+            for (int i = 0; i < totalDays; i++)
             {
-                MarketFrame? frame = null;
-                if (_data is MarketStorage storage)
+                DateTime date = _data.TradeDates[i];
+
+                // 核心逻辑：从矩阵中切出当天的所有股票数据 (基于全局日期对齐契约)
+                StockFrame?[] primaryData = new StockFrame?[stockCount];
+                for (int s = 0; s < stockCount; s++)
                 {
-                    storage.TryGetFrame(date, out frame);
+                    // 因为已经对齐，下标 i 绝对是同一天
+                    // 如果个股数据长度不足，说明该股在较早时间点无数据，StockFrame 保持为 null
+                    if (i < _stockHistories[s].Data.Count)
+                    {
+                        primaryData[s] = _stockHistories[s].Data[i];
+                    }
                 }
 
-                var context = new MarketStrategyContext(date, frame, _data);
-                
-                // 直接多态调用，无需任何反射
+                // 构建虚拟横截面，传给策略
+                var virtualFrame = new MarketFrame(date, primaryData, new(), new());
+                var context = new MarketStrategyContext(date, virtualFrame, _data);
+
                 var result = marketStrategy.CheckMarket(context);
                 if (result != null)
                 {
                     _marketCache[date] = result;
                 }
             }
+
             stopwatch.Stop();
             Console.WriteLine($"[Pipeline] 市场决策缓存构建完成，处理日期: {_marketCache.Count}，耗时: {stopwatch.Elapsed.TotalSeconds:F3}s.");
         }

@@ -54,6 +54,9 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             // C. 建立 All_Trades (全量流水)
             CreateAllTradesSheet(workbook, context);
 
+            // D. 建立 Market_Daily (宏观日报) (v4.1)
+            CreateMarketDailySheet(workbook, context);
+
             workbook.SaveAs(filePath);
             Console.WriteLine($"[ExcelExporter] Excel 整合报表 (v3.2) 已保存至: {Path.GetFullPath(filePath)}");
         }
@@ -429,6 +432,68 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
             ExcelHelper.ApplyColorScale(ws.Range(4, 2, lastRow - 1, 2));
 
             // 可视化辅助
+            ws.Columns().AdjustToContents();
+            foreach (var col in ws.Columns())
+            {
+                col.Width += 2;
+            }
+        }
+
+        private void CreateMarketDailySheet(XLWorkbook workbook, AnalysisContext context)
+        {
+            var results = context.BacktestResult.DailyMarketResults;
+            if (results == null || results.Count == 0) return;
+
+            var ws = workbook.Worksheets.Add("Market_Daily");
+
+            // 1. 基础表头
+            var headerList = new List<string> { "日期", "市场偏向", "是否剪枝" };
+
+            // 2. 动态 Trace 表头 (通过反射)
+            var sortedDates = results.Keys.OrderBy(d => d).ToList();
+            var firstTrace = results.Values.Select(r => r.GetStateRaw()).FirstOrDefault(s => s != null);
+            PropertyInfo[] traceProps = Array.Empty<PropertyInfo>();
+            if (firstTrace != null)
+            {
+                traceProps = firstTrace.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var prop in traceProps)
+                {
+                    var displayAttr = prop.GetCustomAttribute<DisplayAttribute>();
+                    headerList.Add(displayAttr?.Name ?? prop.Name);
+                }
+            }
+
+            string[] headers = headerList.ToArray();
+
+            ExcelHelper.WriteTable(ws, 1, 1, headers, sortedDates, (row, date) =>
+            {
+                var r = results[date];
+                row.Cell(1).Value = date;
+                row.Cell(1).Style.DateFormat.Format = "yyyy-MM-dd";
+                row.Cell(2).Value = r.Bias.ToString();
+                row.Cell(3).Value = r.SkipAlpha ? "是" : "否";
+
+                // 3. 填充动态 Trace 列
+                var state = r.GetStateRaw();
+                if (traceProps.Length > 0 && state != null)
+                {
+                    for (int i = 0; i < traceProps.Length; i++)
+                    {
+                        var val = traceProps[i].GetValue(state);
+                        if (val != null)
+                        {
+                            row.Cell(4 + i).Value = XLCellValue.FromObject(val);
+                        }
+                        else
+                        {
+                            row.Cell(4 + i).Value = "-";
+                        }
+                    }
+                }
+            });
+
+            ws.RangeUsed().SetAutoFilter();
+            ws.SheetView.FreezeRows(1);
             ws.Columns().AdjustToContents();
             foreach (var col in ws.Columns())
             {
