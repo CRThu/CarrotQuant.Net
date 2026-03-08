@@ -48,7 +48,7 @@ namespace CarrotBacktesting.NET.Engine
         /// </summary>
         /// <typeparam name="T">自定义状态类型</typeparam>
         /// <returns>状态对象，若类型不匹配或为空则返回null</returns>
-        public T? MarketState<T>() where T : class
+        public T? MarketState<T>() where T : class,new()
         {
             return (Market as MarketResult<T>)?.State;
         }
