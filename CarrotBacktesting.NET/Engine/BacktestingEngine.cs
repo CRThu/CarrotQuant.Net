@@ -183,7 +183,9 @@ namespace CarrotBacktesting.NET.Engine
                 if (price > 0)
                 {
                     // 只有在脉冲点才记录信号
-                    signals.Add(new Trade(ctx.Series.StockCode, entryResult!.Value.Group, entryResult!.Value.Reason, ctx.CurrentDate, price));
+                    var trade = new Trade(ctx.Series.StockCode, entryResult!.Value.Group, entryResult!.Value.Reason, ctx.CurrentDate, price);
+                    trade.MarketSnapshot = ctx.Market?.GetStateRaw();
+                    signals.Add(trade);
                 }
             }
 
@@ -264,7 +266,9 @@ namespace CarrotBacktesting.NET.Engine
                 if (entryResult != null)
                 {
                     // 开仓
-                    ctx.CurrentTrade = new Trade(ctx.Series.StockCode, entryResult.Value.Group, entryResult.Value.Reason, ctx.CurrentDate, currentPrice);
+                    var trade = new Trade(ctx.Series.StockCode, entryResult.Value.Group, entryResult.Value.Reason, ctx.CurrentDate, currentPrice);
+                    trade.MarketSnapshot = ctx.Market?.GetStateRaw();
+                    ctx.CurrentTrade = trade;
                 }
             }
             else

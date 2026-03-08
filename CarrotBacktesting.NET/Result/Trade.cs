@@ -70,6 +70,10 @@ namespace CarrotBacktesting.NET.Result
         /// 持仓期间遇到的最高收盘价
         /// </summary>
         [Key(11)] public double HighestPriceSinceEntry { get; private set; }
+        /// <summary>
+        /// 市场快照数据 (Trace 数据)
+        /// </summary>
+        [Key(12)] public object? MarketSnapshot { get; set; }
 
         /// <summary>
         /// 对最终盈利的交易计算平仓效率 (Trade Efficiency)。
@@ -103,7 +107,7 @@ namespace CarrotBacktesting.NET.Result
 
         [JsonConstructor]
         [SerializationConstructor]
-        public Trade(string stockCode, string entryGroup, string entryReason, DateTime entryDate, double entryPrice, string? exitGroup, string? exitReason, DateTime? exitDate, double? exitPrice, bool isClosed, int holdingPeriod, double highestPriceSinceEntry)
+        public Trade(string stockCode, string entryGroup, string entryReason, DateTime entryDate, double entryPrice, string? exitGroup, string? exitReason, DateTime? exitDate, double? exitPrice, bool isClosed, int holdingPeriod, double highestPriceSinceEntry, object? marketSnapshot)
         {
             StockCode = stockCode;
             EntryGroup = entryGroup;
@@ -117,6 +121,7 @@ namespace CarrotBacktesting.NET.Result
             IsClosed = isClosed;
             HoldingPeriod = holdingPeriod;
             HighestPriceSinceEntry = highestPriceSinceEntry;
+            MarketSnapshot = marketSnapshot;
         }
 
         /// <summary>

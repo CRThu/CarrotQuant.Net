@@ -8,6 +8,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using System.Reflection;
+using System.ComponentModel.DataAnnotations;
 
 namespace CarrotBacktesting.NET.Analysis.Exporters
 {
@@ -324,34 +326,65 @@ namespace CarrotBacktesting.NET.Analysis.Exporters
                 return;
             }
 
-            string[] headers = { "股票代码", "入场日期", "入场价格", "出场日期", "出场价格", "收益率", "分组", "是否平仓" };
-            
-            var tableData = trades.Select(t => new
-            {
-                t.StockCode,
-                t.EntryDate,
-                t.EntryPrice,
-                ExitDate = t.ExitDate?.ToString("yyyy-MM-dd") ?? "-",
-                t.ExitPrice,
-                Return = t.Return ?? 0,
-                Group = t.EntryGroup ?? "Total",
-                IsClosed = t.IsClosed ? "是" : "否"
-            }).ToList();
+            // 1. 基础表头
+            var headerList = new List<string> { "股票代码", "入场日期", "入场价格", "出场日期", "出场价格", "收益率", "分组", "是否平仓" };
 
-            ExcelHelper.WriteTable(ws, 1, 1, headers, tableData, (row, t) =>
+            // 2. 动态 Trace 表头 (通过反射)
+            var firstTrace = trades.FirstOrDefault(t => t.MarketSnapshot != null)?.MarketSnapshot;
+            PropertyInfo[] traceProps = Array.Empty<PropertyInfo>();
+            if (firstTrace != null)
+            {
+                traceProps = firstTrace.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var prop in traceProps)
+                {
+                    var displayAttr = prop.GetCustomAttribute<DisplayAttribute>();
+                    headerList.Add(displayAttr?.Name ?? prop.Name);
+                }
+            }
+
+            string[] headers = headerList.ToArray();
+
+            ExcelHelper.WriteTable(ws, 1, 1, headers, trades, (row, t) =>
             {
                 row.Cell(1).Value = t.StockCode;
                 row.Cell(2).Value = t.EntryDate;
                 row.Cell(2).Style.DateFormat.Format = "yyyy-MM-dd";
                 row.Cell(3).Value = t.EntryPrice;
-                row.Cell(4).Value = t.ExitDate;
+
+                if (t.ExitDate.HasValue)
+                {
+                    row.Cell(4).Value = t.ExitDate.Value;
+                    row.Cell(4).Style.DateFormat.Format = "yyyy-MM-dd";
+                }
+                else
+                {
+                    row.Cell(4).Value = "-";
+                }
+
                 row.Cell(5).Value = t.ExitPrice;
-                row.Cell(6).Value = t.Return;
+                row.Cell(6).Value = t.Return ?? 0;
                 row.Cell(6).Style.NumberFormat.Format = ExcelHelper.FormatPercentage;
-                row.Cell(7).Value = t.Group;
-                row.Cell(8).Value = t.IsClosed;
-                
-                row.Cell(6).Style.Font.FontColor = t.Return >= 0 ? XLColor.Green : XLColor.Red;
+                row.Cell(7).Value = t.EntryGroup ?? "Total";
+                row.Cell(8).Value = t.IsClosed ? "是" : "否";
+                row.Cell(6).Style.Font.FontColor = (t.Return ?? 0) >= 0 ? XLColor.Green : XLColor.Red;
+
+                // 3. 填充动态 Trace 列
+                if (traceProps.Length > 0 && t.MarketSnapshot != null)
+                {
+                    for (int i = 0; i < traceProps.Length; i++)
+                    {
+                        var val = traceProps[i].GetValue(t.MarketSnapshot);
+                        // ClosedXML 会尝试自动处理数字/日期等类型
+                        if (val != null)
+                        {
+                            row.Cell(9 + i).Value = XLCellValue.FromObject(val);
+                        }
+                        else
+                        {
+                            row.Cell(9 + i).Value = "-";
+                        }
+                    }
+                }
             });
 
             ws.RangeUsed().SetAutoFilter();

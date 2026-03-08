@@ -14,6 +14,10 @@ namespace CarrotBacktesting.NET.Engine
         /// 市场偏向
         /// </summary>
         public MarketBias Bias { get; set; } = MarketBias.Neutral;
+        /// <summary>
+        /// 获取原始状态对象 (用于快照捕获)
+        /// </summary>
+        public virtual object? GetStateRaw() => null;
     }
 
     /// <summary>
@@ -26,5 +30,9 @@ namespace CarrotBacktesting.NET.Engine
         /// 自定义状态数据
         /// </summary>
         public T State { get; set; } = new();
+        /// <summary>
+        /// 重写以返回泛型状态对象
+        /// </summary>
+        public override object? GetStateRaw() => State;
     }
 }
