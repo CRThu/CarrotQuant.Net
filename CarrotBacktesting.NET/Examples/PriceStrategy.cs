@@ -5,8 +5,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using CarrotBacktesting.NET.Strategy;
 
-namespace CarrotBacktesting.NET.Strategy.Examples
+namespace CarrotBacktesting.NET.Examples
 {
     /// <summary>
     /// 一个简单的交易策略示例:收盘价比昨天高，就买入，持有期达到5天就卖出

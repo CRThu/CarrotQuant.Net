@@ -5,7 +5,7 @@ using CarrotBacktesting.NET.DataFeed;
 using CarrotBacktesting.NET.Engine;
 using CarrotBacktesting.NET.Result;
 using CarrotBacktesting.NET.Strategy;
-using CarrotBacktesting.NET.Strategy.Examples;
+using CarrotBacktesting.NET.Examples;
 using CarrotBacktesting.NET.Utility;
 using CarrotBacktesting.NET.Utility.ScottPlot;
 using ScottPlot;
@@ -23,12 +23,10 @@ namespace CarrotBacktesting.NET.Demo
                 string configPath = ".\\CarrotQuant.Data\\v3\\yaml\\env.yaml";
                 BacktestingSession.Create(configPath)
                     .LoadData()
-
-                    .Run(new VolumeSignalStrategy())
-                    .Analyze();
-
+                    .Run(new MarketHeatStrategy())
+                    //.Run(new VolumeSignalStrategy())
                     //.Run(new PriceStrategy())
-                    //.Analyze();
+                    .Analyze();
             }
             catch (Exception ex)
             {

@@ -5,8 +5,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using CarrotBacktesting.NET.Strategy;
 
-namespace CarrotBacktesting.NET.Strategy.Examples
+namespace CarrotBacktesting.NET.Examples
 {
     /// <summary>
     /// 演示策略：当日成交量 > 前5日平均成交量的2.5倍
