@@ -38,6 +38,21 @@ namespace CarrotBacktesting.NET.Engine
         /// </summary>
         public DateTime CurrentDate => Series.Dates[CurrentIndex];
 
+        /// <summary>
+        /// 宏观市场决策结果
+        /// </summary>
+        public MarketResult? Market { get; internal set; }
+
+        /// <summary>
+        /// 获取强类型自定义市场状态。用法：context.MarketState&lt;MyMetrics&gt;()
+        /// </summary>
+        /// <typeparam name="T">自定义状态类型</typeparam>
+        /// <returns>状态对象，若类型不匹配或为空则返回null</returns>
+        public T? MarketState<T>() where T : class
+        {
+            return (Market as MarketResult<T>)?.State;
+        }
+
         public SignalStrategyContext(StockHistory series)
         {
             Series = series;

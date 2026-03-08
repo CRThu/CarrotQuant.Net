@@ -27,6 +27,11 @@ namespace CarrotBacktesting.NET.Engine
         private readonly IReadOnlyDictionary<string, StockHistory> _stockHistoryDict;
 
         /// <summary>
+        /// 市场策略缓存 (日期 -> 市场决策结果)
+        /// </summary>
+        private readonly Dictionary<DateTime, MarketResult> _marketCache = new();
+
+        /// <summary>
         /// 对齐后的个股历史数据字典 (v4.7 高性能缓存)
         /// </summary>
         public IReadOnlyDictionary<string, StockHistory> StockHistories => _stockHistoryDict;
@@ -56,18 +61,56 @@ namespace CarrotBacktesting.NET.Engine
         /// <returns>回测结果</returns>
         public BacktestingResult Run(IStrategy strategy)
         {
-            if (strategy is ITradeStrategy tradeStrategy)
+            // 1. 管线首站：如果是市场决策策略，执行市场计算并注入缓存
+            if (strategy is IMarketStrategy marketStrategy)
             {
-                return RunTrade(tradeStrategy);
+                PreScanMarket(marketStrategy);
             }
-            else if (strategy is ISignalStrategy signalStrategy)
+
+            // 2. 管线分支：根据策略核心职责执行对应的回测循环
+            return strategy switch
             {
-                return RunSignal(signalStrategy);
-            }
-            else
+                ITradeStrategy tradeStrategy => RunTrade(tradeStrategy),
+                ISignalStrategy signalStrategy => RunSignal(signalStrategy),
+                IMarketStrategy => HandleMarketOnlyRun(),
+                _ => throw new ArgumentException($"策略 '{strategy.Name}' 未实现任何支持的执行接口 (ITradeStrategy/ISignalStrategy)。")
+            };
+        }
+
+        private BacktestingResult HandleMarketOnlyRun()
+        {
+            Console.WriteLine("Strategy is strictly Market-based. Pipeline execution finished.");
+            return new BacktestingResult();
+        }
+
+        /// <summary>
+        /// 预执行市场扫描，并缓存每日市场结果
+        /// </summary>
+        private void PreScanMarket(IMarketStrategy marketStrategy)
+        {
+            _marketCache.Clear();
+            Console.WriteLine($"[Pipeline] 正在计算市场宏观环境: {marketStrategy.Name}");
+            var stopwatch = Stopwatch.StartNew();
+
+            foreach (var date in _data.TradeDates)
             {
-                throw new ArgumentException("未知的策略接口类型。", nameof(strategy));
+                MarketFrame? frame = null;
+                if (_data is MarketStorage storage)
+                {
+                    storage.TryGetFrame(date, out frame);
+                }
+
+                var context = new MarketStrategyContext(date, frame, _data);
+                
+                // 直接多态调用，无需任何反射
+                var result = marketStrategy.CheckMarket(context);
+                if (result != null)
+                {
+                    _marketCache[date] = result;
+                }
             }
+            stopwatch.Stop();
+            Console.WriteLine($"[Pipeline] 市场决策缓存构建完成，处理日期: {_marketCache.Count}，耗时: {stopwatch.Elapsed.TotalSeconds:F3}s.");
         }
 
         /// <summary>
@@ -90,6 +133,12 @@ namespace CarrotBacktesting.NET.Engine
                 {
                     for (int i = 0; i < totalDays; i++)
                     {
+                        DateTime date = ctx.Series.Dates[i];
+                        _marketCache.TryGetValue(date, out var market);
+                        ctx.Market = market;
+
+                        if (market?.SkipAlpha == true) continue;
+
                         ExecuteSignalLogic(ctx, i, strategy, signals);
                     }
                 });
@@ -100,8 +149,14 @@ namespace CarrotBacktesting.NET.Engine
                 for (int i = 0; i < totalDays; i++)
                 {
                     int dayIndex = i;
+                    DateTime date = _data.TradeDates[dayIndex];
+                    _marketCache.TryGetValue(date, out var market);
+
+                    if (market?.SkipAlpha == true) continue;
+
                     Parallel.ForEach(contexts, ctx =>
                     {
+                        ctx.Market = market;
                         ExecuteSignalLogic(ctx, dayIndex, strategy, signals);
                     });
                 }
@@ -153,6 +208,12 @@ namespace CarrotBacktesting.NET.Engine
                 {
                     for (int i = 0; i < totalDays; i++)
                     {
+                        DateTime date = ctx.Series.Dates[i];
+                        _marketCache.TryGetValue(date, out var market);
+                        ctx.Market = market;
+
+                        if (market?.SkipAlpha == true) continue;
+
                         ExecuteTradeLogic(ctx, i, strategy, completedTrades);
                     }
                     if (ctx.CurrentTrade != null) completedTrades.Add(ctx.CurrentTrade);
@@ -164,8 +225,14 @@ namespace CarrotBacktesting.NET.Engine
                 for (int i = 0; i < totalDays; i++)
                 {
                     int dayIndex = i;
+                    DateTime date = _data.TradeDates[dayIndex];
+                    _marketCache.TryGetValue(date, out var market);
+
+                    if (market?.SkipAlpha == true) continue;
+
                     Parallel.ForEach(contexts, ctx =>
                     {
+                        ctx.Market = market;
                         ExecuteTradeLogic(ctx, dayIndex, strategy, completedTrades);
                     });
                 }
