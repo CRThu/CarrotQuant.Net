@@ -148,7 +148,7 @@ namespace CarrotBacktesting.NET.Engine
                 // 纵向路径 (先股后天)
                 Parallel.ForEach(contexts, ctx =>
                 {
-                    for (int i = 0; i < totalDays; i++)
+                    for (int i = 0; i < ctx.Series.Dates.Count; i++)
                     {
                         DateTime date = ctx.Series.Dates[i];
                         _marketCache.TryGetValue(date, out var market);
@@ -225,7 +225,7 @@ namespace CarrotBacktesting.NET.Engine
                 // 纵向路径 (先股后天)
                 Parallel.ForEach(contexts, ctx =>
                 {
-                    for (int i = 0; i < totalDays; i++)
+                    for (int i = 0; i < ctx.Series.Dates.Count; i++)
                     {
                         DateTime date = ctx.Series.Dates[i];
                         _marketCache.TryGetValue(date, out var market);
