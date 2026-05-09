@@ -11,14 +11,5 @@ bin/
 obj/
 .github/
 
-# --- 排除无关的子项目 ---
-CarrotQuant.Data/*
-CarrotQuant.Data.Python/
-CarrotQuant.DataLib/
-CarrotQuant.DataLib.Demo/
-verify/
-
 !**/env.yaml
 !**/env.yml
-
-!dev/README_FOR_AI.md

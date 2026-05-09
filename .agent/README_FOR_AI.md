@@ -1,0 +1,180 @@
+# CarrotQuant .NET 架构规范文档
+
+## 一、核心架构 definition (Pipeline Based Architecture)
+
+### 1. 分析上下文 (AnalysisContext) 契约
+
+AnalysisContext 是分析流程的数据载体，支持以下契约：
+
+- `SetArtifact<T>(T obj)`: 存储结构化统计数据（如 `SignalAnalysisResult`）。
+- `SetFileArtifact(string key, string path)`: 存储生成的物理文件路径（如 PNG 图表路径），供后续 Exporter 消费。
+- `GetFileArtifact(string key)`: 根据 key 获取已存储的文件路径。
+
+### 2. 插件初始化契约
+
+所有 `IAnalyzer` 和 `IExporter` 必须实现以下接口方法，使用强类型配置类：
+
+```csharp
+// IAnalyzer
+void Init(AnalyzerConfig config);
+
+// IExporter
+void Init(ExporterConfig config);
+```
+
+### 3. 路径解析契约
+
+所有输出路径必须基于 `Config.Out.Dir` 进行二次拼接，使用 `Config.ResolvePath` 处理。
+
+### 4. 动态运行层 (AnalysisRunner)
+
+- 遍历配置中的 `Analyzers` 和 `Exporters` 列表
+- 动态实例化并调用 `Init` 方法
+- 按队列顺序执行，严禁硬编码
+
+---
+
+## 二、配置模型 (EnvConfig)
+
+### 强类型配置类
+
+```csharp
+public class AnalyzerConfig
+{
+    public string Type { get; set; } = string.Empty;
+    public int Days { get; set; } = 30;
+    public int ExitDays { get; set; } = 30;
+}
+
+public class ExporterConfig
+{
+    public string Type { get; set; } = string.Empty;
+    public bool SaveHtml { get; set; } = true;
+    public string Dir { get; set; } = string.Empty;
+    public string File { get; set; } = string.Empty;
+}
+```
+
+### YAML 配置格式
+
+```yaml
+analysis:
+  analyzers:
+    - type: "SignalAnalyzer"
+      days: 30
+    - type: "TradeAnalyzer"
+      exit_days: 30
+  exporters:
+    - type: "ConsoleExporter"
+      save_html: true
+    - type: "PlotExporter"
+      dir: "plots"
+    - type: "SignalExporter"
+      file: "signals.json"
+    - type: "ExcelExporter"
+      file: "report.xlsx"
+
+out:
+  dir: "report"
+```
+
+---
+
+## 三、文件工件命名规范
+
+PlotExporter 生成的图表文件必须按以下规则注册到 Context：
+
+- Key 命名规则：`Plot_{GroupName}_{PlotType}`
+- 示例：`Plot_Total_Heatmap_Signal`, `Plot_Total_Overview_Weighted`, `Plot_Total_Timeline`, `Plot_Total_Monthly`
+
+---
+
+## 四、Excel 整合报表规范 (v4.0)
+
+ExcelExporter 必须生成具备“总-分-明细”结构的专业量化回测报告：
+
+1.  **Dashboard (策略总览)**:
+    *   **数据摘要**: 股票数、交易日、时间范围、总数据点（精确到单支股票采样点）。
+    *   **分析结果汇总**: 信号加权与时间加权的最佳持有期表现对比。
+    *   **核心交易性能**: 直接映射 `TradeReport` 的专业统计结果（胜率、盈亏比、持仓效率评估等）。
+
+2.  **[GroupName]_Signal (分组成效分析)**:
+    *   **双层表头 T+N 表**: 第一行按口径（信号加权/时间加权）合并，第二行展示具体指标（11列）。
+    *   **区域锚定可视化**: 采用 **Range-based** 技术将 4 张图表（趋势概览x2, 收益分布热力图x2）固定在右侧区域（22行x10列），确保布局整齐且不随窗口缩放错位。
+
+3.  **[GroupName]_Monthly (月度趋势分析)**:
+    *   针对该组最佳持有期，建立独立的月度明细 Sheet。
+    *   嵌入 **信号月度趋势图 (Timeline Plot)**，辅助判断策略的时间稳定性。
+
+4.  **[GroupName]_Exit (卖出时机分析) [v3.3 引入]**:
+    *   新设独立工作表，展示平仓后 T+1 至 T+N 的后续走势（平均收益、上涨概率）。
+    *   辅助分析“是否卖早了”或“平仓时机优化”空间。
+
+5.  **All_Trades (全量流水)**:
+    *   完整交易流水。开启首行冻结与自动筛选（AutoFilter）。
+    *   **Trace 自动展开 (v4.0)**: 全量流水页必须通过反射将 `Trade.MarketSnapshot` 中的所有公开属性自动展开为独立列，表头优先使用 `[Display(Name="...")]`。
+    *   **Market_Daily (宏观日报) (v4.1)**: 必须独立展示每日市场决策及其 Trace 指标，确保纯宏观策略也能产出有效分析报表。
+
+**技术深度要求**:
+*   **中文列宽自适应**: 在 `AdjustToContents()` 基础上，所有列额外增加 **2 单位宽度缓冲区**，彻底解决中文字符集导致表头显示不全的问题。
+*   **布局解耦**: 采用单元格范围（FromCell/ToCell）定义图片位置，废弃硬编码缩放比例。
+*   **数据单一模型驱动**: 导出逻辑与 Analyzer 深度绑定，禁止在 Exporter 中进行二次复杂计算。
+*   **鲁棒性**: 必须实现空数据检查与 `NullReferenceException` 全流程防御。
+
+---
+
+## 五、数据层契约 (Global Alignment Model)
+
+### 1. 全局日期对齐
+
+- 所有加载至内存的 `IDataStorage` 必须经过全局交易日对齐。
+- 构建阶段 (`HistoryStorageBuilder.Build`) 必须计算所有股票日期的并集作为 `globalTradeDates`。
+- 每只股票的 `Dates` 序列必须与 `globalTradeDates` 严格一致。
+
+### 2. 停牌处理规范 (Forward Fill)
+
+- 对于个股缺失的交易日，必须插入空的 `StockFrame`。
+- **向前填充 (v4.8)**: 填充帧的 `Open/High/Low/Close` 采用最近一个有效交易日的 `Close`，`Volume` 为 0。
+- 填充帧的 `Status` 必须设为 `TradeStatus.Halted`。
+- 引擎层在执行逻辑前必须拦截停牌日：`if (ctx.GetFrame(0)?.Status == TradeStatus.Halted) return;`。
+
+### 3. 结果一致性
+
+- 所有引擎输出的交易列表必须执行强制排序：`.OrderBy(t => t.EntryDate).ThenBy(t => t.StockCode)`。
+
+---
+
+## 六、回测引擎 (BacktestingEngine v4.5/v4.6)
+
+### 并行模式支持
+
+引擎支持基于 `StorageMode` 的双路径并行：
+- **TimeSeries (纵向)**: `Parallel.ForEach(stocks) -> for(days)`。适用于普通技术指标策略。
+- **MarketSnapshot (横向)**: `for(days) -> Parallel.ForEach(stocks)`。支持跨股票截面计算（如 Z-Score 选股、行业排名）。
+
+### 分析器解耦 (v4.6/v4.7)
+
+- **单一事实来源**: 分析器 (Analyzer) 不再直接访问 `IDataStorage`，而是通过 `AnalysisContext.StockHistories` 访问。
+- **高性能索引 (v4.7)**: `BacktestingEngine` 通过缓存私有字典 $\_stockHistoryDict$ 将个股序列访问复杂度优化至 $O(1)$，显著降低分析阶段的 GC 开销。
+- **对齐保证**: 注入 Context 的数据必须保证是全局日期对齐的，且与引擎计算时使用的数据完全一致。
+
+- **矩阵化 PreScanMarket (v4.2)**: 引擎所有宏观与微观计算均基于对齐后的 `StockHistory` 矩阵。`PreScanMarket` 负责通过矩阵切片动态生成虚拟 `MarketFrame` 传给策略，确保宏观计算不再依赖物理存储模式。
+
+## 七、市场策略 (IMarketStrategy) 体系 (v4.0)
+
+### 1. RaUA 架构管线
+- **IMarketStrategy** 产生的宏观决策将通过 `context.Market` 注入到个股扫描 (`ISignalStrategy`) 和交易执行 (`ITradeStrategy`) 的上下文中。
+- **MarketBias** (市场偏向) 定义：
+    - `Up`: 看多 / 活跃
+    - `Neutral`: 中性
+    - `Down`: 看空 / 冰点
+
+### 2. 决策消费与剪枝
+- **剪枝机制**: 若 `context.Market.SkipAlpha` 为 `true`，引擎将自动跳过当日所有个股的信号计算，实现宏观风险规避。
+- **状态访问**: 策略可以通过 `context.MarketState<T>()` 获取由 `IMarketStrategy` 计算并存储的强类型自定义状态数据。
+  - 示例：`var metrics = context.MarketState<MyMarketMetrics>();`
+
+---
+
+*架构基石：通过在数据层承担复杂度（对齐），实现了计算层与分析层逻辑的极简归一。*
+

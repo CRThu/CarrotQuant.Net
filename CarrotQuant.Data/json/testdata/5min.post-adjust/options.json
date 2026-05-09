@@ -1,7 +1,0 @@
-{
-  "MapperJsonFilePath": "mapper.json",
-  "FieldsJsonFilePath": "fields.json",
-  "ExchangeEstimateLiquidityRatio": 0.2,
-  "ExchangePriceSlippage": 0.02,
-  "InitialCash": 1000000
-}

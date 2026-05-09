@@ -60,22 +60,5 @@ __pycache__/
 # runtime installer
 /MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 
-# csv database
-# exclude CarrotQuant.Data\ashare\baostock\csv\daily.post-adjust
-# exclude CarrotQuant.Data\ashare\baostock\csv\5min.post-adjust
-# include CarrotQuant.Data\ashare\baostock\csv\testdata
-/CarrotQuant.Data/**/csv/*
-!/CarrotQuant.Data/**/csv/testdata/
-
-# json config file
-/CarrotQuant.Data/**/json/*
-!/CarrotQuant.Data/**/json/testdata/
-
-# file out
-/CarrotQuant.Data/*.cache
-/CarrotQuant.Data/signal.json
-/CarrotQuant.Data/report
 
 /verify/summary/*
-
-/dev
