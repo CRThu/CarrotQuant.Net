@@ -13,3 +13,6 @@ obj/
 
 !**/env.yaml
 !**/env.yml
+
+CarrotBackTesting.NET.TestData/test_storage_root/
+verify/summary/

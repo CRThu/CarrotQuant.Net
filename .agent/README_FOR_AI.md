@@ -137,7 +137,61 @@ graph TD
 
 *架构基石：通过在数据层承担复杂度（对齐），实现了计算层与分析层逻辑的极简归一。*
 
----
+## 三、数据层契约 (Data Layer Contracts) [v4]
+
+本章节定义 v4 数据层的核心接口契约，所有接口位于 `CarrotBacktesting.NET` 项目的 `Abstraction/` 目录下。
+引擎层与策略层**禁止**绕过这些接口直接访问物理存储。
+
+### 1. 物理层抽象：宽表快照流（ETL 层）
+
+命名空间：`CarrotBacktesting.NET.Abstraction.Data.Etl`
+
+| 接口 | 文件 | 职责 |
+|------|------|------|
+| `IMarketSnapshotMetadata` | `Abstraction/Data/Etl/IMarketSnapshotSource.cs` | 描述数据源的维度结构（Symbols / FieldNames / 字段类型） |
+| `IMarketSnapshotSource` | `Abstraction/Data/Etl/IMarketSnapshotSource.cs` | 流式读取宽表快照的 ETL 契约，屏蔽 CSV / Parquet 物理格式细节 |
+
+**关键设计**：
+- `MoveNext()` 驱动逐行（逐交易日）遍历，零状态暴露。
+- `ReadFieldSnapshot<T>(fieldName, Span<T> destination)` 直接写入调用方提供的内存块，**严格零拷贝**，禁止内部 `new T[]`。
+- `T : unmanaged` 约束确保与 `Carrot.Memory` 的 MMF 物理布局兼容。
+
+### 2. 内存层接口：对齐后的 Buffer 访问（Data 层）
+
+命名空间：`CarrotBacktesting.NET.Abstraction.Data`
+
+| 接口/类型 | 文件 | 职责 |
+|-----------|------|------|
+| `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 全局对齐后的维度信息：TradeDates（行索引）、Symbols（列索引） |
+| `IDataProvider` | `Abstraction/Data/IDataProvider.cs` | 数据层统一输出入口，`GetBuffer<T>(fieldName)` 返回 `IReadOnlyBuffer2D<T>` |
+| `IFieldRegistry` | `Abstraction/Data/IFieldRegistry.cs` | 字段注册表，管理已加载字段的元信息（含自定义指标字段） |
+| `FieldInfo` | `Abstraction/Data/IFieldRegistry.cs` | 字段元数据 record（Name, DataType, IsCustom） |
+
+**关键约束**：
+- `IDataProvider.GetBuffer<T>()` 返回类型必须为 `IReadOnlyBuffer2D<T>`（来自 `Carrot.Memory`），**禁止**返回可写 Buffer。
+- `IMarketMetadata.Symbols` 顺序与 Buffer **列索引**严格对齐；`TradeDates` 顺序与 Buffer **行索引**严格对齐。
+- 所有接口均不暴露 `List<T>`、`T[]` 等分配内存的集合类型供外部持有。
+
+### 3. 依赖关系
+
+```
+IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot.Memory]
+                                                      │
+                                              (只读封装后)
+                                                      ▼
+                                          IReadOnlyBuffer2D<T>  [Carrot.Memory]
+                                                      │
+                                         IDataProvider.GetBuffer<T>()
+                                                      │
+                                              EngineLayer / StrategyLayer
+```
+
+### 4. Carrot.Memory 依赖说明
+
+- 项目引用：`D:\Projects\Carrot.Memory\Carrot.Memory\Carrot.Memory.csproj`（已在 `CarrotBacktesting.NET.csproj` 中声明）
+- 关键类型：`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`
+- 命名空间：`Carrot.Memory.Abstractions`、`Carrot.Memory.Views`
+
 ---
 
 # 以下为 v3 版本规范文档（已过时，仅供参考）
