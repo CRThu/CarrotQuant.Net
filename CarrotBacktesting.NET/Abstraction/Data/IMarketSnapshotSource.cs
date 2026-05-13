@@ -1,4 +1,4 @@
-namespace CarrotBacktesting.NET.Abstraction.Data.Etl;
+namespace CarrotBacktesting.NET.Abstraction.Data;
 
 /// <summary>
 /// 市场快照数据源的元信息契约。
