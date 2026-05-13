@@ -1,6 +1,152 @@
-# CarrotQuant .NET 架构规范文档
+# CarrotQuant .NET v4 架构规范文档
 
-## 一、核心架构 definition (Pipeline Based Architecture)
+## 一、系统架构总览 (v4 Software Architecture)
+
+CarrotQuant.NET v4 采用 **三层分离架构**，各层之间通过接口契约解耦，支持回测与实盘双引擎。
+
+### 架构图
+
+```mermaid
+graph TD
+    subgraph DataLayer [Data Layer - 数据层]
+        ETL[ETL]
+        MMFPageProvider[MMFPageProvider]
+        ParquetDataReader[ParquetDataReader]
+        CsvDataReader[CsvDataReader]
+        PagedBuffer2D[PagedBuffer2D]
+        IRowReader[IRowReader]
+        IColumnReader[IColumnReader]
+        IBuffer2D[IBuffer2D]
+        BufferedDataProvider[BufferedDataProvider]
+        StreamDataProvider[StreamDataProvider]
+        IDataProvider[IDataProvider]
+
+        ETL --> MMFPageProvider
+        ETL --> ParquetDataReader
+        ETL --> CsvDataReader
+        MMFPageProvider --> PagedBuffer2D
+        ParquetDataReader --> IRowReader
+        CsvDataReader --> IColumnReader
+        PagedBuffer2D --> IBuffer2D
+        IBuffer2D --> BufferedDataProvider
+        IRowReader --> BufferedDataProvider
+        IColumnReader --> StreamDataProvider
+        IRowReader --> StreamDataProvider
+        BufferedDataProvider --> IDataProvider
+        StreamDataProvider --> IDataProvider
+    end
+
+    subgraph EngineExecutionLayer [Engine and Execution Layer - 引擎与执行层]
+        BacktestingEngine[BacktestingEngine]
+        LivingEngine[LivingEngine]
+        IEngine[IEngine]
+        IEngineContext[IEngineContext]
+        IExchange[IExchange]
+        IBroker[IBroker]
+        IMonitor[IMonitor]
+
+        BacktestingEngine --> IEngine
+        LivingEngine --> IEngine
+        IDataProvider --> IEngine
+        IEngine --> IExchange
+        IEngine --> IBroker
+        IEngine --> IMonitor
+        IEngine --> IEngineContext
+    end
+
+    subgraph StrategyLayer [Strategy Layer - 策略层]
+        IStrategy[IStrategy]
+        IPortfolioStrategy[IPortfolioStrategy]
+        IMarketStrategy[IMarketStrategy]
+        ISignalStrategy[ISignalStrategy]
+
+        IEngineContext --> IStrategy
+        IStrategy --> IPortfolioStrategy
+        IStrategy --> IMarketStrategy
+        IStrategy --> ISignalStrategy
+        
+        IPortfolioStrategy --> IMarketStrategy
+        IMarketStrategy --> ISignalStrategy
+    end
+```
+
+### 分层说明
+
+#### 1. Data Layer（数据层）
+
+负责数据的获取、转换和供给，核心组件：
+
+| 组件 | 职责 |
+|------|------|
+| **ETL** | 数据抽取/转换/加载的入口 |
+| **MMFPageProvider** | 基于内存映射文件的分页数据提供器 |
+| **ParquetDataReader** | Parquet 格式数据读取器 |
+| **CsvDataReader** | CSV 格式数据读取器 |
+| **PagedBuffer2D** | 二维分页缓冲区，实现 `IBuffer2D` |
+| **IRowReader / IColumnReader** | 行/列数据读取抽象接口 |
+| **BufferedDataProvider** | 缓冲模式数据提供器（全量加载） |
+| **StreamDataProvider** | 流式数据提供器（按需读取） |
+| **IDataProvider** | 数据层统一输出接口，供引擎层消费 |
+
+#### 2. Engine and Execution Layer（引擎与执行层）
+
+驱动回测或实盘运行的核心调度层：
+
+| 组件 | 职责 |
+|------|------|
+| **IEngine** | 引擎统一抽象接口 |
+| **BacktestingEngine** | 回测引擎实现 |
+| **LivingEngine** | 实盘引擎实现 |
+| **IEngineContext** | 引擎运行上下文，向策略层注入数据 |
+| **IExchange** | 交易所抽象（撮合/行情） |
+| **IBroker** | 经纪人/账户管理抽象 |
+| **IMonitor** | 监控/日志/告警抽象 |
+
+**数据流向**: `IDataProvider` → `IEngine` → (`IExchange` / `IBroker` / `IMonitor`) → `IEngineContext` → 策略层
+
+#### 3. Strategy Layer（策略层）
+
+策略的分层执行管线，依赖 `IEngineContext` 注入：
+
+| 组件 | 职责 |
+|------|------|
+| **IStrategy** | 策略基础接口 |
+| **IPortfolioStrategy** | 组合/仓位管理策略 |
+| **IMarketStrategy** | 市场/宏观策略（产生 MarketBias） |
+| **ISignalStrategy** | 个股信号策略（Alpha 信号生成） |
+
+**策略调度链**: `IPortfolioStrategy` → `IMarketStrategy` → `ISignalStrategy`
+
+---
+
+## 二、市场策略 (IMarketStrategy) 体系
+
+### 1. RaUA 架构管线
+- **IMarketStrategy** 产生的宏观决策将通过 `context.Market` 注入到个股扫描 (`ISignalStrategy`) 和交易执行的上下文中。
+- **MarketBias** (市场偏向) 定义：
+    - `Up`: 看多 / 活跃
+    - `Neutral`: 中性
+    - `Down`: 看空 / 冰点
+
+### 2. 决策消费与剪枝
+- **剪枝机制**: 若 `context.Market.SkipAlpha` 为 `true`，引擎将自动跳过当日所有个股的信号计算，实现宏观风险规避。
+- **状态访问**: 策略可以通过 `context.MarketState<T>()` 获取由 `IMarketStrategy` 计算并存储的强类型自定义状态数据。
+  - 示例：`var metrics = context.MarketState<MyMarketMetrics>();`
+
+---
+
+*架构基石：通过在数据层承担复杂度（对齐），实现了计算层与分析层逻辑的极简归一。*
+
+---
+---
+
+# 以下为 v3 版本规范文档（已过时，仅供参考）
+
+> ⚠️ **注意**: 以下内容为 v3 版本的架构与规范描述，v4 版本已进行重大重构，请以上方 v4 架构为准。后续实现中可直接覆盖以下旧文档内容。
+
+---
+
+## 一、核心架构 definition (Pipeline Based Architecture) [v3]
 
 ### 1. 分析上下文 (AnalysisContext) 契约
 
@@ -34,7 +180,7 @@ void Init(ExporterConfig config);
 
 ---
 
-## 二、配置模型 (EnvConfig)
+## 二、配置模型 (EnvConfig) [v3]
 
 ### 强类型配置类
 
@@ -80,7 +226,7 @@ out:
 
 ---
 
-## 三、文件工件命名规范
+## 三、文件工件命名规范 [v3]
 
 PlotExporter 生成的图表文件必须按以下规则注册到 Context：
 
@@ -89,9 +235,9 @@ PlotExporter 生成的图表文件必须按以下规则注册到 Context：
 
 ---
 
-## 四、Excel 整合报表规范 (v4.0)
+## 四、Excel 整合报表规范 [v3]
 
-ExcelExporter 必须生成具备“总-分-明细”结构的专业量化回测报告：
+ExcelExporter 必须生成具备"总-分-明细"结构的专业量化回测报告：
 
 1.  **Dashboard (策略总览)**:
     *   **数据摘要**: 股票数、交易日、时间范围、总数据点（精确到单支股票采样点）。
@@ -106,14 +252,14 @@ ExcelExporter 必须生成具备“总-分-明细”结构的专业量化回测�
     *   针对该组最佳持有期，建立独立的月度明细 Sheet。
     *   嵌入 **信号月度趋势图 (Timeline Plot)**，辅助判断策略的时间稳定性。
 
-4.  **[GroupName]_Exit (卖出时机分析) [v3.3 引入]**:
+4.  **[GroupName]_Exit (卖出时机分析)**:
     *   新设独立工作表，展示平仓后 T+1 至 T+N 的后续走势（平均收益、上涨概率）。
-    *   辅助分析“是否卖早了”或“平仓时机优化”空间。
+    *   辅助分析"是否卖早了"或"平仓时机优化"空间。
 
 5.  **All_Trades (全量流水)**:
     *   完整交易流水。开启首行冻结与自动筛选（AutoFilter）。
-    *   **Trace 自动展开 (v4.0)**: 全量流水页必须通过反射将 `Trade.MarketSnapshot` 中的所有公开属性自动展开为独立列，表头优先使用 `[Display(Name="...")]`。
-    *   **Market_Daily (宏观日报) (v4.1)**: 必须独立展示每日市场决策及其 Trace 指标，确保纯宏观策略也能产出有效分析报表。
+    *   **Trace 自动展开**: 全量流水页必须通过反射将 `Trade.MarketSnapshot` 中的所有公开属性自动展开为独立列，表头优先使用 `[Display(Name="...")]`。
+    *   **Market_Daily (宏观日报)**: 必须独立展示每日市场决策及其 Trace 指标，确保纯宏观策略也能产出有效分析报表。
 
 **技术深度要求**:
 *   **中文列宽自适应**: 在 `AdjustToContents()` 基础上，所有列额外增加 **2 单位宽度缓冲区**，彻底解决中文字符集导致表头显示不全的问题。
@@ -123,7 +269,7 @@ ExcelExporter 必须生成具备“总-分-明细”结构的专业量化回测�
 
 ---
 
-## 五、数据层契约 (Global Alignment Model)
+## 五、数据层契约 (Global Alignment Model) [v3]
 
 ### 1. 全局日期对齐
 
@@ -134,7 +280,7 @@ ExcelExporter 必须生成具备“总-分-明细”结构的专业量化回测�
 ### 2. 停牌处理规范 (Forward Fill)
 
 - 对于个股缺失的交易日，必须插入空的 `StockFrame`。
-- **向前填充 (v4.8)**: 填充帧的 `Open/High/Low/Close` 采用最近一个有效交易日的 `Close`，`Volume` 为 0。
+- **向前填充**: 填充帧的 `Open/High/Low/Close` 采用最近一个有效交易日的 `Close`，`Volume` 为 0。
 - 填充帧的 `Status` 必须设为 `TradeStatus.Halted`。
 - 引擎层在执行逻辑前必须拦截停牌日：`if (ctx.GetFrame(0)?.Status == TradeStatus.Halted) return;`。
 
@@ -144,7 +290,7 @@ ExcelExporter 必须生成具备“总-分-明细”结构的专业量化回测�
 
 ---
 
-## 六、回测引擎 (BacktestingEngine v4.5/v4.6)
+## 六、回测引擎 (BacktestingEngine) [v3]
 
 ### 并行模式支持
 
@@ -152,29 +298,10 @@ ExcelExporter 必须生成具备“总-分-明细”结构的专业量化回测�
 - **TimeSeries (纵向)**: `Parallel.ForEach(stocks) -> for(days)`。适用于普通技术指标策略。
 - **MarketSnapshot (横向)**: `for(days) -> Parallel.ForEach(stocks)`。支持跨股票截面计算（如 Z-Score 选股、行业排名）。
 
-### 分析器解耦 (v4.6/v4.7)
+### 分析器解耦
 
 - **单一事实来源**: 分析器 (Analyzer) 不再直接访问 `IDataStorage`，而是通过 `AnalysisContext.StockHistories` 访问。
-- **高性能索引 (v4.7)**: `BacktestingEngine` 通过缓存私有字典 $\_stockHistoryDict$ 将个股序列访问复杂度优化至 $O(1)$，显著降低分析阶段的 GC 开销。
+- **高性能索引**: `BacktestingEngine` 通过缓存私有字典 $_stockHistoryDict$ 将个股序列访问复杂度优化至 $O(1)$，显著降低分析阶段的 GC 开销。
 - **对齐保证**: 注入 Context 的数据必须保证是全局日期对齐的，且与引擎计算时使用的数据完全一致。
 
-- **矩阵化 PreScanMarket (v4.2)**: 引擎所有宏观与微观计算均基于对齐后的 `StockHistory` 矩阵。`PreScanMarket` 负责通过矩阵切片动态生成虚拟 `MarketFrame` 传给策略，确保宏观计算不再依赖物理存储模式。
-
-## 七、市场策略 (IMarketStrategy) 体系 (v4.0)
-
-### 1. RaUA 架构管线
-- **IMarketStrategy** 产生的宏观决策将通过 `context.Market` 注入到个股扫描 (`ISignalStrategy`) 和交易执行 (`ITradeStrategy`) 的上下文中。
-- **MarketBias** (市场偏向) 定义：
-    - `Up`: 看多 / 活跃
-    - `Neutral`: 中性
-    - `Down`: 看空 / 冰点
-
-### 2. 决策消费与剪枝
-- **剪枝机制**: 若 `context.Market.SkipAlpha` 为 `true`，引擎将自动跳过当日所有个股的信号计算，实现宏观风险规避。
-- **状态访问**: 策略可以通过 `context.MarketState<T>()` 获取由 `IMarketStrategy` 计算并存储的强类型自定义状态数据。
-  - 示例：`var metrics = context.MarketState<MyMarketMetrics>();`
-
----
-
-*架构基石：通过在数据层承担复杂度（对齐），实现了计算层与分析层逻辑的极简归一。*
-
+- **矩阵化 PreScanMarket**: 引擎所有宏观与微观计算均基于对齐后的 `StockHistory` 矩阵。`PreScanMarket` 负责通过矩阵切片动态生成虚拟 `MarketFrame` 传给策略，确保宏观计算不再依赖物理存储模式。
