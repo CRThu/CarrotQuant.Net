@@ -130,9 +130,9 @@ graph TD
     - `Down`: 看空 / 冰点
 
 ### 2. 决策消费与剪枝
-- **剪枝机制**: 若 `context.Market.SkipAlpha` 为 `true`，引擎将自动跳过当日所有个股的信号计算，实现宏观风险规避。
-- **状态访问**: 策略可以通过 `context.MarketState<T>()` 获取由 `IMarketStrategy` 计算并存储的强类型自定义状态数据。
-  - 示例：`var metrics = context.MarketState<MyMarketMetrics>();`
+- **剪枝机制**: 引擎在执行 ISignalStrategy 前会检查 `context.Market` 的状态。若 `MarketContext.SkipAlpha` 为 `true`，将自动跳过当日所有个股的信号计算。
+- **状态访问**: 策略可以通过 `context.Market.GetState<T>()` 获取由 `IMarketStrategy` 计算并存储的强类型自定义状态数据。
+  - 示例：`var metrics = context.Market.GetState<MyMarketMetrics>();`
 
 ---
 
@@ -222,7 +222,7 @@ IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot
 
 | 接口 | 文件 | 职责 |
 |------|------|------|
-| `IExecutionRecorder` | `Abstraction/Analysis/IExecutionRecorder.cs` | 负责回测/实盘全过程的流水采集（Order, Trade, Equity Snapshot） |
+| **IRecorder** | `Abstraction/Analysis/IExecutionRecorder.cs` | 负责回测/实盘全过程的流水采集（Order, Trade, Equity Snapshot） |
 
 **输出能力**：
 - `GetReport()`: 生成 `BacktestReport` 对象，用于后续渲染 Excel 或 Web 报表。
