@@ -94,12 +94,13 @@ graph TD
 
 | 组件 | 职责 |
 |------|------|
-| **IEngine** | 引擎统一抽象接口 |
+| **IEngine** | 引擎统一抽象接口（含状态监控、执行控制、持久化） |
 | **BacktestingEngine** | 回测引擎实现 |
 | **LivingEngine** | 实盘引擎实现 |
-| **IEngineContext** | 引擎运行上下文，向策略层注入数据 |
-| **IExchange** | 交易所抽象（撮合/行情） |
-| **IBroker** | 经纪人/账户管理抽象 |
+| **IEngineContext** | 引擎运行上下文，向策略层注入数据（Data, Broker, Market） |
+| **IExchangeGateway** | 交易所网关抽象（屏蔽回测模拟器与真实交易所差异） |
+| **IMatchingEngine** | 撮合引擎接口（仅回测，驱动时间步撮合） |
+| **IBroker** | 经纪人/账户管理抽象（资产查询、订单管理、成交事件） |
 | **IMonitor** | 监控/日志/告警抽象 |
 
 **数据流向**: `IDataProvider` → `IEngine` → (`IExchange` / `IBroker` / `IMonitor`) → `IEngineContext` → 策略层
@@ -191,6 +192,50 @@ IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot
 - 项目引用：`D:\Projects\Carrot.Memory\Carrot.Memory\Carrot.Memory.csproj`（已在 `CarrotBacktesting.NET.csproj` 中声明）
 - 关键类型：`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`
 - 命名空间：`Carrot.Memory.Abstractions`、`Carrot.Memory.Views`
+
+---
+
+## 四、引擎与执行层契约 (Engine Layer Contracts) [v4]
+
+命名空间：`CarrotBacktesting.NET.Abstraction.Engine`
+
+| 接口/类型 | 文件 | 职责 |
+|-----------|------|------|
+| `IEngine` | `Abstraction/Engine/IEngine.cs` | 驱动核心。支持 Run/Pause/Stop 及 Save/RestoreState 状态持久化 |
+| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略环境。封装了 `IDataProvider`, `IBroker`, `IMarketState` |
+| `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与订单管理，提供 `OnTrade` 等成交事件回调 |
+| `IExchangeGateway` | `Abstraction/Engine/IExchangeGateway.cs` | 物理路由。对接回测撮合器或实盘交易所 API |
+| `IMatchingEngine` | `Abstraction/Engine/IMatchingEngine.cs` | 撮合逻辑。由回测引擎在每个 Bar/Tick 驱动执行 |
+| `IMarketState` | `Abstraction/Engine/MarketContext.cs` | 市场黑板。支持策略间跨层异步状态交换 |
+| `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 运行监控。负责 Log/Metric/Alert 输出 |
+
+**关键模型 (Records)**：
+- `OrderRequest`: 描述下单意图（Symbol, Price, Quantity...）。
+- `ExecutionReport`: 描述物理成交结果（FillPrice, FillQuantity, Commission...）。
+- `OrderStatus`: 订单生命周期状态（Pending -> Submitted -> Filled/Canceled）。
+
+---
+
+## 五、分析与记录层契约 (Analysis Layer Contracts) [v4]
+
+命名空间：`CarrotBacktesting.NET.Abstraction.Analysis`
+
+| 接口 | 文件 | 职责 |
+|------|------|------|
+| `IExecutionRecorder` | `Abstraction/Analysis/IExecutionRecorder.cs` | 负责回测/实盘全过程的流水采集（Order, Trade, Equity Snapshot） |
+
+**输出能力**：
+- `GetReport()`: 生成 `BacktestReport` 对象，用于后续渲染 Excel 或 Web 报表。
+
+---
+
+## 六、策略层扩展契约 [v4]
+
+命名空间：`CarrotBacktesting.NET.Abstraction.Strategy`
+
+| 接口 | 文件 | 职责 |
+|------|------|------|
+| `ICheckpointable<T>` | `Abstraction/Strategy/ICheckpointable.cs` | 允许策略实现强类型状态快照，配合 `IEngine.SaveState` 实现断点续传 |
 
 ---
 
