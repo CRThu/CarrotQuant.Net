@@ -32,4 +32,9 @@ public interface IEngineContext
     /// 获取市场状态黑板。宏观策略可通过此接口更新全局结论，微观策略通过此接口获取过滤条件。
     /// </summary>
     IMarketState Market { get; }
+
+    /// <summary>
+    /// 允许策略查询引擎内其他已注册的组件或插件
+    /// </summary>
+    T? GetExtension<T>() where T : class;
 }

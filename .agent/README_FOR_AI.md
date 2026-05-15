@@ -111,12 +111,27 @@ graph TD
 
 | 组件 | 职责 |
 |------|------|
-| **IStrategy** | 策略基础接口 |
-| **IPortfolioStrategy** | 组合/仓位管理策略 |
+| **IStrategy** | 策略基础接口，包含完整生命周期（Initial/Start/Update/Stop）及事件（Order/Position） |
+| **IStrategyPipeline** | 策略管线接口，支持 Add/Compile 组合模式 |
+| **IPortfolioStrategy** | 组合/仓位管理策略（逻辑角色） |
 | **IMarketStrategy** | 市场/宏观策略（产生 MarketBias） |
 | **ISignalStrategy** | 个股信号策略（Alpha 信号生成） |
 
 **策略调度链**: `IPortfolioStrategy` → `IMarketStrategy` → `ISignalStrategy`
+
+### 3.1 策略解耦：Context 黑板模式
+核心理念是通过 `IEngineContext` 作为统一的信息交换中心（黑板），实现不同职责策略间的无感协作与物理隔离：
+- **职责分层**: 
+    - **信号发生器**: 仅负责行情分析与信号生产（Signal Generation），输出结论至上下文，不触碰交易接口。
+    - **执行处理器**: 仅负责监听黑板上的信号并转化为物理订单（Order Placement），对信号来源无感知。
+    - **风控监察员**: 监听账户回报（ExecutionReport/PositionEvent），实时执行风险对冲或合规校验。
+- **松耦合机制**: 策略间通过“A 生成状态 -> Context 存储 -> B 消费状态”的模式运行，这种基于状态的异步通信机制，使得单一策略可以保持极简逻辑并支持自由组合。
+
+### 3.2 策略管线 (Pipeline)
+基于组合模式（Composite Pattern）构建，支持复杂策略逻辑的拓扑编排：
+- **串联管线 (Sequential)**: 逻辑按序执行，适用于有因果依赖的策略链。例如：`宏观策略` → `个股信号` → `执行策略`。
+- **并联管线 (Parallel)**: 逻辑并发执行，适用于相互独立、计算密集型的策略组，充分利用多核性能。
+- **编译优化**: 引擎启动前通过 `Compile()` 对管线拓扑进行密封优化，确保在每个时间步分发事件时的执行效率。
 
 ---
 
@@ -233,8 +248,10 @@ IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot
 
 命名空间：`CarrotBacktesting.NET.Abstraction.Strategy`
 
-| 接口 | 文件 | 职责 |
-|------|------|------|
+| 接口/类 | 文件 | 职责 |
+|-----------|------|------|
+| `IStrategy` | `Abstraction/Strategy/IStrategy.cs` | 核心策略契约，支持全生命周期回调 |
+| `IStrategyPipeline` | `Abstraction/Strategy/IStrategyPipeline.cs` | 组合模式接口，支持策略管线抽象 |
 | `ICheckpointable<T>` | `Abstraction/Strategy/ICheckpointable.cs` | 允许策略实现强类型状态快照，配合 `IEngine.SaveState` 实现断点续传 |
 
 ---

@@ -22,6 +22,15 @@ public record OrderRequest(string Symbol, OrderDirection Direction, OrderType Ty
 public record ExecutionReport(string OrderId, string Symbol, double FillPrice, decimal FillQuantity, double Commission, DateTime Time);
 
 /// <summary>
+/// 表示持仓变更事件。
+/// </summary>
+/// <param name="Symbol">品种代码。</param>
+/// <param name="NewQuantity">调整后的新持仓数量。</param>
+/// <param name="AveragePrice">当前持仓的平均成本价（可选）。</param>
+/// <param name="Time">变更发生的时间。</param>
+public record PositionEvent(string Symbol, decimal NewQuantity, double AveragePrice, DateTime Time);
+
+/// <summary>
 /// 表示一个交易品种的实时订单簿（Depth）快照。
 /// </summary>
 public class Orderbook
