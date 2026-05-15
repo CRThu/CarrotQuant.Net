@@ -4,8 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyVersion>4.0.0.0-dev</AssemblyVersion>
-   </PropertyGroup>
+    <Nullable>enable</Nullable>
+    
+    <DefaultItemExcludes>$(DefaultItemExcludes);V3\**</DefaultItemExcludes>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Carrot.Memory" Version="1.0.0" />
