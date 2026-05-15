@@ -181,6 +181,8 @@ graph TD
 | `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 全局对齐后的维度信息：TradeDates（行索引）、Symbols（列索引） |
 | `IDataProvider` | `Abstraction/Data/IDataProvider.cs` | 数据层统一输出入口，`GetBuffer<T>(fieldName)` 返回 `IReadOnlyBuffer2D<T>` |
 | `IFieldRegistry` | `Abstraction/Data/IFieldRegistry.cs` | 字段注册表，管理已加载字段的元信息（含自定义指标字段） |
+| `IEventProvider<T>` | `Abstraction/Data/IEventProvider.cs` | 异构 KV 数据提供器（复权因子、分红、公告等） |
+| `IEventRegistry` | `Abstraction/Data/IEventRegistry.cs` | 事件注册表，统一管理外部 KV 数据流 |
 | `FieldInfo` | `Abstraction/Data/IFieldRegistry.cs` | 字段元数据 record（Name, DataType, IsCustom） |
 
 **关键约束**：
@@ -208,6 +210,30 @@ IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot
 - 关键类型：`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`
 - 命名空间：`Carrot.Memory.Abstractions`、`Carrot.Memory.Views`
 
+### 5. 异构事件流系统 (Event System)
+
+为了处理复权因子、龙虎榜、分红、财报、停牌公告等异构 KV 数据，v4 引入了事件流抽象。系统将数据分为两类，采用不同的物理实现与优化路径：
+
+#### 5.1 稠密矩阵 (IDataProvider) vs 稀疏事件 (IEventRegistry)
+
+| 特性 | **IDataProvider (稠密数据/矩阵)** | **IEventRegistry (稀疏数据/KV)** |
+| :--- | :--- | :--- |
+| **物理属性** | 连续内存块 (Memory-mapped / Buffer) | 键值对字典、对象图、链表 |
+| **访问模式** | 全量、批量、按索引 (row, col) 访问 | 随机、点对点访问 (date, symbol) |
+| **应用场景** | 向量化计算（RSI、MACD、因子合成） | 决策分支（是否停牌？是否有分红？） |
+| **一致性要求** | **强对齐**。必须保证日期与股票严格对齐，缺失会导致矩阵逻辑错位。 | **弱对齐**。仅在事件发生时存在记录，无需强行补全。 |
+| **性能目标** | **吞吐量 (Throughput)**。优化目标是跑满 SIMD 指令集。 | **延迟 (Latency)**。优化目标是 O(1) 或 O(log n) 的快速查找。 |
+
+#### 5.2 核心接口
+
+- **IEventProvider<T>**: 负责加载和供给特定类型的 KV 数据。支持按 (Date, Symbol) 随机访问，或获取全市场日快照。
+- **IEventRegistry**: 引擎全局唯一的事件流注册中心。策略通过 `context.Events.GetProvider<T>("stream_name")` 获取所需的数据流。
+
+**设计优势**：
+- **异构支持**: 不同数据流可以有完全不同的结构（Record 类型）。
+- **加载解耦**: 各数据流可以有不同的数据源（Parquet, SQL, API）和加载时机（预加载或惰性加载）。
+- **按需访问**: 策略仅需关注自身感兴趣的事件流。
+
 ---
 
 ## 四、引擎与执行层契约 (Engine Layer Contracts) [v4]
@@ -217,7 +243,7 @@ IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot
 | 接口/类型 | 文件 | 职责 |
 |-----------|------|------|
 | `IEngine` | `Abstraction/Engine/IEngine.cs` | 驱动核心。支持 Run/Pause/Stop 及 Save/RestoreState 状态持久化 |
-| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略环境。封装了 `IDataProvider`, `IBroker`, `IMarketState` |
+| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略环境。封装了 `IDataProvider`, `IBroker`, `IMarketState`, `IEventRegistry` |
 | `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与订单管理，提供 `OnTrade` 等成交事件回调 |
 | `IExchangeGateway` | `Abstraction/Engine/IExchangeGateway.cs` | 物理路由。对接回测撮合器或实盘交易所 API |
 | `IMatchingEngine` | `Abstraction/Engine/IMatchingEngine.cs` | 撮合逻辑。由回测引擎在每个 Bar/Tick 驱动执行 |

@@ -24,6 +24,11 @@ public interface IEngineContext
     IDataProvider Data { get; }
 
     /// <summary>
+    /// 获取事件注册表，用于访问外部 KV 数据流（如复权因子、公告等）。
+    /// </summary>
+    IEventRegistry Events { get; }
+
+    /// <summary>
     /// 获取经纪商接口，用于执行下单、撤单及查询账户资金持仓。
     /// </summary>
     IBroker Broker { get; }
