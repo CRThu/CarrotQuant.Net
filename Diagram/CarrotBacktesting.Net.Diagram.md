@@ -1,6 +1,6 @@
 ```mermaid
 graph TD
-    subgraph DataLayer [Data Layer]
+    subgraph DataLayer [Data Layer - 数据层]
         ETL[ETL]
         MMFPageProvider[MMFPageProvider]
         ParquetDataReader[ParquetDataReader]
@@ -12,6 +12,8 @@ graph TD
         BufferedDataProvider[BufferedDataProvider]
         StreamDataProvider[StreamDataProvider]
         IDataProvider[IDataProvider]
+        IEventRegistry[IEventRegistry]
+        IEventProvider[IEventProvider]
 
         ETL --> MMFPageProvider
         ETL --> ParquetDataReader
@@ -26,38 +28,33 @@ graph TD
         IRowReader --> StreamDataProvider
         BufferedDataProvider --> IDataProvider
         StreamDataProvider --> IDataProvider
+        IEventRegistry --> IEventProvider
     end
 
-    subgraph EngineExecutionLayer [Engine and Execution Layer]
+    subgraph EngineExecutionLayer [Engine and Execution Layer - 引擎与执行层]
         BacktestingEngine[BacktestingEngine]
         LivingEngine[LivingEngine]
         IEngine[IEngine]
         IEngineContext[IEngineContext]
-        IExchange[IExchange]
+        IExchangeGateway[IExchangeGateway]
         IBroker[IBroker]
         IMonitor[IMonitor]
 
         BacktestingEngine --> IEngine
         LivingEngine --> IEngine
         IDataProvider --> IEngine
-        IEngine --> IExchange
+        IEventRegistry --> IEngine
+        IEngine --> IExchangeGateway
         IEngine --> IBroker
         IEngine --> IMonitor
         IEngine --> IEngineContext
     end
 
-    subgraph StrategyLayer [Strategy Layer]
+    subgraph StrategyLayer [Strategy Layer - 策略层]
         IStrategy[IStrategy]
-        IPortfolioStrategy[IPortfolioStrategy]
-        IMarketStrategy[IMarketStrategy]
-        ISignalStrategy[ISignalStrategy]
+        IStrategyPipeline[IStrategyPipeline]
 
         IEngineContext --> IStrategy
-        IStrategy --> IPortfolioStrategy
-        IStrategy --> IMarketStrategy
-        IStrategy --> ISignalStrategy
-        
-        IPortfolioStrategy --> IMarketStrategy
-        IMarketStrategy --> ISignalStrategy
+        IStrategy --> IStrategyPipeline
     end
 ```
