@@ -157,17 +157,26 @@ graph TD
 
 ### 1. 物理层抽象：宽表快照流（ETL 层）
 
-命名空间：`CarrotBacktesting.NET.Abstraction.Data.Etl`
+命名空间：`CarrotBacktesting.NET.Abstraction.Data`
 
 | 接口 | 文件 | 职责 |
 |------|------|------|
-| `IMarketSnapshotMetadata` | `Abstraction/Data/Etl/IMarketSnapshotSource.cs` | 描述数据源的维度结构（Symbols / FieldNames / 字段类型） |
-| `IMarketSnapshotSource` | `Abstraction/Data/Etl/IMarketSnapshotSource.cs` | 流式读取宽表快照的 ETL 契约，屏蔽 CSV / Parquet 物理格式细节 |
+| `IMarketSnapshotMetadata` | `Abstraction/Data/IMarketSnapshotSource.cs` | 描述数据源的维度结构（Symbols / FieldNames / 字段类型） |
+| `IMarketSnapshotSource` | `Abstraction/Data/IMarketSnapshotSource.cs` | 流式读取宽表快照的 ETL 契约，物理行（Row）= 交易日，列（Col）= 全市场股票 |
+| `IMarketSeriesSource` | `Abstraction/Data/IMarketSeriesSource.cs` | 批量读取个股序列的 ETL 契约，物理列（Col）= 股票，行（Row）= 时间序列 |
 
 **关键设计**：
 - `MoveNext()` 驱动逐行（逐交易日）遍历，零状态暴露。
 - `ReadFieldSnapshot<T>(fieldName, Span<T> destination)` 直接写入调用方提供的内存块，**严格零拷贝**，禁止内部 `new T[]`。
 - `T : unmanaged` 约束确保与 `Carrot.Memory` 的 MMF 物理布局兼容。
+
+#### 1.1 具体实现 (Implementations)
+- **CsvMarketSnapshotSource**:
+  - **存储布局**: 支持 Hive 分区结构：`storage_root/csv/{table_id}/year={yyyy}/{symbol}.csv`。
+  - **高效机制**: 采用 **多路归并（Multi-way Merge）** 算法。构造时仅扫描元数据和所有交易日，并在各股票对应的独立 `StockState` 文件流中维护局部游标，随着 `MoveNext()` 推动的全局交易日进行流式向前对齐推进。每次仅在内存中保留单日截面的字符串数据进行非托管解析转换，彻底避免一次性加载全量数据的内存开销。
+- **ParquetMarketSnapshotSource**:
+  - **存储布局**: 支持月度宽表分区结构：`storage_root/parquet/{table_id}/year={yyyy}/{yyyy}-{mm}.parquet`。
+  - **高效机制**: 采用 **按需列缓存（On-demand Column Caching）** 机制。当游标跨月时流式加载当月 Parquet 文件，并提取 symbol 与日期建立快速行号索引。当且仅当调用 `ReadFieldSnapshot<T>` 访问特定指标字段时，才会按需从 RowGroup 中解压读取该数据列的 CLR 原始数组。同时利用非托管快速拷贝和 `Unsafe.As` 类型变换将数据直接填充到目标 Span，提供极高吞吐量与极低内存抖动。支持跨月混合存储数据的平滑过渡复用。
 
 ### 2. 内存层接口：对齐后的 Buffer 访问（Data 层）
 
@@ -230,6 +239,32 @@ IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot
 - **异构支持**: 不同数据流可以有完全不同的结构（Record 类型）。
 - **加载解耦**: 各数据流可以有不同的数据源（Parquet, SQL, API）和加载时机（预加载或惰性加载）。
 - **按需访问**: 策略仅需关注自身感兴趣的事件流。
+
+### 6. 数据载入性能演进：纵向批量导入通道 (Column-wise Bulk Loader)
+
+为了在全内存加载或分批滑动载入（Chunked Load）中实现最极致的 I/O 吞吐量并消除 C# 端的行号重映射开销，系统设计了**“以股票连续（Stock-Continuous）为基础的纵向批量导入通道”**。这一演进方向完美统一了 CSV 和 Parquet 物理存储异构性的加载逻辑。
+
+#### 6.1 物理排布的高度对称性
+- **CSV 数据源**: 物理上天然以单只股票独立文件（`{symbol}.csv`）存储，文件内的时间序列是完全连续的。
+- **Parquet 数据源**: 物理上采用 `["symbol", "timestamp"]`（股票优先，时间次之）进行排序存储。因此，对于任意单只股票在月度大表中的行情数据，在解压后的列数组中也是在物理上完全连续分布的。
+
+#### 6.2 纵向批量灌入机制 (Column-wise Copy)
+Loader 在系统启动或滑动窗口滚动向前时，放弃逐日流式多路归并（Cross-sectional Merge），改用**以个股为单位、指定时间区间（StartIndex + Length）的纵向块拷贝（Memcpy）**：
+1. **对于 Parquet**:
+   - 整个月度 Parquet 文件仅被打开和解压一次，各行情特征列解压为完整的一维数组。
+   - 遍历 Symbol 列表，在 `ReadSymbolSeries` 中传入指定的 `startIndex` 与 `length`。基于股票在大列数组中的连续 Offset 与区间偏移，利用 `Span<T>.CopyTo` 一次性将该股票当月（或当区间）的特定天数数据批量快速拷入二维矩阵 `IBuffer2D` 中对应的列和行区间内。
+2. **对于 CSV**:
+   - 遍历股票对应的独立 CSV 文件，仅解析 `[startIndex, startIndex + length - 1]` 日期区间内的序列数据，同样批量写入对应列和行区间。
+
+#### 6.3 架构优势
+- **速度突破**: 规避了流式对齐中逐日在几万行内存区间大范围跳转寻址（Gather Write）和哈希查找的 CPU 额外开销，完全由 CPU 缓存极度友好的连续内存块拷贝驱动。
+- **两端高度统一**: 将 CSV 的多文件读取与 Parquet 的列数据切片读取，在逻辑上抽象归一为同一种 Bulk Loader 加载行为。
+- **完美契合分时间滑动载入**: 在进行大容量数据分时间段（Time-Chunked）加载时，只需通过调整写入的行偏移区间，即可纵向平滑地按批次覆盖和滚动数据，确保内存占用恒定。
+
+#### 6.4 物理路径与元数据统一解析器 (MarketDataResolver)
+为了避免多个异构数据源（CSV/Parquet 等）各自重复反序列化 `metadata.json` 并拼接物理路径，系统引入了 `IMarketDataResolver`：
+- **路径完全解耦**：表目录定位、可用年份分区扫描（`year=*`）以及各格式特定的文件定位逻辑全部收拢。
+- **元数据驱动类型**：由 `Resolver` 从元数据中读取 schema 定义并向 Reader 驱动供给字段对应的 CLR 强类型，消除了数据源内部对数据字段类型的猜测和反射冗余。
 
 ---
 

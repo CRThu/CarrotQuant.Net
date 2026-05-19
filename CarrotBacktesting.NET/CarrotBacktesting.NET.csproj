@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="Carrot.Memory" Version="1.0.0" />
+    <PackageReference Include="Parquet.Net" Version="6.0.3" />
+    <PackageReference Include="Sylvan.Data.Csv" Version="1.4.4" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-﻿
+using System;
 
 namespace CarrotBacktesting.NET.Demo
 {
@@ -6,14 +6,7 @@ namespace CarrotBacktesting.NET.Demo
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello, World!");
-            try
-            {
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"\nAn unhandled error occurred: {ex}");
-            }
+            Console.WriteLine("CarrotBacktesting.NET Demo Runner");
         }
     }
 }
