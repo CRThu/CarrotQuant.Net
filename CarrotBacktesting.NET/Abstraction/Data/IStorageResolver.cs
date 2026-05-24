@@ -75,14 +75,15 @@ namespace CarrotBacktesting.NET.Abstraction.Data
 
         /// <summary>
         /// 终极物理路径调度与分区剪枝 API。
-        /// 支持根据起止日期进行可选的年份分区剪枝，返回解析并排序后的物理数据文件列表。
+        /// 支持根据起止日期进行可选的年份分区剪枝，并支持按 symbol 智能路由（若为 null 则返回整表所有分区文件），返回解析并排序后的物理数据文件列表。
         /// 向上层 Reader 屏蔽所有目录探测、分区查找及路径拼接物理细节。
         /// </summary>
         /// <param name="tableId">数据表 ID</param>
+        /// <param name="symbol">可选股票代码（若提供，将精确定位该股数据文件；若为 null，返回整表所有数据文件）</param>
         /// <param name="startDate">可选开始日期（用于 Hive 分区剪枝）</param>
         /// <param name="endDate">可选结束日期（用于 Hive 分区剪枝）</param>
         /// <returns>排好序的物理数据文件完整路径列表</returns>
-        IReadOnlyList<string> ResolvePhysicalFiles(string tableId, DateTime? startDate = null, DateTime? endDate = null);
+        IReadOnlyList<string> ResolvePhysicalFiles(string tableId, string? symbol = null, DateTime? startDate = null, DateTime? endDate = null);
     }
 }
 

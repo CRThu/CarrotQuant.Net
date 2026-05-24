@@ -54,7 +54,7 @@ namespace CarrotBacktesting.NET.Data
             var dateSet = new HashSet<DateTime>();
 
             // 使用 resolver 解析出的所有物理文件列表（已支持年份剪枝）
-            var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, _startDate, _endDate);
+            var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, null, _startDate, _endDate);
             foreach (var file in parquetFiles)
             {
                 using var fs = File.OpenRead(file);
@@ -134,7 +134,7 @@ namespace CarrotBacktesting.NET.Data
             DateTime maxDate = _tradeDates[startIndex + length - 1];
 
             // 终极调度：100% 委托给调度解析器寻找区间内的数据物理文件
-            var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, minDate, maxDate);
+            var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, minDate, maxDate);
 
             // 依次填充每个文件的数据
             foreach (var filePath in parquetFiles)

@@ -74,19 +74,27 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 终极调度 API：解析表数据物理文件，支持根据时间段对年份进行分区剪枝。
+        /// 终极调度 API：解析表数据物理文件，支持根据起止日期进行年份分区剪枝，并支持按 symbol 智能路由。
         /// </summary>
-        public IReadOnlyList<string> ResolvePhysicalFiles(string tableId, DateTime? startDate = null, DateTime? endDate = null)
+        public IReadOnlyList<string> ResolvePhysicalFiles(string tableId, string? symbol = null, DateTime? startDate = null, DateTime? endDate = null)
         {
             var cache = GetOrCreateCache(tableId);
 
             if (cache.Layout == StorageLayout.NonHive)
             {
-                // NonHive 平铺布局：直接在表目录下查找指定格式文件
-                string searchPattern = $"*.{cache.Format}";
-                return Directory.EnumerateFiles(cache.TableDir, searchPattern)
-                    .OrderBy(file => file)
-                    .ToList();
+                // NonHive 平铺布局：根据 symbol 是否为空选择全匹配还是精确查找
+                if (string.IsNullOrEmpty(symbol))
+                {
+                    string searchPattern = $"*.{cache.Format}";
+                    return Directory.EnumerateFiles(cache.TableDir, searchPattern)
+                        .OrderBy(file => file)
+                        .ToList();
+                }
+                else
+                {
+                    string filePath = Path.Combine(cache.TableDir, $"{symbol}.{cache.Format}");
+                    return File.Exists(filePath) ? new List<string> { filePath } : new List<string>();
+                }
             }
             else
             {
@@ -95,7 +103,7 @@ namespace CarrotBacktesting.NET.Data
                 int endYear = endDate?.Year ?? int.MaxValue;
 
                 var matchedFiles = new List<string>();
-                // 仅扫描落在 [startYear, endYear] 范围内的有效年份目录，跳过不相干的年份分区
+                // 仅扫描落在 [startYear, endYear] 范围内的有效年份目录
                 foreach (var year in cache.AvailableYears)
                 {
                     if (year >= startYear && year <= endYear)
@@ -103,14 +111,24 @@ namespace CarrotBacktesting.NET.Data
                         string yearDir = Path.Combine(cache.TableDir, $"year={year}");
                         if (Directory.Exists(yearDir))
                         {
-                            string searchPattern = $"*.{cache.Format}";
-                            var files = Directory.EnumerateFiles(yearDir, searchPattern);
-                            matchedFiles.AddRange(files);
+                            if (string.IsNullOrEmpty(symbol))
+                            {
+                                string searchPattern = $"*.{cache.Format}";
+                                var files = Directory.EnumerateFiles(yearDir, searchPattern);
+                                matchedFiles.AddRange(files);
+                            }
+                            else
+                            {
+                                string filePath = Path.Combine(yearDir, $"{symbol}.{cache.Format}");
+                                if (File.Exists(filePath))
+                                {
+                                    matchedFiles.Add(filePath);
+                                }
+                            }
                         }
                     }
                 }
-                
-                // 返回按物理路径升序排列的完整列表
+
                 return matchedFiles.OrderBy(f => f).ToList();
             }
         }

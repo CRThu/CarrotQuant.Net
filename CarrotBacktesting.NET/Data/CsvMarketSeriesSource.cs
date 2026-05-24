@@ -46,7 +46,7 @@ namespace CarrotBacktesting.NET.Data
 
             // 1. 扫描可用股票代码，委托给路径调度器解析符合时间区间的物理文件
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, _startDate, _endDate);
+            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, null, _startDate, _endDate);
             foreach (var file in csvFiles)
             {
                 string sym = Path.GetFileNameWithoutExtension(file);
@@ -122,11 +122,8 @@ namespace CarrotBacktesting.NET.Data
             DateTime maxDate = _tradeDates[startIndex + length - 1];
 
             // 终极调度：100% 委托给调度解析器寻找区间内的数据物理文件
-            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, _startDate, _endDate);
-            // 过滤出该个股对应的物理文件路径进行数据提取
-            var symbolFiles = csvFiles.Where(f => Path.GetFileNameWithoutExtension(f).Equals(symbol, StringComparison.OrdinalIgnoreCase));
-
-            foreach (var filePath in symbolFiles)
+            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, _startDate, _endDate);
+            foreach (var filePath in csvFiles)
             {
                 if (!File.Exists(filePath))
                 {
