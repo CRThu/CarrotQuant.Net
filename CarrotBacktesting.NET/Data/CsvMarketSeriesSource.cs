@@ -11,40 +11,50 @@ namespace CarrotBacktesting.NET.Data
     /// <summary>
     /// CSV 格式的纵向序列市场数据源实现（实现 IMarketSeriesSource 契约）。
     /// 基于 Sylvan.Data.Csv 库进行高效的 CSV 文件列解析。
-    /// 物理路径与元数据强类型全部委托给 IMarketDataResolver。
+    /// 物理路径与元数据强类型全部委托给 IStorageResolver。
     /// </summary>
     public class CsvMarketSeriesSource : IMarketSeriesSource, IDisposable
     {
-        private readonly IMarketDataResolver _resolver;
+        private readonly IStorageResolver _resolver;
+        private readonly string _tableId;
+        private readonly DateTime? _startDate;
+        private readonly DateTime? _endDate;
         private readonly List<DateTime> _tradeDates;
         private readonly List<string> _symbols;
 
         public IReadOnlyList<string> Symbols => _symbols;
-        public IReadOnlyList<string> FieldNames => _resolver.FieldNames;
+        public IReadOnlyList<string> FieldNames => _resolver.GetFieldNames(_tableId);
         public IReadOnlyList<DateTime> TradeDates => _tradeDates;
 
         /// <summary>
         /// 便捷构造函数。
         /// </summary>
-        public CsvMarketSeriesSource(string storageRoot, string tableId)
-            : this(new MarketDataResolver(storageRoot, tableId))
+        public CsvMarketSeriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+            : this(new MarketDataResolver(storageRoot), tableId, startDate, endDate)
         {
         }
 
         /// <summary>
         /// 核心构造函数，接收外部依赖注入的路径解析器。
         /// </summary>
-        public CsvMarketSeriesSource(IMarketDataResolver resolver)
+        public CsvMarketSeriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null)
         {
             _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+            _tableId = tableId;
+            _startDate = startDate;
+            _endDate = endDate;
 
-            // 1. 扫描可用股票代码
+            // 1. 扫描可用股票代码，委托给路径调度器解析符合时间区间的物理文件
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var csvFiles = _resolver.EnumerateCsvFiles();
+            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, _startDate, _endDate);
             foreach (var file in csvFiles)
             {
                 string sym = Path.GetFileNameWithoutExtension(file);
-                symbolSet.Add(sym);
+                // 排除可能生成的非个股公共数据 CSV
+                if (!sym.Equals("data", StringComparison.OrdinalIgnoreCase))
+                {
+                    symbolSet.Add(sym);
+                }
             }
             _symbols = symbolSet.OrderBy(s => s).ToList();
 
@@ -87,7 +97,7 @@ namespace CarrotBacktesting.NET.Data
 
         public Type GetFieldType(string fieldName)
         {
-            return _resolver.GetFieldType(fieldName);
+            return _resolver.GetFieldType(_tableId, fieldName);
         }
 
         /// <summary>
@@ -111,10 +121,13 @@ namespace CarrotBacktesting.NET.Data
             DateTime minDate = _tradeDates[startIndex];
             DateTime maxDate = _tradeDates[startIndex + length - 1];
 
-            // 遍历所有可用年份的分区物理文件
-            foreach (var year in _resolver.GetAvailableYears())
+            // 终极调度：100% 委托给调度解析器寻找区间内的数据物理文件
+            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, _startDate, _endDate);
+            // 过滤出该个股对应的物理文件路径进行数据提取
+            var symbolFiles = csvFiles.Where(f => Path.GetFileNameWithoutExtension(f).Equals(symbol, StringComparison.OrdinalIgnoreCase));
+
+            foreach (var filePath in symbolFiles)
             {
-                string filePath = _resolver.GetCsvFilePath(year, symbol);
                 if (!File.Exists(filePath))
                 {
                     continue;

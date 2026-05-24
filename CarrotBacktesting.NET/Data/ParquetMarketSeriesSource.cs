@@ -13,12 +13,15 @@ namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
     /// Parquet 格式的纵向序列市场数据源实现（实现 IMarketSeriesSource 契约）。
-    /// 所有的物理路径定位与 schema 类型定义均由 IMarketDataResolver 提供。
+    /// 所有的物理路径定位与 schema 类型定义均由 IStorageResolver 提供。
     /// 内部维护一个惰性滑动的月份数据列解压缓存。
     /// </summary>
     public class ParquetMarketSeriesSource : IMarketSeriesSource, IDisposable
     {
-        private readonly IMarketDataResolver _resolver;
+        private readonly IStorageResolver _resolver;
+        private readonly string _tableId;
+        private readonly DateTime? _startDate;
+        private readonly DateTime? _endDate;
         private readonly List<DateTime> _tradeDates;
         private readonly List<string> _symbols;
 
@@ -26,29 +29,32 @@ namespace CarrotBacktesting.NET.Data
         private bool _disposed = false;
 
         public IReadOnlyList<string> Symbols => _symbols;
-        public IReadOnlyList<string> FieldNames => _resolver.FieldNames;
+        public IReadOnlyList<string> FieldNames => _resolver.GetFieldNames(_tableId);
         public IReadOnlyList<DateTime> TradeDates => _tradeDates;
 
         /// <summary>
         /// 便捷构造函数。
         /// </summary>
-        public ParquetMarketSeriesSource(string storageRoot, string tableId)
-            : this(new MarketDataResolver(storageRoot, tableId))
+        public ParquetMarketSeriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+            : this(new MarketDataResolver(storageRoot), tableId, startDate, endDate)
         {
         }
 
         /// <summary>
         /// 核心构造函数，接收外部依赖注入的路径解析器。
         /// </summary>
-        public ParquetMarketSeriesSource(IMarketDataResolver resolver)
+        public ParquetMarketSeriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null)
         {
             _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+            _tableId = tableId;
+            _startDate = startDate;
+            _endDate = endDate;
 
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var dateSet = new HashSet<DateTime>();
 
-            // 使用 resolver 枚举所有的 parquet 文件并加载基础维度信息
-            var parquetFiles = _resolver.EnumerateParquetFiles();
+            // 使用 resolver 解析出的所有物理文件列表（已支持年份剪枝）
+            var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, _startDate, _endDate);
             foreach (var file in parquetFiles)
             {
                 using var fs = File.OpenRead(file);
@@ -103,7 +109,7 @@ namespace CarrotBacktesting.NET.Data
 
         public Type GetFieldType(string fieldName)
         {
-            return _resolver.GetFieldType(fieldName);
+            return _resolver.GetFieldType(_tableId, fieldName);
         }
 
         /// <summary>
@@ -127,33 +133,22 @@ namespace CarrotBacktesting.NET.Data
             DateTime minDate = _tradeDates[startIndex];
             DateTime maxDate = _tradeDates[startIndex + length - 1];
 
-            // 查找请求区间所跨越的所有月份
-            var targetMonths = new List<(int Year, int Month)>();
-            DateTime current = minDate;
-            while (current <= maxDate)
-            {
-                var ym = (current.Year, current.Month);
-                if (!targetMonths.Contains(ym))
-                {
-                    targetMonths.Add(ym);
-                }
-                current = current.AddDays(1);
-            }
+            // 终极调度：100% 委托给调度解析器寻找区间内的数据物理文件
+            var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, minDate, maxDate);
 
-            // 依次填充每个月的数据
-            foreach (var ym in targetMonths)
+            // 依次填充每个文件的数据
+            foreach (var filePath in parquetFiles)
             {
-                // 如果缓存月份不匹配，则从 resolver 中获取具体物理文件并刷新 MonthCache
-                if (_currentCache == null || _currentCache.Year != ym.Year || _currentCache.Month != ym.Month)
+                // 如果缓存文件路径不匹配，则刷新 MonthCache 缓存
+                if (_currentCache == null || !_currentCache.FilePath.Equals(filePath, StringComparison.OrdinalIgnoreCase))
                 {
-                    string filePath = _resolver.GetParquetFilePath(ym.Year, ym.Month);
                     if (File.Exists(filePath))
                     {
                         if (_currentCache != null)
                         {
                             _currentCache.Dispose();
                         }
-                        _currentCache = new MonthCache(ym.Year, ym.Month, filePath);
+                        _currentCache = new MonthCache(filePath);
                     }
                     else
                     {
@@ -352,8 +347,7 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         private class MonthCache : IDisposable
         {
-            public int Year { get; }
-            public int Month { get; }
+            public string FilePath { get; }
 
             public Dictionary<string, (int StartRow, int RowCount)> StockRanges { get; }
             public DateTime[] Dates { get; }
@@ -363,10 +357,9 @@ namespace CarrotBacktesting.NET.Data
             private readonly Dictionary<string, Array> _columns;
             private readonly DataField[] _dataFields;
 
-            public MonthCache(int year, int month, string filePath)
+            public MonthCache(string filePath)
             {
-                Year = year;
-                Month = month;
+                FilePath = filePath;
                 _columns = new Dictionary<string, Array>(StringComparer.OrdinalIgnoreCase);
 
                 _fs = File.OpenRead(filePath);

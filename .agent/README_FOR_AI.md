@@ -262,9 +262,14 @@ Loader 在系统启动或滑动窗口滚动向前时，放弃逐日流式多路�
 - **完美契合分时间滑动载入**: 在进行大容量数据分时间段（Time-Chunked）加载时，只需通过调整写入的行偏移区间，即可纵向平滑地按批次覆盖和滚动数据，确保内存占用恒定。
 
 #### 6.4 物理路径与元数据统一解析器 (MarketDataResolver)
-为了避免多个异构数据源（CSV/Parquet 等）各自重复反序列化 `metadata.json` 并拼接物理路径，系统引入了 `IMarketDataResolver`：
-- **路径完全解耦**：表目录定位、可用年份分区扫描（`year=*`）以及各格式特定的文件定位逻辑全部收拢。
-- **元数据驱动类型**：由 `Resolver` 从元数据中读取 schema 定义并向 Reader 驱动供给字段对应的 CLR 强类型，消除了数据源内部对数据字段类型的猜测和反射冗余。
+为了支持多表跨表关联加载并彻底解耦数据源层与物理文件布局，系统将单表路径解析器重构为**“统一数据区多表路径调度解析器”**：
+- **全局多表管理**：`IStorageResolver` 不再绑定单一表，而是作为整个存储数据区的“物理调度管理器”，所有接口均引入了 `tableId`，为上层多表联合关联提供支持。
+- **惰性多表元数据缓存**：内部维护线程安全的 `ConcurrentDictionary<string, TableMetadataCache>` 缓存各表的反序列化结构与 Schema 类型字典，避免高并发读取时重复发生磁盘 I/O。
+- **布局自适应探测 (StorageLayout)**：支持 `Hive` 分区与 `NonHive` 平铺布局。如果 `metadata.json` 中没有显式声明 `layout` 字段，系统将基于表目录下是否存在 `year=*` 目录进行自适应探测。
+- **终极调度与年份剪枝 (ResolvePhysicalFiles)**：
+  - **对于 NonHive 布局**：直接在表的根目录下扫描并获取对应物理格式的文件列表，按路径升序排序返回。
+  - **对于 Hive 布局**：接收可选的 `startDate` 与 `endDate` 年份区间，仅扫描落在区间内的 `year=*` 分区目录下的数据文件，自动执行年份分区剪枝，返回路径升序排序的物理文件列表。
+- **实体 Reader 无感适配**：`CsvMarketSeriesSource` 与 `ParquetMarketSeriesSource` 的内部读取逻辑彻底摒弃任何手动路径拼接与年份/月份提取逻辑，**100% 委托给 `resolver.ResolvePhysicalFiles` 终极调度**，实现了 Reader 与物理存储结构的完全解耦。
 
 ---
 
