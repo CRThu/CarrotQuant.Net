@@ -12,7 +12,7 @@ namespace CarrotBacktesting.NET.Data
     /// 统一数据区多表路径调度解析器的具体实现。
     /// 内部维护线程安全的 ConcurrentDictionary 作为多表元数据惰性缓存，规避并发读取时的重复 I/O，并自适应探测物理分区结构。
     /// </summary>
-    public class MarketDataResolver : IStorageResolver
+    public class StorageResolver : IStorageResolver
     {
         private const string MetadataFileName = "metadata.json";
         private readonly string _storageRoot;

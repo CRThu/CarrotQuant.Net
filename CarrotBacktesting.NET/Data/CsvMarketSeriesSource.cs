@@ -30,7 +30,7 @@ namespace CarrotBacktesting.NET.Data
         /// 便捷构造函数。
         /// </summary>
         public CsvMarketSeriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null)
-            : this(new MarketDataResolver(storageRoot), tableId, startDate, endDate)
+            : this(new StorageResolver(storageRoot), tableId, startDate, endDate)
         {
         }
 
