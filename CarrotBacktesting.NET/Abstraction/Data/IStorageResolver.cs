@@ -14,9 +14,9 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         Hive,
 
         /// <summary>
-        /// 非 Hive 模式 (所有数据文件直接平铺在表目录下)
+        /// Flat 平铺模式 (所有数据文件直接平铺在表目录下)
         /// </summary>
-        NonHive
+        Flat
     }
 
     /// <summary>
@@ -52,7 +52,7 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         string GetFormat(string tableId);
 
         /// <summary>
-        /// 获取指定表的数据物理存储布局模式 (Hive 分区或 NonHive 平铺)。
+        /// 获取指定表的数据物理存储布局模式 (Hive 分区或 Flat 平铺)。
         /// </summary>
         /// <param name="tableId">数据表 ID</param>
         /// <returns>StorageLayout 布局类型</returns>
@@ -72,6 +72,34 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         /// <param name="fieldName">字段名称</param>
         /// <returns>字段对应的 System.Type</returns>
         Type GetFieldType(string tableId, string fieldName);
+
+        /// <summary>
+        /// 获取指定表的数据分类 (例如 "timeseries" 或 "events")。
+        /// </summary>
+        /// <param name="tableId">数据表 ID</param>
+        /// <returns>分类字符串 ("timeseries" 或 "events")</returns>
+        string GetCategory(string tableId);
+
+        /// <summary>
+        /// 获取指定表的分区模式 (例如 "symbol"、"date" 或 "none")。
+        /// </summary>
+        /// <param name="tableId">数据表 ID</param>
+        /// <returns>分区模式字符串 ("symbol"、"date" 或 "none")</returns>
+        string GetPartition(string tableId);
+
+        /// <summary>
+        /// 获取指定表的开始时间戳 (Unix 毫秒时间戳)。
+        /// </summary>
+        /// <param name="tableId">数据表 ID</param>
+        /// <returns>开始时间戳</returns>
+        long GetStartTimestamp(string tableId);
+
+        /// <summary>
+        /// 获取指定表的结束时间戳 (Unix 毫秒时间戳)。
+        /// </summary>
+        /// <param name="tableId">数据表 ID</param>
+        /// <returns>结束时间戳</returns>
+        long GetEndTimestamp(string tableId);
 
         /// <summary>
         /// 终极物理路径调度与分区剪枝 API。

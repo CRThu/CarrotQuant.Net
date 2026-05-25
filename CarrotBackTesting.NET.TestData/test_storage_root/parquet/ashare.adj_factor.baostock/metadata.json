@@ -2,6 +2,8 @@
   "table_id": "ashare.adj_factor.baostock",
   "category": "TS",
   "format": "parquet",
+  "partition": "none",
+  "layout": "hive",
   "schema": {
     "symbol": "String",
     "datetime": "String",

@@ -73,6 +73,14 @@ namespace CarrotBacktesting.NET.Data
             return typeof(string); // 默认降级为 string 类型
         }
 
+        public string GetCategory(string tableId) => GetOrCreateCache(tableId).Category;
+
+        public string GetPartition(string tableId) => GetOrCreateCache(tableId).Partition;
+
+        public long GetStartTimestamp(string tableId) => GetOrCreateCache(tableId).StartTimestamp;
+
+        public long GetEndTimestamp(string tableId) => GetOrCreateCache(tableId).EndTimestamp;
+
         /// <summary>
         /// 终极调度 API：解析表数据物理文件，支持根据起止日期进行年份分区剪枝，并支持按 symbol 智能路由。
         /// </summary>
@@ -80,51 +88,56 @@ namespace CarrotBacktesting.NET.Data
         {
             var cache = GetOrCreateCache(tableId);
 
-            if (cache.Layout == StorageLayout.NonHive)
+            if (cache.Layout == StorageLayout.Flat)
             {
-                // NonHive 平铺布局：根据 symbol 是否为空选择全匹配还是精确查找
-                if (string.IsNullOrEmpty(symbol))
+                // Flat 平铺布局：如果分区模式是 symbol 且指定了 symbol，则精准匹配单个文件；否则扫描全表目录文件
+                if (cache.Partition.Equals("symbol", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(symbol))
+                {
+                    string filePath = Path.Combine(cache.TableDir, $"{symbol}.{cache.Format}");
+                    return File.Exists(filePath) ? new List<string> { filePath } : new List<string>();
+                }
+                else
                 {
                     string searchPattern = $"*.{cache.Format}";
                     return Directory.EnumerateFiles(cache.TableDir, searchPattern)
                         .OrderBy(file => file)
                         .ToList();
                 }
-                else
-                {
-                    string filePath = Path.Combine(cache.TableDir, $"{symbol}.{cache.Format}");
-                    return File.Exists(filePath) ? new List<string> { filePath } : new List<string>();
-                }
             }
             else
             {
-                // Hive 分区布局：根据传入起止日期确定年份边界，实现分区剪枝
-                int startYear = startDate?.Year ?? 0;
-                int endYear = endDate?.Year ?? int.MaxValue;
+                // Hive 分区布局：基于起止时间戳所标识的年份范围，实现按年份剪枝，避免对不相关年份目录进行磁盘探测
+                var startDateTime = DateTimeOffset.FromUnixTimeMilliseconds(cache.StartTimestamp).DateTime;
+                var endDateTime = DateTimeOffset.FromUnixTimeMilliseconds(cache.EndTimestamp).DateTime;
+                int tableStartYear = startDateTime.Year;
+                int tableEndYear = endDateTime.Year;
+
+                // 确定剪枝范围
+                int startYear = Math.Max(startDate?.Year ?? 0, tableStartYear);
+                int endYear = Math.Min(endDate?.Year ?? int.MaxValue, tableEndYear);
 
                 var matchedFiles = new List<string>();
-                // 仅扫描落在 [startYear, endYear] 范围内的有效年份目录
-                foreach (var year in cache.AvailableYears)
+                // 仅扫描落在年份范围内的有效年份目录
+                for (int year = startYear; year <= endYear; year++)
                 {
-                    if (year >= startYear && year <= endYear)
+                    string yearDir = Path.Combine(cache.TableDir, $"year={year}");
+                    if (Directory.Exists(yearDir))
                     {
-                        string yearDir = Path.Combine(cache.TableDir, $"year={year}");
-                        if (Directory.Exists(yearDir))
+                        // 如果分区模式是 symbol 且指定了 symbol，精准定位 `{symbol}.{format}` 文件
+                        if (cache.Partition.Equals("symbol", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(symbol))
                         {
-                            if (string.IsNullOrEmpty(symbol))
+                            string filePath = Path.Combine(yearDir, $"{symbol}.{cache.Format}");
+                            if (File.Exists(filePath))
                             {
-                                string searchPattern = $"*.{cache.Format}";
-                                var files = Directory.EnumerateFiles(yearDir, searchPattern);
-                                matchedFiles.AddRange(files);
+                                matchedFiles.Add(filePath);
                             }
-                            else
-                            {
-                                string filePath = Path.Combine(yearDir, $"{symbol}.{cache.Format}");
-                                if (File.Exists(filePath))
-                                {
-                                    matchedFiles.Add(filePath);
-                                }
-                            }
+                        }
+                        else
+                        {
+                            // 否则获取年份目录下所有文件（例如大宽表，非 symbol 分区）
+                            string searchPattern = $"*.{cache.Format}";
+                            var files = Directory.EnumerateFiles(yearDir, searchPattern);
+                            matchedFiles.AddRange(files);
                         }
                     }
                 }
@@ -146,7 +159,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 惰性加载元数据并探测布局模式。
+        /// 惰性加载元数据并解析所有必须的字段，彻底去除物理目录自适应探测。
         /// </summary>
         private TableMetadataCache LoadTableMetadata(string tableId)
         {
@@ -180,39 +193,51 @@ namespace CarrotBacktesting.NET.Data
                 fieldTypes[kvp.Key] = MapSchemaType(kvp.Value);
             }
 
-            // 3. 布局模式判定：若 JSON 显式指定则依其定义，否则通过 'year=*' 子目录存在性自适应探测
+            // 3. 布局模式判定：完全基于 metadata 显式声明，若未定义则默认为 Flat，不再进行 'year=*' 子目录探测
             StorageLayout layout;
             if (!string.IsNullOrWhiteSpace(metadata.layout))
             {
                 layout = metadata.layout.Equals("hive", StringComparison.OrdinalIgnoreCase)
                     ? StorageLayout.Hive
-                    : StorageLayout.NonHive;
+                    : StorageLayout.Flat;
             }
             else
             {
-                // 自适应探测：若表目录下存在 "year=*" 的年份文件夹，则判定为 Hive 分区
-                layout = Directory.EnumerateDirectories(tableDir, "year=*").Any()
-                    ? StorageLayout.Hive
-                    : StorageLayout.NonHive;
+                layout = StorageLayout.Flat;
             }
 
-            // 4. 加载所有可用年份分区 (主要供 Hive 分区剪枝时校验过滤)
-            var years = new List<int>();
-            if (layout == StorageLayout.Hive)
+            // 4. 解析并规范化 category (timeseries / events)
+            string category = (metadata.category ?? string.Empty).ToLowerInvariant();
+            if (category == "ts" || category == "timeseries")
             {
-                foreach (var dir in Directory.EnumerateDirectories(tableDir, "year=*"))
-                {
-                    string dirName = Path.GetFileName(dir);
-                    var parts = dirName.Split('=');
-                    if (parts.Length > 1 && int.TryParse(parts[1], out int year))
-                    {
-                        years.Add(year);
-                    }
-                }
+                category = "timeseries";
             }
-            var availableYears = years.OrderBy(y => y).ToList();
+            else if (category == "events")
+            {
+                category = "events";
+            }
 
-            return new TableMetadataCache(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, availableYears);
+            // 5. 解析并规范化 partition (symbol / date / none)
+            string partition = (metadata.partition ?? string.Empty).ToLowerInvariant();
+            if (partition != "symbol" && partition != "date" && partition != "none")
+            {
+                partition = "none";
+            }
+
+            // 6. 从 statistics 显式读取起止时间戳
+            long startTimestamp = 0;
+            long endTimestamp = 0;
+            if (metadata.statistics != null)
+            {
+                startTimestamp = metadata.statistics.start_timestamp;
+                endTimestamp = metadata.statistics.end_timestamp;
+            }
+            else
+            {
+                throw new InvalidDataException($"Missing 'statistics' section in metadata.json of table: {tableId}");
+            }
+
+            return new TableMetadataCache(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, category, partition, startTimestamp, endTimestamp);
         }
 
         private Type MapSchemaType(string schemaTypeStr)
@@ -241,10 +266,14 @@ namespace CarrotBacktesting.NET.Data
             public StorageLayout Layout { get; }
             public IReadOnlyList<string> FieldNames { get; }
             public Dictionary<string, Type> FieldTypes { get; }
-            public IReadOnlyList<int> AvailableYears { get; }
+            public string Category { get; }
+            public string Partition { get; }
+            public long StartTimestamp { get; }
+            public long EndTimestamp { get; }
 
             public TableMetadataCache(string tableId, string tableDir, string metadataPath, string format, StorageLayout layout,
-                                      IReadOnlyList<string> fieldNames, Dictionary<string, Type> fieldTypes, IReadOnlyList<int> availableYears)
+                                      IReadOnlyList<string> fieldNames, Dictionary<string, Type> fieldTypes,
+                                      string category, string partition, long startTimestamp, long endTimestamp)
             {
                 TableId = tableId;
                 TableDir = tableDir;
@@ -253,7 +282,10 @@ namespace CarrotBacktesting.NET.Data
                 Layout = layout;
                 FieldNames = fieldNames;
                 FieldTypes = fieldTypes;
-                AvailableYears = availableYears;
+                Category = category;
+                Partition = partition;
+                StartTimestamp = startTimestamp;
+                EndTimestamp = endTimestamp;
             }
         }
 
@@ -263,7 +295,15 @@ namespace CarrotBacktesting.NET.Data
             public string category { get; set; } = "";
             public string format { get; set; } = "";
             public string? layout { get; set; } = "";
+            public string? partition { get; set; } = "";
             public Dictionary<string, string>? schema { get; set; }
+            public StatisticsModel? statistics { get; set; }
+        }
+
+        private class StatisticsModel
+        {
+            public long start_timestamp { get; set; }
+            public long end_timestamp { get; set; }
         }
     }
 }

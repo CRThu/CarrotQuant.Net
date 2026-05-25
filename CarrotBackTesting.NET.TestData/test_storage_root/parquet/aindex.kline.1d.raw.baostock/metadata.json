@@ -2,6 +2,8 @@
   "table_id": "aindex.kline.1d.raw.baostock",
   "category": "TS",
   "format": "parquet",
+  "partition": "none",
+  "layout": "hive",
   "schema": {
     "symbol": "String",
     "datetime": "String",
