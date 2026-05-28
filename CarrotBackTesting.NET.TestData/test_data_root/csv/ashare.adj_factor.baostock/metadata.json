@@ -1,0 +1,20 @@
+{
+  "table_id": "ashare.adj_factor.baostock",
+  "category": "event",
+  "format": "csv",
+  "partition": "none",
+  "layout": "hive",
+  "schema": {
+    "symbol": "String",
+    "datetime": "String",
+    "timestamp": "Int64",
+    "back_adj_factor": "Float64"
+  },
+  "statistics": {
+    "start_timestamp": 1433142000000,
+    "end_timestamp": 1760598000000,
+    "start_datetime": "2015-06-01T15:00:00.000+08:00",
+    "end_datetime": "2025-10-16T15:00:00.000+08:00",
+    "total_bars": 65
+  }
+}
