@@ -88,20 +88,6 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         string GetPartition(string tableId);
 
         /// <summary>
-        /// 获取指定表的开始时间戳 (Unix 毫秒时间戳)。
-        /// </summary>
-        /// <param name="tableId">数据表 ID</param>
-        /// <returns>开始时间戳</returns>
-        long GetStartTimestamp(string tableId);
-
-        /// <summary>
-        /// 获取指定表的结束时间戳 (Unix 毫秒时间戳)。
-        /// </summary>
-        /// <param name="tableId">数据表 ID</param>
-        /// <returns>结束时间戳</returns>
-        long GetEndTimestamp(string tableId);
-
-        /// <summary>
         /// 终极物理路径调度与分区剪枝 API。
         /// 支持根据起止日期进行可选的年份分区剪枝，并支持按 symbol 智能路由（若为 null 则返回整表所有分区文件），返回解析并排序后的物理数据文件列表。
         /// 向上层 Reader 屏蔽所有目录探测、分区查找及路径拼接物理细节。

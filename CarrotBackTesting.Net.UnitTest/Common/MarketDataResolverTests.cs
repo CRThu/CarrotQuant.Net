@@ -58,18 +58,14 @@ namespace CarrotBackTesting.Net.UnitTest.Common
             // 5. 验证 Partition 分区模式
             Assert.AreEqual("symbol", resolver.GetPartition(tableId));
 
-            // 6. 验证 StartTimestamp / EndTimestamp
-            Assert.AreEqual(1262534400000L, resolver.GetStartTimestamp(tableId));
-            Assert.AreEqual(1767110400000L, resolver.GetEndTimestamp(tableId));
-
-            // 7. 验证 Field Schema 字段名及类型映射
+            // 6. 验证 Field Schema 字段名及类型映射
             var fieldNames = resolver.GetFieldNames(tableId);
             Assert.IsTrue(fieldNames.Contains("close"));
             Assert.IsTrue(fieldNames.Contains("volume"));
             Assert.AreEqual(typeof(double), resolver.GetFieldType(tableId, "close"));
             Assert.AreEqual(typeof(long), resolver.GetFieldType(tableId, "timestamp"));
 
-            // 8. 验证终极物理路径调度与年份分区剪枝
+            // 7. 验证终极物理路径调度与年份分区剪枝
             // 请求 2024 年度的 sh.000001 数据文件
             var files = resolver.ResolvePhysicalFiles(tableId, "sh.000001", new DateTime(2024, 1, 1), new DateTime(2024, 12, 31));
             Assert.AreEqual(1, files.Count);

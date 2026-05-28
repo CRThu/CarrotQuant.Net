@@ -320,6 +320,56 @@ Loader 在系统启动或滑动窗口滚动向前时，放弃逐日流式多路�
 
 ---
 
+## 七、数据存储与元数据规范 (Data Storage & Metadata) [AI Agent Guide]
+
+所有数据存储与交互必须遵循 `CarrotQuant.Data` 规范：
+
+### 1. 核心设计原则
+*   **格式**: 统一使用 `CSV` 或 `Parquet`。
+*   **引擎**: 底层数据维护使用 `polars`。
+*   **类型安全**: 所有操作必须参考 `metadata.json` 中的 `schema` 进行显式定义，禁止自动推断类型。
+*   **原子性**: 文件写入遵循“先写 `.tmp`，后 `os.replace`”。
+*   **双时间轴**: 必须遵循 (`timestamp` Int64, `symbol` String, `datetime` String)。
+
+### 2. 存储布局与 Hive 分区
+*   **Table ID 命名**: `{market}.{category}.[sub_category/freq/adj].{source}`
+*   **物理布局模式 (StorageLayout)**:
+    *   `Hive`: 包含 `year={yyyy}/` 子目录，基于年份进行动态分区剪枝。
+    *   `Flat`: 平铺布局，数据文件直接位于表根目录下。
+*   **分区模式 (Partition)**:
+    *   `symbol`: 物理文件按股票代码拆分（如 `{symbol}.csv`），支持精确到个股的路由读取。
+    *   `date`: 按日期分区（暂未大规模应用）。
+    *   `none`: 无分区，整表物理存储。
+*   **TimeSeries (TS) 布局**: `storage_root/{format}/{table_id}/year={yyyy}/{symbol}.csv` 或 `data.parquet`
+*   **Event (EV) 布局**: `storage_root/{format}/{table_id}/year={yyyy}/data.{format}`
+
+### 3. 元数据规范 (metadata.json)
+每个数据集目录下必须包含 `metadata.json`，核心定义：
+*   `schema`: 类型映射（支持 `String`, `Int64`, `Float64`, `Boolean`, `Date`, `Datetime`）。
+*   `statistics` (可选): 物理巡检产出的状态描述，仅用于分析，系统已实现动态目录扫描，不再依赖此字段进行年份分区调度。
+
+### 4. 类型转换字典 (Type Mapping for Loading)
+当进行数据加载时，Agent 应严格执行以下映射逻辑，以确保与系统底层（Polars）保持一致：
+
+```python
+type_map = {
+    "Int64": pl.Int64,
+    "Float64": pl.Float64,
+    "String": pl.String,
+    "Boolean": pl.Boolean,
+    "Date": pl.Date,
+    "Datetime": pl.Datetime
+}
+```
+
+### 5. 开发禁忌 (Prohibitions for AI)
+*   **禁止使用前复权**: 复权仅限 `raw` 或 `adj` (后复权)。
+*   **禁止跳过元数据**: 若发现 `metadata.json` 缺失，必须抛出 `RuntimeError`，严禁通过猜测推断 Schema。
+*   **禁止自动推断**: 读取操作必须显式传参 `schema` 或在 `read` 后执行 `cast`。
+
+---
+
+
 # 以下为 v3 版本规范文档（已过时，仅供参考）
 
 > ⚠️ **注意**: 以下内容为 v3 版本的架构与规范描述，v4 版本已进行重大重构，请以上方 v4 架构为准。后续实现中可直接覆盖以下旧文档内容。

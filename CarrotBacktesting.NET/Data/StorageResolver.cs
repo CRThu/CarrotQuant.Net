@@ -77,10 +77,6 @@ namespace CarrotBacktesting.NET.Data
 
         public string GetPartition(string tableId) => GetOrCreateCache(tableId).Partition;
 
-        public long GetStartTimestamp(string tableId) => GetOrCreateCache(tableId).StartTimestamp;
-
-        public long GetEndTimestamp(string tableId) => GetOrCreateCache(tableId).EndTimestamp;
-
         /// <summary>
         /// 终极调度 API：解析表数据物理文件，支持根据起止日期进行年份分区剪枝，并支持按 symbol 智能路由。
         /// </summary>
@@ -90,7 +86,6 @@ namespace CarrotBacktesting.NET.Data
 
             if (cache.Layout == StorageLayout.Flat)
             {
-                // Flat 平铺布局：如果分区模式是 symbol 且指定了 symbol，则精准匹配单个文件；否则扫描全表目录文件
                 if (cache.Partition.Equals("symbol", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(symbol))
                 {
                     string filePath = Path.Combine(cache.TableDir, $"{symbol}.{cache.Format}");
@@ -106,24 +101,20 @@ namespace CarrotBacktesting.NET.Data
             }
             else
             {
-                // Hive 分区布局：基于起止时间戳所标识的年份范围，实现按年份剪枝，避免对不相关年份目录进行磁盘探测
-                var startDateTime = DateTimeOffset.FromUnixTimeMilliseconds(cache.StartTimestamp).DateTime;
-                var endDateTime = DateTimeOffset.FromUnixTimeMilliseconds(cache.EndTimestamp).DateTime;
-                int tableStartYear = startDateTime.Year;
-                int tableEndYear = endDateTime.Year;
-
-                // 确定剪枝范围
-                int startYear = Math.Max(startDate?.Year ?? 0, tableStartYear);
-                int endYear = Math.Min(endDate?.Year ?? int.MaxValue, tableEndYear);
-
+                // Hive 分区布局：动态枚举 year=* 目录并按时间过滤，不再依赖元数据中的起止时间戳
                 var matchedFiles = new List<string>();
-                // 仅扫描落在年份范围内的有效年份目录
-                for (int year = startYear; year <= endYear; year++)
+                var yearDirs = Directory.EnumerateDirectories(cache.TableDir, "year=*");
+
+                foreach (var yearDir in yearDirs)
                 {
-                    string yearDir = Path.Combine(cache.TableDir, $"year={year}");
-                    if (Directory.Exists(yearDir))
+                    string dirName = Path.GetFileName(yearDir);
+                    if (int.TryParse(dirName.Substring(5), out int year))
                     {
-                        // 如果分区模式是 symbol 且指定了 symbol，精准定位 `{symbol}.{format}` 文件
+                        // 年份过滤
+                        if (startDate.HasValue && year < startDate.Value.Year) continue;
+                        if (endDate.HasValue && year > endDate.Value.Year) continue;
+
+                        // 如果分区模式是 symbol 且指定了 symbol，精准定位
                         if (cache.Partition.Equals("symbol", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(symbol))
                         {
                             string filePath = Path.Combine(yearDir, $"{symbol}.{cache.Format}");
@@ -134,7 +125,7 @@ namespace CarrotBacktesting.NET.Data
                         }
                         else
                         {
-                            // 否则获取年份目录下所有文件（例如大宽表，非 symbol 分区）
+                            // 否则获取年份目录下所有文件
                             string searchPattern = $"*.{cache.Format}";
                             var files = Directory.EnumerateFiles(yearDir, searchPattern);
                             matchedFiles.AddRange(files);
@@ -193,7 +184,7 @@ namespace CarrotBacktesting.NET.Data
                 fieldTypes[kvp.Key] = MapSchemaType(kvp.Value);
             }
 
-            // 3. 布局模式判定：完全基于 metadata 显式声明，若未定义则默认为 Flat，不再进行 'year=*' 子目录探测
+            // 3. 布局模式判定
             StorageLayout layout;
             if (!string.IsNullOrWhiteSpace(metadata.layout))
             {
@@ -224,20 +215,7 @@ namespace CarrotBacktesting.NET.Data
                 partition = "none";
             }
 
-            // 6. 从 statistics 显式读取起止时间戳
-            long startTimestamp = 0;
-            long endTimestamp = 0;
-            if (metadata.statistics != null)
-            {
-                startTimestamp = metadata.statistics.start_timestamp;
-                endTimestamp = metadata.statistics.end_timestamp;
-            }
-            else
-            {
-                throw new InvalidDataException($"Missing 'statistics' section in metadata.json of table: {tableId}");
-            }
-
-            return new TableMetadataCache(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, category, partition, startTimestamp, endTimestamp);
+            return new TableMetadataCache(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, category, partition);
         }
 
         private Type MapSchemaType(string schemaTypeStr)
@@ -268,12 +246,10 @@ namespace CarrotBacktesting.NET.Data
             public Dictionary<string, Type> FieldTypes { get; }
             public string Category { get; }
             public string Partition { get; }
-            public long StartTimestamp { get; }
-            public long EndTimestamp { get; }
 
             public TableMetadataCache(string tableId, string tableDir, string metadataPath, string format, StorageLayout layout,
                                       IReadOnlyList<string> fieldNames, Dictionary<string, Type> fieldTypes,
-                                      string category, string partition, long startTimestamp, long endTimestamp)
+                                      string category, string partition)
             {
                 TableId = tableId;
                 TableDir = tableDir;
@@ -284,8 +260,6 @@ namespace CarrotBacktesting.NET.Data
                 FieldTypes = fieldTypes;
                 Category = category;
                 Partition = partition;
-                StartTimestamp = startTimestamp;
-                EndTimestamp = endTimestamp;
             }
         }
 
@@ -297,13 +271,6 @@ namespace CarrotBacktesting.NET.Data
             public string? layout { get; set; } = "";
             public string? partition { get; set; } = "";
             public Dictionary<string, string>? schema { get; set; }
-            public StatisticsModel? statistics { get; set; }
-        }
-
-        private class StatisticsModel
-        {
-            public long start_timestamp { get; set; }
-            public long end_timestamp { get; set; }
         }
     }
 }
