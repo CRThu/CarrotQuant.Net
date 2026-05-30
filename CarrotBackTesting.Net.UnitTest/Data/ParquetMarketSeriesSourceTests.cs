@@ -18,20 +18,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
     {
         private static string GetTestDataRoot()
         {
-            string current = AppContext.BaseDirectory;
-            while (!string.IsNullOrEmpty(current))
-            {
-                string target = Path.Combine(current, "CarrotBackTesting.NET.TestData", "test_storage_root");
-                if (Directory.Exists(target))
-                {
-                    return target;
-                }
-                
-                string parent = Path.GetDirectoryName(current)!;
-                if (parent == current) break;
-                current = parent;
-            }
-            return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, @"..\..\..\..\CarrotBackTesting.NET.TestData\test_storage_root"));
+            return Path.Combine(AppContext.BaseDirectory, "TestData", "test_data_root");
         }
 
         [TestMethod]
