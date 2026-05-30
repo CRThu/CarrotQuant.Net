@@ -338,7 +338,6 @@ Loader 在系统启动或滑动窗口滚动向前时，放弃逐日流式多路�
     *   `Flat`: 平铺布局，数据文件直接位于表根目录下。
 *   **分区模式 (Partition)**:
     *   `symbol`: 物理文件按股票代码拆分（如 `{symbol}.csv`），支持精确到个股的路由读取。
-    *   `date`: 按日期分区（暂未大规模应用）。
     *   `none`: 无分区，整表物理存储。
 *   **TimeSeries (TS) 布局**: `storage_root/{format}/{table_id}/year={yyyy}/{symbol}.csv` 或 `data.parquet`
 *   **Event (EV) 布局**: `storage_root/{format}/{table_id}/year={yyyy}/data.{format}`

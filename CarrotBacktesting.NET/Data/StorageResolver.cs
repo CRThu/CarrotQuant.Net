@@ -197,20 +197,24 @@ namespace CarrotBacktesting.NET.Data
                 layout = StorageLayout.Flat;
             }
 
-            // 4. 解析并规范化 category (timeseries / events)
+            // 4. 解析并规范化 category (timeseries / event)
             string category = (metadata.category ?? string.Empty).ToLowerInvariant();
             if (category == "ts" || category == "timeseries")
             {
                 category = "timeseries";
             }
-            else if (category == "events")
+            else if (category == "event")
             {
-                category = "events";
+                category = "event";
+            }
+            else
+            {
+                category = "timeseries"; // 默认或者处理非法情况
             }
 
-            // 5. 解析并规范化 partition (symbol / date / none)
+            // 5. 解析并规范化 partition (symbol / none)
             string partition = (metadata.partition ?? string.Empty).ToLowerInvariant();
-            if (partition != "symbol" && partition != "date" && partition != "none")
+            if (partition != "symbol" && partition != "none")
             {
                 partition = "none";
             }
