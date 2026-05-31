@@ -119,6 +119,7 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 批量读取特定股票的指标序列。
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged
         {
             if (startIndex < 0 || startIndex + length > _tradeDates.Count)
@@ -196,71 +197,40 @@ namespace CarrotBacktesting.NET.Data
                     if (globalIdx >= 0)
                     {
                         int offset = globalIdx - startIndex;
-                        destination[offset] = GetSylvanValue<T>(reader, fieldColIdx);
+                        destination[offset] = ValueConverter<T>.Read(reader, fieldColIdx);
                     }
                 }
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static T GetSylvanValue<T>(CsvDataReader reader, int colIdx) where T : unmanaged
+        private static class ValueConverter<T> where T : unmanaged
         {
-            if (reader.IsDBNull(colIdx))
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static T Read(CsvDataReader reader, int colIdx)
             {
-                return default;
-            }
+                if (reader.IsDBNull(colIdx)) return default;
 
-            if (typeof(T) == typeof(double))
-            {
-                double val = reader.GetDouble(colIdx);
-                return Unsafe.As<double, T>(ref val);
-            }
-            if (typeof(T) == typeof(float))
-            {
-                float val = reader.GetFloat(colIdx);
-                return Unsafe.As<float, T>(ref val);
-            }
-            if (typeof(T) == typeof(long))
-            {
-                long val = reader.GetInt64(colIdx);
-                return Unsafe.As<long, T>(ref val);
-            }
-            if (typeof(T) == typeof(int))
-            {
-                int val = reader.GetInt32(colIdx);
-                return Unsafe.As<int, T>(ref val);
-            }
-            if (typeof(T) == typeof(bool))
-            {
-                bool val = reader.GetBoolean(colIdx);
-                return Unsafe.As<bool, T>(ref val);
-            }
-            if (typeof(T) == typeof(byte))
-            {
-                byte val = reader.GetByte(colIdx);
-                return Unsafe.As<byte, T>(ref val);
-            }
+                if (typeof(T) == typeof(double)) { double val = reader.GetDouble(colIdx); return Unsafe.As<double, T>(ref val); }
+                if (typeof(T) == typeof(float)) { float val = reader.GetFloat(colIdx); return Unsafe.As<float, T>(ref val); }
+                if (typeof(T) == typeof(long)) { long val = reader.GetInt64(colIdx); return Unsafe.As<long, T>(ref val); }
+                if (typeof(T) == typeof(int)) { int val = reader.GetInt32(colIdx); return Unsafe.As<int, T>(ref val); }
+                if (typeof(T) == typeof(bool)) { bool val = reader.GetBoolean(colIdx); return Unsafe.As<bool, T>(ref val); }
+                if (typeof(T) == typeof(byte)) { byte val = reader.GetByte(colIdx); return Unsafe.As<byte, T>(ref val); }
 
-            string? valStr = reader.GetString(colIdx);
-            return ParseValueFallback<T>(valStr);
+                return ParseValueFallback<T>(reader.GetString(colIdx));
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static T ParseValueFallback<T>(string? valStr) where T : unmanaged
         {
-            if (string.IsNullOrWhiteSpace(valStr))
-            {
-                return default;
-            }
+            if (string.IsNullOrWhiteSpace(valStr)) return default;
             try
             {
                 object converted = Convert.ChangeType(valStr, typeof(T));
                 return (T)converted;
             }
-            catch
-            {
-                return default;
-            }
+            catch { return default; }
         }
 
         public void Dispose()
