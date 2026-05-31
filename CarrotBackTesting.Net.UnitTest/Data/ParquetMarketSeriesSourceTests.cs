@@ -82,7 +82,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(physicalData.Count > 0, "Physical Parquet data should contain rows.");
 
             // 2. 使用 ParquetMarketSeriesSource 加载序列
-            using var source = new ParquetMarketSeriesSource(parquetRoot, tableId);
+            var registry = new SimpleFieldRegistry();
+            using var source = new ParquetMarketSeriesSource(parquetRoot, registry, tableId);
             
             // 测试元数据接口
             int symbolIdx = source.GetSymbolIndex(testSymbol);

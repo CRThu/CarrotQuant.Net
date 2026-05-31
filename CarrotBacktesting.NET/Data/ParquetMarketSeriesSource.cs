@@ -35,20 +35,26 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 便捷构造函数。
         /// </summary>
-        public ParquetMarketSeriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null)
-            : this(new StorageResolver(storageRoot), tableId, startDate, endDate)
+        public ParquetMarketSeriesSource(string storageRoot, IFieldRegistry registry, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+            : this(new StorageResolver(storageRoot), registry, tableId, startDate, endDate)
         {
         }
 
         /// <summary>
         /// 核心构造函数，接收外部依赖注入的路径解析器。
         /// </summary>
-        public ParquetMarketSeriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+        public ParquetMarketSeriesSource(IStorageResolver resolver, IFieldRegistry registry, string tableId, DateTime? startDate = null, DateTime? endDate = null)
         {
             _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
             _tableId = tableId;
             _startDate = startDate;
             _endDate = endDate;
+
+            // 自动注册 Schema
+            foreach (var fieldName in _resolver.GetFieldNames(_tableId))
+            {
+                registry.RegisterField(fieldName, _resolver.GetFieldType(_tableId, fieldName));
+            }
 
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var dateSet = new HashSet<DateTime>();

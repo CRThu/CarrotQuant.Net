@@ -18,6 +18,6 @@ __pycache__/
 !**/env.yaml
 !**/env.yml
 
-CarrotBackTesting.NET.TestData/test_storage_root/
+CarrotBackTesting.NET.TestData/test_data_root/
 /verify/summary/*
 Diagram/

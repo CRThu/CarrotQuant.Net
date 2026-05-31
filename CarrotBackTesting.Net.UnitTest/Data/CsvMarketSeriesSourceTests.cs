@@ -68,7 +68,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(physicalData.Count > 0, "Physical data should contain rows.");
 
             // 2. 通过 CsvMarketSeriesSource 载入序列
-            using var source = new CsvMarketSeriesSource(csvRoot, tableId);
+            var registry = new SimpleFieldRegistry();
+            using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
             
             // 测试元数据接口
             int symbolIdx = source.GetSymbolIndex(testSymbol);

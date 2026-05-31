@@ -20,6 +20,21 @@ public interface IFieldRegistry
     /// <returns>字段元数据记录对象。</returns>
     /// <exception cref="KeyNotFoundException">当字段不存在时抛出。</exception>
     FieldInfo GetFieldInfo(string fieldName);
+
+    /// <summary>
+    /// 注册一个字段。
+    /// </summary>
+    void RegisterField(string name, Type dataType, bool isCustom = false);
+
+    /// <summary>
+    /// 检查字段是否存在。
+    /// </summary>
+    bool FieldExists(string fieldName);
+
+    /// <summary>
+    /// 获取指定字段的 CLR 数据类型。
+    /// </summary>
+    Type GetFieldType(string fieldName);
 }
 
 /// <summary>
