@@ -11,13 +11,8 @@ namespace CarrotBacktesting.NET.Abstraction.Data;
 /// 调用方通过遍历股票代码，调用 ReadSymbolSeries&lt;T&gt; 批量拷贝单只股票在特定交易日区间内的历史数据。
 /// </para>
 /// </summary>
-public interface IMarketSeriesSource : IMarketSnapshotMetadata
+public interface IMarketSeriesSource : IMarketMetadata, IDisposable
 {
-    /// <summary>
-    /// 获取数据源中所有可用的交易日期列表（已排序，用于确定纵向序列的行索引）。
-    /// </summary>
-    IReadOnlyList<DateTime> TradeDates { get; }
-
     /// <summary>
     /// 读取指定股票在特定交易日区间内，特定字段对应的历史数据，写入目标 Span（支持分块/分段读取）。
     /// </summary>

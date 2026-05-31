@@ -1,11 +1,8 @@
-using System;
-
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
 /// <summary>
-/// 市场元数据契约。
-/// 描述经过全局对齐后的维度信息，包括交易日历与股票列表。
-/// Buffer 的行索引与 TradeDates 一一对应，列索引与 Symbols 一一对应。
+/// 统一的市场元数据契约。
+/// 描述数据源的维度结构（股票、日期、字段）及索引寻址能力。
 /// </summary>
 public interface IMarketMetadata
 {
@@ -16,20 +13,32 @@ public interface IMarketMetadata
     IReadOnlyList<string> Symbols { get; }
 
     /// <summary>
+    /// 获取所有可用的字段名称列表。
+    /// </summary>
+    IReadOnlyList<string> FieldNames { get; }
+
+    /// <summary>
     /// 获取交易日历（升序排列）。
     /// 顺序与 Buffer 的 RowIndex（行索引）严格一一对应。
     /// </summary>
     IReadOnlyList<DateTime> TradeDates { get; }
+    
+    /// <summary>
+    /// 获取指定字段的 CLR 逻辑类型。
+    /// </summary>
+    /// <param name="fieldName">字段名称。</param>
+    /// <returns>该字段对应的 CLR 类型。</returns>
+    Type GetFieldType(string fieldName);
 
     /// <summary>
-    /// 获取指定股票代码在 Buffer 中对应的列索引。
+    /// 获取指定股票代码对应的列索引。
     /// </summary>
     /// <param name="symbol">股票代码。</param>
     /// <returns>列索引，若不存在则返回 -1。</returns>
     int GetSymbolIndex(string symbol);
 
     /// <summary>
-    /// 获取指定交易日在 Buffer 中对应的行索引。
+    /// 获取指定交易日对应的行索引。
     /// </summary>
     /// <param name="date">交易日期。</param>
     /// <returns>行索引，若不存在则返回 -1。</returns>

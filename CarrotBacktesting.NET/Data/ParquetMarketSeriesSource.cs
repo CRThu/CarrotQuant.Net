@@ -25,7 +25,7 @@ namespace CarrotBacktesting.NET.Data
         private readonly List<DateTime> _tradeDates;
         private readonly List<string> _symbols;
 
-        private MonthCache? _currentCache = null;
+        private readonly Dictionary<string, YearCache> _cachePool = new(StringComparer.OrdinalIgnoreCase);
         private bool _disposed = false;
 
         public IReadOnlyList<string> Symbols => _symbols;
@@ -112,6 +112,16 @@ namespace CarrotBacktesting.NET.Data
             return _resolver.GetFieldType(_tableId, fieldName);
         }
 
+        public int GetSymbolIndex(string symbol)
+        {
+            return _symbols.IndexOf(symbol);
+        }
+
+        public int GetDateIndex(DateTime date)
+        {
+            return _tradeDates.BinarySearch(date);
+        }
+
         /// <summary>
         /// 批量读取指定股票在交易日区间内的字段行情。
         /// </summary>
@@ -133,22 +143,19 @@ namespace CarrotBacktesting.NET.Data
             DateTime minDate = _tradeDates[startIndex];
             DateTime maxDate = _tradeDates[startIndex + length - 1];
 
-            // 终极调度：100% 委托给调度解析器寻找区间内的数据物理文件
+            // 终极调度：100% 委托给调度解析器寻找区间内的数据物理文件 (现在返回的是年度文件)
             var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, minDate, maxDate);
 
             // 依次填充每个文件的数据
             foreach (var filePath in parquetFiles)
             {
-                // 如果缓存文件路径不匹配，则刷新 MonthCache 缓存
-                if (_currentCache == null || !_currentCache.FilePath.Equals(filePath, StringComparison.OrdinalIgnoreCase))
+                // 从缓存池中获取，没有则创建
+                if (!_cachePool.TryGetValue(filePath, out var cache))
                 {
                     if (File.Exists(filePath))
                     {
-                        if (_currentCache != null)
-                        {
-                            _currentCache.Dispose();
-                        }
-                        _currentCache = new MonthCache(filePath);
+                        cache = new YearCache(filePath);
+                        _cachePool[filePath] = cache;
                     }
                     else
                     {
@@ -156,21 +163,19 @@ namespace CarrotBacktesting.NET.Data
                     }
                 }
 
-                if (_currentCache == null) continue;
-
-                // 提取个股在该月份的起始物理行偏移量
-                if (!_currentCache.StockRanges.TryGetValue(symbol, out var range))
+                // 提取个股在该年度的起始物理行偏移量
+                if (!cache.StockRanges.TryGetValue(symbol, out var range))
                 {
                     continue; // 无个股数据或停牌
                 }
 
                 // 提取字段对应的全列数组缓存
-                Array colArray = _currentCache.GetColumnData(fieldName);
+                Array colArray = cache.GetColumnData(fieldName);
 
                 int endRow = range.StartRow + range.RowCount;
                 for (int r = range.StartRow; r < endRow; r++)
                 {
-                    DateTime rowDate = _currentCache.Dates[r];
+                    DateTime rowDate = cache.Dates[r];
                     if (rowDate >= minDate && rowDate <= maxDate)
                     {
                         int globalIdx = _tradeDates.BinarySearch(startIndex, length, rowDate, Comparer<DateTime>.Default);
@@ -199,71 +204,32 @@ namespace CarrotBacktesting.NET.Data
             {
                 int[] defLevels = new int[rowCount];
 
-                if (readType == typeof(double))
-                {
-                    groupReader.ReadRawAsync<double>(dataField, (double[])buffer, defLevels, null, default).GetAwaiter().GetResult();
-                    var doubleArr = (double[])buffer;
-                    for (int i = 0; i < rowCount; i++)
-                    {
-                        if (defLevels[i] == 0) doubleArr[i] = double.NaN;
-                    }
-                }
-                else if (readType == typeof(float))
-                {
-                    groupReader.ReadRawAsync<float>(dataField, (float[])buffer, defLevels, null, default).GetAwaiter().GetResult();
-                    var floatArr = (float[])buffer;
-                    for (int i = 0; i < rowCount; i++)
-                    {
-                        if (defLevels[i] == 0) floatArr[i] = float.NaN;
-                    }
-                }
-                else if (readType == typeof(long))
-                {
-                    groupReader.ReadRawAsync<long>(dataField, (long[])buffer, defLevels, null, default).GetAwaiter().GetResult();
-                    var longArr = (long[])buffer;
-                    for (int i = 0; i < rowCount; i++)
-                    {
-                        if (defLevels[i] == 0) longArr[i] = 0;
-                    }
-                }
-                else if (readType == typeof(int))
-                {
-                    groupReader.ReadRawAsync<int>(dataField, (int[])buffer, defLevels, null, default).GetAwaiter().GetResult();
-                    var intArr = (int[])buffer;
-                    for (int i = 0; i < rowCount; i++)
-                    {
-                        if (defLevels[i] == 0) intArr[i] = 0;
-                    }
-                }
-                else if (readType == typeof(bool))
-                {
-                    groupReader.ReadRawAsync<bool>(dataField, (bool[])buffer, defLevels, null, default).GetAwaiter().GetResult();
-                    var boolArr = (bool[])buffer;
-                    for (int i = 0; i < rowCount; i++)
-                    {
-                        if (defLevels[i] == 0) boolArr[i] = false;
-                    }
-                }
+                if (readType == typeof(double)) ReadColumnRawTyped<double>(groupReader, dataField, (double[])buffer, defLevels, double.NaN);
+                else if (readType == typeof(float)) ReadColumnRawTyped<float>(groupReader, dataField, (float[])buffer, defLevels, float.NaN);
+                else if (readType == typeof(long)) ReadColumnRawTyped<long>(groupReader, dataField, (long[])buffer, defLevels, 0);
+                else if (readType == typeof(int)) ReadColumnRawTyped<int>(groupReader, dataField, (int[])buffer, defLevels, 0);
+                else if (readType == typeof(bool)) ReadColumnRawTyped<bool>(groupReader, dataField, (bool[])buffer, defLevels, false);
                 else if (readType == typeof(DateTimeOffset))
                 {
                     groupReader.ReadRawAsync<DateTimeOffset>(dataField, (DateTimeOffset[])buffer, defLevels, null, default).GetAwaiter().GetResult();
                 }
                 else
                 {
-                    var method = typeof(ParquetRowGroupReader)
-                        .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
-                        .First(m => m.Name == "ReadRawAsync" && m.IsGenericMethod && m.GetParameters()[1].ParameterType.GetGenericTypeDefinition() == typeof(Memory<>))
-                        .MakeGenericMethod(readType);
-
-                    var memoryConstructor = typeof(Memory<>).MakeGenericType(readType).GetConstructor(new[] { readType.MakeArrayType() });
-                    var memoryVal = memoryConstructor!.Invoke(new object[] { buffer });
-
-                    var task = (System.Threading.Tasks.ValueTask)method.Invoke(groupReader, new object[] { dataField, memoryVal, (Memory<int>)defLevels, null!, default })!;
-                    task.GetAwaiter().GetResult();
+                    throw new NotSupportedException($"Type {readType} is not supported by the optimized Parquet loader.");
                 }
             }
 
             return buffer;
+        }
+
+        private static void ReadColumnRawTyped<T>(ParquetRowGroupReader groupReader, DataField field, T[] buffer, int[] defLevels, T defaultValue)
+            where T : unmanaged
+        {
+            groupReader.ReadRawAsync<T>(field, buffer, defLevels, null, default).GetAwaiter().GetResult();
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                if (defLevels[i] == 0) buffer[i] = defaultValue;
+            }
         }
 
         private static List<DateTime> ConvertToDateTimes(object columnData)
@@ -333,19 +299,19 @@ namespace CarrotBacktesting.NET.Data
         {
             if (!_disposed)
             {
-                if (_currentCache != null)
+                foreach (var cache in _cachePool.Values)
                 {
-                    _currentCache.Dispose();
-                    _currentCache = null;
+                    cache.Dispose();
                 }
+                _cachePool.Clear();
                 _disposed = true;
             }
         }
 
         /// <summary>
-        /// 维护单月 Parquet 数据文件的按需列解压缓存与证券索引偏移映射。
+        /// 维护单年 Parquet 数据文件的按需列解压缓存与证券索引偏移映射。
         /// </summary>
-        private class MonthCache : IDisposable
+        private class YearCache : IDisposable
         {
             public string FilePath { get; }
 
@@ -357,7 +323,7 @@ namespace CarrotBacktesting.NET.Data
             private readonly Dictionary<string, Array> _columns;
             private readonly DataField[] _dataFields;
 
-            public MonthCache(string filePath)
+            public YearCache(string filePath)
             {
                 FilePath = filePath;
                 _columns = new Dictionary<string, Array>(StringComparer.OrdinalIgnoreCase);

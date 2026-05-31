@@ -1,32 +1,6 @@
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
 /// <summary>
-/// 市场快照数据源的元信息契约。
-/// 描述数据源的维度结构，包括股票列表与可用字段名称，供 Loader 在加载前进行预检查。
-/// </summary>
-public interface IMarketSnapshotMetadata
-{
-    /// <summary>
-    /// 获取数据源中所有可用的股票代码列表（源端定义，加载前不保证全局对齐）。
-    /// </summary>
-    IReadOnlyList<string> Symbols { get; }
-
-    /// <summary>
-    /// 获取数据源中所有可用的字段名称列表。
-    /// 例如："Date"、"Close"、"Open"、"Volume"。
-    /// </summary>
-    IReadOnlyList<string> FieldNames { get; }
-
-    /// <summary>
-    /// 获取指定字段的 CLR 逻辑类型。
-    /// 例如：typeof(double)、typeof(int)、typeof(DateTime)。
-    /// </summary>
-    /// <param name="fieldName">字段名称。</param>
-    /// <returns>该字段对应的 CLR 类型。</returns>
-    Type GetFieldType(string fieldName);
-}
-
-/// <summary>
 /// 市场宽表快照数据源契约（ETL 层）。
 /// 将物理格式（CSV 行 / Parquet Chunk）抽象为统一的流式快照接口。
 /// <para>
@@ -37,7 +11,7 @@ public interface IMarketSnapshotMetadata
 /// 禁止在此接口中设计任何导致全量数据一次性进入内存的方法，必须保持流式读取语义。
 /// </para>
 /// </summary>
-public interface IMarketSnapshotSource : IMarketSnapshotMetadata
+public interface IMarketSnapshotSource : IMarketMetadata
 {
     /// <summary>
     /// 获取当前游标所在快照对应的交易日期。
@@ -60,7 +34,7 @@ public interface IMarketSnapshotSource : IMarketSnapshotMetadata
     /// </typeparam>
     /// <param name="fieldName">要读取的字段名称，例如 "Close"。</param>
     /// <param name="destination">
-    /// 目标内存块。长度必须等于 <see cref="IMarketSnapshotMetadata.Symbols"/> 中的股票数量。
+    /// 目标内存块。长度必须等于 <see cref="IMarketMetadata.Symbols"/> 中的股票数量。
     /// 方法执行后，destination[i] 对应 Symbols[i] 在当前日期的字段值。
     /// </param>
     void ReadFieldSnapshot<T>(string fieldName, Span<T> destination) where T : unmanaged;

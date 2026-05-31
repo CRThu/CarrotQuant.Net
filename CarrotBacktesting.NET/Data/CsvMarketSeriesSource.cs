@@ -100,6 +100,16 @@ namespace CarrotBacktesting.NET.Data
             return _resolver.GetFieldType(_tableId, fieldName);
         }
 
+        public int GetSymbolIndex(string symbol)
+        {
+            return _symbols.IndexOf(symbol);
+        }
+
+        public int GetDateIndex(DateTime date)
+        {
+            return _tradeDates.BinarySearch(date);
+        }
+
         /// <summary>
         /// 批量读取特定股票的指标序列。
         /// </summary>

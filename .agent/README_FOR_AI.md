@@ -161,7 +161,7 @@ graph TD
 
 | 接口 | 文件 | 职责 |
 |------|------|------|
-| `IMarketSnapshotMetadata` | `Abstraction/Data/IMarketSnapshotSource.cs` | 描述数据源的维度结构（Symbols / FieldNames / 字段类型） |
+| `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 统一元数据契约（描述维度、类型及寻址） |
 | `IMarketSnapshotSource` | `Abstraction/Data/IMarketSnapshotSource.cs` | 流式读取宽表快照的 ETL 契约，物理行（Row）= 交易日，列（Col）= 全市场股票 |
 | `IMarketSeriesSource` | `Abstraction/Data/IMarketSeriesSource.cs` | 批量读取个股序列的 ETL 契约，物理列（Col）= 股票，行（Row）= 时间序列 |
 
@@ -175,8 +175,8 @@ graph TD
   - **存储布局**: 支持 Hive 分区结构：`storage_root/csv/{table_id}/year={yyyy}/{symbol}.csv`。
   - **高效机制**: 采用 **多路归并（Multi-way Merge）** 算法。构造时仅扫描元数据和所有交易日，并在各股票对应的独立 `StockState` 文件流中维护局部游标，随着 `MoveNext()` 推动的全局交易日进行流式向前对齐推进。每次仅在内存中保留单日截面的字符串数据进行非托管解析转换，彻底避免一次性加载全量数据的内存开销。
 - **ParquetMarketSnapshotSource**:
-  - **存储布局**: 支持月度宽表分区结构：`storage_root/parquet/{table_id}/year={yyyy}/{yyyy}-{mm}.parquet`。
-  - **高效机制**: 采用 **按需列缓存（On-demand Column Caching）** 机制。当游标跨月时流式加载当月 Parquet 文件，并提取 symbol 与日期建立快速行号索引。当且仅当调用 `ReadFieldSnapshot<T>` 访问特定指标字段时，才会按需从 RowGroup 中解压读取该数据列的 CLR 原始数组。同时利用非托管快速拷贝和 `Unsafe.As` 类型变换将数据直接填充到目标 Span，提供极高吞吐量与极低内存抖动。支持跨月混合存储数据的平滑过渡复用。
+  - **存储布局**: 支持年度宽表分区结构：`storage_root/parquet/{table_id}/year={yyyy}/data.parquet`。
+  - **高效机制**: 采用 **按需列缓存（On-demand Column Caching）** 机制。系统维护年度级缓存池（`YearCache`），在首次访问年度数据时完成全量列解压并驻留内存。后续所有针对该年度的字段访问（如读取 `Close`），直接从内存 `Dictionary` 索引获取数据块，彻底消除跨年度读取时的缓存抖动与重复 I/O 成本。利用非托管快速拷贝和 `Unsafe.As` 提供极致吞吐。
 
 ### 2. 内存层接口：对齐后的 Buffer 访问（Data 层）
 
