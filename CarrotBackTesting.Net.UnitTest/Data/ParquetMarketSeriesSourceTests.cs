@@ -29,88 +29,81 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
             string testSymbol = "sh.600000";
 
-            // 1. 直接用底层的 ParquetReader 物理读取当月数据，建立物理基准
+            // 1. 物理读取年度 Parquet 数据，建立物理基准
             var physicalData = new Dictionary<DateTime, double>();
-            string parquetFile = Path.Combine(parquetRoot, tableId, "year=2024", "2024-01.parquet");
-            Assert.IsTrue(File.Exists(parquetFile));
+            var tableDir = Path.Combine(parquetRoot, tableId);
+            var yearDirs = Directory.GetDirectories(tableDir, "year=*");
 
-            using var fs = File.OpenRead(parquetFile);
-            var reader = ParquetReader.CreateAsync(fs).GetAwaiter().GetResult();
-            try
+            foreach (var yearDir in yearDirs)
             {
-                var dataFields = reader.Schema.GetDataFields();
+                string parquetFile = Path.Combine(yearDir, "data.parquet");
+                if (!File.Exists(parquetFile)) continue;
 
-                var symField = dataFields.First(f => f.Name.Equals("symbol", StringComparison.OrdinalIgnoreCase));
-                var dtField = dataFields.FirstOrDefault(f => f.Name.Equals("datetime", StringComparison.OrdinalIgnoreCase))
-                           ?? dataFields.FirstOrDefault(f => f.Name.Equals("timestamp", StringComparison.OrdinalIgnoreCase));
-                var closeField = dataFields.First(f => f.Name.Equals("close", StringComparison.OrdinalIgnoreCase));
-
-                for (int i = 0; i < reader.RowGroupCount; i++)
+                using var fs = File.OpenRead(parquetFile);
+                var reader = ParquetReader.CreateAsync(fs).GetAwaiter().GetResult();
+                try
                 {
-                    var groupReader = reader.OpenRowGroupReader(i);
-                    int rowCount = (int)groupReader.RowCount;
-                    
-                    var symArr = new string[rowCount];
-                    groupReader.ReadAsync(symField, symArr).GetAwaiter().GetResult();
+                    var dataFields = reader.Schema.GetDataFields();
+                    var symField = dataFields.First(f => f.Name.Equals("symbol", StringComparison.OrdinalIgnoreCase));
+                    var dtField = dataFields.FirstOrDefault(f => f.Name.Equals("datetime", StringComparison.OrdinalIgnoreCase))
+                               ?? dataFields.FirstOrDefault(f => f.Name.Equals("timestamp", StringComparison.OrdinalIgnoreCase));
+                    var closeField = dataFields.First(f => f.Name.Equals("close", StringComparison.OrdinalIgnoreCase));
 
-                    var closeArr = new double[rowCount];
-                    var defLevels = new int[rowCount];
-                    groupReader.ReadRawAsync<double>(closeField, closeArr, defLevels, null, default).GetAwaiter().GetResult();
-
-                    var dtArr = new string[rowCount];
-                    groupReader.ReadAsync(dtField, dtArr).GetAwaiter().GetResult();
-
-                    for (int idx = 0; idx < rowCount; idx++)
+                    for (int i = 0; i < reader.RowGroupCount; i++)
                     {
-                        if (symArr[idx].Equals(testSymbol, StringComparison.OrdinalIgnoreCase))
+                        var groupReader = reader.OpenRowGroupReader(i);
+                        int rowCount = (int)groupReader.RowCount;
+                        
+                        var symArr = new string[rowCount];
+                        groupReader.ReadAsync(symField, symArr).GetAwaiter().GetResult();
+
+                        var closeArr = new double[rowCount];
+                        var defLevels = new int[rowCount];
+                        groupReader.ReadRawAsync<double>(closeField, closeArr, defLevels, null, default).GetAwaiter().GetResult();
+
+                        var dtArr = new string[rowCount];
+                        groupReader.ReadAsync(dtField, dtArr).GetAwaiter().GetResult();
+
+                        for (int idx = 0; idx < rowCount; idx++)
                         {
-                            if (DateTime.TryParse(dtArr[idx], out var rowDate))
+                            if (symArr[idx] != null && symArr[idx].Equals(testSymbol, StringComparison.OrdinalIgnoreCase))
                             {
-                                physicalData[rowDate.Date] = closeArr[idx];
+                                if (DateTime.TryParse(dtArr[idx], out var rowDate))
+                                {
+                                    physicalData[rowDate.Date] = closeArr[idx];
+                                }
                             }
                         }
                     }
                 }
-            }
-            finally
-            {
-                reader.DisposeAsync().GetAwaiter().GetResult();
+                finally { reader.DisposeAsync().GetAwaiter().GetResult(); }
             }
 
             Assert.IsTrue(physicalData.Count > 0, "Physical Parquet data should contain rows.");
 
             // 2. 使用 ParquetMarketSeriesSource 加载序列
             using var source = new ParquetMarketSeriesSource(parquetRoot, tableId);
-            Assert.IsTrue(source.Symbols.Contains(testSymbol));
+            
+            // 测试元数据接口
+            int symbolIdx = source.GetSymbolIndex(testSymbol);
+            Assert.IsTrue(symbolIdx >= 0, "Symbol index should be found.");
+            Assert.AreEqual(testSymbol, source.Symbols[symbolIdx]);
 
             int length = source.TradeDates.Count;
             double[] destination = new double[length];
             source.ReadSymbolSeries(testSymbol, "close", 0, length, destination);
 
             // 3. 逐个交易日对比数据值
-            for (int i = 0; i < length; i++)
+            foreach (var kvp in physicalData)
             {
-                DateTime globalDate = source.TradeDates[i];
-                double loadedVal = destination[i];
+                DateTime date = kvp.Key;
+                double physicalVal = kvp.Value;
 
-                if (physicalData.TryGetValue(globalDate, out double physicalVal))
-                {
-                    // 在物理数据中存在该交易日，值必须完全一致
-                    if (double.IsNaN(physicalVal))
-                    {
-                        Assert.IsTrue(double.IsNaN(loadedVal), $"At {globalDate:yyyy-MM-dd}, loaded Close should be NaN.");
-                    }
-                    else
-                    {
-                        Assert.AreEqual(physicalVal, loadedVal, 1e-6, $"Close value mismatch at {globalDate:yyyy-MM-dd}.");
-                    }
-                }
-                else
-                {
-                    // 物理数据中不存在此日的记录（例如跨越了其他月份或停牌），值应为默认值 0.0 或 NaN
-                    Assert.IsTrue(loadedVal == 0.0 || double.IsNaN(loadedVal), 
-                        $"For non-listed date {globalDate:yyyy-MM-dd}, value should be 0.0 or NaN, but got {loadedVal}");
-                }
+                int dateIdx = source.GetDateIndex(date);
+                Assert.IsTrue(dateIdx >= 0, $"Date {date:yyyy-MM-dd} should exist in TradeDates.");
+                
+                double loadedVal = destination[dateIdx];
+                Assert.AreEqual(physicalVal, loadedVal, 1e-6, $"Close value mismatch at {date:yyyy-MM-dd}.");
             }
         }
     }

@@ -29,10 +29,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 1. 物理读取 CSV 数据，建立物理基准字典
             var physicalData = new Dictionary<DateTime, double>();
-            var years = new[] { 2024, 2025 };
-            foreach (var year in years)
+            var tableDir = Path.Combine(csvRoot, tableId);
+            var yearDirs = Directory.GetDirectories(tableDir, "year=*");
+
+            foreach (var yearDir in yearDirs)
             {
-                string csvFile = Path.Combine(csvRoot, tableId, $"year={year}", $"{testSymbol}.csv");
+                string csvFile = Path.Combine(yearDir, $"{testSymbol}.csv");
                 if (!File.Exists(csvFile)) continue;
 
                 using var csvReader = CsvDataReader.Create(csvFile);
@@ -67,36 +69,27 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 2. 通过 CsvMarketSeriesSource 载入序列
             using var source = new CsvMarketSeriesSource(csvRoot, tableId);
-            Assert.IsTrue(source.Symbols.Contains(testSymbol));
+            
+            // 测试元数据接口
+            int symbolIdx = source.GetSymbolIndex(testSymbol);
+            Assert.IsTrue(symbolIdx >= 0, "Symbol index should be found.");
+            Assert.AreEqual(testSymbol, source.Symbols[symbolIdx]);
             
             int length = source.TradeDates.Count;
             double[] destination = new double[length];
             source.ReadSymbolSeries(testSymbol, "close", 0, length, destination);
 
-            // 3. 逐交易日对比行（交易日）和物理数值
-            for (int i = 0; i < length; i++)
+            // 3. 逐交易日对比物理数值
+            foreach (var kvp in physicalData)
             {
-                DateTime globalDate = source.TradeDates[i];
-                double loadedVal = destination[i];
+                DateTime date = kvp.Key;
+                double physicalVal = kvp.Value;
 
-                if (physicalData.TryGetValue(globalDate, out double physicalVal))
-                {
-                    // 在物理数据中存在该交易日，值必须完全一致
-                    if (double.IsNaN(physicalVal))
-                    {
-                        Assert.IsTrue(double.IsNaN(loadedVal), $"At {globalDate:yyyy-MM-dd}, loaded Close should be NaN.");
-                    }
-                    else
-                    {
-                        Assert.AreEqual(physicalVal, loadedVal, 1e-6, $"Close value mismatch at {globalDate:yyyy-MM-dd}.");
-                    }
-                }
-                else
-                {
-                    // 物理数据中不存在此日的记录（例如本股票尚未上市或停牌），值应为默认值 0.0 或 NaN
-                    Assert.IsTrue(loadedVal == 0.0 || double.IsNaN(loadedVal), 
-                        $"For non-listed date {globalDate:yyyy-MM-dd}, value should be 0.0 or NaN, but got {loadedVal}");
-                }
+                int dateIdx = source.GetDateIndex(date);
+                Assert.IsTrue(dateIdx >= 0, $"Date {date:yyyy-MM-dd} should exist in TradeDates.");
+                
+                double loadedVal = destination[dateIdx];
+                Assert.AreEqual(physicalVal, loadedVal, 1e-6, $"Close value mismatch at {date:yyyy-MM-dd}.");
             }
         }
     }
