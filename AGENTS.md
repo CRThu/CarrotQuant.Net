@@ -9,34 +9,30 @@ CarrotQuant.NET v4 采用 **三层分离架构**，各层之间通过接口契�
 ```mermaid
 graph TD
     subgraph DataLayer [Data Layer - 数据层]
-        ETL[ETL]
-        MMFPageProvider[MMFPageProvider]
-        ParquetDataReader[ParquetDataReader]
-        CsvDataReader[CsvDataReader]
-        PagedBuffer2D[PagedBuffer2D]
-        IRowReader[IRowReader]
-        IColumnReader[IColumnReader]
-        IBuffer2D[IBuffer2D]
+        StorageResolver[StorageResolver]
+        CsvMarketSeriesSource[CsvMarketSeriesSource]
+        ParquetMarketSeriesSource[ParquetMarketSeriesSource]
+        SimpleFieldRegistry[SimpleFieldRegistry]
         BufferedDataProvider[BufferedDataProvider]
-        StreamDataProvider[StreamDataProvider]
+        DataProviderFactory[DataProviderFactory]
         IDataProvider[IDataProvider]
+        EventProvider[EventProvider&lt;T&gt;]
+        EventProviderBuilder[EventProviderBuilder]
+        EventRegistry[EventRegistry]
+        IEventProvider[IEventProvider&lt;T&gt;]
         IEventRegistry[IEventRegistry]
-        IEventProvider[IEventProvider]
 
-        ETL --> MMFPageProvider
-        ETL --> ParquetDataReader
-        ETL --> CsvDataReader
-        MMFPageProvider --> PagedBuffer2D
-        ParquetDataReader --> IRowReader
-        CsvDataReader --> IColumnReader
-        PagedBuffer2D --> IBuffer2D
-        IBuffer2D --> BufferedDataProvider
-        IRowReader --> BufferedDataProvider
-        IColumnReader --> StreamDataProvider
-        IRowReader --> StreamDataProvider
+        StorageResolver --> CsvMarketSeriesSource
+        StorageResolver --> ParquetMarketSeriesSource
+        CsvMarketSeriesSource --> BufferedDataProvider
+        ParquetMarketSeriesSource --> BufferedDataProvider
+        SimpleFieldRegistry --> BufferedDataProvider
         BufferedDataProvider --> IDataProvider
-        StreamDataProvider --> IDataProvider
-        IEventRegistry --> IEventProvider
+        DataProviderFactory --> BufferedDataProvider
+        StorageResolver --> EventProviderBuilder
+        EventProviderBuilder --> EventProvider
+        EventProvider --> IEventProvider
+        EventRegistry --> IEventProvider
     end
 
     subgraph EngineExecutionLayer [Engine and Execution Layer - 引擎与执行层]
@@ -75,15 +71,18 @@ graph TD
 
 | 组件 | 职责 |
 |------|------|
-| **ETL** | 数据抽取/转换/加载的入口 |
-| **MMFPageProvider** | 基于内存映射文件的分页数据提供器 |
-| **ParquetDataReader** | Parquet 格式数据读取器 |
-| **CsvDataReader** | CSV 格式数据读取器 |
-| **PagedBuffer2D** | 二维分页缓冲区，实现 `IBuffer2D` |
-| **IRowReader / IColumnReader** | 行/列数据读取抽象接口 |
-| **BufferedDataProvider** | 缓冲模式数据提供器（全量加载） |
-| **StreamDataProvider** | 流式数据提供器（按需读取） |
+| **StorageResolver** | 统一多表路径调度解析器，支持 Hive/Flat 布局与年份剪枝 |
+| **CsvMarketSeriesSource** | CSV 纵向序列数据源，实现 `IMarketSeriesSource` |
+| **ParquetMarketSeriesSource** | Parquet 纵向序列数据源，实现 `IMarketSeriesSource` |
+| **SimpleFieldRegistry** | 字段注册表实现，管理已加载字段元信息 |
+| **BufferedDataProvider** | 缓冲模式数据提供器（全量加载），实现 `IDataProvider` |
+| **DataProviderFactory** | 数据提供器工厂，统一创建入口 |
+| **EventProvider\<T\>** | 事件提供器实现，基于字典索引的 O(1) 点查 |
+| **EventProviderBuilder** | 事件提供器构建工厂，自动检测 CSV/Parquet 格式并反射映射 |
+| **EventRegistry** | 事件注册表实现，管理多个事件流 |
 | **IDataProvider** | 数据层统一输出接口，供引擎层消费 |
+| **IEventProvider\<T\>** | 事件提供器接口，支持 (Date, Symbol) 随机访问 |
+| **IEventRegistry** | 事件注册表接口，统一管理外部 KV 数据流 |
 
 #### 2. Engine and Execution Layer（引擎与执行层）
 
@@ -171,12 +170,12 @@ graph TD
 - `T : unmanaged` 约束确保与 `Carrot.Memory` 的 MMF 物理布局兼容。
 
 #### 1.1 具体实现 (Implementations)
-- **CsvMarketSnapshotSource**:
+- **CsvMarketSeriesSource**:
   - **存储布局**: 支持 Hive 分区结构：`storage_root/csv/{table_id}/year={yyyy}/{symbol}.csv`。
-  - **高效机制**: 采用 **多路归并（Multi-way Merge）** 算法。构造时仅扫描元数据和所有交易日，并在各股票对应的独立 `StockState` 文件流中维护局部游标，随着 `MoveNext()` 推动的全局交易日进行流式向前对齐推进。每次仅在内存中保留单日截面的字符串数据进行非托管解析转换，彻底避免一次性加载全量数据的内存开销。
-- **ParquetMarketSnapshotSource**:
+  - **高效机制**: 基于 Sylvan.Data.Csv 高速解析，采用静态泛型分发（`ValueConverter<T>`）实现零装箱类型转换。构造时扫描所有物理文件建立全局交易日并集与股票列表索引。
+- **ParquetMarketSeriesSource**:
   - **存储布局**: 支持年度宽表分区结构：`storage_root/parquet/{table_id}/year={yyyy}/data.parquet`。
-  - **高效机制**: 采用 **按需列缓存（On-demand Column Caching）** 机制。系统维护年度级缓存池（`YearCache`），在首次访问年度数据时完成全量列解压并驻留内存。后续所有针对该年度的字段访问（如读取 `Close`），直接从内存 `Dictionary` 索引获取数据块，彻底消除跨年度读取时的缓存抖动与重复 I/O 成本。利用非托管快速拷贝和 `Unsafe.As` 提供极致吞吐。
+  - **高效机制**: 采用 **按需列缓存（On-demand Column Caching）** 机制。系统维护年度级缓存池（`YearCache`），在首次访问年度数据时完成全量列解压并驻留内存。后续所有针对该年度的字段访问直接从内存 `Dictionary` 索引获取数据块，利用非托管快速拷贝和 `Unsafe.As` 提供极致吞吐。
 
 ### 2. 内存层接口：对齐后的 Buffer 访问（Data 层）
 
@@ -199,22 +198,26 @@ graph TD
 ### 3. 依赖关系
 
 ```
-IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot.Memory]
-                                                      │
-                                              (只读封装后)
-                                                      ▼
-                                          IReadOnlyBuffer2D<T>  [Carrot.Memory]
-                                                      │
-                                         IDataProvider.GetBuffer<T>()
-                                                      │
-                                              EngineLayer / StrategyLayer
+IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, Symbols)
+         │
+         │  ReadSymbolSeries<T>()
+         ▼
+  PagedBuffer2D<T>  [Carrot.Memory]
+         │
+  (只读封装后)
+         ▼
+  IReadOnlyBuffer2D<T>  [Carrot.Memory]
+         │
+  IDataProvider.GetBuffer<T>()
+         │
+  EngineLayer / StrategyLayer
 ```
 
 ### 4. Carrot.Memory 依赖说明
 
 - 项目引用：`D:\Projects\Carrot.Memory\Carrot.Memory\Carrot.Memory.csproj`（已在 `CarrotBacktesting.NET.csproj` 中声明）
-- 关键类型：`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`
-- 命名空间：`Carrot.Memory.Abstractions`、`Carrot.Memory.Views`
+- 关键类型：`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`PagedBuffer2D<T>`、`PagedBuffer2DFactory`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`
+- 命名空间：`Carrot.Memory`、`Carrot.Memory.Abstractions`、`Carrot.Memory.Views`、`Carrot.Memory.Providers`
 
 ### 5. 异构事件流系统 (Event System)
 
@@ -232,34 +235,57 @@ IMarketSnapshotSource  ──(ETL Loader 写入)──►  IBuffer2D<T>  [Carrot
 
 #### 5.2 核心接口
 
-- **IEventProvider<T>**: 负责加载和供给特定类型的 KV 数据。支持按 (Date, Symbol) 随机访问，或获取全市场日快照。
+- **IEventProvider\<T\>**: 负责加载和供给特定类型的 KV 数据。支持按 (Date, Symbol) 随机访问，或获取全市场日快照。
 - **IEventRegistry**: 引擎全局唯一的事件流注册中心。策略通过 `context.Events.GetProvider<T>("stream_name")` 获取所需的数据流。
+
+#### 5.3 具体实现
+
+- **EventProvider\<T\>**: 基于 `Dictionary<DateTime, Dictionary<string, T>>` 的内存索引，查询复杂度 O(1)。构造时从物理文件加载并构建索引。
+- **EventProviderBuilder**: 工厂类，自动检测 CSV/Parquet 格式，通过反射将 schema value 列映射到 T 的构造函数参数。T 只需定义 record，无需手动编写解析逻辑。
+- **EventRegistry**: 字典注册表，支持类型安全的 `Register<T>` / `GetProvider<T>` 操作。
 
 **设计优势**：
 - **异构支持**: 不同数据流可以有完全不同的结构（Record 类型）。
 - **加载解耦**: 各数据流可以有不同的数据源（Parquet, SQL, API）和加载时机（预加载或惰性加载）。
 - **按需访问**: 策略仅需关注自身感兴趣的事件流。
+- **零配置映射**: 用户只需定义 record 类型，框架自动完成物理行 → T 的转换。
 
-### 6. 数据载入性能演进：纵向批量导入通道 (Column-wise Bulk Loader)
+### 6. 稠密数据导入方式 (Dense Data Loading)
 
-为了在全内存加载或分批滑动载入（Chunked Load）中实现最极致的 I/O 吞吐量并消除 C# 端的行号重映射开销，系统设计了**“以股票连续（Stock-Continuous）为基础的纵向批量导入通道”**。这一演进方向完美统一了 CSV 和 Parquet 物理存储异构性的加载逻辑。
+稠密数据（OHLCV 等行情矩阵）通过 **纵向批量导入通道 (Column-wise Bulk Loader)** 加载至 `IDataProvider`。整体流程：
 
-#### 6.1 物理排布的高度对称性
-- **CSV 数据源**: 物理上天然以单只股票独立文件（`{symbol}.csv`）存储，文件内的时间序列是完全连续的。
-- **Parquet 数据源**: 物理上采用 `["symbol", "timestamp"]`（股票优先，时间次之）进行排序存储。因此，对于任意单只股票在月度大表中的行情数据，在解压后的列数组中也是在物理上完全连续分布的。
+```
+物理文件 → StorageResolver.ResolvePhysicalFiles()
+         → CsvMarketSeriesSource / ParquetMarketSeriesSource
+         → BufferedDataProvider.GetBuffer<T>()
+         → IReadOnlyBuffer2D<T>
+```
 
-#### 6.2 纵向批量灌入机制 (Column-wise Copy)
-Loader 在系统启动或滑动窗口滚动向前时，放弃逐日流式多路归并（Cross-sectional Merge），改用**以个股为单位、指定时间区间（StartIndex + Length）的纵向块拷贝（Memcpy）**：
-1. **对于 Parquet**:
-   - 整个月度 Parquet 文件仅被打开和解压一次，各行情特征列解压为完整的一维数组。
-   - 遍历 Symbol 列表，在 `ReadSymbolSeries` 中传入指定的 `startIndex` 与 `length`。基于股票在大列数组中的连续 Offset 与区间偏移，利用 `Span<T>.CopyTo` 一次性将该股票当月（或当区间）的特定天数数据批量快速拷入二维矩阵 `IBuffer2D` 中对应的列和行区间内。
-2. **对于 CSV**:
-   - 遍历股票对应的独立 CSV 文件，仅解析 `[startIndex, startIndex + length - 1]` 日期区间内的序列数据，同样批量写入对应列和行区间。
+#### 6.1 导入流程
 
-#### 6.3 架构优势
-- **速度突破**: 规避了流式对齐中逐日在几万行内存区间大范围跳转寻址（Gather Write）和哈希查找的 CPU 额外开销，完全由 CPU 缓存极度友好的连续内存块拷贝驱动。
-- **两端高度统一**: 将 CSV 的多文件读取与 Parquet 的列数据切片读取，在逻辑上抽象归一为同一种 Bulk Loader 加载行为。
-- **完美契合分时间滑动载入**: 在进行大容量数据分时间段（Time-Chunked）加载时，只需通过调整写入的行偏移区间，即可纵向平滑地按批次覆盖和滚动数据，确保内存占用恒定。
+1. **StorageResolver** 根据 `tableId` 解析物理文件列表（支持 Hive/Flat 布局、年份剪枝）。
+2. **CsvMarketSeriesSource / ParquetMarketSeriesSource** 在构造时完成：
+   - 扫描所有物理文件，建立全局交易日并集 (`TradeDates`) 和股票列表 (`Symbols`)。
+   - 自动向 `SimpleFieldRegistry` 注册 schema 中定义的所有字段。
+3. **BufferedDataProvider.GetBuffer\<T\>(fieldName)** 按需加载：
+   - 首次请求时，遍历所有股票，调用 `source.ReadSymbolSeries<T>()` 批量读取单只股票在特定时间区间内的数据。
+   - 写入 `PagedBuffer2D<T>`（Carrot.Memory），后续请求直接从缓存返回。
+
+#### 6.2 ReadSymbolSeries 核心机制
+
+```
+ReadSymbolSeries(symbol, fieldName, startIndex, length, destination)
+```
+
+- **CSV**: 定位 `{symbol}.csv` 文件，逐行解析并按日期二分查找写入 `destination`。
+- **Parquet**: 从 `YearCache` 获取已解压的列数组，基于股票物理偏移量直接拷贝。
+- **类型转换**: CSV 采用 `ValueConverter<T>.Read()` 静态泛型分发（零装箱）；Parquet 采用 `Unsafe.As` 非托管转换。
+
+#### 6.3 设计约束
+
+- `IDataProvider.GetBuffer<T>()` 返回 `IReadOnlyBuffer2D<T>`，**禁止**返回可写 Buffer。
+- `IMarketMetadata.Symbols` 顺序与 Buffer 列索引严格对齐；`TradeDates` 顺序与 Buffer 行索引严格对齐。
+- 所有接口均不暴露 `List<T>`、`T[]` 等分配内存的集合类型供外部持有。
 
 #### 6.4 物理路径与元数据统一解析器 (StorageResolver)
 为了支持多表跨表关联加载并彻底解耦数据源层与物理文件布局，系统将单表路径解析器重构为**“统一数据区多表路径调度解析器”**：
@@ -326,9 +352,8 @@ Loader 在系统启动或滑动窗口滚动向前时，放弃逐日流式多路�
 
 ### 1. 核心设计原则
 *   **格式**: 统一使用 `CSV` 或 `Parquet`。
-*   **引擎**: 底层数据维护使用 `polars`。
 *   **类型安全**: 所有操作必须参考 `metadata.json` 中的 `schema` 进行显式定义，禁止自动推断类型。
-*   **原子性**: 文件写入遵循“先写 `.tmp`，后 `os.replace`”。
+*   **原子性**: 文件写入遵循"先写 `.tmp`，后 `os.replace`"。
 *   **双时间轴**: 必须遵循 (`timestamp` Int64, `symbol` String, `datetime` String)。
 
 ### 2. 存储布局与 Hive 分区
@@ -534,3 +559,15 @@ ExcelExporter 必须生成具备"总-分-明细"结构的专业量化回测报�
 - **对齐保证**: 注入 Context 的数据必须保证是全局日期对齐的，且与引擎计算时使用的数据完全一致。
 
 - **矩阵化 PreScanMarket**: 引擎所有宏观与微观计算均基于对齐后的 `StockHistory` 矩阵。`PreScanMarket` 负责通过矩阵切片动态生成虚拟 `MarketFrame` 传给策略，确保宏观计算不再依赖物理存储模式。
+
+
+# 文档维护规范
+为了确保文档始终反映系统实际状态，遵循以下原则：
+- 在进行任何涉及项目结构、API 接口、核心逻辑或数据流向的变更后，必须同步检查并更新本 `AGENTS.md` 文件。
+- **编辑警示**: 在使用 `edit` 工具修改代码时，请确保 `oldText` 块精准且最小化，严禁通过包含大量无关的前后文来增加匹配难度，防止误伤不相关的代码区域。
+- 严禁在文档中保留过时的路径、名称或逻辑描述。
+
+# 开发原则
+- **单一事实来源**
+- **最小改动原则**
+- **显式优于隐式**

@@ -1,82 +1,77 @@
 # CarrotQuant.Net
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![.NET](https://img.shields.io/badge/.NET-8.0+-512BD4.svg)](https://dotnet.microsoft.com/download)
-[![Python](https://img.shields.io/badge/Python-3.8+-3776AB.svg)](https://www.python.org/)
+[![.NET](https://img.shields.io/badge/.NET-10.0+-512BD4.svg)](https://dotnet.microsoft.com/download)
 
-CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易与回测框架。它旨在为开发者提供一个从行情数据下载、处理到策略回测及结果分析的完整工具链。
-
----
-
-## 🚀 核心特性
-
-- **流式会话 API**: 提供类似 `BacktestingSession.Create().LoadData().Run().Analyze()` 的流畅开发体验。
-- **灵活的数据模型**:
-  - **HistoryStorage (纵向存储)**: 按股票代码组织的时间序列数据，适合深度技术分析。
-  - **MarketStorage (横向存储)**: 按交易日组织的截面数据，适合多因子选股回测。
-- **多策略支持**: 支持基于信号（Signal）的策略和显式交易逻辑（Trade）的策略。
-- **集成 Python 动力**: 利用 Python 生态系统（BaoStock, EastMoney）进行高效的行情数据抓取，并通过 C# 进行高性能回测。
-- **可视化分析**: 集成 `ScottPlot` 生成直观的回测收益曲线及指标分析。
-- **高性能引擎**: 支持多线程数据处理，优化的内存管理以应对大规模历史数据。
+CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易与回测框架，采用 **三层分离架构**（数据层 / 引擎层 / 策略层），支持回测与实盘双引擎。
 
 ---
 
-## 📂 项目结构
+## 核心特性
+
+- **三层分离架构**: 数据层 / 引擎层 / 策略层通过接口契约解耦，各层可独立演进。
+- **双格式数据源**: 统一支持 CSV 与 Parquet 格式，通过 `IStorageResolver` 屏蔽物理存储差异。
+- **稠密矩阵 + 稀疏事件**: `IDataProvider` 提供高性能二维 Buffer 访问，`IEventProvider<T>` 提供 O(1) 点查。
+- **泛型事件系统**: 用户只需定义 record 类型，框架自动完成 CSV/Parquet → T 的零配置映射。
+- **策略管线**: 支持串联/并联组合模式，引擎启动前通过 `Compile()` 优化拓扑。
+- **Context 黑板模式**: 策略间通过 `IEngineContext` 异步通信，实现无感协作与物理隔离。
+
+---
+
+## 项目结构
 
 | 目录/项目 | 说明 |
 | :--- | :--- |
-| **CarrotBacktesting.NET** | **核心引擎**。包含回测调度、策略接口、数据解析、技术指标及分析组件。 |
-| **CarrotQuant.DataLib** | **数据中心库**。负责 C# 与 Python 的交互，管理行情数据的生命周期。 |
-| **CarrotQuant.Data.Python** | **数据抓取脚本**。基于 Python 实现，负责从各大金融数据源下载原始 CSV/JSON 数据。 |
-| **CarrotBacktesting.NET.Demo** | **回测示例**。展示了如何加载配置、运行策略并产出分析结果。 |
-| **CarrotQuant.DataLib.Demo** | **下载示例**。演示如何通过交互式命令行启动行情数据下载流程。 |
-| **CarrotQuant.Data** | **默认存储目录**。用于存放下载的原始行情、缓存文件及回测报告。 |
+| **CarrotBacktesting.NET** | **核心引擎**。包含数据层接口与实现、引擎抽象、策略接口。 |
+| **CarrotBackTesting.Net.UnitTest** | **单元测试**。覆盖数据层全部组件，含真实测试数据校验。 |
+| **CarrotBackTesting.NET.TestData** | **测试数据集**。CSV/Parquet 格式的 A 股行情与复权因子数据。 |
+| **CarrotBacktesting.NET.Demo** | **回测示例**。 |
 
 ---
 
-## 🛠️ 快速开始
+## 快速开始
 
 ### 1. 环境准备
-- 安装 [.NET 8.0 SDK](https://dotnet.microsoft.com/download) 或更高版本。
-- 安装 [Python 3.8+](https://www.python.org/) 并安装必要依赖（如 `baostock`, `pandas`）。
+- 安装 [.NET 10.0 SDK](https://dotnet.microsoft.com/download) 或更高版本。
 
-### 2. 配置环境
-复制并修改 `env.yaml`（或在 `CarrotQuant.Data/v3/yaml/env.yaml` 中配置）：
-```yaml
-runtime:
-  project_dir: "D:/Projects/CarrotQuant.Net"
-  thread_count: 8
-data:
-  raw_path: "CarrotQuant.Data/csv"
-```
-
-### 3. 行情下载
-运行 `CarrotQuant.DataLib.Demo` 来初始化数据：
+### 2. 运行测试
 ```bash
-dotnet run --project CarrotQuant.DataLib.Demo
+dotnet test CarrotBackTesting.Net.UnitTest
 ```
 
-### 4. 运行回测
-在 `CarrotBacktesting.NET.Demo` 中定义你的策略并运行：
+### 3. 使用事件系统
 ```csharp
-BacktestingSession.Create("env.yaml")
-    .LoadData()
-    .Run(new MySignalStrategy())
-    .Analyze();
+// 定义事件数据模型
+public record AdjustmentFactor(double BackAdjFactor);
+
+// 自动加载（CSV/Parquet 格式自动检测）
+var resolver = new StorageResolver("path/to/data");
+var provider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+
+// O(1) 点查
+provider.TryGet(new DateTime(2021, 7, 21), "sh.600000", out var val);
+
+// 注册到事件注册表
+var registry = new EventRegistry();
+registry.Register("adjustments", provider);
 ```
 
 ---
 
-## 📊 回测分析图示
+## 架构概览
 
-回测完成后，框架会产出详细的分析摘要，并支持导出可视化图表。
+```
+Data Layer          Engine Layer         Strategy Layer
+┌──────────────┐    ┌─────────────┐    ┌─────────────┐
+│ IDataProvider│──▶│   IEngine   │──▶│  IStrategy   │
+│ IEventReg.   │    │IEngineCtx   │    │ IStrategyPipe│
+└──────────────┘    └─────────────┘    └─────────────┘
+```
+
+详细架构规范请参阅 [AGENTS.md](AGENTS.md)。
 
 ---
 
-## 📜 开源协议
+## 开源协议
 
 本项目采用 **Apache License 2.0** 协议开源。详情请参阅 [LICENSE](LICENSE) 文件。
-
----
-
-*本 README 及其技术建议由 Gemini 3 Flash 提供支持。*
