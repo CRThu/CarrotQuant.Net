@@ -202,6 +202,8 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
          │
          │  ReadSymbolSeries<T>()
          ▼
+  Buffer2D.Create<T>()  [Carrot.Memory]
+         │
   PagedBuffer2D<T>  [Carrot.Memory]
          │
   (只读封装后)
@@ -216,7 +218,7 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
 ### 4. Carrot.Memory 依赖说明
 
 - 项目引用：`D:\Projects\Carrot.Memory\Carrot.Memory\Carrot.Memory.csproj`（已在 `CarrotBacktesting.NET.csproj` 中声明）
-- 关键类型：`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`PagedBuffer2D<T>`、`PagedBuffer2DFactory`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`
+- 关键类型：`Buffer2D`（统一入口）、`Buffer2DOptions`、`PagedBuffer2D<T>`、`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`
 - 命名空间：`Carrot.Memory`、`Carrot.Memory.Abstractions`、`Carrot.Memory.Views`、`Carrot.Memory.Providers`
 
 ### 5. 异构事件流系统 (Event System)
@@ -269,7 +271,7 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
    - 自动向 `SimpleFieldRegistry` 注册 schema 中定义的所有字段。
 3. **BufferedDataProvider.GetBuffer\<T\>(fieldName)** 按需加载：
    - 首次请求时，遍历所有股票，调用 `source.ReadSymbolSeries<T>()` 批量读取单只股票在特定时间区间内的数据。
-   - 写入 `PagedBuffer2D<T>`（Carrot.Memory），后续请求直接从缓存返回。
+   - 通过 `Buffer2D.Create<T>()` 创建纯内存 `PagedBuffer2D<T>`，使用 `SetColumn` 批量写入，后续请求直接从缓存返回。
 
 #### 6.2 ReadSymbolSeries 核心机制
 

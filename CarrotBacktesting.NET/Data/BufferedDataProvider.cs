@@ -79,32 +79,16 @@ namespace CarrotBacktesting.NET.Data
             int totalDays = _metadata.TradeDates.Count;
             if (totalDays <= 0) throw new InvalidOperationException("Metadata TradeDates count must be > 0.");
 
-            var options = new PagedBuffer2DOptions { 
-                Width = _metadata.Symbols.Count, 
-                PageSize = 1024, 
-                RowCount = totalDays, 
-                RootPath = _storageRoot 
-            };
-            
-            // 使用 Carrot.Memory 核心工厂直接创建，利用配置自动选择 Provider
-            var buffer = PagedBuffer2DFactory.Open<T>(_storageRoot, options);
+            var buffer = Buffer2D.Create<T>(_metadata.Symbols.Count, totalDays);
 
-            // 使用临时数组中转，因为 Source 要求 Contiguous Span，且缓存读取性能更好
             T[] temp = ArrayPool<T>.Shared.Rent(totalDays);
             try
             {
                 for (int colIdx = 0; colIdx < _metadata.Symbols.Count; colIdx++)
                 {
                     string symbol = _metadata.Symbols[colIdx];
-                    // 假设 ReadSymbolSeries 将数据读取到 temp Span 中
                     _source.ReadSymbolSeries(symbol, fieldName, 0, totalDays, temp.AsSpan(0, totalDays));
-
-                    // 优化：使用 columnView 接口进行批量写入
-                    var columnView = buffer.GetColumnView(0, colIdx, totalDays);
-                    for (int r = 0; r < totalDays; r++)
-                    {
-                        columnView[r] = temp[r];
-                    }
+                    buffer.SetColumn(0, colIdx, temp.AsSpan(0, totalDays));
                 }
             }
             finally
