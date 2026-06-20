@@ -1,0 +1,37 @@
+{
+  "table_id": "ashare.dragon_tiger.eastmoney",
+  "category": "event",
+  "format": "parquet",
+  "partition": "none",
+  "layout": "hive",
+  "schema": {
+    "symbol": "String",
+    "datetime": "String",
+    "timestamp": "Int64",
+    "market_amount": "Float64",
+    "buy_amount": "Float64",
+    "deal_amount": "Float64",
+    "net_amount": "Float64",
+    "sell_amount": "Float64",
+    "change_rate": "Float64",
+    "close_price": "Float64",
+    "day1_change_rate": "Float64",
+    "day2_change_rate": "Float64",
+    "day5_change_rate": "Float64",
+    "day10_change_rate": "Float64",
+    "deal_amount_ratio": "Float64",
+    "deal_net_ratio": "Float64",
+    "explain": "String",
+    "explanation": "String",
+    "float_market_cap": "Float64",
+    "stock_name": "String",
+    "turnover_rate": "Float64"
+  },
+  "statistics": {
+    "start_timestamp": 1778050800000,
+    "end_timestamp": 1781766000000,
+    "start_datetime": "2026-05-06T15:00:00.000+08:00",
+    "end_datetime": "2026-06-18T15:00:00.000+08:00",
+    "total_bars": 3261
+  }
+}
