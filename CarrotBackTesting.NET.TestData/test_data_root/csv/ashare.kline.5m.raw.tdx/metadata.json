@@ -1,0 +1,27 @@
+{
+  "table_id": "ashare.kline.5m.raw.tdx",
+  "category": "timeseries",
+  "format": "csv",
+  "partition": "symbol",
+  "layout": "hive",
+  "schema": {
+    "symbol": "String",
+    "datetime": "String",
+    "timestamp": "Int64",
+    "open": "Float64",
+    "high": "Float64",
+    "low": "Float64",
+    "close": "Float64",
+    "volume": "Float64",
+    "amount": "Float64"
+  },
+  "statistics": {
+    "start_timestamp": 1748934000000,
+    "end_timestamp": 1751266800000,
+    "start_datetime": "2025-06-03T15:00:00.000+08:00",
+    "end_datetime": "2025-06-30T15:00:00.000+08:00",
+    "total_bars": 9600,
+    "symbol_count": 10,
+    "time_steps": 20
+  }
+}
