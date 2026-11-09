@@ -60,6 +60,27 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
+        public void TestBufferedDataProviderWithMultiLevelParquet()
+        {
+            string testDataRoot = GetRawDataRoot();
+            string parquetRoot = Path.Combine(testDataRoot, "parquet");
+            string tableId = "ashare.kline.1m.raw.custom";
+
+            var registry = new SimpleFieldRegistry();
+            using var source = new ParquetMarketSeriesSource(parquetRoot, registry, tableId);
+
+            using var provider = new BufferedDataProvider(source, registry, source, _tempCacheDir);
+
+            Assert.IsTrue(provider.HasField("close"));
+            Assert.IsTrue(provider.HasField("open"));
+
+            var buffer = provider.GetBuffer<double>("close");
+            Assert.IsNotNull(buffer);
+            Assert.AreEqual(source.TradeDates.Count, buffer.RowCount);
+            Assert.AreEqual(source.Symbols.Count, buffer.Width);
+        }
+
+        [TestMethod]
         public void TestGetNonExistentFieldThrows()
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");

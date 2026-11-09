@@ -107,5 +107,30 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(physicalVal, loadedVal, 1e-6, $"Close value mismatch at {date:yyyy-MM-dd}.");
             }
         }
+
+        [TestMethod]
+        public void TestParquetMarketSeriesSourceMultiLevelMonthPartition()
+        {
+            string testDataRoot = GetTestDataRoot();
+            string parquetRoot = Path.Combine(testDataRoot, "parquet");
+            string tableId = "ashare.kline.1m.raw.custom";
+
+            var registry = new SimpleFieldRegistry();
+            using var source = new ParquetMarketSeriesSource(parquetRoot, registry, tableId);
+
+            Assert.IsTrue(source.Symbols.Count > 0, "Symbols should not be empty.");
+            Assert.IsTrue(source.TradeDates.Count > 0, "TradeDates should not be empty.");
+            Assert.IsTrue(source.FieldNames.Contains("close"));
+            Assert.IsTrue(source.FieldNames.Contains("open"));
+            Assert.IsTrue(source.FieldNames.Contains("volume"));
+
+            string testSymbol = source.Symbols[0];
+            int length = source.TradeDates.Count;
+            double[] destination = new double[length];
+            source.ReadSymbolSeries(testSymbol, "close", 0, length, destination);
+
+            bool hasValidData = destination.Any(v => !double.IsNaN(v) && v > 0);
+            Assert.IsTrue(hasValidData, "Destination should contain valid close prices from multi-level month partition parquet.");
+        }
     }
 }

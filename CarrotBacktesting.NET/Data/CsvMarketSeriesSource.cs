@@ -138,7 +138,7 @@ namespace CarrotBacktesting.NET.Data
             DateTime minDate = _tradeDates[startIndex];
             DateTime maxDate = _tradeDates[startIndex + length - 1];
 
-            // 终极调度：100% 委托给调度解析器寻找区间内的数据物理文件
+            // 获取指定时间区间内的物理数据文件列表
             var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, _startDate, _endDate);
             foreach (var filePath in csvFiles)
             {

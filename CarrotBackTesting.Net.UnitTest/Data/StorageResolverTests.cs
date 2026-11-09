@@ -153,9 +153,99 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(files[0].EndsWith(".parquet"));
         }
 
+        [TestMethod]
+        public void Resolve_HiveLayout_MultiLevelMonthPartition_ShouldPruneMonthsCorrectly()
+        {
+            string tableId = "hive_multi_level_month";
+            CreateTable(tableId,
+                new { layout = "hive", format = "parquet", partition = "none", schema = new { c = "int64" } },
+                new List<string>
+                {
+                    "year=2025/month=01/data.parquet",
+                    "year=2025/month=02/data.parquet",
+                    "year=2025/month=03/data.parquet",
+                    "year=2024/month=12/data.parquet"
+                });
+
+            var resolver = new StorageResolver(_tempRoot);
+
+            // 1. 无时间过滤：应返回全部 4 个文件
+            var allFiles = resolver.ResolvePhysicalFiles(tableId);
+            Assert.AreEqual(4, allFiles.Count);
+
+            // 2. 年份与月份过滤：2025年2月到2025年2月 -> 仅 month=02
+            var febOnly = resolver.ResolvePhysicalFiles(tableId, null, new DateTime(2025, 2, 1), new DateTime(2025, 2, 28));
+            Assert.AreEqual(1, febOnly.Count);
+            Assert.IsTrue(febOnly[0].Replace('\\', '/').Contains("year=2025/month=02/data.parquet"));
+
+            // 3. 起始时间剪枝：2025年2月及以后 -> month=02, month=03
+            var fromFeb = resolver.ResolvePhysicalFiles(tableId, null, new DateTime(2025, 2, 1), null);
+            Assert.AreEqual(2, fromFeb.Count);
+            Assert.IsTrue(fromFeb.Any(f => f.Replace('\\', '/').Contains("year=2025/month=02")));
+            Assert.IsTrue(fromFeb.Any(f => f.Replace('\\', '/').Contains("year=2025/month=03")));
+
+            // 4. 跨年起止时间剪枝：2024年12月到2025年1月 -> 2024-12 和 2025-01
+            var crossYear = resolver.ResolvePhysicalFiles(tableId, null, new DateTime(2024, 12, 1), new DateTime(2025, 1, 31));
+            Assert.AreEqual(2, crossYear.Count);
+            Assert.IsTrue(crossYear.Any(f => f.Replace('\\', '/').Contains("year=2024/month=12")));
+            Assert.IsTrue(crossYear.Any(f => f.Replace('\\', '/').Contains("year=2025/month=01")));
+        }
+
         #endregion
 
         #region 3. 边界与异常测试
+
+        [TestMethod]
+        public void Resolve_WithoutMetadataJson_Parquet_ShouldAutoInferMetadata()
+        {
+            // 复制一个无 metadata.json 的真实 Parquet Hive 表到临时目录
+            string tableId = "parquet_no_metadata";
+            string srcParquet = Path.Combine(AppContext.BaseDirectory, "TestData", "test_data_root", "parquet", "ashare.kline.1m.raw.custom", "year=2025", "month=01", "data.parquet");
+            
+            string destDir = Path.Combine(_tempRoot, tableId, "year=2025", "month=01");
+            Directory.CreateDirectory(destDir);
+            File.Copy(srcParquet, Path.Combine(destDir, "data.parquet"));
+
+            var resolver = new StorageResolver(_tempRoot);
+
+            Assert.IsTrue(resolver.HasTable(tableId));
+            Assert.AreEqual("parquet", resolver.GetFormat(tableId));
+            Assert.AreEqual(StorageLayout.Hive, resolver.GetLayout(tableId));
+            Assert.AreEqual("none", resolver.GetPartition(tableId));
+            Assert.AreEqual("timeseries", resolver.GetCategory(tableId));
+
+            var fields = resolver.GetFieldNames(tableId);
+            Assert.IsTrue(fields.Contains("symbol"));
+            Assert.IsTrue(fields.Contains("close"));
+            Assert.AreEqual(typeof(double), resolver.GetFieldType(tableId, "close"));
+            Assert.AreEqual(typeof(string), resolver.GetFieldType(tableId, "symbol"));
+
+            var files = resolver.ResolvePhysicalFiles(tableId);
+            Assert.AreEqual(1, files.Count);
+        }
+
+        [TestMethod]
+        public void Resolve_WithoutMetadataJson_Csv_ShouldAutoInferMetadata()
+        {
+            // 创建一个无 metadata.json 的 CSV 表
+            string tableId = "csv_no_metadata";
+            string dir = Path.Combine(_tempRoot, tableId, "year=2024");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "sh.600000.csv"), "symbol,datetime,close,volume\nsh.600000,2024-01-02,10.5,1000\n");
+
+            var resolver = new StorageResolver(_tempRoot);
+
+            Assert.IsTrue(resolver.HasTable(tableId));
+            Assert.AreEqual("csv", resolver.GetFormat(tableId));
+            Assert.AreEqual(StorageLayout.Hive, resolver.GetLayout(tableId));
+            Assert.AreEqual("symbol", resolver.GetPartition(tableId));
+
+            var fields = resolver.GetFieldNames(tableId);
+            Assert.IsTrue(fields.Contains("symbol"));
+            Assert.IsTrue(fields.Contains("close"));
+            Assert.AreEqual(typeof(double), resolver.GetFieldType(tableId, "close"));
+            Assert.AreEqual(typeof(string), resolver.GetFieldType(tableId, "symbol"));
+        }
 
         [TestMethod]
         [ExpectedException(typeof(DirectoryNotFoundException))]

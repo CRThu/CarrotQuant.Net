@@ -79,7 +79,14 @@ namespace CarrotBacktesting.NET.Data
             int totalDays = _metadata.TradeDates.Count;
             if (totalDays <= 0) throw new InvalidOperationException("Metadata TradeDates count must be > 0.");
 
-            var buffer = Buffer2D.Create<T>(_metadata.Symbols.Count, totalDays);
+            var options = new PagedBuffer2DOptions
+            {
+                Width = _metadata.Symbols.Count,
+                PageSize = 1024,
+                RowCount = totalDays,
+                RootPath = _storageRoot
+            };
+            var buffer = PagedBuffer2DFactory.Open<T>(_storageRoot, options);
 
             T[] temp = ArrayPool<T>.Shared.Rent(totalDays);
             try

@@ -1,10 +1,10 @@
-# CarrotQuant .NET v4 架构规范文档
+# CarrotQuant .NET 核心架构与开发规范 (v4)
 
 ## 一、系统架构总览 (v4 Software Architecture)
 
 CarrotQuant.NET v4 采用 **三层分离架构**，各层之间通过接口契约解耦，支持回测与实盘双引擎。
 
-### 架构图
+### 1. 架构拓扑
 
 ```mermaid
 graph TD
@@ -63,513 +63,249 @@ graph TD
     end
 ```
 
-### 分层说明
+### 2. 核心分层职责与流向
 
-#### 1. Data Layer（数据层）
+| 分层 | 核心职责 | 核心组件 / 契约 |
+| :--- | :--- | :--- |
+| **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvMarketSeriesSource`, `ParquetMarketSeriesSource`, `BufferedDataProvider`, `IDataProvider`, `IEventProvider<T>`, `IEventRegistry` |
+| **Engine Layer (引擎层)** | 回测撮合与实盘路由、账户资产管理、上下文注入 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `IExchangeGateway`, `IMatchingEngine`, `IBroker`, `IMonitor` |
+| **Strategy Layer (策略层)** | 宏观决策、信号生成、组合管理与交易执行 | `IStrategy`, `IStrategyPipeline`, `IMarketStrategy`, `ISignalStrategy`, `IPortfolioStrategy` |
 
-负责数据的获取、转换和供给，核心组件：
+- **数据流向**: `IDataProvider` → `IEngine` → (`IExchangeGateway` / `IBroker` / `IMonitor`) → `IEngineContext` → 策略层
+- **策略调度链**: `IPortfolioStrategy` → `IMarketStrategy` → `ISignalStrategy`
 
-| 组件 | 职责 |
-|------|------|
-| **StorageResolver** | 统一多表路径调度解析器，支持 Hive/Flat 布局与年份剪枝 |
-| **CsvMarketSeriesSource** | CSV 纵向序列数据源，实现 `IMarketSeriesSource` |
-| **ParquetMarketSeriesSource** | Parquet 纵向序列数据源，实现 `IMarketSeriesSource` |
-| **SimpleFieldRegistry** | 字段注册表实现，管理已加载字段元信息 |
-| **BufferedDataProvider** | 缓冲模式数据提供器（全量加载），实现 `IDataProvider` |
-| **DataProviderFactory** | 数据提供器工厂，统一创建入口 |
-| **EventProvider\<T\>** | 事件提供器实现，基于字典索引的 O(1) 点查 |
-| **EventProviderBuilder** | 事件提供器构建工厂，自动检测 CSV/Parquet 格式并反射映射 |
-| **EventRegistry** | 事件注册表实现，管理多个事件流 |
-| **IDataProvider** | 数据层统一输出接口，供引擎层消费 |
-| **IEventProvider\<T\>** | 事件提供器接口，支持 (Date, Symbol) 随机访问 |
-| **IEventRegistry** | 事件注册表接口，统一管理外部 KV 数据流 |
+### 3. 策略协作机制
 
-#### 2. Engine and Execution Layer（引擎与执行层）
+#### 3.1 Context 黑板模式
+通过 `IEngineContext` 作为统一的信息交换中心（黑板），实现策略解耦与状态共享：
+- **信号发生器**: 负责行情分析与信号生产（Signal Generation），输出结论至上下文，不触碰交易接口。
+- **执行处理器**: 监听黑板上的信号并转化为物理订单（Order Placement），对信号来源解耦。
+- **风控监察员**: 监听账户回报（ExecutionReport/PositionEvent），实时执行风险对冲与合规校验。
+- **松耦合机制**: 遵循“状态生产 → Context 存储 → 状态消费”模式，单一策略职责聚焦且支持自由组合。
 
-驱动回测或实盘运行的核心调度层：
-
-| 组件 | 职责 |
-|------|------|
-| **IEngine** | 引擎统一抽象接口（含状态监控、执行控制、持久化） |
-| **BacktestingEngine** | 回测引擎实现 |
-| **LivingEngine** | 实盘引擎实现 |
-| **IEngineContext** | 引擎运行上下文，向策略层注入数据（Data, Broker, Market） |
-| **IExchangeGateway** | 交易所网关抽象（屏蔽回测模拟器与真实交易所差异） |
-| **IMatchingEngine** | 撮合引擎接口（仅回测，驱动时间步撮合） |
-| **IBroker** | 经纪人/账户管理抽象（资产查询、订单管理、成交事件） |
-| **IMonitor** | 监控/日志/告警抽象 |
-
-**数据流向**: `IDataProvider` → `IEngine` → (`IExchange` / `IBroker` / `IMonitor`) → `IEngineContext` → 策略层
-
-#### 3. Strategy Layer（策略层）
-
-策略的分层执行管线，依赖 `IEngineContext` 注入：
-
-| 组件 | 职责 |
-|------|------|
-| **IStrategy** | 策略基础接口，包含完整生命周期（Initial/Start/Update/Stop）及事件（Order/Position） |
-| **IStrategyPipeline** | 策略管线接口，支持 Add/Compile 组合模式 |
-| **IPortfolioStrategy** | 组合/仓位管理策略（逻辑角色） |
-| **IMarketStrategy** | 市场/宏观策略（产生 MarketBias） |
-| **ISignalStrategy** | 个股信号策略（Alpha 信号生成） |
-
-**策略调度链**: `IPortfolioStrategy` → `IMarketStrategy` → `ISignalStrategy`
-
-### 3.1 策略解耦：Context 黑板模式
-核心理念是通过 `IEngineContext` 作为统一的信息交换中心（黑板），实现不同职责策略间的无感协作与物理隔离：
-- **职责分层**: 
-    - **信号发生器**: 仅负责行情分析与信号生产（Signal Generation），输出结论至上下文，不触碰交易接口。
-    - **执行处理器**: 仅负责监听黑板上的信号并转化为物理订单（Order Placement），对信号来源无感知。
-    - **风控监察员**: 监听账户回报（ExecutionReport/PositionEvent），实时执行风险对冲或合规校验。
-- **松耦合机制**: 策略间通过“A 生成状态 -> Context 存储 -> B 消费状态”的模式运行，这种基于状态的异步通信机制，使得单一策略可以保持极简逻辑并支持自由组合。
-
-### 3.2 策略管线 (Pipeline)
-基于组合模式（Composite Pattern）构建，支持复杂策略逻辑的拓扑编排：
-- **串联管线 (Sequential)**: 逻辑按序执行，适用于有因果依赖的策略链。例如：`宏观策略` → `个股信号` → `执行策略`。
-- **并联管线 (Parallel)**: 逻辑并发执行，适用于相互独立、计算密集型的策略组，充分利用多核性能。
-- **编译优化**: 引擎启动前通过 `Compile()` 对管线拓扑进行密封优化，确保在每个时间步分发事件时的执行效率。
+#### 3.2 策略管线 (Pipeline)
+基于组合模式（Composite Pattern）编排策略拓扑：
+- **串联管线 (Sequential)**: 按序执行，适用于因果依赖链（如：`宏观策略` → `个股信号` → `执行策略`）。
+- **并联管线 (Parallel)**: 并发执行，适用于相互独立、计算密集型的策略组，利用多核性能。
+- **编译优化**: 引擎启动前通过 `Compile()` 密封优化管线拓扑，保障时间步事件分发性能。
 
 ---
 
 ## 二、市场策略 (IMarketStrategy) 体系
 
 ### 1. RaUA 架构管线
-- **IMarketStrategy** 产生的宏观决策将通过 `context.Market` 注入到个股扫描 (`ISignalStrategy`) 和交易执行的上下文中。
-- **MarketBias** (市场偏向) 定义：
-    - `Up`: 看多 / 活跃
-    - `Neutral`: 中性
-    - `Down`: 看空 / 冰点
+- `IMarketStrategy` 产生的宏观决策通过 `context.Market` 注入到个股扫描 (`ISignalStrategy`) 和交易执行上下文中。
+- **MarketBias** (市场偏向): `Up` (看多/活跃), `Neutral` (中性), `Down` (看空/冰点)。
 
 ### 2. 决策消费与剪枝
-- **剪枝机制**: 引擎在执行 ISignalStrategy 前会检查 `context.Market` 的状态。若 `MarketContext.SkipAlpha` 为 `true`，将自动跳过当日所有个股的信号计算。
-- **状态访问**: 策略可以通过 `context.Market.GetState<T>()` 获取由 `IMarketStrategy` 计算并存储的强类型自定义状态数据。
-  - 示例：`var metrics = context.Market.GetState<MyMarketMetrics>();`
+- **剪枝机制**: 引擎在执行 `ISignalStrategy` 前检查 `context.Market`。若 `MarketContext.SkipAlpha` 为 `true`，自动跳过当日所有个股的信号计算。
+- **状态访问**: 策略通过 `context.Market.GetState<T>()` 获取强类型自定义状态（如：`var metrics = context.Market.GetState<MyMarketMetrics>();`）。
 
 ---
 
-*架构基石：通过在数据层承担复杂度（对齐），实现了计算层与分析层逻辑的极简归一。*
+## 三、数据层契约 (Data Layer Contracts)
 
-## 三、数据层契约 (Data Layer Contracts) [v4]
+所有接口位于 `CarrotBacktesting.NET/Abstraction/Data/`，禁止上层绕过接口直接访问物理存储。
 
-本章节定义 v4 数据层的核心接口契约，所有接口位于 `CarrotBacktesting.NET` 项目的 `Abstraction/` 目录下。
-引擎层与策略层**禁止**绕过这些接口直接访问物理存储。
+### 1. 物理层抽象（ETL 层）
 
-### 1. 物理层抽象：宽表快照流（ETL 层）
+| 接口 / 类型 | 文件 | 职责 |
+| :--- | :--- | :--- |
+| `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 统一元数据契约（描述时间与代码维度及物理寻址） |
+| `IMarketSnapshotSource`| `Abstraction/Data/IMarketSnapshotSource.cs` | 流式读取宽表快照（Row = 交易日，Col = 全市场股票） |
+| `IMarketSeriesSource`  | `Abstraction/Data/IMarketSeriesSource.cs`   | 批量读取个股序列（Col = 股票，Row = 时间序列） |
 
-命名空间：`CarrotBacktesting.NET.Abstraction.Data`
+**物理实现与设计细节**：
+- `MoveNext()`: 驱动逐行/逐日遍历，零状态暴露。
+- `ReadFieldSnapshot<T>(fieldName, Span<T> destination)`: 直接写入调用方提供的内存块，严格零拷贝；`T : unmanaged` 约束兼容 MMF 布局。
+- `CsvMarketSeriesSource`: 支持 Hive 分区 `{root}/{table_id}/year={yyyy}/{symbol}.csv` 与 Flat 结构；基于 Sylvan.Data.Csv 流式解析，泛型分发 `ValueConverter<T>` 零装箱转换。
+- `ParquetMarketSeriesSource`: 支持按年/月分区 `{root}/{table_id}/year={yyyy}/[month={mm}/]data.parquet` 或单文件；基于 `YearCache` 按需列缓存解压，通过 `Unsafe.As` 零拷贝转换。
 
-| 接口 | 文件 | 职责 |
-|------|------|------|
-| `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 统一元数据契约（描述维度、类型及寻址） |
-| `IMarketSnapshotSource` | `Abstraction/Data/IMarketSnapshotSource.cs` | 流式读取宽表快照的 ETL 契约，物理行（Row）= 交易日，列（Col）= 全市场股票 |
-| `IMarketSeriesSource` | `Abstraction/Data/IMarketSeriesSource.cs` | 批量读取个股序列的 ETL 契约，物理列（Col）= 股票，行（Row）= 时间序列 |
+### 2. 内存层接口与 Buffer 访问
 
-**关键设计**：
-- `MoveNext()` 驱动逐行（逐交易日）遍历，零状态暴露。
-- `ReadFieldSnapshot<T>(fieldName, Span<T> destination)` 直接写入调用方提供的内存块，**严格零拷贝**，禁止内部 `new T[]`。
-- `T : unmanaged` 约束确保与 `Carrot.Memory` 的 MMF 物理布局兼容。
-
-#### 1.1 具体实现 (Implementations)
-- **CsvMarketSeriesSource**:
-  - **存储布局**: 支持 Hive 分区结构：`storage_root/csv/{table_id}/year={yyyy}/{symbol}.csv`。
-  - **高效机制**: 基于 Sylvan.Data.Csv 高速解析，采用静态泛型分发（`ValueConverter<T>`）实现零装箱类型转换。构造时扫描所有物理文件建立全局交易日并集与股票列表索引。
-- **ParquetMarketSeriesSource**:
-  - **存储布局**: 支持年度宽表分区结构：`storage_root/parquet/{table_id}/year={yyyy}/data.parquet`。
-  - **高效机制**: 采用 **按需列缓存（On-demand Column Caching）** 机制。系统维护年度级缓存池（`YearCache`），在首次访问年度数据时完成全量列解压并驻留内存。后续所有针对该年度的字段访问直接从内存 `Dictionary` 索引获取数据块，利用非托管快速拷贝和 `Unsafe.As` 提供极致吞吐。
-
-### 2. 内存层接口：对齐后的 Buffer 访问（Data 层）
-
-命名空间：`CarrotBacktesting.NET.Abstraction.Data`
-
-| 接口/类型 | 文件 | 职责 |
-|-----------|------|------|
-| `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 全局对齐后的维度信息：TradeDates（行索引）、Symbols（列索引） |
+| 接口 / 类型 | 文件 | 职责 |
+| :--- | :--- | :--- |
 | `IDataProvider` | `Abstraction/Data/IDataProvider.cs` | 数据层统一输出入口，`GetBuffer<T>(fieldName)` 返回 `IReadOnlyBuffer2D<T>` |
-| `IFieldRegistry` | `Abstraction/Data/IFieldRegistry.cs` | 字段注册表，管理已加载字段的元信息（含自定义指标字段） |
-| `IEventProvider<T>` | `Abstraction/Data/IEventProvider.cs` | 异构 KV 数据提供器（复权因子、分红、公告等） |
+| `IFieldRegistry` | `Abstraction/Data/IFieldRegistry.cs` | 字段注册表，管理已加载与自定义指标字段元信息 |
+| `FieldInfo` | `Abstraction/Data/IFieldRegistry.cs` | 字段元数据 record: `(string Name, Type DataType, bool IsCustom)` |
+| `IEventProvider<T>` | `Abstraction/Data/IEventProvider.cs` | 异构 KV 数据流提供器（复权因子、分红、公告等） |
 | `IEventRegistry` | `Abstraction/Data/IEventRegistry.cs` | 事件注册表，统一管理外部 KV 数据流 |
-| `FieldInfo` | `Abstraction/Data/IFieldRegistry.cs` | 字段元数据 record（Name, DataType, IsCustom） |
 
-**关键约束**：
-- `IDataProvider.GetBuffer<T>()` 返回类型必须为 `IReadOnlyBuffer2D<T>`（来自 `Carrot.Memory`），**禁止**返回可写 Buffer。
-- `IMarketMetadata.Symbols` 顺序与 Buffer **列索引**严格对齐；`TradeDates` 顺序与 Buffer **行索引**严格对齐。
-- 所有接口均不暴露 `List<T>`、`T[]` 等分配内存的集合类型供外部持有。
+**核心内存约束 (SSOT)**：
+1. `IDataProvider.GetBuffer<T>()` 必须返回只读类型 `IReadOnlyBuffer2D<T>`（来自 `Carrot.Memory`），严禁暴露可写 Buffer。
+2. 维度严格对齐：`IMarketMetadata.Symbols` 顺序对应列索引；`TradeDates` 顺序对应行索引。
+3. 零内存暴露：严禁对外暴露 `List<T>`、`T[]` 等分配型集合供外部持有。
 
-### 3. 依赖关系
+### 3. Carrot.Memory 依赖模型
 
 ```
 IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, Symbols)
          │
          │  ReadSymbolSeries<T>()
          ▼
-  Buffer2D.Create<T>()  [Carrot.Memory]
-         │
-  PagedBuffer2D<T>  [Carrot.Memory]
-         │
-  (只读封装后)
-         ▼
-  IReadOnlyBuffer2D<T>  [Carrot.Memory]
-         │
-  IDataProvider.GetBuffer<T>()
-         │
-  EngineLayer / StrategyLayer
+  Buffer2D.Create<T>() ──► PagedBuffer2D<T> ──► IReadOnlyBuffer2D<T> ──► IDataProvider.GetBuffer<T>()
 ```
+- 项目引用：`..\..\Carrot.Memory\Carrot.Memory\Carrot.Memory.csproj`
+- 关键类型：`Buffer2D`、`Buffer2DOptions`、`PagedBuffer2D<T>`、`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`。
 
-### 4. Carrot.Memory 依赖说明
+### 4. 异构事件流系统 (Event System)
 
-- 项目引用：`D:\Projects\Carrot.Memory\Carrot.Memory\Carrot.Memory.csproj`（已在 `CarrotBacktesting.NET.csproj` 中声明）
-- 关键类型：`Buffer2D`（统一入口）、`Buffer2DOptions`、`PagedBuffer2D<T>`、`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`
-- 命名空间：`Carrot.Memory`、`Carrot.Memory.Abstractions`、`Carrot.Memory.Views`、`Carrot.Memory.Providers`
+针对复权因子、龙虎榜、分红、停牌等异构 KV 数据，采用与稠密矩阵分离的双轨架构：
 
-### 5. 异构事件流系统 (Event System)
-
-为了处理复权因子、龙虎榜、分红、财报、停牌公告等异构 KV 数据，v4 引入了事件流抽象。系统将数据分为两类，采用不同的物理实现与优化路径：
-
-#### 5.1 稠密矩阵 (IDataProvider) vs 稀疏事件 (IEventRegistry)
-
-| 特性 | **IDataProvider (稠密数据/矩阵)** | **IEventRegistry (稀疏数据/KV)** |
+| 特性 | **IDataProvider (稠密矩阵)** | **IEventRegistry (稀疏事件/KV)** |
 | :--- | :--- | :--- |
-| **物理属性** | 连续内存块 (Memory-mapped / Buffer) | 键值对字典、对象图、链表 |
-| **访问模式** | 全量、批量、按索引 (row, col) 访问 | 随机、点对点访问 (date, symbol) |
-| **应用场景** | 向量化计算（RSI、MACD、因子合成） | 决策分支（是否停牌？是否有分红？） |
-| **一致性要求** | **强对齐**。必须保证日期与股票严格对齐，缺失会导致矩阵逻辑错位。 | **弱对齐**。仅在事件发生时存在记录，无需强行补全。 |
-| **性能目标** | **吞吐量 (Throughput)**。优化目标是跑满 SIMD 指令集。 | **延迟 (Latency)**。优化目标是 O(1) 或 O(log n) 的快速查找。 |
+| **物理形态** | 连续内存块 (`Buffer2D`, MMF) | 字典树、对象图 (`Dictionary<DateTime, Dictionary<string, T>>`) |
+| **访问范式** | 批量切片、二维索引 `(row, col)` 访问 | 随机、点对点 `(date, symbol)` 访问 |
+| **应用场景** | 向量化指标计算（OHLCV、MACD、因子合成） | 决策分支（停牌拦截、分红除权、事件驱动） |
+| **对齐要求** | **强对齐**（日期与代码矩阵完整填补） | **弱对齐**（发生时存在记录，无需空位对齐） |
+| **优化目标** | **高吞吐 (Throughput)**，连续内存向量化批处理 | **低延迟 (Latency)**，O(1) 常数时间点查 |
 
-#### 5.2 核心接口
+- **EventProvider\<T\>**: 内存字典二级索引，提供 O(1) 随机查询 `TryGet(date, symbol, out val)`。
+- **EventProviderBuilder**: 工厂类，自动检测 CSV/Parquet 格式，通过反射将 schema 字段映射到 T 的构造参数，免手写解析逻辑。
+- **EventRegistry**: 类型安全的事件流注册表，策略通过 `context.Events.GetProvider<T>("name")` 获取数据流。
 
-- **IEventProvider\<T\>**: 负责加载和供给特定类型的 KV 数据。支持按 (Date, Symbol) 随机访问，或获取全市场日快照。
-- **IEventRegistry**: 引擎全局唯一的事件流注册中心。策略通过 `context.Events.GetProvider<T>("stream_name")` 获取所需的数据流。
+### 5. 存储调度与批量加载 (StorageResolver & Bulk Loader)
 
-#### 5.3 具体实现
-
-- **EventProvider\<T\>**: 基于 `Dictionary<DateTime, Dictionary<string, T>>` 的内存索引，查询复杂度 O(1)。构造时从物理文件加载并构建索引。
-- **EventProviderBuilder**: 工厂类，自动检测 CSV/Parquet 格式，通过反射将 schema value 列映射到 T 的构造函数参数。T 只需定义 record，无需手动编写解析逻辑。
-- **EventRegistry**: 字典注册表，支持类型安全的 `Register<T>` / `GetProvider<T>` 操作。
-
-**设计优势**：
-- **异构支持**: 不同数据流可以有完全不同的结构（Record 类型）。
-- **加载解耦**: 各数据流可以有不同的数据源（Parquet, SQL, API）和加载时机（预加载或惰性加载）。
-- **按需访问**: 策略仅需关注自身感兴趣的事件流。
-- **零配置映射**: 用户只需定义 record 类型，框架自动完成物理行 → T 的转换。
-
-### 6. 稠密数据导入方式 (Dense Data Loading)
-
-稠密数据（OHLCV 等行情矩阵）通过 **纵向批量导入通道 (Column-wise Bulk Loader)** 加载至 `IDataProvider`。整体流程：
-
-```
-物理文件 → StorageResolver.ResolvePhysicalFiles()
-         → CsvMarketSeriesSource / ParquetMarketSeriesSource
-         → BufferedDataProvider.GetBuffer<T>()
-         → IReadOnlyBuffer2D<T>
-```
-
-#### 6.1 导入流程
-
-1. **StorageResolver** 根据 `tableId` 解析物理文件列表（支持 Hive/Flat 布局、年份剪枝）。
-2. **CsvMarketSeriesSource / ParquetMarketSeriesSource** 在构造时完成：
-   - 扫描所有物理文件，建立全局交易日并集 (`TradeDates`) 和股票列表 (`Symbols`)。
-   - 自动向 `SimpleFieldRegistry` 注册 schema 中定义的所有字段。
-3. **BufferedDataProvider.GetBuffer\<T\>(fieldName)** 按需加载：
-   - 首次请求时，遍历所有股票，调用 `source.ReadSymbolSeries<T>()` 批量读取单只股票在特定时间区间内的数据。
-   - 通过 `Buffer2D.Create<T>()` 创建纯内存 `PagedBuffer2D<T>`，使用 `SetColumn` 批量写入，后续请求直接从缓存返回。
-
-#### 6.2 ReadSymbolSeries 核心机制
-
-```
-ReadSymbolSeries(symbol, fieldName, startIndex, length, destination)
-```
-
-- **CSV**: 定位 `{symbol}.csv` 文件，逐行解析并按日期二分查找写入 `destination`。
-- **Parquet**: 从 `YearCache` 获取已解压的列数组，基于股票物理偏移量直接拷贝。
-- **类型转换**: CSV 采用 `ValueConverter<T>.Read()` 静态泛型分发（零装箱）；Parquet 采用 `Unsafe.As` 非托管转换。
-
-#### 6.3 设计约束
-
-- `IDataProvider.GetBuffer<T>()` 返回 `IReadOnlyBuffer2D<T>`，**禁止**返回可写 Buffer。
-- `IMarketMetadata.Symbols` 顺序与 Buffer 列索引严格对齐；`TradeDates` 顺序与 Buffer 行索引严格对齐。
-- 所有接口均不暴露 `List<T>`、`T[]` 等分配内存的集合类型供外部持有。
-
-#### 6.4 物理路径与元数据统一解析器 (StorageResolver)
-为了支持多表跨表关联加载并彻底解耦数据源层与物理文件布局，系统将单表路径解析器重构为**“统一数据区多表路径调度解析器”**：
-- **全局多表管理**：`IStorageResolver` 不再绑定单一表，而是作为整个存储数据区的“物理调度管理器”，所有接口均引入了 `tableId`，为上层多表联合关联提供支持。
-- **惰性多表元数据缓存**：内部维护线程安全的 `ConcurrentDictionary<string, TableMetadataCache>` 缓存各表的元数据，避免高并发读取时重复发生磁盘 I/O。
-- **元数据字段显式读取 (StorageLayout & StoragePartition)**：提供 `GetFormat`、`GetLayout`、`GetCategory` (规范化为 `timeseries` 或 `events`)、`GetPartition` (规范化为 `symbol`、`date` 或 `none`)、`GetStartTimestamp` 与 `GetEndTimestamp` 等方法，全部直接从 `metadata.json` 中解析并返回，拒绝任何文件系统自适应探测。
-- **物理布局模式 (StorageLayout)**：支持 `Hive` 分区与 `Flat` 平铺布局（若元数据未指定 layout，默认降级为 `Flat`，不进行 `'year=*'` 子目录探测）。
-- **终极调度与年份剪枝 (ResolvePhysicalFiles)**：
-  - **对于 Flat 布局**：如果分区模式是 `symbol` 且指定了 symbol，则精准匹配单个物理文件；否则扫描表的根目录下对应物理格式的所有文件。
-  - **对于 Hive 布局**：依据元数据中的开始和结束时间戳确定年份物理边界，再结合传入的可选 `startDate` 与 `endDate` 自动进行年份分区剪枝。如果分区模式是 `symbol` 且指定了 symbol，则在保留年份的目录下精确定位 `{symbol}.{format}` 文件；否则，将扫描保留年份的目录下对应格式的所有文件（例如大宽表，非 symbol 分区）。
-- **实体 Reader 无感适配**：`CsvMarketSeriesSource` 与 `ParquetMarketSeriesSource` 的内部读取逻辑彻底摒弃任何手动路径拼接与年份/月份提取逻辑，**100% 委托给 `resolver.ResolvePhysicalFiles` 终极调度**，实现了 Reader 与物理存储结构的完全解耦。
+- **IStorageResolver** (`Abstraction/Data/IStorageResolver.cs`): 基于 `tableId` 统一调度物理文件：
+  - **元数据缓存**: 内部采用 `ConcurrentDictionary<string, TableMetadataCache>` 避免重复 I/O。
+  - **决策机制**: 优先读取表目录下 `metadata.json`；缺失时自动由 Parquet Footer 或 CSV 表头回退推断。
+  - **布局模式**:
+    - `Hive`: `{root}/{table_id}/year={yyyy}/[month={mm}/]`，传入 `startDate` 与 `endDate` 执行年份/月份动态剪枝。
+    - `Flat`: `{root}/{table_id}/` 平铺存储，支持直接按 symbol 精确匹配或全量枚举。
+- **纵向批量加载流程**:
+  1. `StorageResolver.ResolvePhysicalFiles()` 按表与日期区间返回物理文件列表。
+  2. `CsvMarketSeriesSource` / `ParquetMarketSeriesSource` 构造时扫描文件建立代码与全局交易日并集，并向 `SimpleFieldRegistry` 注册 schema 字段。
+  3. `BufferedDataProvider.GetBuffer<T>()` 按需调用 `PagedBuffer2DFactory.Open<T>()` 创建纯内存 Buffer，对每只股票调用 `ReadSymbolSeries<T>`，使用 `SetColumn` 批量写入并返回 `IReadOnlyBuffer2D<T>`。
+- **ReadSymbolSeries 核心机制**:
+  - 方法契约：`ReadSymbolSeries(symbol, fieldName, startIndex, length, destination)`
+  - CSV：定位 `{symbol}.csv` 逐行流式解析，按日期二分查找写入 `destination`，通过 `ValueConverter<T>` 零装箱转换。
+  - Parquet：从 `YearCache` 预解压列直接按股票偏移批量拷贝，通过 `Unsafe.As` 零拷贝转换。
 
 ---
 
-## 四、引擎与执行层契约 (Engine Layer Contracts) [v4]
+## 四、引擎、策略与执行层契约
 
-命名空间：`CarrotBacktesting.NET.Abstraction.Engine`
+### 1. 引擎层核心契约 (`CarrotBacktesting.NET.Abstraction.Engine`)
 
-| 接口/类型 | 文件 | 职责 |
-|-----------|------|------|
-| `IEngine` | `Abstraction/Engine/IEngine.cs` | 驱动核心。支持 Run/Pause/Stop 及 Save/RestoreState 状态持久化 |
-| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略环境。封装了 `IDataProvider`, `IBroker`, `IMarketState`, `IEventRegistry` |
-| `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与订单管理，提供 `OnTrade` 等成交事件回调 |
-| `IExchangeGateway` | `Abstraction/Engine/IExchangeGateway.cs` | 物理路由。对接回测撮合器或实盘交易所 API |
-| `IMatchingEngine` | `Abstraction/Engine/IMatchingEngine.cs` | 撮合逻辑。由回测引擎在每个 Bar/Tick 驱动执行 |
-| `IMarketState` | `Abstraction/Engine/MarketContext.cs` | 市场黑板。支持策略间跨层异步状态交换 |
-| `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 运行监控。负责 Log/Metric/Alert 输出 |
+| 契约 / 类型 | 文件 | 职责说明 |
+| :--- | :--- | :--- |
+| `IEngine` | `Abstraction/Engine/IEngine.cs` | 核心驱动接口，支持 `Run` / `Pause` / `Stop` 与状态快照 (`SaveState` / `RestoreState`) |
+| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `IDataProvider`, `IBroker`, `IMarketState`, `IEventRegistry` |
+| `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与持仓管理，提供订单提交与 `OnTrade` 成交回报事件 |
+| `IExchangeGateway`| `Abstraction/Engine/IExchangeGateway.cs` | 交易所物理网关抽象（屏蔽回测撮合器与实盘交易所 API） |
+| `IMatchingEngine` | `Abstraction/Engine/IMatchingEngine.cs` | 回测撮合引擎，按时间步驱动撮合逻辑 |
+| `IMarketState` | `Abstraction/Engine/MarketContext.cs` | 市场黑板上下文，支持策略间跨层异步状态共享 |
+| `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 统一监控抽象，管理日志输出、指标采集与告警 |
+| **数据模型** | `Abstraction/Engine/OrderTypes.cs` | `OrderRequest` (下单意图), `ExecutionReport` (成交明细), `OrderStatus` (生命周期), `PositionEvent` |
 
-**关键模型 (Records)**：
-- `OrderRequest`: 描述下单意图（Symbol, Price, Quantity...）。
-- `ExecutionReport`: 描述物理成交结果（FillPrice, FillQuantity, Commission...）。
-- `OrderStatus`: 订单生命周期状态（Pending -> Submitted -> Filled/Canceled）。
+### 2. 策略与分析层契约
 
----
-
-## 五、分析与记录层契约 (Analysis Layer Contracts) [v4]
-
-命名空间：`CarrotBacktesting.NET.Abstraction.Analysis`
-
-| 接口 | 文件 | 职责 |
-|------|------|------|
-| **IRecorder** | `Abstraction/Analysis/IExecutionRecorder.cs` | 负责回测/实盘全过程的流水采集（Order, Trade, Equity Snapshot） |
-
-**输出能力**：
-- `GetReport()`: 生成 `BacktestReport` 对象，用于后续渲染 Excel 或 Web 报表。
+| 契约 / 类型 | 命名空间 | 职责说明 |
+| :--- | :--- | :--- |
+| `IStrategy` | `Abstraction.Strategy` | 策略基础契约，包含 `Initial`/`Start`/`Update`/`Stop` 及订单/成交回调 |
+| `IStrategyPipeline` | `Abstraction.Strategy` | 策略管线契约，支持管线编排与密封编译 |
+| `ICheckpointable<T>`| `Abstraction.Strategy` | 强类型状态快照扩展，实现断点续传 |
+| `IRecorder` | `Abstraction.Analysis` | 全过程流水采集（订单、成交、净值快照），通过 `GetReport()` 输出 `BacktestReport` |
 
 ---
 
-## 六、策略层扩展契约 [v4]
+## 五、数据存储与元数据规范 (CarrotQuant.Data)
 
-命名空间：`CarrotBacktesting.NET.Abstraction.Strategy`
+### 1. 核心存储标准
+- **存储格式**: 统一使用 `CSV` 或 `Parquet`。
+- **双时间轴契约**: 必须遵循 (`timestamp` Int64 毫秒戳, `symbol` String, `datetime` String)。
+- **原子写入**: 文件写入遵循“先写 `.tmp`，后原子替换 (`os.replace`)”。
+- **复权口径**: 严禁使用前复权；复权数据仅限 `raw` (原始不复权) 或 `adj` (后复权)。
+- **Table ID 命名规范**: `{market}.{category}.[sub_category/freq/adj].{source}`（例如 `ashare.kline.1m.raw.custom`）。
+- **物理路径布局**:
+  - TimeSeries (TS): `{root}/{table_id}/year={yyyy}/[month={mm}/]{symbol}.csv` 或 `data.parquet`
+  - Event (EV): `{root}/{table_id}/year={yyyy}/data.{format}`
+- **分区模式 (Partition)**:
+  - `symbol`: 物理文件按股票代码拆分（如 `{symbol}.csv`）。
+  - `none`: 无代码分区，整表单文件存储（如 `data.parquet`）。
 
-| 接口/类 | 文件 | 职责 |
-|-----------|------|------|
-| `IStrategy` | `Abstraction/Strategy/IStrategy.cs` | 核心策略契约，支持全生命周期回调 |
-| `IStrategyPipeline` | `Abstraction/Strategy/IStrategyPipeline.cs` | 组合模式接口，支持策略管线抽象 |
-| `ICheckpointable<T>` | `Abstraction/Strategy/ICheckpointable.cs` | 允许策略实现强类型状态快照，配合 `IEngine.SaveState` 实现断点续传 |
+### 2. 元数据规范 (metadata.json)
+每个表目录下应提供 `metadata.json`，核心定义：
+- `schema`: 显式字段类型映射。
+- `statistics` (可选): 物理巡检产出的状态描述，仅用于分析辅助。
 
----
+### 3. 类型映射字典 (Polars 对齐)
 
-## 七、数据存储与元数据规范 (Data Storage & Metadata) [AI Agent Guide]
+| Schema 声明 | .NET 类型 | Polars 类型 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `Int64` | `long` | `pl.Int64` | 整数/时间戳 |
+| `Float64` | `double` | `pl.Float64` | 浮点数值 |
+| `String` | `string` | `pl.String` | 代码、文本 |
+| `Boolean` | `bool` | `pl.Boolean` | 布尔状态 |
+| `Date` | `DateTime` / `DateOnly` | `pl.Date` | 日期格式 |
+| `Datetime` | `DateTime` | `pl.Datetime`| 日期时间 |
 
-所有数据存储与交互必须遵循 `CarrotQuant.Data` 规范：
-
-### 1. 核心设计原则
-*   **格式**: 统一使用 `CSV` 或 `Parquet`。
-*   **类型安全**: 所有操作必须参考 `metadata.json` 中的 `schema` 进行显式定义，禁止自动推断类型。
-*   **原子性**: 文件写入遵循"先写 `.tmp`，后 `os.replace`"。
-*   **双时间轴**: 必须遵循 (`timestamp` Int64, `symbol` String, `datetime` String)。
-
-### 2. 存储布局与 Hive 分区
-*   **Table ID 命名**: `{market}.{category}.[sub_category/freq/adj].{source}`
-*   **物理布局模式 (StorageLayout)**:
-    *   `Hive`: 包含 `year={yyyy}/` 子目录，基于年份进行动态分区剪枝。
-    *   `Flat`: 平铺布局，数据文件直接位于表根目录下。
-*   **分区模式 (Partition)**:
-    *   `symbol`: 物理文件按股票代码拆分（如 `{symbol}.csv`），支持精确到个股的路由读取。
-    *   `none`: 无分区，整表物理存储。
-*   **TimeSeries (TS) 布局**: `storage_root/{format}/{table_id}/year={yyyy}/{symbol}.csv` 或 `data.parquet`
-*   **Event (EV) 布局**: `storage_root/{format}/{table_id}/year={yyyy}/data.{format}`
-
-### 3. 元数据规范 (metadata.json)
-每个数据集目录下必须包含 `metadata.json`，核心定义：
-*   `schema`: 类型映射（支持 `String`, `Int64`, `Float64`, `Boolean`, `Date`, `Datetime`）。
-*   `statistics` (可选): 物理巡检产出的状态描述，仅用于分析，系统已实现动态目录扫描，不再依赖此字段进行年份分区调度。
-
-### 4. 类型转换字典 (Type Mapping for Loading)
-当进行数据加载时，Agent 应严格执行以下映射逻辑，以确保与系统底层（Polars）保持一致：
-
+Python 加载映射速查：
 ```python
 type_map = {
-    "Int64": pl.Int64,
-    "Float64": pl.Float64,
-    "String": pl.String,
-    "Boolean": pl.Boolean,
-    "Date": pl.Date,
-    "Datetime": pl.Datetime
+    "Int64": pl.Int64, "Float64": pl.Float64, "String": pl.String,
+    "Boolean": pl.Boolean, "Date": pl.Date, "Datetime": pl.Datetime
 }
 ```
 
-### 5. 开发禁忌 (Prohibitions for AI)
-*   **禁止使用前复权**: 复权仅限 `raw` 或 `adj` (后复权)。
-*   **禁止跳过元数据**: 若发现 `metadata.json` 缺失，必须抛出 `RuntimeError`，严禁通过猜测推断 Schema。
-*   **禁止自动推断**: 读取操作必须显式传参 `schema` 或在 `read` 后执行 `cast`。
-
 ---
 
+## 六、YAML 配置体系 (`CarrotBacktesting.NET.Config`)
 
-# 以下为 v3 版本规范文档（已过时，仅供参考）
+系统采用蛇形命名（`snake_case`）YAML 文件驱动引擎与数据层；相对路径均以当前配置文件所在物理目录为基准自动合并为绝对路径。
 
-> ⚠️ **注意**: 以下内容为 v3 版本的架构与规范描述，v4 版本已进行重大重构，请以上方 v4 架构为准。后续实现中可直接覆盖以下旧文档内容。
+### 1. 配置模型结构
+- `engine`: 运行模式 (`backtest` / `living`)、`start_date`、`end_date`、`initial_cash`。
+- `data_config`: （可选）指向外部独立共享数据配置文件路径（如 `"shared/data.yaml"`），支持多策略复用。
+- `data`: 数据层配置，包含存储根路径 `root`、行情时序表列表 `timeseries`（含 `table_id` 及可选 `fields`）、异构事件流列表 `events`（含 `name` 及 `table_id`）。
 
----
-
-## 一、核心架构 definition (Pipeline Based Architecture) [v3]
-
-### 1. 分析上下文 (AnalysisContext) 契约
-
-AnalysisContext 是分析流程的数据载体，支持以下契约：
-
-- `SetArtifact<T>(T obj)`: 存储结构化统计数据（如 `SignalAnalysisResult`）。
-- `SetFileArtifact(string key, string path)`: 存储生成的物理文件路径（如 PNG 图表路径），供后续 Exporter 消费。
-- `GetFileArtifact(string key)`: 根据 key 获取已存储的文件路径。
-
-### 2. 插件初始化契约
-
-所有 `IAnalyzer` 和 `IExporter` 必须实现以下接口方法，使用强类型配置类：
-
-```csharp
-// IAnalyzer
-void Init(AnalyzerConfig config);
-
-// IExporter
-void Init(ExporterConfig config);
-```
-
-### 3. 路径解析契约
-
-所有输出路径必须基于 `Config.Out.Dir` 进行二次拼接，使用 `Config.ResolvePath` 处理。
-
-### 4. 动态运行层 (AnalysisRunner)
-
-- 遍历配置中的 `Analyzers` 和 `Exporters` 列表
-- 动态实例化并调用 `Init` 方法
-- 按队列顺序执行，严禁硬编码
-
----
-
-## 二、配置模型 (EnvConfig) [v3]
-
-### 强类型配置类
-
-```csharp
-public class AnalyzerConfig
-{
-    public string Type { get; set; } = string.Empty;
-    public int Days { get; set; } = 30;
-    public int ExitDays { get; set; } = 30;
-}
-
-public class ExporterConfig
-{
-    public string Type { get; set; } = string.Empty;
-    public bool SaveHtml { get; set; } = true;
-    public string Dir { get; set; } = string.Empty;
-    public string File { get; set; } = string.Empty;
-}
-```
-
-### YAML 配置格式
+### 2. 典型配置范例
 
 ```yaml
-analysis:
-  analyzers:
-    - type: "SignalAnalyzer"
-      days: 30
-    - type: "TradeAnalyzer"
-      exit_days: 30
-  exporters:
-    - type: "ConsoleExporter"
-      save_html: true
-    - type: "PlotExporter"
-      dir: "plots"
-    - type: "SignalExporter"
-      file: "signals.json"
-    - type: "ExcelExporter"
-      file: "report.xlsx"
+engine:
+  mode: "backtest"            # backtest / living
+  start_date: "2025-01-01"    # 回测起始时间
+  end_date: "2025-03-31"      # 回测结束时间
+  initial_cash: 1000000.0     # 初始资金
 
-out:
-  dir: "report"
+# 可选：外链复用配置 data_config: "shared/data.yaml"
+data:
+  root: "./data"              # 数据存储根目录
+  timeseries:
+    - table_id: "ashare.kline.1m.raw.custom"
+      fields: ["open", "high", "low", "close", "volume"]
+  events:
+    - name: "adjustments"
+      table_id: "ashare.adj_factor.baostock"
 ```
 
 ---
 
-## 三、文件工件命名规范 [v3]
+## 七、历史版本 (v3) 架构与报表规范参考
 
-PlotExporter 生成的图表文件必须按以下规则注册到 Context：
+> ⚠️ **历史文档指引**: v3 版本系统规范已完整归档至 [CarrotBacktesting.NET/V3/README.md](file:///d:/GitHub/CarrotQuant.Net/CarrotBacktesting.NET/V3/README.md)。
+> v4 重构中若涉及历史分析器、图表生成与 Excel 报表迁移，请直接查阅该归档文档。
 
-- Key 命名规则：`Plot_{GroupName}_{PlotType}`
-- 示例：`Plot_Total_Heatmap_Signal`, `Plot_Total_Overview_Weighted`, `Plot_Total_Timeline`, `Plot_Total_Monthly`
-
----
-
-## 四、Excel 整合报表规范 [v3]
-
-ExcelExporter 必须生成具备"总-分-明细"结构的专业量化回测报告：
-
-1.  **Dashboard (策略总览)**:
-    *   **数据摘要**: 股票数、交易日、时间范围、总数据点（精确到单支股票采样点）。
-    *   **分析结果汇总**: 信号加权与时间加权的最佳持有期表现对比。
-    *   **核心交易性能**: 直接映射 `TradeReport` 的专业统计结果（胜率、盈亏比、持仓效率评估等）。
-
-2.  **[GroupName]_Signal (分组成效分析)**:
-    *   **双层表头 T+N 表**: 第一行按口径（信号加权/时间加权）合并，第二行展示具体指标（11列）。
-    *   **区域锚定可视化**: 采用 **Range-based** 技术将 4 张图表（趋势概览x2, 收益分布热力图x2）固定在右侧区域（22行x10列），确保布局整齐且不随窗口缩放错位。
-
-3.  **[GroupName]_Monthly (月度趋势分析)**:
-    *   针对该组最佳持有期，建立独立的月度明细 Sheet。
-    *   嵌入 **信号月度趋势图 (Timeline Plot)**，辅助判断策略的时间稳定性。
-
-4.  **[GroupName]_Exit (卖出时机分析)**:
-    *   新设独立工作表，展示平仓后 T+1 至 T+N 的后续走势（平均收益、上涨概率）。
-    *   辅助分析"是否卖早了"或"平仓时机优化"空间。
-
-5.  **All_Trades (全量流水)**:
-    *   完整交易流水。开启首行冻结与自动筛选（AutoFilter）。
-    *   **Trace 自动展开**: 全量流水页必须通过反射将 `Trade.MarketSnapshot` 中的所有公开属性自动展开为独立列，表头优先使用 `[Display(Name="...")]`。
-    *   **Market_Daily (宏观日报)**: 必须独立展示每日市场决策及其 Trace 指标，确保纯宏观策略也能产出有效分析报表。
-
-**技术深度要求**:
-*   **中文列宽自适应**: 在 `AdjustToContents()` 基础上，所有列额外增加 **2 单位宽度缓冲区**，彻底解决中文字符集导致表头显示不全的问题。
-*   **布局解耦**: 采用单元格范围（FromCell/ToCell）定义图片位置，废弃硬编码缩放比例。
-*   **数据单一模型驱动**: 导出逻辑与 Analyzer 深度绑定，禁止在 Exporter 中进行二次复杂计算。
-*   **鲁棒性**: 必须实现空数据检查与 `NullReferenceException` 全流程防御。
+### v3 核心机制速查索引：
+1. **AnalysisContext**: 历史分析器上下文载体，提供 `SetArtifact<T>`, `SetFileArtifact`, `GetFileArtifact` 契约。
+2. **插件生命周期与配置**: `IAnalyzer` / `IExporter` 通过 `Init(AnalyzerConfig/ExporterConfig)` 初始化，由 `AnalysisRunner` 队列驱动。
+3. **图表工件命名**: 遵循 `Plot_{GroupName}_{PlotType}`（如 `Plot_Total_Heatmap_Signal`）。
+4. **Excel 专业报表规范**:
+   - 五大分区结构：`Dashboard` (总览), `[Group]_Signal` (T+N 双层表头与 Range-based 区域图表锚定), `[Group]_Monthly` (月度稳定性), `[Group]_Exit` (平仓收益分析), `All_Trades` (全量流水，通过反射将 `Trade.MarketSnapshot` 自动展开为独立列), `Market_Daily` (宏观日报)。
+   - 技术深度：中文列宽自适应额外增加 2 字符缓冲区；基于单元格区域固定图表防止错位。
+5. **停牌向前填充 (Forward Fill)**: 缺失交易日填充 `StockFrame`，收盘价向前沿用，成交量置 0，状态置为 `TradeStatus.Halted`。
+6. **双路径并行模型**: TimeSeries（纵向个股并行）与 MarketSnapshot（横向日期截面并行）。
 
 ---
 
-## 五、数据层契约 (Global Alignment Model) [v3]
+## 八、工程研发与文档维护规范
 
-### 1. 全局日期对齐
-
-- 所有加载至内存的 `IDataStorage` 必须经过全局交易日对齐。
-- 构建阶段 (`HistoryStorageBuilder.Build`) 必须计算所有股票日期的并集作为 `globalTradeDates`。
-- 每只股票的 `Dates` 序列必须与 `globalTradeDates` 严格一致。
-
-### 2. 停牌处理规范 (Forward Fill)
-
-- 对于个股缺失的交易日，必须插入空的 `StockFrame`。
-- **向前填充**: 填充帧的 `Open/High/Low/Close` 采用最近一个有效交易日的 `Close`，`Volume` 为 0。
-- 填充帧的 `Status` 必须设为 `TradeStatus.Halted`。
-- 引擎层在执行逻辑前必须拦截停牌日：`if (ctx.GetFrame(0)?.Status == TradeStatus.Halted) return;`。
-
-### 3. 结果一致性
-
-- 所有引擎输出的交易列表必须执行强制排序：`.OrderBy(t => t.EntryDate).ThenBy(t => t.StockCode)`。
-
----
-
-## 六、回测引擎 (BacktestingEngine) [v3]
-
-### 并行模式支持
-
-引擎支持基于 `StorageMode` 的双路径并行：
-- **TimeSeries (纵向)**: `Parallel.ForEach(stocks) -> for(days)`。适用于普通技术指标策略。
-- **MarketSnapshot (横向)**: `for(days) -> Parallel.ForEach(stocks)`。支持跨股票截面计算（如 Z-Score 选股、行业排名）。
-
-### 分析器解耦
-
-- **单一事实来源**: 分析器 (Analyzer) 不再直接访问 `IDataStorage`，而是通过 `AnalysisContext.StockHistories` 访问。
-- **高性能索引**: `BacktestingEngine` 通过缓存私有字典 $_stockHistoryDict$ 将个股序列访问复杂度优化至 $O(1)$，显著降低分析阶段的 GC 开销。
-- **对齐保证**: 注入 Context 的数据必须保证是全局日期对齐的，且与引擎计算时使用的数据完全一致。
-
-- **矩阵化 PreScanMarket**: 引擎所有宏观与微观计算均基于对齐后的 `StockHistory` 矩阵。`PreScanMarket` 负责通过矩阵切片动态生成虚拟 `MarketFrame` 传给策略，确保宏观计算不再依赖物理存储模式。
-
-
-# 文档维护规范
-为了确保文档始终反映系统实际状态，遵循以下原则：
-- 在进行任何涉及项目结构、API 接口、核心逻辑或数据流向的变更后，必须同步检查并更新本 `AGENTS.md` 文件。
-- **编辑警示**: 在使用 `edit` 工具修改代码时，请确保 `oldText` 块精准且最小化，严禁通过包含大量无关的前后文来增加匹配难度，防止误伤不相关的代码区域。
-- 严禁在文档中保留过时的路径、名称或逻辑描述。
-
-# 开发原则
-- **单一事实来源**
-- **最小改动原则**
-- **显式优于隐式**
+1. **单一事实来源 (SSOT & DRY)**: 核心契约与数据结构单点权威定义，严禁冗余拷贝或散落多处定义。
+2. **显式优于隐式 (Explicit > Implicit)**: 优先读取 `metadata.json` 显式类型，配置与参数清晰透明，严禁未经对齐的隐式推断与静默容错。
+3. **专业技术文案与精炼注释（严禁营销套话）**:
+   - **客观严谨与领域中立**: 代码注释、文档与提交信息必须保持专业工程师视角，重点陈述技术事实、算法复杂度、物理边界与指标契约；坚决杜绝“颠覆性”、“极致强大”、“完美无瑕”、“终极方案”等浮夸修饰或 AI 营销套话。
+   - **精炼合理的中文注释**: 注释重点阐明“设计意图 (Why)”与“边界约束 (Constraints)”，解释非直观算法或架构决策；坚决杜绝代码复述式废话（如不要在 `GetBuffer` 上写“获取 Buffer”）。
+4. **文档即代码真相（实时同步）**: 任何接口、数据结构、物理路径或配置模型的调整，必须第一时间同步维护本文档与相关技术文档，消除过时信息。
+5. **最小改动与精准执行**: 修改遵循最小可行原则，严禁未查明根因盲目修改无关代码或无因格式重排。
+   - **编辑警示**: 在使用 `edit` 工具修改代码时，请确保 `oldText` 块精准且最小化，严禁通过包含大量无关的前后文增加匹配难度，防止误伤不相关的代码区域。
+6. **测试闭环与真实断言**: 代码重构与新增特性必须同步执行单元测试（`dotnet test`），严禁使用弱条件分支掩盖故障。

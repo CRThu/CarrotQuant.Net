@@ -93,5 +93,38 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(physicalVal, loadedVal, 1e-6, $"Close value mismatch at {date:yyyy-MM-dd}.");
             }
         }
+
+        [TestMethod]
+        public void TestCsvMarketSeriesSource_WithQuotedStringNumbers_ShouldParseDouble()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "CarrotCsvStringTest_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string tableId = "quoted_numbers_table";
+                string tableDir = Path.Combine(tempDir, tableId, "year=2025");
+                Directory.CreateDirectory(tableDir);
+
+                // CSV 含带引号与空格的数值字符串
+                string csvContent = "symbol,datetime,open,high,low,close,volume\n\"sh.600000\",\"2025-01-02\",\"10.50\",\" 11.20 \",\"9.80\",\"10.95\",\"100000\"\n";
+                File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
+
+                var registry = new SimpleFieldRegistry();
+                using var source = new CsvMarketSeriesSource(tempDir, registry, tableId);
+
+                Assert.AreEqual(1, source.Symbols.Count);
+                Assert.AreEqual(1, source.TradeDates.Count);
+
+                double[] destination = new double[1];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 1, destination);
+                Assert.AreEqual(10.95, destination[0], 1e-4);
+
+                source.ReadSymbolSeries("sh.600000", "high", 0, 1, destination);
+                Assert.AreEqual(11.20, destination[0], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
     }
 }

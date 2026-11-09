@@ -1,0 +1,18 @@
+{
+  "table_id": "ashare.kline.1m.raw.custom",
+  "category": "timeseries",
+  "format": "parquet",
+  "partition": "none",
+  "layout": "hive",
+  "schema": {
+    "symbol": "String",
+    "datetime": "String",
+    "timestamp": "Int64",
+    "open": "Float64",
+    "high": "Float64",
+    "low": "Float64",
+    "close": "Float64",
+    "volume": "Float64",
+    "amount": "Float64"
+  }
+}

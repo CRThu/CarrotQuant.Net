@@ -88,9 +88,8 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         string GetPartition(string tableId);
 
         /// <summary>
-        /// 终极物理路径调度与分区剪枝 API。
-        /// 支持根据起止日期进行可选的年份分区剪枝，并支持按 symbol 智能路由（若为 null 则返回整表所有分区文件），返回解析并排序后的物理数据文件列表。
-        /// 向上层 Reader 屏蔽所有目录探测、分区查找及路径拼接物理细节。
+        /// 解析表数据的物理文件路径，支持按起止日期进行时间分区剪枝与按代码路由。
+        /// 若 symbol 为 null 则返回全部分区文件；对上层屏蔽目录探测与路径拼接细节。
         /// </summary>
         /// <param name="tableId">数据表 ID</param>
         /// <param name="symbol">可选股票代码（若提供，将精确定位该股数据文件；若为 null，返回整表所有数据文件）</param>
