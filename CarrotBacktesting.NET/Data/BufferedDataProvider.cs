@@ -4,8 +4,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
-using Carrot.Memory;
-using Carrot.Memory.Abstractions;
 
 namespace CarrotBacktesting.NET.Data
 {

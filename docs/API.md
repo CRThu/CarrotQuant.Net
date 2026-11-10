@@ -9,7 +9,7 @@
 ## 目录
 - [一、配置层 (CarrotBacktesting.NET.Config)](#一配置层-carrotbacktestingnetconfig)
 - [二、存储调度与数据物理层 (Abstraction.Data & Data)](#二存储调度与数据物理层-abstractiondata--data)
-- [三、内存数据供给层 (IDataProvider & Carrot.Memory)](#三内存数据供给层-idataprovider--carrotmemory)
+- [三、内存数据供给层 (IDataProvider & ChunkBuffer2D)](#三内存数据供给层-idataprovider--chunkbuffer2d)
 - [四、异构事件流系统 (Event Stream System)](#四异构事件流系统-event-stream-system)
 - [五、引擎与黑板上下文 (Engine & Execution Context)](#五引擎与黑板上下文-engine--execution-context)
 - [六、策略与管线开发 (Strategy & Pipeline)](#六策略与管线开发-strategy--pipeline)

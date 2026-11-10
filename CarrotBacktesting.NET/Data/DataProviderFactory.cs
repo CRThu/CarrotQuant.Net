@@ -1,7 +1,6 @@
 using System.IO;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
-using Carrot.Memory.Providers;
 
 namespace CarrotBacktesting.NET.Data
 {

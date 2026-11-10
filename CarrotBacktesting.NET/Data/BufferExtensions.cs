@@ -1,6 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
-using Carrot.Memory.Abstractions;
+using CarrotBacktesting.NET.Abstraction.Data;
 
 namespace CarrotBacktesting.NET.Data
 {

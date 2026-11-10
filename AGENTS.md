@@ -132,12 +132,12 @@ graph TD
 | `IEventRegistry` | `Abstraction/Data/IEventRegistry.cs` | 事件注册表，统一管理外部 KV 数据流 |
 
 **核心内存约束 (SSOT)**：
-1. `IDataProvider.GetBuffer<T>()` 必须返回只读类型 `IReadOnlyBuffer2D<T>`（来自 `Carrot.Memory`），严禁暴露可写 Buffer。
+1. `IDataProvider.GetBuffer<T>()` 必须返回只读类型 `IReadOnlyBuffer2D<T>`，严禁暴露可写 Buffer。
 2. 维度严格对齐：`IMarketMetadata.Symbols` 顺序对应列索引；`TradeDates` 顺序对应行索引。
 3. 零内存暴露：严禁对外暴露 `List<T>`、`T[]` 等分配型集合供外部持有。
 4. **Symbol 维度契约（只增不减，只多不少）**：在系统生命周期内，标的代码（Symbols）具有全局唯一且单调递增的列索引（`SymbolIndex`）。退市标的绝不剔除（以 `NaN` 占位），新增标的只追加在尾部。已有列索引绝对不可变动，杜绝幸存者偏差。
 
-### 3. Carrot.Memory 契约与 ChunkBuffer2D 内存容器
+### 3. ChunkBuffer2D 内存容器与视图契约
 
 ```
 IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, Symbols)
@@ -146,8 +146,8 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
          ▼
   ChunkBuffer2D<T> ──(实现)──► IReadOnlyBuffer2D<T> ──► IDataProvider.GetBuffer<T>()
 ```
-- 项目引用：`..\..\Carrot.Memory\Carrot.Memory\Carrot.Memory.csproj`
-- 关键类型：`ChunkBuffer2D<T>`、`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`。
+- 架构归属：核心抽象契约位于 `CarrotBacktesting.NET.Abstraction.Data`，切片视图位于 `CarrotBacktesting.NET.Data.Views`。
+- 关键类型：`ChunkBuffer2D<T>`、`IReadOnlyBuffer2D<T>`、`IBuffer2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`、`RowView<T>`、`ColumnView<T>`。
 
 ### 4. 异构事件流系统 (Event System)
 

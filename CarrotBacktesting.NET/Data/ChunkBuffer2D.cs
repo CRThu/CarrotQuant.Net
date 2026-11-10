@@ -4,9 +4,8 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Carrot.Memory;
-using Carrot.Memory.Abstractions;
-using Carrot.Memory.Views;
+using CarrotBacktesting.NET.Abstraction.Data;
+using CarrotBacktesting.NET.Data.Views;
 using CommunityToolkit.HighPerformance;
 
 namespace CarrotBacktesting.NET.Data
@@ -456,12 +455,6 @@ namespace CarrotBacktesting.NET.Data
             }
             var pages = Volatile.Read(ref _pages);
             return new ReadOnlySpan<T>(pages[pageIndex], rowsInPage * _width);
-        }
-
-        /// <inheritdoc />
-        public void Commit()
-        {
-            // 纯内存模型，数据立即可用，无需物理同步
         }
 
         /// <inheritdoc />

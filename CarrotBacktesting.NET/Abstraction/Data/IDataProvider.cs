@@ -1,5 +1,3 @@
-using Carrot.Memory.Abstractions;
-
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
 /// <summary>
@@ -19,7 +17,7 @@ public interface IDataProvider
     /// Buffer 的行维度为 TradeDates（时间），列维度为 Symbols（股票）。
     /// </summary>
     /// <typeparam name="T">
-    /// 数据类型，必须为非托管类型（unmanaged），以匹配 Carrot.Memory 的物理内存布局。
+    /// 数据类型，必须为非托管类型（unmanaged），以匹配非托管内存物理布局。
     /// 通常为 <see cref="float"/> 或 <see cref="double"/>。
     /// </typeparam>
     /// <param name="fieldName">字段名称，例如 "close"、"open"、"volume"。</param>

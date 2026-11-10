@@ -2,7 +2,8 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using CarrotBacktesting.NET.Data;
-using Carrot.Memory.Abstractions;
+using CarrotBacktesting.NET.Abstraction.Data;
+using CarrotBacktesting.NET.Data.Views;
 using CommunityToolkit.HighPerformance;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -494,6 +495,73 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.ThrowsException<IndexOutOfRangeException>(() => buffer.GetPageSpan(0, 100)); // 100 > pageSize(64)
             Assert.ThrowsException<IndexOutOfRangeException>(() => buffer.GetReadOnlyPageSpan(10, 10));
             Assert.ThrowsException<IndexOutOfRangeException>(() => buffer.GetReadOnlyPageSpan(0, 100));
+        }
+
+        [TestMethod]
+        public void TestIBuffer2D_AndViews_FullContract()
+        {
+            // 验证通过 IBuffer2D 抽象契约多态调用各操作与视图
+            using IBuffer2D<int> buffer = new ChunkBuffer2D<int>(width: 10, pageSize: 64, initialRowCount: 20);
+
+            Assert.AreEqual(10, buffer.Width);
+            Assert.AreEqual(20, buffer.RowCount);
+
+            // 1. IBuffer2D.SetElement 与索引器
+            buffer.SetElement(2, 3, 42);
+            Assert.AreEqual(42, buffer[2, 3]);
+
+            // 2. IBuffer2D.SetRow 与 RowView / AsSpan
+            int[] rowData = new int[] { 101, 102, 103 };
+            buffer.SetRow(5, 2, rowData);
+            RowView<int> rowView = buffer.GetRowView(5, 2, 3);
+            Assert.AreEqual(3, rowView.Length);
+            Assert.AreEqual(101, rowView[0]);
+            Assert.AreEqual(102, rowView[1]);
+            Assert.AreEqual(103, rowView[2]);
+            Assert.AreEqual(3, rowView.AsSpan().Length);
+
+            // 3. IBuffer2D.SetColumn 与 ColumnView
+            int[] colData = new int[] { 201, 202, 203, 204 };
+            buffer.SetColumn(10, 4, colData);
+            ColumnView<int> colView = buffer.GetColumnView(10, 4, 4);
+            Assert.AreEqual(4, colView.Length);
+            Assert.AreEqual(201, colView[0]);
+            Assert.AreEqual(204, colView[3]);
+
+            // 4. 只读视图 ReadOnlyRowView / ReadOnlyColumnView
+            IReadOnlyBuffer2D<int> ro = buffer;
+            ReadOnlyRowView<int> roRowView = ro.GetRowView(5, 2, 3);
+            Assert.AreEqual(3, roRowView.Length);
+            Assert.AreEqual(101, roRowView[0]);
+            Assert.AreEqual(3, roRowView.AsSpan().Length);
+
+            ReadOnlyColumnView<int> roColView = ro.GetColumnView(10, 4, 4);
+            Assert.AreEqual(4, roColView.Length);
+            Assert.AreEqual(201, roColView[0]);
+            Assert.AreEqual(204, roColView[3]);
+
+            // 5. 视图越界访问（ref struct 不能在 lambda 闭包中捕获，使用 try-catch 显式断言）
+            bool colViewThrew = false;
+            try
+            {
+                var _ = colView[4];
+            }
+            catch (IndexOutOfRangeException)
+            {
+                colViewThrew = true;
+            }
+            Assert.IsTrue(colViewThrew);
+
+            bool roColViewThrew = false;
+            try
+            {
+                var _ = roColView[4];
+            }
+            catch (IndexOutOfRangeException)
+            {
+                roColViewThrew = true;
+            }
+            Assert.IsTrue(roColViewThrew);
         }
     }
 }
