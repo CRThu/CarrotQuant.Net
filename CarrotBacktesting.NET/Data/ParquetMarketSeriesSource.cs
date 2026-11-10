@@ -1,4 +1,6 @@
 using System;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -130,6 +132,7 @@ namespace CarrotBacktesting.NET.Data
 
         /// <summary>
         /// 批量读取指定股票在交易日区间内的字段行情。
+        /// 仅解析目标窗口 [minDate, maxDate] 内的物理文件，零跨文件向左回溯，缺失单元格由对齐器天然置 NaN。
         /// </summary>
         public void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged
         {
@@ -143,55 +146,88 @@ namespace CarrotBacktesting.NET.Data
                 throw new ArgumentException($"Destination span length ({destination.Length}) must match requested length ({length}).");
             }
 
-            // 初始化填充默认值
-            destination.Fill(default);
-
             DateTime minDate = _tradeDates[startIndex];
             DateTime maxDate = _tradeDates[startIndex + length - 1];
 
-            // 获取指定时间区间内的物理数据文件列表
+            // 获取指定时间区间内的物理数据文件列表（精确剪枝）
             var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, minDate, maxDate);
 
-            // 依次填充每个文件的数据
-            foreach (var filePath in parquetFiles)
+            // 依据目标窗口长度自适应租借池化缓冲区，杜绝硬编码与多余内存放大
+            int capacity = Math.Max(length, 16);
+            DateTime[] rawDates = ArrayPool<DateTime>.Shared.Rent(capacity);
+            T[] rawValues = ArrayPool<T>.Shared.Rent(capacity);
+            int count = 0;
+
+            try
             {
-                // 从缓存池中获取，没有则创建
-                if (!_cachePool.TryGetValue(filePath, out var cache))
+                // 依次填充当前窗口内的每个文件数据
+                foreach (var filePath in parquetFiles)
                 {
-                    if (File.Exists(filePath))
+                    // 从缓存池中获取，没有则创建
+                    if (!_cachePool.TryGetValue(filePath, out var cache))
                     {
-                        cache = new YearCache(filePath);
-                        _cachePool[filePath] = cache;
-                    }
-                    else
-                    {
-                        continue;
-                    }
-                }
-
-                // 提取个股在该年度的起始物理行偏移量
-                if (!cache.StockRanges.TryGetValue(symbol, out var range))
-                {
-                    continue; // 无个股数据或停牌
-                }
-
-                // 提取字段对应的全列数组缓存
-                Array colArray = cache.GetColumnData(fieldName);
-
-                int endRow = range.StartRow + range.RowCount;
-                for (int r = range.StartRow; r < endRow; r++)
-                {
-                    DateTime rowDate = cache.Dates[r];
-                    if (rowDate >= minDate && rowDate <= maxDate)
-                    {
-                        int globalIdx = _tradeDates.BinarySearch(startIndex, length, rowDate, Comparer<DateTime>.Default);
-                        if (globalIdx >= 0)
+                        if (File.Exists(filePath))
                         {
-                            int offset = globalIdx - startIndex;
-                            destination[offset] = ConvertArrayValue<T>(colArray, r);
+                            cache = new YearCache(filePath);
+                            _cachePool[filePath] = cache;
+                        }
+                        else
+                        {
+                            continue;
                         }
                     }
+
+                    // 提取个股在该年度的起始物理行偏移量
+                    if (!cache.StockRanges.TryGetValue(symbol, out var range))
+                    {
+                        continue; // 无个股数据或停牌
+                    }
+
+                    // 提取字段对应的全列数组缓存
+                    Array colArray = cache.GetColumnData(fieldName);
+
+                    int endRow = range.StartRow + range.RowCount;
+                    for (int r = range.StartRow; r < endRow; r++)
+                    {
+                        DateTime rowDate = cache.Dates[r];
+
+                        if (count >= rawDates.Length)
+                        {
+                            int newCap = rawDates.Length * 2;
+                            var newDates = ArrayPool<DateTime>.Shared.Rent(newCap);
+                            var newVals = ArrayPool<T>.Shared.Rent(newCap);
+                            rawDates.AsSpan(0, count).CopyTo(newDates);
+                            rawValues.AsSpan(0, count).CopyTo(newVals);
+                            ArrayPool<DateTime>.Shared.Return(rawDates);
+                            ArrayPool<T>.Shared.Return(rawValues);
+                            rawDates = newDates;
+                            rawValues = newVals;
+                        }
+
+                        rawDates[count] = rowDate;
+                        rawValues[count] = ConvertArrayValue<T>(colArray, r);
+                        count++;
+                    }
                 }
+
+                if (count > 1 && rawDates[0] > rawDates[count - 1])
+                {
+                    Array.Sort(rawDates, rawValues, 0, count);
+                }
+
+                // 通过 MarketDataAligner 完成全局日历投影，缺失位置天然保留 NaN
+                MarketDataAligner.AlignAndFill(
+                    _tradeDates,
+                    startIndex,
+                    length,
+                    rawDates.AsSpan(0, count),
+                    rawValues.AsSpan(0, count),
+                    destination);
+            }
+            finally
+            {
+                ArrayPool<DateTime>.Shared.Return(rawDates);
+                ArrayPool<T>.Shared.Return(rawValues);
             }
         }
 
@@ -273,28 +309,63 @@ namespace CarrotBacktesting.NET.Data
         {
             if (arr is double[] dArr)
             {
-                double val = dArr[index];
-                return Unsafe.As<double, T>(ref val);
+                if (typeof(T) == typeof(double))
+                {
+                    double val = dArr[index];
+                    return Unsafe.As<double, T>(ref val);
+                }
+                if (typeof(T) == typeof(float))
+                {
+                    float val = (float)dArr[index];
+                    return Unsafe.As<float, T>(ref val);
+                }
             }
             if (arr is float[] fArr)
             {
-                float val = fArr[index];
-                return Unsafe.As<float, T>(ref val);
+                if (typeof(T) == typeof(float))
+                {
+                    float val = fArr[index];
+                    return Unsafe.As<float, T>(ref val);
+                }
+                if (typeof(T) == typeof(double))
+                {
+                    double val = fArr[index];
+                    return Unsafe.As<double, T>(ref val);
+                }
             }
             if (arr is long[] lArr)
             {
-                long val = lArr[index];
-                return Unsafe.As<long, T>(ref val);
+                if (typeof(T) == typeof(long))
+                {
+                    long val = lArr[index];
+                    return Unsafe.As<long, T>(ref val);
+                }
+                if (typeof(T) == typeof(double))
+                {
+                    double val = lArr[index];
+                    return Unsafe.As<double, T>(ref val);
+                }
             }
             if (arr is int[] iArr)
             {
-                int val = iArr[index];
-                return Unsafe.As<int, T>(ref val);
+                if (typeof(T) == typeof(int))
+                {
+                    int val = iArr[index];
+                    return Unsafe.As<int, T>(ref val);
+                }
+                if (typeof(T) == typeof(double))
+                {
+                    double val = iArr[index];
+                    return Unsafe.As<double, T>(ref val);
+                }
             }
             if (arr is bool[] bArr)
             {
-                bool val = bArr[index];
-                return Unsafe.As<bool, T>(ref val);
+                if (typeof(T) == typeof(bool))
+                {
+                    bool val = bArr[index];
+                    return Unsafe.As<bool, T>(ref val);
+                }
             }
 
             object valObj = arr.GetValue(index)!;

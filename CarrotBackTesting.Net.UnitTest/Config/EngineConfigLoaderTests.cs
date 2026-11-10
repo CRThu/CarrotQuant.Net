@@ -276,5 +276,71 @@ engine:
             Assert.AreEqual("backtest", config.Engine.Mode);
             Assert.IsNotNull(config.Data);
         }
+
+        [TestMethod]
+        public void TestLoadConfig_TimeseriesCacheOptions_DefaultValues()
+        {
+            string yaml = @"
+engine:
+  mode: ""backtest""
+data:
+  root: ""./data""
+  timeseries:
+    - table_id: ""ashare.kline.1d.raw.baostock""
+";
+            string configPath = Path.Combine(_tempDir, "default_cache.yaml");
+            File.WriteAllText(configPath, yaml);
+
+            var config = EngineConfigLoader.Load(configPath);
+
+            Assert.AreEqual(1, config.Data.Timeseries.Count);
+            var ts = config.Data.Timeseries[0];
+            Assert.AreEqual("ashare.kline.1d.raw.baostock", ts.TableId);
+            Assert.IsTrue(ts.Cache, "Cache 默认值应为 true");
+            Assert.AreEqual(4096, ts.PageSize, "PageSize 默认值应为 4096");
+            Assert.AreEqual("lazy", ts.Refresh, "Refresh 默认值应为 lazy");
+            Assert.AreEqual("lz4", ts.Compression, "Compression 默认值应为 lz4");
+        }
+
+        [TestMethod]
+        public void TestLoadConfig_TimeseriesCacheOptions_CustomConfigurations()
+        {
+            string yaml = @"
+engine:
+  mode: ""backtest""
+data:
+  root: ""./data""
+  timeseries:
+    - table_id: ""ashare.kline.1m.raw.custom""
+      cache: false
+      page_size: 1024
+      refresh: ""auto""
+      compression: ""none""
+    - table_id: ""ashare.kline.1d.raw.baostock""
+      cache: true
+      page_size: 8192
+      refresh: ""force""
+";
+            string configPath = Path.Combine(_tempDir, "custom_cache.yaml");
+            File.WriteAllText(configPath, yaml);
+
+            var config = EngineConfigLoader.Load(configPath);
+
+            Assert.AreEqual(2, config.Data.Timeseries.Count);
+            
+            var ts0 = config.Data.Timeseries[0];
+            Assert.AreEqual("ashare.kline.1m.raw.custom", ts0.TableId);
+            Assert.IsFalse(ts0.Cache);
+            Assert.AreEqual(1024, ts0.PageSize);
+            Assert.AreEqual("auto", ts0.Refresh);
+            Assert.AreEqual("none", ts0.Compression);
+
+            var ts1 = config.Data.Timeseries[1];
+            Assert.AreEqual("ashare.kline.1d.raw.baostock", ts1.TableId);
+            Assert.IsTrue(ts1.Cache);
+            Assert.AreEqual(8192, ts1.PageSize);
+            Assert.AreEqual("force", ts1.Refresh);
+            Assert.AreEqual("lz4", ts1.Compression);
+        }
     }
 }

@@ -4,16 +4,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     
     <DefaultItemExcludes>$(DefaultItemExcludes);V3\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
-    <ProjectReference Include="..\..\Carrot.Memory\Carrot.Memory\Carrot.Memory.csproj" />
+    <PackageReference Include="Carrot.Memory" Version="1.1.0" />
     <PackageReference Include="Parquet.Net" Version="6.0.3" />
     <PackageReference Include="Sylvan.Data.Csv" Version="1.4.4" />
+    <PackageReference Include="K4os.Compression.LZ4" Version="1.3.8" />
   </ItemGroup>
 
 </Project>

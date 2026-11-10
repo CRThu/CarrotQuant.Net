@@ -131,6 +131,47 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             bool hasValidData = destination.Any(v => !double.IsNaN(v) && v > 0);
             Assert.IsTrue(hasValidData, "Destination should contain valid close prices from multi-level month partition parquet.");
+
+            // 1. 测试元数据接口
+            Assert.AreEqual(0, source.GetSymbolIndex(testSymbol));
+            Assert.AreEqual(-1, source.GetSymbolIndex("unknown_sym"));
+            Assert.IsTrue(source.GetDateIndex(source.TradeDates[0]) >= 0);
+            Assert.IsTrue(source.GetDateIndex(new DateTime(1990, 1, 1)) < 0);
+            Assert.IsNotNull(source.GetFieldType("close"));
+
+            // 2. 泛型读取 (float 与 Int64 timestamp)
+            float[] floatDest = new float[length];
+            source.ReadSymbolSeries(testSymbol, "close", 0, length, floatDest);
+            Assert.AreEqual((float)destination[0], floatDest[0], 1e-4f);
+
+            long[] longDest = new long[length];
+            source.ReadSymbolSeries(testSymbol, "timestamp", 0, length, longDest);
+            Assert.IsTrue(longDest[0] > 0);
+
+            double[] tsAsDouble = new double[length];
+            source.ReadSymbolSeries(testSymbol, "timestamp", 0, length, tsAsDouble);
+            Assert.AreEqual((double)longDest[0], tsAsDouble[0], 1.0);
+
+            // 3. 读取不存在的字段（抛出 ArgumentException）
+            double[] nanDest = new double[2];
+            Assert.ThrowsException<ArgumentException>(() =>
+            {
+                source.ReadSymbolSeries(testSymbol, "non_existent", 0, 2, nanDest);
+            });
+
+            // 4. 边界异常
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+            {
+                source.ReadSymbolSeries(testSymbol, "close", -1, 1, new double[1]);
+            });
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+            {
+                source.ReadSymbolSeries(testSymbol, "close", 0, length + 1, new double[length + 1]);
+            });
+            Assert.ThrowsException<ArgumentException>(() =>
+            {
+                source.ReadSymbolSeries(testSymbol, "close", 0, 1, new double[2]);
+            });
         }
     }
 }

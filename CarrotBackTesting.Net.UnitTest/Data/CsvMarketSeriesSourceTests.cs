@@ -126,5 +126,113 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
             }
         }
+
+        [TestMethod]
+        public void TestCsvMarketSeriesSource_TimestampColumn_DescendingDates_AndTypeConversions()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "CarrotCsvTsTest_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string tableId = "ts_desc_table";
+                string tableDir = Path.Combine(tempDir, tableId, "year=2025");
+                Directory.CreateDirectory(tableDir);
+
+                // 两行数据，日期倒序，第一列使用 timestamp (毫秒戳)
+                long ts1 = new DateTimeOffset(2025, 1, 3, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                long ts2 = new DateTimeOffset(2025, 1, 2, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+                string csvContent = $"symbol,timestamp,open,close,volume\nsh.600000,{ts1},12.5,13.0,1000\nsh.600000,{ts2},10.0,11.5,500\n";
+                File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
+
+                var registry = new SimpleFieldRegistry();
+                using var source = new CsvMarketSeriesSource(tempDir, registry, tableId);
+
+                Assert.AreEqual(1, source.Symbols.Count);
+                Assert.AreEqual(2, source.TradeDates.Count);
+                Assert.AreEqual(new DateTime(2025, 1, 2), source.TradeDates[0]);
+                Assert.AreEqual(new DateTime(2025, 1, 3), source.TradeDates[1]);
+
+                // 1. 元数据接口
+                Assert.AreEqual(0, source.GetSymbolIndex("sh.600000"));
+                Assert.AreEqual(-1, source.GetSymbolIndex("unknown"));
+                Assert.IsTrue(source.GetDateIndex(new DateTime(2025, 1, 2)) >= 0);
+                Assert.IsTrue(source.GetDateIndex(new DateTime(2020, 1, 1)) < 0);
+                Assert.IsNotNull(source.GetFieldType("close"));
+
+                // 2. 泛型转换读取 (float, int, long, double)
+                float[] floatDest = new float[2];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 2, floatDest);
+                Assert.AreEqual(11.5f, floatDest[0], 1e-4f);
+                Assert.AreEqual(13.0f, floatDest[1], 1e-4f);
+
+                int[] intDest = new int[2];
+                source.ReadSymbolSeries("sh.600000", "volume", 0, 2, intDest);
+                Assert.AreEqual(500, intDest[0]);
+                Assert.AreEqual(1000, intDest[1]);
+
+                long[] longDest = new long[2];
+                source.ReadSymbolSeries("sh.600000", "volume", 0, 2, longDest);
+                Assert.AreEqual(500L, longDest[0]);
+                Assert.AreEqual(1000L, longDest[1]);
+
+                // 3. 边界异常校验
+                Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+                {
+                    source.ReadSymbolSeries("sh.600000", "close", -1, 1, new double[1]);
+                });
+                Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+                {
+                    source.ReadSymbolSeries("sh.600000", "close", 1, 2, new double[2]); // 1 + 2 > 2
+                });
+                Assert.ThrowsException<ArgumentException>(() =>
+                {
+                    source.ReadSymbolSeries("sh.600000", "close", 0, 1, new double[2]); // length mismatch
+                });
+
+                // 4. 读取不存在的字段（跳过填充保持 NaN）
+                double[] nanDest = new double[2];
+                source.ReadSymbolSeries("sh.600000", "non_existent_col", 0, 2, nanDest);
+                Assert.IsTrue(double.IsNaN(nanDest[0]));
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public void TestCsvMarketSeriesSource_BufferPoolExpansion()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "CarrotCsvPoolTest_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string tableId = "pool_expand_table";
+                string tableDir = Path.Combine(tempDir, tableId, "year=2025");
+                Directory.CreateDirectory(tableDir);
+
+                // 生成 35 行数据（超出初始 capacity=16，触发池化数组倍增扩容分支）
+                using var sw = new StreamWriter(Path.Combine(tableDir, "sh.600000.csv"));
+                sw.WriteLine("symbol,datetime,close");
+                for (int i = 1; i <= 35; i++)
+                {
+                    sw.WriteLine($"sh.600000,2025-01-{i:D2},10.0");
+                }
+                sw.Flush();
+                sw.Close();
+
+                var registry = new SimpleFieldRegistry();
+                using var source = new CsvMarketSeriesSource(tempDir, registry, tableId);
+
+                // 请求只取 5 天，但底层文件扫描时读入 35 行触发扩容
+                double[] dest = new double[5];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 5, dest);
+                Assert.AreEqual(10.0, dest[0]);
+                Assert.AreEqual(10.0, dest[4]);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
     }
 }

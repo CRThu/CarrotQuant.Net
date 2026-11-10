@@ -191,6 +191,33 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(crossYear.Any(f => f.Replace('\\', '/').Contains("year=2025/month=01")));
         }
 
+        [TestMethod]
+        public void Resolve_HiveLayout_CachedTopology_ShouldAvoidDiskReEnumeration()
+        {
+            string tableId = "hive_cached_topology";
+            CreateTable(tableId,
+                new { layout = "hive", format = "csv", partition = "symbol", schema = new { c = "int64" } },
+                new List<string>
+                {
+                    "year=2023/sh.600000.csv",
+                    "year=2023/sh.600001.csv",
+                    "year=2024/sh.600000.csv",
+                    "year=2024/sh.600001.csv"
+                });
+
+            var resolver = new StorageResolver(_tempRoot);
+
+            // 首次解析触发元数据与目录拓扑缓存
+            var files600000 = resolver.ResolvePhysicalFiles(tableId, "sh.600000");
+            Assert.AreEqual(2, files600000.Count);
+
+            // 后续解析不同标的直接复用已缓存的年份目录结构，准确路由
+            var files600001 = resolver.ResolvePhysicalFiles(tableId, "sh.600001", new DateTime(2024, 1, 1), null);
+            Assert.AreEqual(1, files600001.Count);
+            Assert.IsTrue(files600001[0].Contains("year=2024"));
+            Assert.IsTrue(files600001[0].EndsWith("sh.600001.csv"));
+        }
+
         #endregion
 
         #region 3. 边界与异常测试

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -118,6 +119,7 @@ namespace CarrotBacktesting.NET.Data
 
         /// <summary>
         /// 批量读取特定股票的指标序列。
+        /// 仅解析目标窗口 [minDate, maxDate] 内的物理文件，零跨文件向左回溯，缺失单元格由对齐器天然置 NaN。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged
@@ -132,74 +134,107 @@ namespace CarrotBacktesting.NET.Data
                 throw new ArgumentException($"Destination span length ({destination.Length}) must match requested length ({length}).");
             }
 
-            // 初始化填充默认值
-            destination.Fill(default);
-
             DateTime minDate = _tradeDates[startIndex];
             DateTime maxDate = _tradeDates[startIndex + length - 1];
 
-            // 获取指定时间区间内的物理数据文件列表
-            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, _startDate, _endDate);
-            foreach (var filePath in csvFiles)
+            // 获取指定时间区间内的物理数据文件列表（精确剪枝，杜绝向左全量历史检索放大）
+            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, minDate, maxDate);
+            
+            // 依据目标窗口长度自适应租借池化缓冲区，杜绝硬编码与高频/日线维度的内存重叠开销
+            int capacity = Math.Max(length, 16);
+            DateTime[] rawDates = ArrayPool<DateTime>.Shared.Rent(capacity);
+            T[] rawValues = ArrayPool<T>.Shared.Rent(capacity);
+            int count = 0;
+
+            try
             {
-                if (!File.Exists(filePath))
+                foreach (var filePath in csvFiles)
                 {
-                    continue;
-                }
-
-                using var reader = CsvDataReader.Create(filePath);
-                
-                int dateColIdx = -1;
-                try { dateColIdx = reader.GetOrdinal("datetime"); } catch {}
-                if (dateColIdx == -1)
-                {
-                    try { dateColIdx = reader.GetOrdinal("timestamp"); } catch {}
-                }
-                
-                int fieldColIdx = -1;
-                try
-                {
-                    fieldColIdx = reader.GetOrdinal(fieldName);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                if (dateColIdx == -1) continue;
-
-                while (reader.Read())
-                {
-                    DateTime rowDate = DateTime.MinValue;
-                    if (reader.GetFieldType(dateColIdx) == typeof(DateTime))
+                    if (!File.Exists(filePath))
                     {
-                        rowDate = reader.GetDateTime(dateColIdx).Date;
+                        continue;
                     }
-                    else
+
+                    using var reader = CsvDataReader.Create(filePath);
+                    
+                    int dateColIdx = -1;
+                    try { dateColIdx = reader.GetOrdinal("datetime"); } catch {}
+                    if (dateColIdx == -1)
                     {
-                        string dtStr = reader.GetString(dateColIdx);
-                        if (long.TryParse(dtStr, out long ts))
+                        try { dateColIdx = reader.GetOrdinal("timestamp"); } catch {}
+                    }
+                    
+                    int fieldColIdx = -1;
+                    try
+                    {
+                        fieldColIdx = reader.GetOrdinal(fieldName);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (dateColIdx == -1) continue;
+
+                    while (reader.Read())
+                    {
+                        DateTime rowDate = DateTime.MinValue;
+                        if (reader.GetFieldType(dateColIdx) == typeof(DateTime))
                         {
-                            rowDate = DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime.Date;
+                            rowDate = reader.GetDateTime(dateColIdx).Date;
                         }
-                        else if (DateTime.TryParse(dtStr, out var dt))
+                        else
                         {
-                            rowDate = dt.Date;
+                            string dtStr = reader.GetString(dateColIdx);
+                            if (long.TryParse(dtStr, out long ts))
+                            {
+                                rowDate = DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime.Date;
+                            }
+                            else if (DateTime.TryParse(dtStr, out var dt))
+                            {
+                                rowDate = dt.Date;
+                            }
                         }
-                    }
 
-                    if (rowDate == DateTime.MinValue) continue;
+                        if (rowDate == DateTime.MinValue) continue;
 
-                    if (rowDate > maxDate) break;
-                    if (rowDate < minDate) continue;
+                        if (count >= rawDates.Length)
+                        {
+                            int newCap = rawDates.Length * 2;
+                            var newDates = ArrayPool<DateTime>.Shared.Rent(newCap);
+                            var newVals = ArrayPool<T>.Shared.Rent(newCap);
+                            rawDates.AsSpan(0, count).CopyTo(newDates);
+                            rawValues.AsSpan(0, count).CopyTo(newVals);
+                            ArrayPool<DateTime>.Shared.Return(rawDates);
+                            ArrayPool<T>.Shared.Return(rawValues);
+                            rawDates = newDates;
+                            rawValues = newVals;
+                        }
 
-                    int globalIdx = _tradeDates.BinarySearch(startIndex, length, rowDate, Comparer<DateTime>.Default);
-                    if (globalIdx >= 0)
-                    {
-                        int offset = globalIdx - startIndex;
-                        destination[offset] = ValueConverter<T>.Read(reader, fieldColIdx);
+                        rawDates[count] = rowDate;
+                        rawValues[count] = ValueConverter<T>.Read(reader, fieldColIdx);
+                        count++;
                     }
                 }
+
+                if (count > 1 && rawDates[0] > rawDates[count - 1])
+                {
+                    Array.Sort(rawDates, rawValues, 0, count);
+                }
+
+                // 通过 MarketDataAligner 完成全局日历投影，缺失位置天然保留 NaN
+                MarketDataAligner.AlignAndFill(
+                    _tradeDates,
+                    startIndex,
+                    length,
+                    rawDates.AsSpan(0, count),
+                    rawValues.AsSpan(0, count),
+                    destination);
+            }
+            finally
+            {
+                ArrayPool<DateTime>.Shared.Return(rawDates);
+                ArrayPool<T>.Shared.Return(rawValues);
             }
         }
 

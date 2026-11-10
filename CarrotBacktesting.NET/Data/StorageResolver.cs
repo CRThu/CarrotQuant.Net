@@ -107,54 +107,31 @@ namespace CarrotBacktesting.NET.Data
             }
             else
             {
-                // Hive 分区布局：动态枚举 year=* 目录并按时间过滤，支持二级 month=* 分区及按月剪枝
+                // Hive 分区布局：利用已缓存的年份与月份目录拓扑进行内存剪枝与按代码路由，规避反复枚举磁盘目录
                 var matchedFiles = new List<string>();
-                var yearDirs = Directory.EnumerateDirectories(cache.TableDir, "year=*");
+                string searchPattern = $"*.{cache.Format}";
+                bool isSymbolPartition = cache.Partition.Equals("symbol", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(symbol);
 
-                foreach (var yearDir in yearDirs)
+                foreach (var yearInfo in cache.HivePartitions)
                 {
-                    string dirName = Path.GetFileName(yearDir);
-                    if (int.TryParse(dirName.Substring(5), out int year))
+                    int year = yearInfo.Year;
+                    // 年份过滤
+                    if (startDate.HasValue && year < startDate.Value.Year) continue;
+                    if (endDate.HasValue && year > endDate.Value.Year) continue;
+
+                    if (yearInfo.Months.Count > 0)
                     {
-                        // 年份过滤
-                        if (startDate.HasValue && year < startDate.Value.Year) continue;
-                        if (endDate.HasValue && year > endDate.Value.Year) continue;
-
-                        string searchPattern = $"*.{cache.Format}";
-                        var monthDirs = Directory.EnumerateDirectories(yearDir, "month=*").ToList();
-
-                        if (monthDirs.Count > 0)
+                        // 二级月份分区布局
+                        foreach (var monthInfo in yearInfo.Months)
                         {
-                            foreach (var monthDir in monthDirs)
-                            {
-                                string monthDirName = Path.GetFileName(monthDir);
-                                if (int.TryParse(monthDirName.Substring(6), out int month))
-                                {
-                                    // 月份过滤
-                                    if (startDate.HasValue && year == startDate.Value.Year && month < startDate.Value.Month) continue;
-                                    if (endDate.HasValue && year == endDate.Value.Year && month > endDate.Value.Month) continue;
+                            int month = monthInfo.Month;
+                            // 月份过滤
+                            if (startDate.HasValue && year == startDate.Value.Year && month < startDate.Value.Month) continue;
+                            if (endDate.HasValue && year == endDate.Value.Year && month > endDate.Value.Month) continue;
 
-                                    if (cache.Partition.Equals("symbol", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(symbol))
-                                    {
-                                        string filePath = Path.Combine(monthDir, $"{symbol}.{cache.Format}");
-                                        if (File.Exists(filePath))
-                                        {
-                                            matchedFiles.Add(filePath);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        matchedFiles.AddRange(Directory.EnumerateFiles(monthDir, searchPattern));
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // 单级 year=* 布局
-                            if (cache.Partition.Equals("symbol", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(symbol))
+                            if (isSymbolPartition)
                             {
-                                string filePath = Path.Combine(yearDir, $"{symbol}.{cache.Format}");
+                                string filePath = Path.Combine(monthInfo.DirectoryPath, $"{symbol}.{cache.Format}");
                                 if (File.Exists(filePath))
                                 {
                                     matchedFiles.Add(filePath);
@@ -162,8 +139,24 @@ namespace CarrotBacktesting.NET.Data
                             }
                             else
                             {
-                                matchedFiles.AddRange(Directory.EnumerateFiles(yearDir, searchPattern));
+                                matchedFiles.AddRange(Directory.EnumerateFiles(monthInfo.DirectoryPath, searchPattern));
                             }
+                        }
+                    }
+                    else
+                    {
+                        // 单级年份分区布局
+                        if (isSymbolPartition)
+                        {
+                            string filePath = Path.Combine(yearInfo.DirectoryPath, $"{symbol}.{cache.Format}");
+                            if (File.Exists(filePath))
+                            {
+                                matchedFiles.Add(filePath);
+                            }
+                        }
+                        else
+                        {
+                            matchedFiles.AddRange(Directory.EnumerateFiles(yearInfo.DirectoryPath, searchPattern));
                         }
                     }
                 }
@@ -328,6 +321,7 @@ namespace CarrotBacktesting.NET.Data
 
         /// <summary>
         /// 存储表元数据及物理状态的缓存对象。
+        /// 预缓存 Hive 年份与月份目录拓扑，避免在多标的加载过程中高频扫描文件系统。
         /// </summary>
         private class TableMetadataCache
         {
@@ -340,6 +334,7 @@ namespace CarrotBacktesting.NET.Data
             public Dictionary<string, Type> FieldTypes { get; }
             public string Category { get; }
             public string Partition { get; }
+            public IReadOnlyList<YearPartitionInfo> HivePartitions { get; }
 
             public TableMetadataCache(string tableId, string tableDir, string metadataPath, string format, StorageLayout layout,
                                       IReadOnlyList<string> fieldNames, Dictionary<string, Type> fieldTypes,
@@ -354,6 +349,74 @@ namespace CarrotBacktesting.NET.Data
                 FieldTypes = fieldTypes;
                 Category = category;
                 Partition = partition;
+                HivePartitions = layout == StorageLayout.Hive ? ScanHivePartitions(tableDir) : Array.Empty<YearPartitionInfo>();
+            }
+
+            private static IReadOnlyList<YearPartitionInfo> ScanHivePartitions(string tableDir)
+            {
+                if (!Directory.Exists(tableDir))
+                {
+                    return Array.Empty<YearPartitionInfo>();
+                }
+
+                var list = new List<YearPartitionInfo>();
+                var yearDirs = Directory.EnumerateDirectories(tableDir, "year=*");
+
+                foreach (var yearDir in yearDirs)
+                {
+                    string dirName = Path.GetFileName(yearDir);
+                    if (dirName.Length > 5 && int.TryParse(dirName.AsSpan(5), out int year))
+                    {
+                        var monthList = new List<MonthPartitionInfo>();
+                        var monthDirs = Directory.EnumerateDirectories(yearDir, "month=*");
+                        foreach (var monthDir in monthDirs)
+                        {
+                            string monthDirName = Path.GetFileName(monthDir);
+                            if (monthDirName.Length > 6 && int.TryParse(monthDirName.AsSpan(6), out int month))
+                            {
+                                monthList.Add(new MonthPartitionInfo(month, monthDir));
+                            }
+                        }
+                        monthList.Sort((a, b) => a.Month.CompareTo(b.Month));
+
+                        list.Add(new YearPartitionInfo(year, yearDir, monthList));
+                    }
+                }
+
+                list.Sort((a, b) => a.Year.CompareTo(b.Year));
+                return list;
+            }
+        }
+
+        /// <summary>
+        /// Hive 分区中单个月份子目录的信息。
+        /// </summary>
+        private sealed class MonthPartitionInfo
+        {
+            public int Month { get; }
+            public string DirectoryPath { get; }
+
+            public MonthPartitionInfo(int month, string directoryPath)
+            {
+                Month = month;
+                DirectoryPath = directoryPath;
+            }
+        }
+
+        /// <summary>
+        /// Hive 分区中单标年份目录的信息及其包含的月份子目录（若存在）。
+        /// </summary>
+        private sealed class YearPartitionInfo
+        {
+            public int Year { get; }
+            public string DirectoryPath { get; }
+            public IReadOnlyList<MonthPartitionInfo> Months { get; }
+
+            public YearPartitionInfo(int year, string directoryPath, IReadOnlyList<MonthPartitionInfo> months)
+            {
+                Year = year;
+                DirectoryPath = directoryPath;
+                Months = months;
             }
         }
 

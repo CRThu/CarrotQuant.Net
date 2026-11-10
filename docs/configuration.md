@@ -43,6 +43,13 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | :--- | :--- | :--- | :---: | :--- | :--- |
 | `table_id` | `TableId` | `string` | 是 | - | 时序表唯一标识符，格式：`{market}.{category}.[sub/freq/adj].{source}`（如 `"ashare.kline.1d.raw.baostock"`）。 |
 | `fields` | `Fields` | `List<string>?` | 否 | `null` | 需要加载的字段名列表（如 `["open", "high", "low", "close", "volume"]`）。若缺省或为 `null`，则加载表内包含的全部字段。 |
+| `cache` | `Cache` | `bool` | 否 | `true` | 是否启用二进制对齐缓存。 |
+| `page_size` | `PageSize` | `int` | 否 | `4096` | 缓存分页行数大小，默认固定为 4096（必须为 2 的幂，如 1024, 2048, 4096, 8192 等）。 |
+| `refresh` | `Refresh` | `string` | 否 | `"lazy"` | 缓存刷新模式：`"lazy"`（默认，首次生成后只要存在直接加载，不检查原始数据）、`"auto"`（比对原始数据头尾时间戳增量补充）、`"force"`（强制清空并全量重刷）。 |
+| `compression` | `Compression` | `string` | 否 | `"lz4"` | 缓存分块压缩算法：`"lz4"`（默认，3~5GB/s 超高速解码，节省 60%~70% 磁盘空间）、`"none"`（无压缩裸二进制块）。 |
+
+> [!NOTE]
+> **缺失值口径**：时序宽表中的缺失单元格（停牌、未上市、已退市等）遵循第一性原理统一严格置 `NaN`（非浮点回退 `default`），零业务状态臆测，零额外配置负担。
 
 ### 4. `events` 事件项配置 (`EventStreamConfig`)
 

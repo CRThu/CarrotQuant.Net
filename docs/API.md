@@ -178,10 +178,10 @@ public interface IMarketMetadata
 
 ---
 
-## 三、内存数据供给层 (IDataProvider & Carrot.Memory)
+## 三、内存数据供给层 (IDataProvider & ChunkBuffer2D)
 
 ### 1. IDataProvider
-数据层向引擎与策略提供只读数据访问。返回非托管内存块的只读视图。
+数据层向引擎与策略提供只读数据访问契约，统一返回非托管内存块的只读视图。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Data;
@@ -192,17 +192,58 @@ public interface IDataProvider
     bool HasField(string fieldName);
     
     /// <summary>
-    /// 获取指定字段的全局二维只读 Buffer（Row=交易日，Col=股票代码）。
+    /// 获取指定字段的全局二维只读 Buffer（Row=交易日/时间步，Col=股票代码）。
     /// </summary>
     IReadOnlyBuffer2D<T> GetBuffer<T>(string fieldName) where T : unmanaged;
 }
 ```
 
-### 2. 核心访问模式
-`IDataProvider.GetBuffer<T>` 返回来自 `Carrot.Memory` 的 `IReadOnlyBuffer2D<T>`，支持无 GC 压力的批量截面切片与序列点查：
+### 2. ChunkBuffer2D<T>
+基于连续定长分页（Chunk）的高性能二维无锁只读/可写内存容器。底座采用非托管内存管理（`NativeMemory`），寻址全面采用位运算（Shift/Mask）实现零除法开销；读取路径提供无锁（Lock-Free）零并发竞争保证。
 
 ```csharp
-// 1. 获取收盘价与成交量矩阵
+namespace CarrotBacktesting.NET.Data;
+
+public sealed unsafe class ChunkBuffer2D<T> : IBuffer2D<T>, IReadOnlyBuffer2D<T>, IDisposable 
+    where T : unmanaged
+{
+    public int RowCount { get; }
+    public int Width { get; }
+    public int PageSize { get; }
+    public int PageCount { get; }
+
+    public ChunkBuffer2D(int width, int pageSize = 4096, int initialRowCount = 0);
+
+    // 读写索引器（无锁快速通道）
+    public ref T this[int r, int c] { get; }
+    public IReadOnlyBuffer2D<T> AsReadOnly();
+
+    // 批量向量化 I/O
+    public void SetElement(int r, int c, T value);
+    public void SetRow(int r, int c, ReadOnlySpan<T> data);
+    public void SetColumn(int r, int c, ReadOnlySpan<T> data);
+    public void SetBlock(int r, int c, ReadOnlySpan2D<T> data);
+    public void CopyRow(int r, int c, Span<T> destination);
+    public void CopyColumn(int r, int c, Span<T> destination);
+
+    // 切片视图
+    public RowView<T> GetRowView(int row, int col, int len);
+    public ColumnView<T> GetColumnView(int row, int col, int len);
+
+    // 块级物理连续切片（用于高速持久化零拷贝传输）
+    public Span<T> GetPageSpan(int pageIndex, int rowsInPage);
+    public ReadOnlySpan<T> GetReadOnlyPageSpan(int pageIndex, int rowsInPage);
+
+    public void EnsureCapacity(int targetRowCount);
+    public void Dispose();
+}
+```
+
+### 3. 核心访问模式
+`IDataProvider.GetBuffer<T>` 返回 `IReadOnlyBuffer2D<T>`，支持无 GC 压力的批量截面切片与序列点查：
+
+```csharp
+// 1. 获取收盘价矩阵
 IReadOnlyBuffer2D<double> closeBuffer = provider.GetBuffer<double>("close");
 
 // 2. 根据元数据索引定位物理坐标
@@ -213,10 +254,80 @@ int symbolIdx = provider.Metadata.GetSymbolIndex("sh.600000");
 double closePrice = closeBuffer[dateIdx, symbolIdx];
 
 // 4. 行切片（当日全市场截面，零拷贝）
-ReadOnlyRowView<double> marketSnapshot = closeBuffer.GetRow(dateIdx);
+ReadOnlyRowView<double> marketSnapshot = closeBuffer.GetRowView(dateIdx, 0, closeBuffer.Width);
 
 // 5. 列切片（单只个股全时序序列，零拷贝）
-ReadOnlyColumnView<double> stockHistory = closeBuffer.GetColumn(symbolIdx);
+ReadOnlyColumnView<double> stockHistory = closeBuffer.GetColumnView(0, symbolIdx, closeBuffer.RowCount);
+```
+
+### 4. TimeseriesCacheStore
+基于 4096 行分块与原生 LZ4 块压缩的时序二进制持久化缓存存储器。支持分块独立自描述宽度（Variable Width per Bin），在内存载入时根据目标宽度自动拓展列并填充 NaN，仅重刷当前活跃分块，彻底消除历史分块的写放大与无意义存储膨胀。
+
+```csharp
+namespace CarrotBacktesting.NET.Data;
+
+public class TimeseriesCacheStore
+{
+    public TimeseriesCacheStore(string cacheRoot, string tableId, int pageSize = 4096, string compression = "lz4");
+
+    // 校验缓存自描述契约（类型、分页、宽度、单调递增前缀兼容性）
+    public bool IsCacheCompatible(string fieldName, IReadOnlyList<string> expectedSymbols, Type expectedType, out TimeseriesCacheMetadata? metadata);
+
+    // 单分块精准重刷（仅针对单个 chunk_{pageIndex}.bin 进行覆盖写，支持扩充当前分块宽度，其他历史分块零 I/O 放大）
+    public void RewriteChunk<T>(
+        string fieldName, 
+        int pageIndex, 
+        Action<int, Span<T>> rowProvider,
+        int? newChunkWidth = null,
+        IReadOnlyList<string>? updatedSymbols = null) where T : unmanaged;
+
+    // 全量写入与读取（LoadBuffer 支持传入 targetWidth 触发内存自动列拓宽与 NaN 填充）
+    public void WriteBuffer<T>(string fieldName, ChunkBuffer2D<T> buffer, IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates) where T : unmanaged;
+    public ChunkBuffer2D<T> LoadBuffer<T>(string fieldName, int? targetWidth = null) where T : unmanaged;
+
+    // 增量跨分块追加
+    public void AppendRows<T>(string fieldName, int appendRowCount, Action<int, Span<T>> rowProvider, IReadOnlyList<DateTime> newTradeDates) where T : unmanaged;
+
+    // 元数据与生命周期
+    public TimeseriesCacheMetadata? ReadMetadata(string fieldName);
+    public bool HasCache(string fieldName);
+    public void Clear(string fieldName);
+    public void ClearTable();
+}
+```
+
+### 5. MarketDataAligner
+市场行情时间序列数据日历对齐组件。
+将物理数据文件的离散时序投射至全市场权威交易日历网格。遵循第一性原理，数据层忠实反映物理数据真相：
+- **物理事实投影**：物理文件存在的交易记录原样写入网格对应位置；物理缺失的单元格（停牌、未上市、已退市或漏采）统一严格置 `NaN`（整型采用标准哨兵值 `MinValue`，杜绝 `0` 歧义）；
+- **停牌前置契约**：停牌日向前沿用（`ffill`）必须由上游数据源/离线 ETL 脚本预先处理完毕后落盘存入宽表；回测框架数据层严格反映物理数据真相，不对其执行隐式向前沿用或伪造。
+
+```csharp
+namespace CarrotBacktesting.NET.Data;
+
+public static class MarketDataAligner
+{
+    // 获取非托管类型的标准 NaN/哨兵值（double/float 为 IEEE 754 NaN，整型为 long.MinValue / int.MinValue）
+    public static T GetNaNValue<T>() where T : unmanaged;
+
+    // 判定指定值是否为 NaN 或缺失哨兵值
+    public static bool IsValueNaN<T>(T val) where T : unmanaged;
+
+    // 将离散物理记录投射到目标全局交易日历网格，物理缺失单元格填充 NaN
+    public static void AlignAndFill<T>(
+        IReadOnlyList<DateTime> globalTradeDates,
+        int startIndex,
+        int length,
+        ReadOnlySpan<DateTime> recordDates,
+        ReadOnlySpan<T> recordValues,
+        Span<T> destination) where T : unmanaged;
+}
+
+// 缓冲区扩展方法：一键判定单元格是否缺失
+public static class BufferExtensions
+{
+    public static bool IsNaN<T>(this IReadOnlyBuffer2D<T> buffer, int row, int col) where T : unmanaged;
+}
 ```
 
 ---
