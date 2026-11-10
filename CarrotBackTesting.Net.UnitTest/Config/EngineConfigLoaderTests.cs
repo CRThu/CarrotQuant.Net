@@ -72,7 +72,7 @@ data:
         [TestMethod]
         public void TestLoadExternalDataConfig_WithRoot()
         {
-            // 1. 创建子目录存放共享 data.yaml
+            // 1. 创建子目录存放共享 data.yaml (平铺以 root: 开头)
             string sharedDir = Path.Combine(_tempDir, "shared");
             Directory.CreateDirectory(sharedDir);
 
@@ -87,13 +87,13 @@ events:
             string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
             File.WriteAllText(dataYamlPath, dataYaml);
 
-            // 2. 创建引用外部 data.yaml 的主策略配置文件
+            // 2. 创建通过多态 data 字段直接引用外部路径的主配置文件
             string mainYaml = @"
 engine:
   mode: ""living""
   initial_cash: 2000000.0
 
-data_config: ""shared/data.yaml""
+data: ""shared/data.yaml""
 ";
             string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
             File.WriteAllText(mainConfigPath, mainYaml);
@@ -116,6 +116,38 @@ data_config: ""shared/data.yaml""
         }
 
         [TestMethod]
+        public void TestLoadExternalDataConfig_WithWrappedData()
+        {
+            // 1. 创建带 data: 包装的外部配置文件（兼容容错）
+            string sharedDir = Path.Combine(_tempDir, "shared");
+            Directory.CreateDirectory(sharedDir);
+
+            string dataYaml = @"
+data:
+  root: ""../data_store""
+  timeseries:
+    - table_id: ""ashare.kline.1d.raw.baostock""
+";
+            string dataYamlPath = Path.Combine(sharedDir, "data_wrapped.yaml");
+            File.WriteAllText(dataYamlPath, dataYaml);
+
+            string mainYaml = @"
+engine:
+  mode: ""backtest""
+data: ""shared/data_wrapped.yaml""
+";
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, mainYaml);
+
+            var config = EngineConfigLoader.Load(mainConfigPath);
+
+            Assert.IsNotNull(config.Data);
+            string expectedRoot = Path.GetFullPath(Path.Combine(sharedDir, "../data_store"));
+            Assert.AreEqual(expectedRoot, config.Data.Root);
+            Assert.AreEqual(1, config.Data.Timeseries.Count);
+        }
+
+        [TestMethod]
         [ExpectedException(typeof(FileNotFoundException))]
         public void TestMissingConfigFileThrows()
         {
@@ -129,12 +161,120 @@ data_config: ""shared/data.yaml""
             string mainYaml = @"
 engine:
   mode: ""backtest""
-data_config: ""missing/data.yaml""
+data: ""missing/data.yaml""
 ";
             string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
             File.WriteAllText(mainConfigPath, mainYaml);
 
             EngineConfigLoader.Load(mainConfigPath);
+        }
+
+        [TestMethod]
+        public void TestLoad_NullOrEmptyPath_ThrowsArgumentException()
+        {
+            Assert.ThrowsException<ArgumentException>(() => EngineConfigLoader.Load(""));
+            Assert.ThrowsException<ArgumentException>(() => EngineConfigLoader.Load("   "));
+            Assert.ThrowsException<ArgumentException>(() => EngineConfigLoader.Load(null!));
+        }
+
+        [TestMethod]
+        public void TestLoadExternalDataConfig_WithAbsolutePath()
+        {
+            string sharedDir = Path.Combine(_tempDir, "shared");
+            Directory.CreateDirectory(sharedDir);
+
+            string dataYaml = @"
+root: ""../data_store""
+timeseries:
+  - table_id: ""ashare.kline.1d.raw.baostock""
+";
+            string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
+            File.WriteAllText(dataYamlPath, dataYaml);
+
+            // 使用正斜杠格式的绝对路径
+            string absDataYamlPath = Path.GetFullPath(dataYamlPath).Replace('\\', '/');
+
+            string mainYaml = $@"
+engine:
+  mode: ""backtest""
+data: ""{absDataYamlPath}""
+";
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, mainYaml);
+
+            var config = EngineConfigLoader.Load(mainConfigPath);
+
+            Assert.IsNotNull(config.Data);
+            string expectedRoot = Path.GetFullPath(Path.Combine(sharedDir, "../data_store"));
+            Assert.AreEqual(expectedRoot, config.Data.Root);
+            Assert.AreEqual(1, config.Data.Timeseries.Count);
+        }
+
+        [TestMethod]
+        public void TestExternalDataConfig_WithAbsoluteRootPath()
+        {
+            string sharedDir = Path.Combine(_tempDir, "shared");
+            Directory.CreateDirectory(sharedDir);
+
+            string absRoot = Path.Combine(_tempDir, "absolute_root").Replace('\\', '/');
+
+            string dataYaml = $@"
+root: ""{absRoot}""
+timeseries:
+  - table_id: ""ashare.kline.1d.raw.baostock""
+";
+            string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
+            File.WriteAllText(dataYamlPath, dataYaml);
+
+            string mainYaml = @"
+engine:
+  mode: ""backtest""
+data: ""shared/data.yaml""
+";
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, mainYaml);
+
+            var config = EngineConfigLoader.Load(mainConfigPath);
+
+            Assert.IsNotNull(config.Data);
+            Assert.AreEqual(Path.GetFullPath(absRoot), config.Data.Root);
+        }
+
+        [TestMethod]
+        public void TestLoadConfig_WithOmittedDataSection()
+        {
+            string mainYaml = @"
+engine:
+  mode: ""backtest""
+  initial_cash: 800000.0
+";
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, mainYaml);
+
+            var config = EngineConfigLoader.Load(mainConfigPath);
+
+            Assert.IsNotNull(config.Engine);
+            Assert.AreEqual("backtest", config.Engine.Mode);
+            Assert.AreEqual(800000.0, config.Engine.InitialCash);
+            Assert.IsNotNull(config.Data);
+            Assert.AreEqual(string.Empty, config.Data.Root);
+            Assert.AreEqual(0, config.Data.Timeseries.Count);
+            Assert.AreEqual(0, config.Data.Events.Count);
+        }
+
+        [TestMethod]
+        public void TestLoadConfig_EmptyYamlFile()
+        {
+            string mainYaml = "# This is a comment only yaml\n";
+            string mainConfigPath = Path.Combine(_tempDir, "empty.yaml");
+            File.WriteAllText(mainConfigPath, mainYaml);
+
+            var config = EngineConfigLoader.Load(mainConfigPath);
+
+            Assert.IsNotNull(config);
+            Assert.IsNotNull(config.Engine);
+            Assert.AreEqual("backtest", config.Engine.Mode);
+            Assert.IsNotNull(config.Data);
         }
     }
 }

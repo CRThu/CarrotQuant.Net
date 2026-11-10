@@ -14,7 +14,7 @@ CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易�
 - **稠密矩阵 + 稀疏事件**: `IDataProvider` 提供高性能二维 Buffer 访问，`IEventProvider<T>` 提供 O(1) 点查。
 - **泛型事件系统**: 用户只需定义 record 类型，框架自动完成 CSV/Parquet → T 的零配置映射。
 - **策略管线**: 支持串联/并联组合模式，引擎启动前通过 `Compile()` 优化拓扑。
-- **Context 黑板模式**: 策略间通过 `IEngineContext` 异步通信，实现无感协作与物理隔离。
+- **Context 黑板模式**: 策略间通过 `IEngineContext` 共享状态与数据，实现策略逻辑与交易执行的解耦。
 
 ---
 
@@ -68,7 +68,14 @@ Data Layer          Engine Layer         Strategy Layer
 └──────────────┘    └─────────────┘    └─────────────┘
 ```
 
-详细架构规范请参阅 [AGENTS.md](AGENTS.md)。
+## 文档导航 (Wiki)
+
+- **[标准研发工作流 (Workflow)](docs/workflow.md)**: 演示从数据准备、YAML 配置、策略编写到驱动引擎的标准流程。
+- **[数据存储与格式规范](docs/data_format.md)**: 物理目录组织、Table ID 规范、双时间轴契约与自描述缺省回退机制。
+- **[配置管理与环境组织](docs/configuration.md)**: 掌握多态数据外链、跨环境基准路径级联解析与组织规范。
+- **[API 契约速查字典](docs/API.md)**: 提供方法级精确签名、参数定义与异常规范（供日常查阅）。
+- **[系统架构与研发红线](AGENTS.md)**: 面向 Agent 与核心开发者，涵盖三层分离设计约束与工程研发红线。
+- **[v3 历史报表规范归档](CarrotBacktesting.NET/V3/README.md)**: 用于迁移对照历史分析器与专业 Excel 报表规范。
 
 ---
 

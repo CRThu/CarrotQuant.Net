@@ -240,50 +240,23 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
 | `Date` | `DateTime` / `DateOnly` | `pl.Date` | 日期格式 |
 | `Datetime` | `DateTime` | `pl.Datetime`| 日期时间 |
 
-Python 加载映射速查：
-```python
-type_map = {
-    "Int64": pl.Int64, "Float64": pl.Float64, "String": pl.String,
-    "Boolean": pl.Boolean, "Date": pl.Date, "Datetime": pl.Datetime
-}
-```
-
 ---
 
-## 六、YAML 配置体系 (`CarrotBacktesting.NET.Config`)
+## 六、YAML 配置规范 (`CarrotBacktesting.NET.Config`)
 
 系统采用蛇形命名（`snake_case`）YAML 文件驱动引擎与数据层；相对路径均以当前配置文件所在物理目录为基准自动合并为绝对路径。
 
-### 1. 配置模型结构
-- `engine`: 运行模式 (`backtest` / `living`)、`start_date`、`end_date`、`initial_cash`。
-- `data_config`: （可选）指向外部独立共享数据配置文件路径（如 `"shared/data.yaml"`），支持多策略复用。
-- `data`: 数据层配置，包含存储根路径 `root`、行情时序表列表 `timeseries`（含 `table_id` 及可选 `fields`）、异构事件流列表 `events`（含 `name` 及 `table_id`）。
-
-### 2. 典型配置范例
-
-```yaml
-engine:
-  mode: "backtest"            # backtest / living
-  start_date: "2025-01-01"    # 回测起始时间
-  end_date: "2025-03-31"      # 回测结束时间
-  initial_cash: 1000000.0     # 初始资金
-
-# 可选：外链复用配置 data_config: "shared/data.yaml"
-data:
-  root: "./data"              # 数据存储根目录
-  timeseries:
-    - table_id: "ashare.kline.1m.raw.custom"
-      fields: ["open", "high", "low", "close", "volume"]
-  events:
-    - name: "adjustments"
-      table_id: "ashare.adj_factor.baostock"
-```
+- `engine`: 运行模式 (`mode: backtest/living`)、起止时间 (`start_date`, `end_date`)、初始资金 (`initial_cash`)。
+- `data`: 数据层统一多态入口（单一事实来源）：
+  - **外链独立配置**: 赋外部文件相对路径字符串（如 `data: "shared/data.yaml"`），支持多策略复用；
+  - **直接内嵌配置**: 内嵌数据层映射对象，包含 `root`、`timeseries`（含 `table_id` 与可选 `fields`）、`events`（含 `name` 与 `table_id`）。
+- **配置模板与完整 YAML 范例**: 详见 [docs/API.md](docs/API.md#3-yaml-配置范例)。
 
 ---
 
 ## 七、历史版本 (v3) 架构与报表规范参考
 
-> ⚠️ **历史文档指引**: v3 版本系统规范已完整归档至 [CarrotBacktesting.NET/V3/README.md](file:///d:/GitHub/CarrotQuant.Net/CarrotBacktesting.NET/V3/README.md)。
+> ⚠️ **历史文档指引**: v3 版本系统规范已完整归档至 [CarrotBacktesting.NET/V3/README.md](CarrotBacktesting.NET/V3/README.md)。
 > v4 重构中若涉及历史分析器、图表生成与 Excel 报表迁移，请直接查阅该归档文档。
 
 ### v3 核心机制速查索引：
@@ -302,10 +275,12 @@ data:
 
 1. **单一事实来源 (SSOT & DRY)**: 核心契约与数据结构单点权威定义，严禁冗余拷贝或散落多处定义。
 2. **显式优于隐式 (Explicit > Implicit)**: 优先读取 `metadata.json` 显式类型，配置与参数清晰透明，严禁未经对齐的隐式推断与静默容错。
-3. **专业技术文案与精炼注释（严禁营销套话）**:
-   - **客观严谨与领域中立**: 代码注释、文档与提交信息必须保持专业工程师视角，重点陈述技术事实、算法复杂度、物理边界与指标契约；坚决杜绝“颠覆性”、“极致强大”、“完美无瑕”、“终极方案”等浮夸修饰或 AI 营销套话。
+3. **专业工程手册文案与精炼注释（严禁营销夸大与哲学浮夸）**:
+   - **专业手册定位与领域中立**: 代码注释、文档与提交信息必须定位为严谨的“专业工程手册”，重点陈述技术事实、算法复杂度、物理边界与指标契约；坚决杜绝“设计哲学”、“颠覆性”、“极致强大”、“完美无瑕”、“终极方案”、“压榨性能”、“泥沙俱下”等哲学思辨、戏剧化修辞与 AI 营销套话。
+   - **示例驱动与全面详实**: 文档与 API 规范必须全面、精准，关键环节（配置、数据加载、策略生命周期、订单交互）必须提供完整、清晰、可直接对照执行的代码或 YAML 范例，杜绝空泛说明。
+   - **文档链接规范**: Markdown 文档内部的接口、类与路径引用严禁使用开发机绝对路径（如 `file:///`），统一采用反引号代码标记或相对路径。
    - **精炼合理的中文注释**: 注释重点阐明“设计意图 (Why)”与“边界约束 (Constraints)”，解释非直观算法或架构决策；坚决杜绝代码复述式废话（如不要在 `GetBuffer` 上写“获取 Buffer”）。
-4. **文档即代码真相（实时同步）**: 任何接口、数据结构、物理路径或配置模型的调整，必须第一时间同步维护本文档与相关技术文档，消除过时信息。
+4. **文档即代码真相（实时同步）**: 任何接口、数据结构、物理路径或配置模型的调整，必须第一时间同步维护本文档（[AGENTS.md](AGENTS.md)）、API 参考手册（[docs/API.md](docs/API.md)）与 Wiki 文档（[docs/](docs/)），消除过时信息。
 5. **最小改动与精准执行**: 修改遵循最小可行原则，严禁未查明根因盲目修改无关代码或无因格式重排。
    - **编辑警示**: 在使用 `edit` 工具修改代码时，请确保 `oldText` 块精准且最小化，严禁通过包含大量无关的前后文增加匹配难度，防止误伤不相关的代码区域。
 6. **测试闭环与真实断言**: 代码重构与新增特性必须同步执行单元测试（`dotnet test`），严禁使用弱条件分支掩盖故障。

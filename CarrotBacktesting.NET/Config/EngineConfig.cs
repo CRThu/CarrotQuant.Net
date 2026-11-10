@@ -5,7 +5,7 @@ namespace CarrotBacktesting.NET.Config
 {
     /// <summary>
     /// 引擎与数据顶层配置模型，对应 YAML 配置文件。
-    /// 支持直接内嵌 data 配置，或通过 data_config 引用独立的共享数据配置文件。
+    /// data 属性采用多态统一入口：既支持直接内嵌配置对象，也支持赋值为外部共享配置文件的相对路径（如 "shared/data.yaml"）。
     /// </summary>
     public class EngineConfig
     {
@@ -15,12 +15,7 @@ namespace CarrotBacktesting.NET.Config
         public EngineSettings Engine { get; set; } = new();
 
         /// <summary>
-        /// 可选的外部独立数据配置文件相对路径（如 "shared/data.yaml"）。
-        /// </summary>
-        public string? DataConfig { get; set; }
-
-        /// <summary>
-        /// 数据层配置。若配置了 DataConfig，则优先加载外部文件填充此项。
+        /// 数据层配置。
         /// </summary>
         public DataConfig Data { get; set; } = new();
     }
