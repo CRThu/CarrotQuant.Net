@@ -40,5 +40,17 @@ namespace CarrotBacktesting.NET.Data.Views
         /// <returns>对应的只读 Span。</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySpan<T> AsSpan() => _span;
+
+        /// <summary>
+        /// 支持通过 foreach 枚举视图中的元素。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlySpan<T>.Enumerator GetEnumerator() => _span.GetEnumerator();
+
+        /// <summary>
+        /// 支持隐式转换为 <see cref="ReadOnlySpan{T}"/>，无需显式调用 AsSpan()。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static implicit operator ReadOnlySpan<T>(ReadOnlyRowView<T> view) => view._span;
     }
 }

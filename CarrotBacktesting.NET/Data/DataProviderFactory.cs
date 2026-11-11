@@ -4,8 +4,6 @@ using CarrotBacktesting.NET.Config;
 
 namespace CarrotBacktesting.NET.Data
 {
-    public enum StorageMode { Heap, Mmf }
-
     public static class DataProviderFactory
     {
         public static IDataProvider Create(
@@ -18,7 +16,7 @@ namespace CarrotBacktesting.NET.Data
             string tableId = "default",
             string compression = "lz4")
         {
-            return new BufferedDataProvider(source, registry, source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression);
+            return new CachedDataProvider(source, registry, storageRoot, pageSize, enableCache, refreshMode, tableId, compression);
         }
     }
 }

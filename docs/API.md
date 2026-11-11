@@ -195,6 +195,11 @@ public interface IDataProvider
     /// 获取指定字段的全局二维只读 Buffer（Row=交易日/时间步，Col=股票代码）。
     /// </summary>
     IReadOnlyBuffer2D<T> GetBuffer<T>(string fieldName) where T : unmanaged;
+
+    /// <summary>
+    /// 原子提交所有字段缓存数据，增量落盘持久化至 TimeseriesCacheStore。
+    /// </summary>
+    void Commit();
 }
 ```
 
@@ -258,20 +263,43 @@ ReadOnlyRowView<double> marketSnapshot = closeBuffer.GetRowView(dateIdx, 0, clos
 
 // 5. 列切片（单只个股全时序序列，零拷贝）
 ReadOnlyColumnView<double> stockHistory = closeBuffer.GetColumnView(0, symbolIdx, closeBuffer.RowCount);
+
+// 6. 单标的回测退化便捷语法（CTA、期货、加密货币单币回测）
+ReadOnlyColumnView<double> singleStockSeries = provider.GetSeries<double>("close");
+ReadOnlyColumnView<double> btcSeries = provider.GetSeries<double>("close", "BTCUSDT");
 ```
 
-### 4. TimeseriesCacheStore
-基于 4096 行分块与原生 LZ4 块压缩的时序二进制持久化缓存存储器。支持分块独立自描述宽度（Variable Width per Bin），在内存载入时根据目标宽度自动拓展列并填充 NaN，仅重刷当前活跃分块，彻底消除历史分块的写放大与无意义存储膨胀。
+### 4. ITimeseriesCacheStore 与 TimeseriesCacheStore
+基于 4096 行分块与原生 LZ4 块压缩的时序二进制持久化缓存存储器抽象与实现。支持分块独立自描述宽度（Variable Width per Bin），在内存载入时根据目标宽度自动拓展列并填充 NaN，仅重刷当前活跃分块，彻底消除历史分块的写放大与无意义存储膨胀。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
 
-public class TimeseriesCacheStore
+public interface ITimeseriesCacheStore
+{
+    string CacheRoot { get; }
+    string TableId { get; }
+    int PageSize { get; }
+    string Compression { get; }
+
+    bool HasCache(string fieldName);
+    TimeseriesCacheMetadata? ReadMetadata(string fieldName);
+    bool IsCacheCompatible(string fieldName, IReadOnlyList<string> expectedSymbols, Type expectedType, out TimeseriesCacheMetadata? metadata);
+
+    ChunkBuffer2D<T> LoadBuffer<T>(string fieldName, int? targetWidth = null) where T : unmanaged;
+    void WriteBuffer<T>(string fieldName, ChunkBuffer2D<T> buffer, IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates) where T : unmanaged;
+    void RewriteChunk<T>(string fieldName, int pageIndex, Action<int, Span<T>> rowProvider, int? newChunkWidth = null, IReadOnlyList<string>? updatedSymbols = null) where T : unmanaged;
+    void AppendRows<T>(string fieldName, int deltaRows, Action<int, Span<T>> rowProvider, IReadOnlyList<DateTime> newTradeDates) where T : unmanaged;
+    void Clear(string fieldName);
+    void ClearTable();
+}
+
+public class TimeseriesCacheStore : ITimeseriesCacheStore
 {
     public TimeseriesCacheStore(string cacheRoot, string tableId, int pageSize = 4096, string compression = "lz4");
-
-    // 校验缓存自描述契约（类型、分页、宽度、单调递增前缀兼容性）
-    public bool IsCacheCompatible(string fieldName, IReadOnlyList<string> expectedSymbols, Type expectedType, out TimeseriesCacheMetadata? metadata);
+    // (实现 ITimeseriesCacheStore 契约)
+}
+```
 
     // 单分块精准重刷（仅针对单个 chunk_{pageIndex}.bin 进行覆盖写，支持扩充当前分块宽度，其他历史分块零 I/O 放大）
     public void RewriteChunk<T>(
@@ -296,7 +324,44 @@ public class TimeseriesCacheStore
 }
 ```
 
-### 5. MarketDataAligner
+### 5. TimeseriesChunkManager<T> 与 CachedDataProvider
+时序连续分块状态机与高性能供给门面：
+- **TimeseriesChunkManager<T>**: 单表单字段连续多分块调度器，管理非托管内存容器与磁盘分块缓存间的分块挂载、实盘单行追加与跨页分块轮转（Rollover，每 4096 行开辟新块），以及精准增量提交（`Commit`，仅落盘活跃分块，历史分块零写放大）。
+- **CachedDataProvider**: 满足 `IDataProvider` 契约的高性能数据门面。统一持有各字段的 `TimeseriesChunkManager`，对外提供只读二维时序矩阵（`GetBuffer<T>`）、分块调度器检索（`GetChunkManager<T>`）与原子落盘（`Commit`）。
+
+```csharp
+namespace CarrotBacktesting.NET.Data;
+
+public sealed class TimeseriesChunkManager<T> : ITimeseriesChunkManager where T : unmanaged
+{
+    public string FieldName { get; }
+    public Type DataType { get; }
+    public int TotalRows { get; }
+    public int ActivePageIndex { get; }
+    public int ActivePageRowCount { get; }
+    public bool IsDirty { get; }
+    public ChunkBuffer2D<T> Buffer { get; }
+
+    public IReadOnlyBuffer2D<T> AsReadOnly();
+    public void AppendRow(ReadOnlySpan<T> rowValues);
+    public void UpdateRow(int rowIndex, ReadOnlySpan<T> rowValues);
+    public void MarkDirty();
+    public void Commit();
+    public void Dispose();
+}
+
+public class CachedDataProvider : IDataProvider, IDisposable
+{
+    public IMarketMetadata Metadata { get; }
+    public bool HasField(string fieldName);
+    public IReadOnlyBuffer2D<T> GetBuffer<T>(string fieldName) where T : unmanaged;
+    public TimeseriesChunkManager<T> GetChunkManager<T>(string fieldName) where T : unmanaged;
+    public void Commit();
+    public void Dispose();
+}
+```
+
+### 6. MarketDataAligner
 市场行情时间序列数据日历对齐组件。
 将物理数据文件的离散时序投射至全市场权威交易日历网格。遵循第一性原理，数据层忠实反映物理数据真相：
 - **物理事实投影**：物理文件存在的交易记录原样写入网格对应位置；物理缺失的单元格（停牌、未上市、已退市或漏采）统一严格置 `NaN`（整型采用标准哨兵值 `MinValue`，杜绝 `0` 歧义）；

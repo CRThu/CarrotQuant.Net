@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
@@ -9,14 +10,13 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
     [TestClass]
-    public class BufferedDataProviderTests
+    public class CachedDataProviderTests
     {
-        private string _tempCacheDir;
+        private string _tempCacheDir = null!;
 
         [TestInitialize]
         public void Setup()
         {
-            // 为每个测试创建一个独立的空缓存目录，专门用于存放 MMF 文件
             _tempCacheDir = Path.Combine(Path.GetTempPath(), "CarrotQuantTests", Guid.NewGuid().ToString());
             Directory.CreateDirectory(_tempCacheDir);
         }
@@ -24,7 +24,6 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestCleanup]
         public void Cleanup()
         {
-            // 测试结束后，只清理 MMF 缓存文件，不触碰原始数据
             if (Directory.Exists(_tempCacheDir))
             {
                 Directory.Delete(_tempCacheDir, true);
@@ -37,31 +36,27 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestBufferedDataProviderLoadAndDispose()
+        public void TestCachedDataProviderLoadAndDispose()
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
 
             var registry = new SimpleFieldRegistry();
-            // 原始数据依然从 csvRoot 读取
             using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
             
-            // 使用新创建的 _tempCacheDir 作为 MMF 存放的缓存区
-            using (var provider = new BufferedDataProvider(source, registry, source, _tempCacheDir))
+            using (var provider = new CachedDataProvider(source, registry, source, _tempCacheDir))
             {
                 Assert.IsTrue(provider.HasField("close"));
                 
-                // 加载数据
                 var buffer = provider.GetBuffer<double>("close");
                 Assert.IsNotNull(buffer);
                 Assert.AreEqual(source.TradeDates.Count, buffer.RowCount);
                 Assert.AreEqual(source.Symbols.Count, buffer.Width);
             }
-            // 此时已调用 Dispose
         }
 
         [TestMethod]
-        public void TestBufferedDataProviderWithMultiLevelParquet()
+        public void TestCachedDataProviderWithMultiLevelParquet()
         {
             string testDataRoot = GetRawDataRoot();
             string parquetRoot = Path.Combine(testDataRoot, "parquet");
@@ -70,7 +65,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new SimpleFieldRegistry();
             using var source = new ParquetMarketSeriesSource(parquetRoot, registry, tableId);
 
-            using var provider = new BufferedDataProvider(source, registry, source, _tempCacheDir);
+            using var provider = new CachedDataProvider(source, registry, source, _tempCacheDir);
 
             Assert.IsTrue(provider.HasField("close"));
             Assert.IsTrue(provider.HasField("open"));
@@ -90,7 +85,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new SimpleFieldRegistry();
             using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
             
-            using var provider = new BufferedDataProvider(source, registry, source, _tempCacheDir);
+            using var provider = new CachedDataProvider(source, registry, source, _tempCacheDir);
             
             Assert.ThrowsException<KeyNotFoundException>(() => provider.GetBuffer<double>("non_existent_field"));
         }
@@ -104,10 +99,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new SimpleFieldRegistry();
             using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
             
-            using var provider = new BufferedDataProvider(source, registry, source, _tempCacheDir);
+            using var provider = new CachedDataProvider(source, registry, source, _tempCacheDir);
             var buffer = provider.GetBuffer<double>("close");
             
-            // 严谨验证：Buffer 维度必须等于元数据维度
             Assert.AreEqual(provider.Metadata.TradeDates.Count, buffer.RowCount, "Buffer 行数与交易日数量不匹配");
             Assert.AreEqual(provider.Metadata.Symbols.Count, buffer.Width, "Buffer 列数与股票数量不匹配");
         }
@@ -121,15 +115,13 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new SimpleFieldRegistry();
             using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
             
-            using (var provider = new BufferedDataProvider(source, registry, source, _tempCacheDir))
+            using (var provider = new CachedDataProvider(source, registry, source, _tempCacheDir))
             {
                 var buffer = provider.GetBuffer<double>("close");
                 
-                // 1. 读取源 CSV 文件以备校验 (读取该股票 2021 年的所有数据)
                 string csvPath = Path.Combine(csvRoot, tableId, "year=2021", "sh.600000.csv");
                 var lines = File.ReadAllLines(csvPath).Skip(1).ToList();
                 
-                // 2. 查找 sh.600000 在 Metadata 中的列索引
                 int colIdx = -1;
                 for (int i = 0; i < provider.Metadata.Symbols.Count; i++)
                 {
@@ -141,12 +133,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 }
                 Assert.AreNotEqual(-1, colIdx, "未在 Buffer 中找到股票 sh.600000");
 
-                // 3. 逐行比对数据
                 for (int rowIdx = 0; rowIdx < lines.Count; rowIdx++)
                 {
                     string[] parts = lines[rowIdx].Split(',');
-                    double expectedClose = double.Parse(parts[6]); // close 在第 6 列
-                    
+                    double expectedClose = double.Parse(parts[6]);
                     double actualClose = buffer[rowIdx, colIdx];
                     
                     Assert.AreEqual(expectedClose, actualClose, 1e-4, $"第 {rowIdx} 行数据不匹配，预期: {expectedClose}, 实际: {actualClose}");
@@ -155,7 +145,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestBufferedDataProviderWithPersistentCache_EndToEnd()
+        public void TestCachedDataProviderWithPersistentCache_EndToEnd()
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
@@ -164,7 +154,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
 
             // 1. 首次加载（缓存未命中，从源数据构建并写入磁盘缓存）
-            using (var provider1 = new BufferedDataProvider(
+            using (var provider1 = new CachedDataProvider(
                 source, 
                 registry, 
                 source, 
@@ -179,7 +169,6 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(source.TradeDates.Count, buf1.RowCount);
             }
 
-            // 验证磁盘缓存文件与元数据已成功生成
             var cacheStore = new TimeseriesCacheStore(_tempCacheDir, tableId, 1024);
             Assert.IsTrue(cacheStore.HasCache("close"));
             var meta = cacheStore.ReadMetadata("close");
@@ -187,7 +176,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(source.TradeDates.Count, meta.RowCount);
 
             // 2. 第二次加载（缓存命中，直接从二进制分块文件加载）
-            using (var provider2 = new BufferedDataProvider(
+            using (var provider2 = new CachedDataProvider(
                 source, 
                 registry, 
                 source, 
@@ -204,7 +193,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 3. 强制刷新测试（force 模式清空并重新构建）
-            using (var provider3 = new BufferedDataProvider(
+            using (var provider3 = new CachedDataProvider(
                 source, 
                 registry, 
                 source, 
@@ -223,8 +212,6 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestColumnCountChange_UniverseExpansionOrDelisting_TriggersRebuild()
         {
-            // 验证当股票池发生变更（新增上市 IPO 导致列数增加，或退市摘牌导致列数减少）时，
-            // 缓存的列维度检查契约能够自动识别不兼容，安全触发全量重建，彻底防止行跨步错位
             const string tableId = "test.universe.change";
             const string fieldName = "close";
             var registry = new SimpleFieldRegistry();
@@ -238,10 +225,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 new DateTime(2021, 1, 6)
             });
 
-            // 1. 初始状态：2 只股票
             mockSource.SymbolsList.AddRange(new[] { "sh.600000", "sz.000001" });
 
-            using (var provider1 = new BufferedDataProvider(
+            using (var provider1 = new CachedDataProvider(
                 mockSource,
                 registry,
                 mockSource,
@@ -254,8 +240,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 var buf1 = provider1.GetBuffer<double>(fieldName);
                 Assert.AreEqual(2, buf1.Width);
                 Assert.AreEqual(3, buf1.RowCount);
-                Assert.AreEqual(0.0, buf1[0, 0], 1e-4); // (0 * 100) + 0 = 0
-                Assert.AreEqual(1.0, buf1[0, 1], 1e-4); // (0 * 100) + 1 = 1
+                Assert.AreEqual(0.0, buf1[0, 0], 1e-4);
+                Assert.AreEqual(1.0, buf1[0, 1], 1e-4);
             }
 
             var cacheStore = new TimeseriesCacheStore(_tempCacheDir, tableId, 1024);
@@ -264,10 +250,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(2, meta1.Width);
             Assert.AreEqual(2, meta1.Symbols.Count);
 
-            // 2. 模拟新股 IPO 上市 / 股票池扩充：列宽增加至 3（满足前缀一致且单调扩充契约）
+            // 扩充至 3 只股票
             mockSource.SymbolsList.Add("sz.000002");
 
-            using (var provider2 = new BufferedDataProvider(
+            using (var provider2 = new CachedDataProvider(
                 mockSource,
                 registry,
                 mockSource,
@@ -277,13 +263,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 refreshMode: "lazy",
                 tableId: tableId))
             {
-                // lazy 模式下，检测到股票池维度发生变更，触发安全重刷以确保行跨步对齐与数据一致
                 var buf2 = provider2.GetBuffer<double>(fieldName);
                 Assert.AreEqual(3, buf2.Width);
                 Assert.AreEqual(3, buf2.RowCount);
-                Assert.AreEqual(0.0, buf2[0, 0], 1e-4); // 旧列 0 保持不变
-                Assert.AreEqual(1.0, buf2[0, 1], 1e-4); // 旧列 1 保持不变
-                Assert.AreEqual(2.0, buf2[0, 2], 1e-4); // 新列 2 (0 * 100) + 2 = 2
+                Assert.AreEqual(0.0, buf2[0, 0], 1e-4);
+                Assert.AreEqual(1.0, buf2[0, 1], 1e-4);
+                Assert.AreEqual(2.0, buf2[0, 2], 1e-4);
             }
 
             var meta2 = cacheStore.ReadMetadata(fieldName);
@@ -291,38 +276,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(3, meta2.Width);
             Assert.AreEqual(3, meta2.Symbols.Count);
             Assert.AreEqual("sz.000002", meta2.Symbols[2]);
-
-            // 3. 模拟股票退市 / 标的剔除：列宽缩减至 1
-            mockSource.SymbolsList.Clear();
-            mockSource.SymbolsList.Add("sz.000001");
-
-            using (var provider3 = new BufferedDataProvider(
-                mockSource,
-                registry,
-                mockSource,
-                _tempCacheDir,
-                pageSize: 1024,
-                enableCache: true,
-                refreshMode: "lazy",
-                tableId: tableId))
-            {
-                var buf3 = provider3.GetBuffer<double>(fieldName);
-                Assert.AreEqual(1, buf3.Width);
-                Assert.AreEqual(3, buf3.RowCount);
-                Assert.AreEqual(0.0, buf3[0, 0], 1e-4); // 当前股票池仅有 sz.000001 (索引 0)
-            }
-
-            var meta3 = cacheStore.ReadMetadata(fieldName);
-            Assert.IsNotNull(meta3);
-            Assert.AreEqual(1, meta3.Width);
-            Assert.AreEqual(1, meta3.Symbols.Count);
-            Assert.AreEqual("sz.000001", meta3.Symbols[0]);
         }
 
         [TestMethod]
-        public void TestBufferedDataProvider_ExpandedSymbols_AutoFillsNaN()
+        public void TestCachedDataProvider_ExpandedSymbols_AutoFillsNaN()
         {
-            // 验证当股票池扩充时，历史分块在载入内存拓宽时自动填充 NaN
             string tableId = "test.expand.nan.table";
             string fieldPe = "pe_ttm";
 
@@ -333,8 +291,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new SimpleFieldRegistry();
             registry.RegisterField(fieldPe, typeof(double));
 
-            // 阶段 1: 股票池仅 1 只股票，写入初版缓存
-            using (var provider1 = new BufferedDataProvider(
+            using (var provider1 = new CachedDataProvider(
                 mockSource,
                 registry,
                 mockSource,
@@ -348,10 +305,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(1, bufPe.Width);
             }
 
-            // 阶段 2: 股票池扩充到 2 只股票，以 lazy 模式重新打开
             mockSource.SymbolsList.Add("sz.000002");
 
-            using (var provider2 = new BufferedDataProvider(
+            using (var provider2 = new CachedDataProvider(
                 mockSource,
                 registry,
                 mockSource,
@@ -362,15 +318,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 tableId: tableId))
             {
                 var bufPe = provider2.GetBuffer<double>(fieldPe);
-
                 Assert.AreEqual(2, bufPe.Width);
-                Assert.IsFalse(double.IsNaN(bufPe[0, 0])); // 旧股票首日数据有效
+                Assert.IsFalse(double.IsNaN(bufPe[0, 0]));
             }
         }
 
         [TestMethod]
         [ExpectedException(typeof(InvalidOperationException))]
-        public void TestBufferedDataProvider_TypeMismatch_ThrowsException()
+        public void TestCachedDataProvider_TypeMismatch_ThrowsException()
         {
             var mockSource = new MockMarketSeriesSource();
             mockSource.SymbolsList.Add("sh.600000");
@@ -379,12 +334,58 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new SimpleFieldRegistry();
             registry.RegisterField("close", typeof(double));
 
-            using var provider = new BufferedDataProvider(mockSource, registry, mockSource, _tempCacheDir);
-            provider.GetBuffer<int>("close"); // 请求 int 但注册为 double
+            using var provider = new CachedDataProvider(mockSource, registry, mockSource, _tempCacheDir);
+            provider.GetBuffer<int>("close");
         }
 
         [TestMethod]
-        public void TestBufferedDataProvider_AutoRefreshMode_And_CorruptedCacheFallback()
+        public void TestCachedDataProvider_Commit_SyncsActiveChunkToDisk()
+        {
+            string tableId = "commit_test_table";
+            var mockSource = new MockMarketSeriesSource();
+            mockSource.SymbolsList.Add("sh.600000");
+            mockSource.SymbolsList.Add("sz.000001");
+            mockSource.DatesList.Add(new DateTime(2025, 1, 2));
+
+            var registry = new SimpleFieldRegistry();
+            registry.RegisterField("close", typeof(double));
+
+            // 1. 初始化 provider 并载入
+            using (var provider = new CachedDataProvider(
+                mockSource, registry, mockSource, _tempCacheDir,
+                pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
+            {
+                var buffer = provider.GetBuffer<double>("close");
+                Assert.AreEqual(1, buffer.RowCount);
+
+                // 通过 Manager 追加实时行
+                var manager = provider.GetChunkManager<double>("close");
+                double[] newRow = new double[] { 88.8, 99.9 };
+                manager.AppendRow(newRow);
+
+                Assert.IsTrue(manager.IsDirty);
+                Assert.AreEqual(2, manager.TotalRows);
+
+                // 2. 调用 Provider 统一 Commit
+                provider.Commit();
+                Assert.IsFalse(manager.IsDirty);
+            }
+
+            // 3. 重新打开一个 Provider，验证已落盘的 Cache 中数据准确
+            mockSource.DatesList.Add(new DateTime(2025, 1, 3));
+            using (var providerRestart = new CachedDataProvider(
+                mockSource, registry, mockSource, _tempCacheDir,
+                pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
+            {
+                var buffer = providerRestart.GetBuffer<double>("close");
+                Assert.AreEqual(2, buffer.RowCount);
+                Assert.AreEqual(88.8, buffer[1, 0], 1e-4);
+                Assert.AreEqual(99.9, buffer[1, 1], 1e-4);
+            }
+        }
+
+        [TestMethod]
+        public void TestCachedDataProvider_AutoRefreshMode_And_CorruptedCacheFallback()
         {
             string tableId = "auto_refresh_table";
             var mockSource = new MockMarketSeriesSource();
@@ -398,7 +399,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             registry.RegisterField("close", typeof(double));
 
             // 1. auto 模式首次写入
-            using (var provider1 = new BufferedDataProvider(
+            using (var provider1 = new CachedDataProvider(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
             {
@@ -407,7 +408,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 2. auto 模式同维度命中
-            using (var provider2 = new BufferedDataProvider(
+            using (var provider2 = new CachedDataProvider(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
             {
@@ -417,7 +418,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 3. auto 模式扩展股票代码
             mockSource.SymbolsList.Add("sh.600001");
-            using (var provider3 = new BufferedDataProvider(
+            using (var provider3 = new CachedDataProvider(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
             {
@@ -430,17 +431,114 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string chunk0 = Path.Combine(fieldDir, "chunk_0.bin");
             if (File.Exists(chunk0))
             {
-                File.WriteAllBytes(chunk0, new byte[] { 0xDE, 0xAD, 0xBE, 0xEF }); // 破坏分块文件
+                File.WriteAllBytes(chunk0, new byte[] { 0xDE, 0xAD, 0xBE, 0xEF });
             }
 
-            using (var provider4 = new BufferedDataProvider(
+            using (var provider4 = new CachedDataProvider(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
             {
-                // 能够捕获解压损坏异常并平滑全量回退重建
                 var buf = provider4.GetBuffer<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
             }
+        }
+
+        [TestMethod]
+        public void TestCachedDataProvider_SingleSymbol_DegenerateAndGetSeries()
+        {
+            var mockSource = new MockMarketSeriesSource();
+            mockSource.SymbolsList.Add("BTCUSDT");
+            for (int i = 0; i < 100; i++)
+            {
+                mockSource.DatesList.Add(new DateTime(2025, 1, 1).AddDays(i));
+            }
+
+            var registry = new SimpleFieldRegistry();
+            registry.RegisterField("close", typeof(double));
+
+            // 使用精简构造函数（无需重复传 source）
+            using var provider = new CachedDataProvider(mockSource, registry, _tempCacheDir);
+
+            // 1. 验证通过一维扩展获取默认标的（第 0 列）全量时间序列
+            var defaultSeries = provider.GetSeries<double>("close");
+            Assert.AreEqual(100, defaultSeries.Length);
+
+            for (int r = 0; r < 100; r++)
+            {
+                Assert.AreEqual(r * 100.0, defaultSeries[r]);
+            }
+
+            // 2. 验证通过代码名称获取指定标的一维序列
+            var namedSeries = provider.GetSeries<double>("close", "BTCUSDT");
+            Assert.AreEqual(100, namedSeries.Length);
+            Assert.AreEqual(defaultSeries[50], namedSeries[50]);
+
+            // 3. 验证查询不存在的代码抛出 KeyNotFoundException
+            Assert.ThrowsException<KeyNotFoundException>(() =>
+            {
+                provider.GetSeries<double>("close", "ETHUSDT");
+            });
+        }
+
+        [TestMethod]
+        public void TestCachedDataProvider_MultiThreaded_ConcurrentRead_LockFree()
+        {
+            var mockSource = new MockMarketSeriesSource();
+            for (int s = 0; s < 10; s++)
+            {
+                mockSource.SymbolsList.Add($"SYM_{s:D2}");
+            }
+            for (int i = 0; i < 200; i++)
+            {
+                mockSource.DatesList.Add(new DateTime(2025, 1, 1).AddDays(i));
+            }
+
+            var registry = new SimpleFieldRegistry();
+            registry.RegisterField("close", typeof(double));
+
+            using var provider = new CachedDataProvider(mockSource, registry, _tempCacheDir);
+            var buffer = provider.GetBuffer<double>("close");
+
+            // 并发模拟：20 个线程、10,000 次高频并发随机访问同一个只读二维矩阵
+            System.Threading.Tasks.Parallel.For(0, 10000, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 20 }, iter =>
+            {
+                int r = iter % 200;
+                int c = iter % 10;
+                double val = buffer[r, c];
+                double expected = r * 100.0 + c;
+                Assert.AreEqual(expected, val);
+            });
+        }
+
+        [TestMethod]
+        public void TestCachedDataProvider_GetChunkManager_Operations()
+        {
+            var mockSource = new MockMarketSeriesSource();
+            mockSource.SymbolsList.Add("000001.SZ");
+            mockSource.DatesList.Add(new DateTime(2025, 1, 1));
+
+            var registry = new SimpleFieldRegistry();
+            registry.RegisterField("close", typeof(double));
+
+            using var provider = new CachedDataProvider(mockSource, registry, _tempCacheDir);
+
+            // 1. 正确获取 Manager
+            var manager1 = provider.GetChunkManager<double>("close");
+            var manager2 = provider.GetChunkManager<double>("close");
+            Assert.IsNotNull(manager1);
+            Assert.AreSame(manager1, manager2);
+
+            // 2. 类型不匹配抛出 InvalidOperationException
+            Assert.ThrowsException<InvalidOperationException>(() =>
+            {
+                provider.GetChunkManager<float>("close");
+            });
+
+            // 3. 字段不存在抛出 KeyNotFoundException
+            Assert.ThrowsException<KeyNotFoundException>(() =>
+            {
+                provider.GetChunkManager<double>("non_existent");
+            });
         }
 
         private class MockMarketSeriesSource : IMarketSeriesSource

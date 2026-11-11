@@ -540,7 +540,21 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(201, roColView[0]);
             Assert.AreEqual(204, roColView[3]);
 
-            // 5. 视图越界访问（ref struct 不能在 lambda 闭包中捕获，使用 try-catch 显式断言）
+            // 5. 隐式转换与 foreach 枚举支持
+            ReadOnlySpan<int> implicitSpan = roRowView;
+            Assert.AreEqual(3, implicitSpan.Length);
+            Span<int> implicitMutSpan = rowView;
+            Assert.AreEqual(3, implicitMutSpan.Length);
+
+            int rowSum = 0;
+            foreach (var val in roRowView) rowSum += val;
+            Assert.AreEqual(101 + 102 + 103, rowSum);
+
+            int colSum = 0;
+            foreach (var val in roColView) colSum += val;
+            Assert.AreEqual(201 + 202 + 203 + 204, colSum);
+
+            // 6. 视图越界访问（ref struct 不能在 lambda 闭包中捕获，使用 try-catch 显式断言）
             bool colViewThrew = false;
             try
             {
@@ -562,6 +576,80 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 roColViewThrew = true;
             }
             Assert.IsTrue(roColViewThrew);
+        }
+
+        [TestMethod]
+        public void TestViews_ComprehensivePaths_ImplicitConversion_Foreach_And_CrossPage()
+        {
+            // 验证全部视图的隐式转换、foreach 枚举、跨页穿透与空视图路径
+            using IBuffer2D<int> buffer = new ChunkBuffer2D<int>(width: 10, pageSize: 64, initialRowCount: 128);
+
+            // 1. RowView 隐式转换为 ReadOnlySpan 与 Span
+            buffer.SetRow(1, 0, new int[] { 10, 20, 30 });
+            RowView<int> mutRowView = buffer.GetRowView(1, 0, 3);
+            ReadOnlySpan<int> roSpanFromMut = mutRowView;
+            Span<int> mutSpanFromMut = mutRowView;
+            Assert.AreEqual(3, roSpanFromMut.Length);
+            Assert.AreEqual(3, mutSpanFromMut.Length);
+            Assert.AreEqual(10, roSpanFromMut[0]);
+            Assert.AreEqual(30, mutSpanFromMut[2]);
+
+            // 2. RowView 的 foreach 遍历与可写修改
+            int sum = 0;
+            foreach (ref int item in mutRowView)
+            {
+                item += 1;
+                sum += item;
+            }
+            Assert.AreEqual(11 + 21 + 31, sum);
+            Assert.AreEqual(11, buffer[1, 0]);
+
+            // 3. 跨页 ColumnView 的 foreach 与 ref 遍历修改（跨越 pageSize=64 边界）
+            int crossStart = 60;
+            int crossLen = 10; // 从 60 到 69，跨越 page0 与 page1
+            for (int r = 0; r < crossLen; r++)
+            {
+                buffer[crossStart + r, 5] = (r + 1) * 100;
+            }
+
+            ColumnView<int> crossColView = buffer.GetColumnView(crossStart, 5, crossLen);
+            int colSum = 0;
+            foreach (ref int val in crossColView)
+            {
+                colSum += val;
+                val += 1; // 原地通过 ref 修改跨页数据
+            }
+            Assert.AreEqual(100 + 200 + 300 + 400 + 500 + 600 + 700 + 800 + 900 + 1000, colSum);
+            Assert.AreEqual(101, buffer[crossStart, 5]);
+            Assert.AreEqual(1001, buffer[crossStart + 9, 5]);
+
+            // 4. 只读跨页 ReadOnlyColumnView 的 foreach 验证
+            IReadOnlyBuffer2D<int> roBuffer = buffer;
+            ReadOnlyColumnView<int> roCrossColView = roBuffer.GetColumnView(crossStart, 5, crossLen);
+            int roColSum = 0;
+            foreach (var val in roCrossColView)
+            {
+                roColSum += val;
+            }
+            Assert.AreEqual(colSum + crossLen, roColSum);
+
+            // 5. 空视图 (Length = 0) 的 foreach 路径安全验证
+            RowView<int> emptyRowView = buffer.GetRowView(1, 0, 0);
+            int emptyCount = 0;
+            foreach (var _ in emptyRowView) emptyCount++;
+            Assert.AreEqual(0, emptyCount);
+
+            ReadOnlyRowView<int> roEmptyRowView = roBuffer.GetRowView(1, 0, 0);
+            foreach (var _ in roEmptyRowView) emptyCount++;
+            Assert.AreEqual(0, emptyCount);
+
+            ColumnView<int> emptyColView = buffer.GetColumnView(1, 0, 0);
+            foreach (var _ in emptyColView) emptyCount++;
+            Assert.AreEqual(0, emptyCount);
+
+            ReadOnlyColumnView<int> roEmptyColView = roBuffer.GetColumnView(1, 0, 0);
+            foreach (var _ in roEmptyColView) emptyCount++;
+            Assert.AreEqual(0, emptyCount);
         }
     }
 }

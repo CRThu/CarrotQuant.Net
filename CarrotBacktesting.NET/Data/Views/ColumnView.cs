@@ -52,5 +52,36 @@ namespace CarrotBacktesting.NET.Data.Views
 
         [DoesNotReturn]
         private static void ThrowIndexOutOfRangeException() => throw new IndexOutOfRangeException("视图访问越界。");
+
+        /// <summary>
+        /// 支持通过 foreach 枚举视图中的元素。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Enumerator GetEnumerator() => new(this);
+
+        /// <summary>
+        /// 可写列视图枚举器。
+        /// </summary>
+        public ref struct Enumerator
+        {
+            private readonly ColumnView<T> _view;
+            private int _index;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public Enumerator(ColumnView<T> view)
+            {
+                _view = view;
+                _index = -1;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool MoveNext() => ++_index < _view.Length;
+
+            public ref T Current
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => ref _view[_index];
+            }
+        }
     }
 }

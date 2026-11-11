@@ -30,4 +30,10 @@ public interface IDataProvider
     /// <param name="fieldName">字段名称。</param>
     /// <returns>若字段已加载则返回 true，否则返回 false。</returns>
     bool HasField(string fieldName);
+
+    /// <summary>
+    /// 将内存中各字段最新的时序数据原子同步落盘至持久化分块缓存。
+    /// 供 LivingEngine 实盘时间步推进或盘后结算时调用。纯只读回测提供器可为空实现。
+    /// </summary>
+    void Commit();
 }

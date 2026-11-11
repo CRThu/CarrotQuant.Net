@@ -47,6 +47,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                     var symField = dataFields.First(f => f.Name.Equals("symbol", StringComparison.OrdinalIgnoreCase));
                     var dtField = dataFields.FirstOrDefault(f => f.Name.Equals("datetime", StringComparison.OrdinalIgnoreCase))
                                ?? dataFields.FirstOrDefault(f => f.Name.Equals("timestamp", StringComparison.OrdinalIgnoreCase));
+                    Assert.IsNotNull(dtField, "测试数据中未找到 datetime 或 timestamp 字段。");
                     var closeField = dataFields.First(f => f.Name.Equals("close", StringComparison.OrdinalIgnoreCase));
 
                     for (int i = 0; i < reader.RowGroupCount; i++)
@@ -54,21 +55,23 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                         var groupReader = reader.OpenRowGroupReader(i);
                         int rowCount = (int)groupReader.RowCount;
                         
-                        var symArr = new string[rowCount];
-                        groupReader.ReadAsync(symField, symArr).GetAwaiter().GetResult();
+                        var symArr = new ReadOnlyMemory<char>[rowCount];
+                        var symDef = new int[rowCount];
+                        groupReader.ReadRawAsync<ReadOnlyMemory<char>>(symField, symArr, symDef, null, default).GetAwaiter().GetResult();
 
                         var closeArr = new double[rowCount];
                         var defLevels = new int[rowCount];
                         groupReader.ReadRawAsync<double>(closeField, closeArr, defLevels, null, default).GetAwaiter().GetResult();
 
-                        var dtArr = new string[rowCount];
-                        groupReader.ReadAsync(dtField, dtArr).GetAwaiter().GetResult();
+                        var dtArr = new ReadOnlyMemory<char>[rowCount];
+                        var dtDef = new int[rowCount];
+                        groupReader.ReadRawAsync<ReadOnlyMemory<char>>(dtField!, dtArr, dtDef, null, default).GetAwaiter().GetResult();
 
                         for (int idx = 0; idx < rowCount; idx++)
                         {
-                            if (symArr[idx] != null && symArr[idx].Equals(testSymbol, StringComparison.OrdinalIgnoreCase))
+                            if (symDef[idx] > 0 && symArr[idx].Span.Equals(testSymbol.AsSpan(), StringComparison.OrdinalIgnoreCase))
                             {
-                                if (DateTime.TryParse(dtArr[idx], out var rowDate))
+                                if (dtDef[idx] > 0 && DateTime.TryParse(dtArr[idx].Span, out var rowDate))
                                 {
                                     physicalData[rowDate.Date] = closeArr[idx];
                                 }

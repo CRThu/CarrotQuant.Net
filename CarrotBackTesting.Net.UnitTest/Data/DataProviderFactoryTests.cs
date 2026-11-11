@@ -21,7 +21,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var provider = DataProviderFactory.Create(storageRoot, registry, source);
             
             Assert.IsNotNull(provider);
-            Assert.IsInstanceOfType(provider, typeof(BufferedDataProvider));
+            Assert.IsInstanceOfType(provider, typeof(CachedDataProvider));
         }
     }
 }

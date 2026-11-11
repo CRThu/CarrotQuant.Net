@@ -294,10 +294,16 @@ namespace CarrotBacktesting.NET.Data
         private static string[] ReadStringColumn(ParquetRowGroupReader groupReader, DataField field, int rowCount)
         {
             var clrType = field.ClrType;
-            if (clrType == typeof(string))
+            if (clrType == typeof(ReadOnlyMemory<char>))
             {
+                var memArr = new ReadOnlyMemory<char>[rowCount];
+                var def = new int[rowCount];
+                groupReader.ReadRawAsync<ReadOnlyMemory<char>>(field, memArr, def, null, default).GetAwaiter().GetResult();
                 var arr = new string[rowCount];
-                groupReader.ReadAsync(field, arr).GetAwaiter().GetResult();
+                for (int i = 0; i < rowCount; i++)
+                {
+                    arr[i] = def[i] > 0 ? memArr[i].ToString() : "";
+                }
                 return arr;
             }
 
@@ -365,13 +371,14 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawAsync<long>(field, arr, defLevels, null, default).GetAwaiter().GetResult();
                 for (int i = 0; i < rowCount; i++) dates[i] = DateTimeOffset.FromUnixTimeMilliseconds(arr[i]).DateTime.Date;
             }
-            else if (fieldType == typeof(string))
+            else if (fieldType == typeof(ReadOnlyMemory<char>))
             {
-                var arr = new string[rowCount];
-                groupReader.ReadAsync(field, arr).GetAwaiter().GetResult();
+                var arr = new ReadOnlyMemory<char>[rowCount];
+                var def = new int[rowCount];
+                groupReader.ReadRawAsync<ReadOnlyMemory<char>>(field, arr, def, null, default).GetAwaiter().GetResult();
                 for (int i = 0; i < rowCount; i++)
                 {
-                    if (!string.IsNullOrEmpty(arr[i]) && DateTime.TryParse(arr[i], CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                    if (def[i] > 0 && !arr[i].IsEmpty && DateTime.TryParse(arr[i].Span, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
                         dates[i] = dt.Date;
                 }
             }

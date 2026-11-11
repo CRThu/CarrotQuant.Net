@@ -13,7 +13,8 @@ graph TD
         CsvMarketSeriesSource[CsvMarketSeriesSource]
         ParquetMarketSeriesSource[ParquetMarketSeriesSource]
         SimpleFieldRegistry[SimpleFieldRegistry]
-        BufferedDataProvider[BufferedDataProvider]
+        CachedDataProvider[CachedDataProvider]
+        TimeseriesChunkManager[TimeseriesChunkManager&lt;T&gt;]
         DataProviderFactory[DataProviderFactory]
         IDataProvider[IDataProvider]
         EventProvider[EventProvider&lt;T&gt;]
@@ -24,11 +25,12 @@ graph TD
 
         StorageResolver --> CsvMarketSeriesSource
         StorageResolver --> ParquetMarketSeriesSource
-        CsvMarketSeriesSource --> BufferedDataProvider
-        ParquetMarketSeriesSource --> BufferedDataProvider
-        SimpleFieldRegistry --> BufferedDataProvider
-        BufferedDataProvider --> IDataProvider
-        DataProviderFactory --> BufferedDataProvider
+        CsvMarketSeriesSource --> CachedDataProvider
+        ParquetMarketSeriesSource --> CachedDataProvider
+        SimpleFieldRegistry --> CachedDataProvider
+        CachedDataProvider --> TimeseriesChunkManager
+        CachedDataProvider --> IDataProvider
+        DataProviderFactory --> CachedDataProvider
         StorageResolver --> EventProviderBuilder
         EventProviderBuilder --> EventProvider
         EventProvider --> IEventProvider
@@ -67,7 +69,7 @@ graph TD
 
 | 分层 | 核心职责 | 核心组件 / 契约 |
 | :--- | :--- | :--- |
-| **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvMarketSeriesSource`, `ParquetMarketSeriesSource`, `BufferedDataProvider`, `IDataProvider`, `IEventProvider<T>`, `IEventRegistry` |
+| **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvMarketSeriesSource`, `ParquetMarketSeriesSource`, `CachedDataProvider`, `TimeseriesChunkManager<T>`, `IDataProvider`, `IEventProvider<T>`, `IEventRegistry` |
 | **Engine Layer (引擎层)** | 回测撮合与实盘路由、账户资产管理、上下文注入 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `IExchangeGateway`, `IMatchingEngine`, `IBroker`, `IMonitor` |
 | **Strategy Layer (策略层)** | 宏观决策、信号生成、组合管理与交易执行 | `IStrategy`, `IStrategyPipeline`, `IMarketStrategy`, `ISignalStrategy`, `IPortfolioStrategy` |
 
@@ -176,7 +178,7 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
 - **纵向批量加载流程**:
   1. `StorageResolver.ResolvePhysicalFiles()` 按表与日期区间返回物理文件列表。
   2. `CsvMarketSeriesSource` / `ParquetMarketSeriesSource` 构造时扫描文件建立代码与全局交易日并集，并向 `SimpleFieldRegistry` 注册 schema 字段。
-  3. `BufferedDataProvider.GetBuffer<T>()` 优先检查 `TimeseriesCacheStore`（支持 LZ4 原生块压缩与 4096 行分块），命中时直接流式反序列化注入非托管连续内存返回 `ChunkBuffer2D<T>`；未命中或不兼容时从源数据加载并持久化至 `.cache/{tableId}/{fieldName}/`。
+  3. `CachedDataProvider.GetBuffer<T>()` 调度 `TimeseriesChunkManager<T>`，优先检查 `ITimeseriesCacheStore`（支持 LZ4 原生块压缩与 4096 行分块），命中时直接流式反序列化注入非托管连续内存返回 `ChunkBuffer2D<T>`；未命中或不兼容时从源数据加载并持久化至 `.cache/{tableId}/{fieldName}/`。实盘单行追加由 `TimeseriesChunkManager.AppendRow` 驱动，达到 4096 行时自动执行跨页轮转（Rollover），并通过 `Commit()` 精准增量落盘活跃分块，历史分块零写放大。单标的回测（$N=1$）可通过 `provider.GetSeries<T>()` 一键获取全周期只读一维列视图。
 - **ReadSymbolSeries 核心机制**:
   - 方法契约：`ReadSymbolSeries(symbol, fieldName, startIndex, length, destination)`
   - CSV：定位 `{symbol}.csv` 逐行流式解析，按日期二分查找写入 `destination`，通过 `ValueConverter<T>` 零装箱转换。

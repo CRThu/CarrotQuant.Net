@@ -80,12 +80,12 @@ namespace CarrotBacktesting.NET.Data
                         {
                             using var groupReader = reader.OpenRowGroupReader(i);
                             var symCol = ReadColumnFromGroup(groupReader, symField);
-                            if (symCol is string[] strArr)
+                            if (symCol is ReadOnlyMemory<char>[] romArr)
                             {
-                                foreach (var s in strArr)
+                                foreach (var m in romArr)
                                 {
-                                    if (!string.IsNullOrEmpty(s))
-                                        symbolSet.Add(s);
+                                    if (!m.IsEmpty)
+                                        symbolSet.Add(m.ToString());
                                 }
                             }
                         }
@@ -238,9 +238,15 @@ namespace CarrotBacktesting.NET.Data
 
             Array buffer = Array.CreateInstance(readType, rowCount);
 
-            if (readType == typeof(string))
+            if (readType == typeof(ReadOnlyMemory<char>))
             {
-                groupReader.ReadAsync(dataField, (string[])buffer).GetAwaiter().GetResult();
+                int[] defLevels = new int[rowCount];
+                var memBuf = (ReadOnlyMemory<char>[])buffer;
+                groupReader.ReadRawAsync<ReadOnlyMemory<char>>(dataField, memBuf, defLevels, null, default).GetAwaiter().GetResult();
+                for (int i = 0; i < rowCount; i++)
+                {
+                    if (defLevels[i] == 0) memBuf[i] = ReadOnlyMemory<char>.Empty;
+                }
             }
             else
             {
@@ -291,11 +297,11 @@ namespace CarrotBacktesting.NET.Data
                     dates.Add(dt.Date);
                 }
             }
-            else if (columnData is string[] strArr)
+            else if (columnData is ReadOnlyMemory<char>[] romArr)
             {
-                foreach (var s in strArr)
+                foreach (var rom in romArr)
                 {
-                    if (DateTime.TryParse(s, out var dt))
+                    if (DateTime.TryParse(rom.Span, out var dt))
                     {
                         dates.Add(dt.Date);
                     }
@@ -425,7 +431,13 @@ namespace CarrotBacktesting.NET.Data
                 {
                     using var groupReader = _parquetReader.OpenRowGroupReader(i);
                     var symData = ReadColumnFromGroup(groupReader, symField);
-                    if (symData is string[] sArr) symList.AddRange(sArr);
+                    if (symData is ReadOnlyMemory<char>[] romArr)
+                    {
+                        foreach (var m in romArr)
+                        {
+                            symList.Add(m.ToString());
+                        }
+                    }
 
                     var dtData = ReadColumnFromGroup(groupReader, dtField);
                     dateList.AddRange(ConvertToDateTimes(dtData));

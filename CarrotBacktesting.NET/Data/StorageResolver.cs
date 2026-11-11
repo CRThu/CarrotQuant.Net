@@ -272,6 +272,10 @@ namespace CarrotBacktesting.NET.Data
                         fieldNames.Add(field.Name);
                         Type rawType = field.ClrType;
                         Type effectiveType = Nullable.GetUnderlyingType(rawType) ?? rawType;
+                        if (effectiveType == typeof(ReadOnlyMemory<char>))
+                        {
+                            effectiveType = typeof(string);
+                        }
                         fieldTypes[field.Name] = effectiveType;
                     }
                 }

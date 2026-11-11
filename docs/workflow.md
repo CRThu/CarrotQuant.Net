@@ -151,7 +151,7 @@ var resolver = new StorageResolver(config.Data.Root);
 // 3. 构造数据供给器 (IDataProvider)
 var fieldRegistry = new SimpleFieldRegistry();
 var seriesSource = new ParquetMarketSeriesSource(resolver, "ashare.kline.1d.raw.baostock", fieldRegistry);
-var dataProvider = new BufferedDataProvider(seriesSource, fieldRegistry, seriesSource, config.Data.Root);
+var dataProvider = new CachedDataProvider(seriesSource, fieldRegistry, seriesSource, config.Data.Root);
 
 // 4. 挂载事件流
 var eventRegistry = new EventRegistry();
