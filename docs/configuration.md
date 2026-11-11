@@ -67,7 +67,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
-| `name` | `Name` | `string` | 是 | - | 事件流在引擎上下文事件注册表 (`IEventRegistry`) 中的别名，策略通过 `context.Events.GetProvider<T>(name)` 依据此名称获取。 |
+| `name` | `Name` | `string` | 是 | - | 事件流在引擎上下文事件注册表 (`IEventRegistry`) 中的别名，策略通过 `context.Events.GetTable<T>(name)` 依据此名称获取。 |
 | `table_id` | `TableId` | `string` | 是 | - | 事件流物理存储表的唯一标识符（如 `"ashare.adj_factor.baostock"`）。 |
 
 ---

@@ -7,7 +7,7 @@ using CarrotBacktesting.NET.Data.Views;
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// 时序二维矩阵（<see cref="IReadOnlyMatrix2D{T}"/>）与数据供给器（<see cref="IDataProvider"/>）的实用扩展方法。
+    /// 时序二维矩阵（<see cref="IReadOnlyMatrix2D{T}"/>）与市场数据集（<see cref="ITimeseriesRegistry"/>）的实用扩展方法。
     /// 为单标的回测（CTA、期货、加密货币、单股策略）及标的时序分析提供轻量、零拷贝的一维时序序列语义。
     /// </summary>
     public static class MatrixExtensions
@@ -64,27 +64,27 @@ namespace CarrotBacktesting.NET.Data
         /// 获取指定字段在单标的场景（第 0 列标的）下的全生命周期一维时序序列视图。
         /// </summary>
         /// <typeparam name="T">非托管数值类型</typeparam>
-        /// <param name="provider">数据供给器实例</param>
+        /// <param name="dataset">市场数据集实例</param>
         /// <param name="fieldName">字段名称（如 "close", "volume"）</param>
         /// <param name="symbolIndex">标的列索引，默认为 0</param>
         /// <returns>标的的全周期连续只读一维列视图</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ReadOnlyColumnView<T> GetSeries<T>(this IDataProvider provider, string fieldName, int symbolIndex = 0) where T : unmanaged
+        public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry registry, string fieldName, int symbolIndex = 0) where T : unmanaged
         {
-            return provider.GetMatrix<T>(fieldName).GetSeries(symbolIndex);
+            return registry.GetMatrix<T>(fieldName).GetSeries(symbolIndex);
         }
 
         /// <summary>
         /// 根据标的代码获取指定字段的全生命周期一维时序序列视图。
         /// </summary>
         /// <typeparam name="T">非托管数值类型</typeparam>
-        /// <param name="provider">数据供给器实例</param>
+        /// <param name="dataset">市场数据集实例</param>
         /// <param name="fieldName">字段名称（如 "close", "volume"）</param>
         /// <param name="symbol">标的代码</param>
         /// <returns>标的的全周期连续只读一维列视图</returns>
-        public static ReadOnlyColumnView<T> GetSeries<T>(this IDataProvider provider, string fieldName, string symbol) where T : unmanaged
+        public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry registry, string fieldName, string symbol) where T : unmanaged
         {
-            return provider.GetMatrix<T>(fieldName).GetSeries(symbol, provider.Metadata);
+            return registry.GetMatrix<T>(fieldName).GetSeries(symbol, registry.Metadata);
         }
     }
 }

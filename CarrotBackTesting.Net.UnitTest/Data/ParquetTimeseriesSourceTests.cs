@@ -10,11 +10,11 @@ using Parquet.Data;
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
     /// <summary>
-    /// 针对 ParquetMarketSeriesSource 的单元测试。
+    /// 针对 ParquetTimeseriesSource 的单元测试。
     /// 物理提取 Parquet 行与数据进行对照校验，以确保加载出来的日期及价格与底层物理数据完全对齐。
     /// </summary>
     [TestClass]
-    public class ParquetMarketSeriesSourceTests
+    public class ParquetTimeseriesSourceTests
     {
         private static string GetTestDataRoot()
         {
@@ -22,7 +22,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestParquetMarketSeriesSourceReadAndPhysicalVerification()
+        public void TestParquetTimeseriesSourceReadAndPhysicalVerification()
         {
             string testDataRoot = GetTestDataRoot();
             string parquetRoot = Path.Combine(testDataRoot, "parquet");
@@ -84,9 +84,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             Assert.IsTrue(physicalData.Count > 0, "Physical Parquet data should contain rows.");
 
-            // 2. 使用 ParquetMarketSeriesSource 加载序列
+            // 2. 使用 ParquetTimeseriesSource 加载序列
             var registry = new SimpleFieldRegistry();
-            using var source = new ParquetMarketSeriesSource(parquetRoot, registry, tableId);
+            using var source = new ParquetTimeseriesSource(parquetRoot, registry, tableId);
             
             // 测试元数据接口
             int symbolIdx = source.GetSymbolIndex(testSymbol);
@@ -112,14 +112,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestParquetMarketSeriesSourceMultiLevelMonthPartition()
+        public void TestParquetTimeseriesSourceMultiLevelMonthPartition()
         {
             string testDataRoot = GetTestDataRoot();
             string parquetRoot = Path.Combine(testDataRoot, "parquet");
             string tableId = "ashare.kline.1m.raw.custom";
 
             var registry = new SimpleFieldRegistry();
-            using var source = new ParquetMarketSeriesSource(parquetRoot, registry, tableId);
+            using var source = new ParquetTimeseriesSource(parquetRoot, registry, tableId);
 
             Assert.IsTrue(source.Symbols.Count > 0, "Symbols should not be empty.");
             Assert.IsTrue(source.TradeDates.Count > 0, "TradeDates should not be empty.");

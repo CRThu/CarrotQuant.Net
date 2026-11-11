@@ -6,46 +6,48 @@ namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
     /// 事件注册表实现。
-    /// 管理所有已加载的事件流，支持按 streamName 检索。
+    /// 管理所有已加载的事件表，支持按 streamName 检索。
     /// </summary>
     public class EventRegistry : IEventRegistry
     {
-        private readonly Dictionary<string, object> _providers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, object> _tables = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// 注册一个事件提供器。
+        /// 注册一个强类型事件表。
         /// </summary>
-        /// <typeparam name="T">事件数据类型。</typeparam>
+        /// <typeparam name="T">事件数据实体类型。</typeparam>
         /// <param name="streamName">数据流名称（如 "adjustments"）。</param>
-        /// <param name="provider">事件提供器实例。</param>
-        public void Register<T>(string streamName, IEventProvider<T> provider) where T : class
+        /// <param name="table">事件表实例。</param>
+        public void Register<T>(string streamName, IEventTable<T> table) where T : class
         {
             if (string.IsNullOrWhiteSpace(streamName))
                 throw new ArgumentException("Stream name cannot be null or empty.", nameof(streamName));
-            if (provider == null)
-                throw new ArgumentNullException(nameof(provider));
+            if (table == null)
+                throw new ArgumentNullException(nameof(table));
 
-            _providers[streamName] = provider;
+            _tables[streamName] = table;
         }
 
-        public IEventProvider<T> GetProvider<T>(string streamName) where T : class
+        /// <inheritdoc />
+        public IEventTable<T> GetTable<T>(string streamName) where T : class
         {
-            if (_providers.TryGetValue(streamName, out var provider))
+            if (_tables.TryGetValue(streamName, out var table))
             {
-                if (provider is IEventProvider<T> typed)
+                if (table is IEventTable<T> typed)
                     return typed;
 
                 throw new InvalidCastException(
-                    $"Event stream '{streamName}' is registered as {provider.GetType().Name}, " +
-                    $"not IEventProvider<{typeof(T).Name}>.");
+                    $"Event stream '{streamName}' is registered as {table.GetType().Name}, " +
+                    $"not IEventTable<{typeof(T).Name}>.");
             }
 
-            throw new KeyNotFoundException($"Event stream '{streamName}' not found. Available: [{string.Join(", ", _providers.Keys)}]");
+            throw new KeyNotFoundException($"Event stream '{streamName}' not found. Available: [{string.Join(", ", _tables.Keys)}]");
         }
 
+        /// <inheritdoc />
         public bool HasStream(string streamName)
         {
-            return _providers.ContainsKey(streamName);
+            return _tables.ContainsKey(streamName);
         }
     }
 }

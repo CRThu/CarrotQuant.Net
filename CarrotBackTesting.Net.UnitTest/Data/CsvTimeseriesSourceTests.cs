@@ -8,11 +8,11 @@ using Sylvan.Data.Csv;
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
     /// <summary>
-    /// 针对 CsvMarketSeriesSource 的单元测试。
+    /// 针对 CsvTimeseriesSource 的单元测试。
     /// 物理提取 CSV 行与数据进行对照校验，以确保加载出来的日期及价格与底层物理数据完全对齐。
     /// </summary>
     [TestClass]
-    public class CsvMarketSeriesSourceTests
+    public class CsvTimeseriesSourceTests
     {
         private static string GetTestDataRoot()
         {
@@ -20,7 +20,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCsvMarketSeriesSourceReadAndPhysicalVerification()
+        public void TestCsvTimeseriesSourceReadAndPhysicalVerification()
         {
             string testDataRoot = GetTestDataRoot();
             string csvRoot = Path.Combine(testDataRoot, "csv");
@@ -67,9 +67,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             Assert.IsTrue(physicalData.Count > 0, "Physical data should contain rows.");
 
-            // 2. 通过 CsvMarketSeriesSource 载入序列
+            // 2. 通过 CsvTimeseriesSource 载入序列
             var registry = new SimpleFieldRegistry();
-            using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
+            using var source = new CsvTimeseriesSource(csvRoot, registry, tableId);
             
             // 测试元数据接口
             int symbolIdx = source.GetSymbolIndex(testSymbol);
@@ -95,7 +95,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCsvMarketSeriesSource_WithQuotedStringNumbers_ShouldParseDouble()
+        public void TestCsvTimeseriesSource_WithQuotedStringNumbers_ShouldParseDouble()
         {
             string tempDir = Path.Combine(Path.GetTempPath(), "CarrotCsvStringTest_" + Guid.NewGuid().ToString("N"));
             try
@@ -109,7 +109,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
 
                 var registry = new SimpleFieldRegistry();
-                using var source = new CsvMarketSeriesSource(tempDir, registry, tableId);
+                using var source = new CsvTimeseriesSource(tempDir, registry, tableId);
 
                 Assert.AreEqual(1, source.Symbols.Count);
                 Assert.AreEqual(1, source.TradeDates.Count);
@@ -128,7 +128,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCsvMarketSeriesSource_TimestampColumn_DescendingDates_AndTypeConversions()
+        public void TestCsvTimeseriesSource_TimestampColumn_DescendingDates_AndTypeConversions()
         {
             string tempDir = Path.Combine(Path.GetTempPath(), "CarrotCsvTsTest_" + Guid.NewGuid().ToString("N"));
             try
@@ -145,7 +145,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
 
                 var registry = new SimpleFieldRegistry();
-                using var source = new CsvMarketSeriesSource(tempDir, registry, tableId);
+                using var source = new CsvTimeseriesSource(tempDir, registry, tableId);
 
                 Assert.AreEqual(1, source.Symbols.Count);
                 Assert.AreEqual(2, source.TradeDates.Count);
@@ -201,7 +201,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCsvMarketSeriesSource_BufferPoolExpansion()
+        public void TestCsvTimeseriesSource_BufferPoolExpansion()
         {
             string tempDir = Path.Combine(Path.GetTempPath(), "CarrotCsvPoolTest_" + Guid.NewGuid().ToString("N"));
             try
@@ -221,7 +221,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 sw.Close();
 
                 var registry = new SimpleFieldRegistry();
-                using var source = new CsvMarketSeriesSource(tempDir, registry, tableId);
+                using var source = new CsvTimeseriesSource(tempDir, registry, tableId);
 
                 // 请求只取 5 天，但底层文件扫描时读入 35 行触发扩容
                 double[] dest = new double[5];

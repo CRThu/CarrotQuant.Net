@@ -14,7 +14,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
     public record AdjustmentFactor(double BackAdjFactor);
 
     [TestClass]
-    public class EventProviderTests
+    public class EventTableTests
     {
         private static string GetTestDataRoot()
         {
@@ -24,12 +24,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         #region 1. CSV 加载测试
 
         [TestMethod]
-        public void CsvEventProvider_ShouldLoadAndLookup()
+        public void CsvEventTable_ShouldLoadAndLookup()
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
             var resolver = new StorageResolver(csvRoot);
 
-            var provider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+            var provider = EventSourceFactory.Create<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
 
             // 验证: sh.600000 在 2021-07-21 有复权因子 10.832619
             bool found = provider.TryGet(new DateTime(2021, 7, 21), "sh.600000", out var value);
@@ -39,24 +39,24 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void CsvEventProvider_ShouldReturnFalseForMissingDate()
+        public void CsvEventTable_ShouldReturnFalseForMissingDate()
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
             var resolver = new StorageResolver(csvRoot);
 
-            var provider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+            var provider = EventSourceFactory.Create<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
 
             bool found = provider.TryGet(new DateTime(2021, 1, 1), "sh.600000", out _);
             Assert.IsFalse(found, "Should not find adj_factor on non-event date.");
         }
 
         [TestMethod]
-        public void CsvEventProvider_DailySnapshot_ShouldReturnAllSymbols()
+        public void CsvEventTable_DailySnapshot_ShouldReturnAllSymbols()
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
             var resolver = new StorageResolver(csvRoot);
 
-            var provider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+            var provider = EventSourceFactory.Create<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
 
             // 2021-07-21 只有 sh.600000 一条记录
             bool found = provider.TryGetDaily(new DateTime(2021, 7, 21), out var snapshot);
@@ -67,12 +67,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void CsvEventProvider_MultipleYears_ShouldMerge()
+        public void CsvEventTable_MultipleYears_ShouldMerge()
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
             var resolver = new StorageResolver(csvRoot);
 
-            var provider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+            var provider = EventSourceFactory.Create<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
 
             // 2021 和其他年份的数据都应该被加载
             bool found2021 = provider.TryGet(new DateTime(2021, 5, 28), "sh.600008", out var val2021);
@@ -85,12 +85,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         #region 2. Parquet 加载测试
 
         [TestMethod]
-        public void ParquetEventProvider_ShouldLoadAndLookup()
+        public void ParquetEventTable_ShouldLoadAndLookup()
         {
             string parquetRoot = Path.Combine(GetTestDataRoot(), "parquet");
             var resolver = new StorageResolver(parquetRoot);
 
-            var provider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+            var provider = EventSourceFactory.Create<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
 
             bool found = provider.TryGet(new DateTime(2021, 7, 21), "sh.600000", out var value);
             Assert.IsTrue(found, "Should find adj_factor for sh.600000 on 2021-07-21.");
@@ -99,12 +99,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void ParquetEventProvider_DailySnapshot_ShouldReturnAllSymbols()
+        public void ParquetEventTable_DailySnapshot_ShouldReturnAllSymbols()
         {
             string parquetRoot = Path.Combine(GetTestDataRoot(), "parquet");
             var resolver = new StorageResolver(parquetRoot);
 
-            var provider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+            var provider = EventSourceFactory.Create<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
 
             bool found = provider.TryGetDaily(new DateTime(2021, 7, 21), out var snapshot);
             Assert.IsTrue(found);
@@ -125,8 +125,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var csvResolver = new StorageResolver(csvRoot);
             var parquetResolver = new StorageResolver(parquetRoot);
 
-            var csvProvider = EventProviderBuilder.Build<AdjustmentFactor>(csvResolver, "ashare.adj_factor.baostock");
-            var parquetProvider = EventProviderBuilder.Build<AdjustmentFactor>(parquetResolver, "ashare.adj_factor.baostock");
+            var csvProvider = EventSourceFactory.Create<AdjustmentFactor>(csvResolver, "ashare.adj_factor.baostock");
+            var parquetProvider = EventSourceFactory.Create<AdjustmentFactor>(parquetResolver, "ashare.adj_factor.baostock");
 
             // 逐条对比
             var testDates = new[]
@@ -159,34 +159,34 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void RegisterAndRetrieve_ShouldWork()
         {
             var registry = new EventRegistry();
-            var provider = new EventProvider<AdjustmentFactor>(
+            var provider = new EventTable<AdjustmentFactor>(
                 new Dictionary<DateTime, Dictionary<string, AdjustmentFactor>>());
 
             registry.Register("adjustments", provider);
 
             Assert.IsTrue(registry.HasStream("adjustments"));
-            var retrieved = registry.GetProvider<AdjustmentFactor>("adjustments");
+            var retrieved = registry.GetTable<AdjustmentFactor>("adjustments");
             Assert.AreSame(provider, retrieved);
         }
 
         [TestMethod]
         [ExpectedException(typeof(KeyNotFoundException))]
-        public void GetProvider_NonExistent_ShouldThrow()
+        public void GetTable_NonExistent_ShouldThrow()
         {
             var registry = new EventRegistry();
-            registry.GetProvider<AdjustmentFactor>("non_existent");
+            registry.GetTable<AdjustmentFactor>("non_existent");
         }
 
         [TestMethod]
         [ExpectedException(typeof(InvalidCastException))]
-        public void GetProvider_WrongType_ShouldThrow()
+        public void GetTable_WrongType_ShouldThrow()
         {
             var registry = new EventRegistry();
-            var provider = new EventProvider<AdjustmentFactor>(
+            var provider = new EventTable<AdjustmentFactor>(
                 new Dictionary<DateTime, Dictionary<string, AdjustmentFactor>>());
 
             registry.Register("adjustments", provider);
-            registry.GetProvider<string>("adjustments");
+            registry.GetTable<string>("adjustments");
         }
 
         [TestMethod]
@@ -195,7 +195,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new EventRegistry();
             Assert.IsFalse(registry.HasStream("adjustments"));
 
-            var provider = new EventProvider<AdjustmentFactor>(
+            var provider = new EventTable<AdjustmentFactor>(
                 new Dictionary<DateTime, Dictionary<string, AdjustmentFactor>>());
             registry.Register("adjustments", provider);
 

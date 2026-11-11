@@ -14,17 +14,22 @@ public interface IEngineContext
     DateTime CurrentTime { get; }
 
     /// <summary>
-    /// 获取当前循环的索引位置（对应 <see cref="IDataProvider"/> 的行索引）。
+    /// 获取当前循环的索引位置（对应 <see cref="ITimeseriesRegistry"/> 的行索引）。
     /// </summary>
     int CurrentIndex { get; }
 
     /// <summary>
-    /// 获取全局数据提供器，允许策略查询实时或历史行情数据。
+    /// 获取全局时序注册表，提供稠密时序矩阵与市场维度坐标。
     /// </summary>
-    IDataProvider Data { get; }
+    ITimeseriesRegistry Timeseries { get; }
 
     /// <summary>
-    /// 获取事件注册表，用于访问外部 KV 数据流（如复权因子、公告等）。
+    /// 便捷时序访问入口（等价于 <see cref="Timeseries"/>）。
+    /// </summary>
+    ITimeseriesRegistry Data => Timeseries;
+
+    /// <summary>
+    /// 获取事件注册表，用于访问外部异构事件流表（如复权因子、公告、龙虎榜等）。
     /// </summary>
     IEventRegistry Events { get; }
 
@@ -39,7 +44,7 @@ public interface IEngineContext
     IMarketState Market { get; }
 
     /// <summary>
-    /// 允许策略查询引擎内其他已注册的组件或插件
+    /// 允许策略查询引擎内其他已注册的组件或插件。
     /// </summary>
     T? GetExtension<T>() where T : class;
 }

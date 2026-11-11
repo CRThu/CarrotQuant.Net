@@ -100,7 +100,7 @@ public class DoubleMaStrategy : IStrategy
 
         // 2. 获取行情矩阵与事件流
         IReadOnlyMatrix2D<double> closeMatrix = context.Data.GetMatrix<double>("close");
-        IEventProvider<AdjustmentFactor> adjProvider = context.Events.GetProvider<AdjustmentFactor>("adjustments");
+        IEventTable<AdjustmentFactor> adjTable = context.Events.GetTable<AdjustmentFactor>("adjustments");
 
         int currentRow = context.CurrentIndex;
         if (currentRow < 20) return; // 历史数据不足
@@ -159,15 +159,15 @@ EngineConfig config = EngineConfigLoader.Load("configs/strategy_ma.yaml");
 // 2. 初始化物理存储调度器
 var resolver = new StorageResolver(config.Data.Root);
 
-// 3. 构造数据供给器 (IDataProvider)
+// 3. 构造数据供给器 (ITimeseriesRegistry)
 var fieldRegistry = new SimpleFieldRegistry();
-var seriesSource = new ParquetMarketSeriesSource(resolver, "ashare.kline.1d.raw.baostock", fieldRegistry);
-var dataProvider = new CachedDataProvider(seriesSource, fieldRegistry, config.Data.Root);
+var seriesSource = new ParquetTimeseriesSource(resolver, "ashare.kline.1d.raw.baostock", fieldRegistry);
+var timeseriesRegistry = new TimeseriesRegistry(seriesSource, fieldRegistry, config.Data.Root);
 
 // 4. 挂载事件流
 var eventRegistry = new EventRegistry();
-var adjProvider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
-eventRegistry.Register("adjustments", adjProvider);
+var adjTable = EventSourceFactory.Create<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+eventRegistry.Register("adjustments", adjTable);
 
 // 5. 编排策略管线并运行引擎
 var strategy = new DoubleMaStrategy();

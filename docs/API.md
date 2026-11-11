@@ -10,7 +10,7 @@
 ## 目录
 - [一、配置层 (CarrotBacktesting.NET.Config)](#一配置层-carrotbacktestingnetconfig)
 - [二、存储调度与数据物理层 (Abstraction.Data & Data)](#二存储调度与数据物理层-abstractiondata--data)
-- [三、内存数据供给层 (IDataProvider & ChunkMatrix2D)](#三内存数据供给层-idataprovider--chunkmatrix2d)
+- [三、内存数据供给层 (ITimeseriesRegistry & ChunkMatrix2D)](#三内存数据供给层-idataprovider--chunkmatrix2d)
 - [四、异构事件流系统 (Event Stream System)](#四异构事件流系统-event-stream-system)
 - [五、引擎与黑板上下文 (Engine & Execution Context)](#五引擎与黑板上下文-engine--execution-context)
 - [六、策略与管线开发 (Strategy & Pipeline)](#六策略与管线开发-strategy--pipeline)
@@ -166,30 +166,35 @@ public interface IMarketMetadata
 ```
 
 ### 3. 数据抽取源契约
-- **`IMarketSeriesSource`**: 纵向代码序列读取器。
+- **`ITimeseriesSource`**: 纵向代码序列读取器契约。
   ```csharp
   void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged;
   ```
-  - `CsvMarketSeriesSource`: 基于 CSV 文件提供跨时间序列的高性能提取。
-  - `ParquetMarketSeriesSource`: 基于 Parquet 列式存储提供跨时间序列的高性能提取。
-- **`IMarketSnapshotSource`**: 横向全市场快照读取器。
+- **`TimeseriesSourceBase`**: 抽象基类（模板方法模式），收敛参数边界检查、ArrayPool 内存池租借与自适应翻倍扩容、时间戳排序、以及 `MarketDataAligner.AlignAndFill` 全局交易日历投射与 NaN 哨兵填充管线。
+  - `CsvTimeseriesSource`: 继承基类，基于 Sylvan.Data.Csv 流式解析提供高性能无装箱行提取。
+  - `ParquetTimeseriesSource`: 继承基类，基于 Parquet 列式存储与 YearCache 列缓存提供极速列切片提取。
+- **`TimeseriesSourceFactory`**: 时序数据源工厂类，依据 `IStorageResolver.GetFormat(tableId)` 自动派发构建对应数据源：
   ```csharp
-  bool MoveNext();
-  DateTime CurrentDate { get; }
-  void ReadFieldSnapshot<T>(string fieldName, Span<T> destination) where T : unmanaged;
+  ITimeseriesSource source = TimeseriesSourceFactory.Create(storageRoot, fieldRegistry, tableId);
   ```
+
+> [!NOTE]
+> **快照与时序的统一供给**：CarrotQuant.NET v4 废除了独立的流式 `IMarketSnapshotSource` 接口，全市场行情统一由 `IReadOnlyMatrix2D<T>`（`ChunkMatrix2D<T>`）提供：横向全市场快照直接通过行切片 `GetRowView(dateIndex)` 消费，纵向个股时序通过列切片 `GetColumnView(symbolIndex)` 消费。
 
 ---
 
-## 三、内存数据供给层 (IDataProvider & ChunkMatrix2D)
+## 三、内存数据供给层 (ITimeseriesRegistry & ChunkMatrix2D)
 
-### 1. IDataProvider
-数据层向引擎与策略提供只读数据访问契约，统一返回非托管时序矩阵的只读视图。
+### 1. ITimeseriesRegistry & ITimeseriesWriter (CQRS 读写分离)
+数据层向引擎与策略提供只读数据访问契约（`ITimeseriesRegistry`），向实盘数据录入与持久化提供写入契约（`ITimeseriesWriter`）。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
-public interface IDataProvider
+/// <summary>
+/// 纯只读数据契约（面向策略与回测消费）。
+/// </summary>
+public interface ITimeseriesRegistry
 {
     IMarketMetadata Metadata { get; }
     bool HasField(string fieldName);
@@ -198,10 +203,15 @@ public interface IDataProvider
     /// 获取指定字段的全局二维只读时序矩阵（Row=交易日/时间步，Col=股票代码）。
     /// </summary>
     IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
+}
 
-    /// <summary>
-    /// 原子提交所有字段缓存数据，增量落盘持久化至 TimeseriesStore。
-    /// </summary>
+/// <summary>
+/// 写入与持久化提交契约（面向实盘引擎与数据录入）。
+/// </summary>
+public interface ITimeseriesWriter
+{
+    void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
+    void AppendCol(string symbol);
     void Commit();
 }
 ```
@@ -251,7 +261,7 @@ public sealed unsafe class ChunkMatrix2D<T> : IMatrix2D<T>, IReadOnlyMatrix2D<T>
 ```
 
 ### 3. 核心访问模式
-`IDataProvider.GetMatrix<T>` 返回 `IReadOnlyMatrix2D<T>`，支持无 GC 压力的批量截面切片与序列点查：
+`ITimeseriesRegistry.GetMatrix<T>` 返回 `IReadOnlyMatrix2D<T>`，支持无 GC 压力的批量截面切片与序列点查：
 
 ```csharp
 // 1. 获取收盘价时序矩阵（全市场二维宽表）
@@ -275,13 +285,13 @@ ReadOnlyColumnView<double> singleStockSeries = provider.GetSeries<double>("close
 ReadOnlyColumnView<double> btcSeries = provider.GetSeries<double>("close", "BTCUSDT");
 ```
 
-### 4. ITimeseriesStore 与 TimeseriesStore
+### 4. ITimeseriesCache 与 TimeseriesCache
 基于 4096 行分块与原生 LZ4 块压缩的时序二进制持久化存储器抽象与实现。支持分块独立自描述宽度（Variable Width per Bin），在内存载入时根据目标宽度自动拓展列并填充 NaN，仅重刷当前活跃分块，彻底消除历史分块的写放大与无意义存储膨胀。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
 
-public interface ITimeseriesStore
+public interface ITimeseriesCache
 {
     string TableId { get; }
     int PageSize { get; }
@@ -298,22 +308,22 @@ public interface ITimeseriesStore
     void ClearTable();
 }
 
-public class TimeseriesStore : ITimeseriesStore
+public class TimeseriesCache : ITimeseriesCache
 {
-    public TimeseriesStore(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4");
-    // (实现 ITimeseriesStore 契约)
+    public TimeseriesCache(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4");
+    // (实现 ITimeseriesCache 契约)
 }
 ```
 
-### 5. TimeseriesChunkManager<T> 与 CachedDataProvider
+### 5. TimeseriesCacheManager<T> 与 TimeseriesRegistry
 时序连续分块状态机与高性能供给门面：
-- **TimeseriesChunkManager<T>**: 单表单字段连续多分块调度器，管理非托管内存矩阵与磁盘分块持久化存储间的分块挂载、实盘单行追加与跨页分块轮转（Rollover，每 4096 行开辟新块），以及精准增量提交（`Commit`，仅落盘活跃分块，历史分块零写放大）。
-- **CachedDataProvider**: 满足 `IDataProvider` 契约的高性能数据门面。遵循单一职责原则，底层存储与分块工厂完全外包隔离，对内纯粹持有并协调各字段的 `TimeseriesChunkManager`，对外提供只读二维时序矩阵（`GetMatrix<T>`）、分块调度器检索（`GetChunkManager<T>`）与原子落盘（`Commit`）。
+- **TimeseriesCacheManager<T>**: 单表单字段连续多分块调度器，管理非托管内存矩阵与磁盘分块持久化存储间的分块挂载、实盘单行追加与跨页分块轮转（Rollover，每 4096 行开辟新块），以及精准增量提交（`Commit`，仅落盘活跃分块，历史分块零写放大）。
+- **TimeseriesRegistry**: 满足 `ITimeseriesRegistry` 契约的高性能数据门面。遵循单一职责原则，底层存储与分块工厂完全外包隔离，对内纯粹持有并协调各字段的 `TimeseriesCacheManager`，对外提供只读二维时序矩阵（`GetMatrix<T>`）、分块调度器检索（`GetCacheManager<T>`）与原子落盘（`Commit`）。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
 
-public sealed class TimeseriesChunkManager<T> : ITimeseriesChunkManager where T : unmanaged
+public sealed class TimeseriesCacheManager<T> : ITimeseriesCacheManager where T : unmanaged
 {
     public string FieldName { get; }
     public Type DataType { get; }
@@ -337,12 +347,12 @@ public sealed class TimeseriesChunkManager<T> : ITimeseriesChunkManager where T 
     public void Dispose();
 }
 
-public class CachedDataProvider : IDataProvider, IDisposable
+public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesWriter, IDisposable
 {
     public IMarketMetadata Metadata { get; }
     public bool HasField(string fieldName);
     public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
-    public TimeseriesChunkManager<T> GetChunkManager<T>(string fieldName) where T : unmanaged;
+    public TimeseriesCacheManager<T> GetCacheManager<T>(string fieldName) where T : unmanaged;
     public void StepTo(int currentLogicalRow);
     public void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
     public void AppendCol(string symbol);
@@ -384,8 +394,8 @@ public static class MatrixExtensions
     public static bool IsNaN<T>(this IReadOnlyMatrix2D<T> matrix, int row, int col) where T : unmanaged;
     public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, int symbolIndex = 0) where T : unmanaged;
     public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, string symbol, IMarketMetadata metadata) where T : unmanaged;
-    public static ReadOnlyColumnView<T> GetSeries<T>(this IDataProvider provider, string fieldName, int symbolIndex = 0) where T : unmanaged;
-    public static ReadOnlyColumnView<T> GetSeries<T>(this IDataProvider provider, string fieldName, string symbol) where T : unmanaged;
+    public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry provider, string fieldName, int symbolIndex = 0) where T : unmanaged;
+    public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry provider, string fieldName, string symbol) where T : unmanaged;
 }
 ```
 
@@ -395,11 +405,11 @@ public static class MatrixExtensions
 
 针对非对齐、稀疏或结构不规则数据（如复权因子、公告、龙虎榜席位），通过强类型事件流进行点查。
 
-### 1. IEventProvider<T>
+### 1. IEventTable<T>
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
-public interface IEventProvider<T> where T : class
+public interface IEventTable<T> where T : class
 {
     /// <summary>
     /// 依据交易日与股票代码进行 O(1) 索引查询。
@@ -413,15 +423,15 @@ public interface IEventProvider<T> where T : class
 }
 ```
 
-### 2. EventProviderBuilder (自动反射映射工厂)
+### 2. EventSourceFactory (自动反射映射工厂)
 框架通过读取表元数据自动识别 schema，并利用反射将数据字段映射到 record 构造函数，无需手动编写文件解析器。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
 
-public static class EventProviderBuilder
+public static class EventSourceFactory
 {
-    public static IEventProvider<T> Build<T>(IStorageResolver resolver, string tableId) where T : class;
+    public static IEventTable<T> Build<T>(IStorageResolver resolver, string tableId) where T : class;
 }
 ```
 
@@ -433,7 +443,7 @@ namespace CarrotBacktesting.NET.Abstraction.Data;
 
 public interface IEventRegistry
 {
-    IEventProvider<T> GetProvider<T>(string streamName) where T : class;
+    IEventTable<T> GetTable<T>(string streamName) where T : class;
     bool HasStream(string streamName);
 }
 ```
@@ -445,13 +455,13 @@ public record AdjustmentFactor(double BackAdjFactor);
 
 // 2. 自动构建并注册事件流
 var resolver = new StorageResolver("D:/QuantData");
-var adjProvider = EventProviderBuilder.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+var adjProvider = EventSourceFactory.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
 
 var registry = new EventRegistry();
 registry.Register("adjustments", adjProvider);
 
 // 3. 消费端查询 (O(1))
-var provider = registry.GetProvider<AdjustmentFactor>("adjustments");
+var provider = registry.GetTable<AdjustmentFactor>("adjustments");
 if (provider.TryGet(new DateTime(2025, 1, 15), "sh.600000", out var factor))
 {
     Console.WriteLine($"复权因子: {factor!.BackAdjFactor}");
@@ -472,7 +482,7 @@ public interface IEngineContext
 {
     DateTime CurrentTime { get; }       // 当前时间步
     int CurrentIndex { get; }           // 当前交易日行索引
-    IDataProvider Data { get; }         // 行情矩阵输入
+    ITimeseriesRegistry Data { get; }         // 行情矩阵输入
     IEventRegistry Events { get; }       // 异构事件流
     IBroker Broker { get; }             // 账户持仓与报单
     IMarketState Market { get; }        // 宏观市场决策黑板

@@ -10,7 +10,7 @@ namespace CarrotBacktesting.NET.Data
     /// 时序连续分块管理器非泛型统一接口。
     /// 供上层 Provider 进行多字段统一调度、落盘与生命周期管理。
     /// </summary>
-    public interface ITimeseriesChunkManager : IDisposable
+    public interface ITimeseriesCacheManager : IDisposable
     {
         /// <summary>
         /// 字段名称。
@@ -75,7 +75,7 @@ namespace CarrotBacktesting.NET.Data
         void AppendCol(string symbol);
 
         /// <summary>
-        /// 将内存中修改或新增的时序分块增量同步落盘至持久化存储 <see cref="ITimeseriesStore"/>。
+        /// 将内存中修改或新增的时序分块增量同步落盘至持久化存储 <see cref="ITimeseriesCache"/>。
         /// 仅刷写活跃分块，历史分块物理零触碰。
         /// </summary>
         void Commit();
@@ -83,16 +83,16 @@ namespace CarrotBacktesting.NET.Data
 
     /// <summary>
     /// 单表单字段时序连续分块（Multi-Chunk）状态机与生命周期调度器。
-    /// 统一管理非托管内存矩阵 <see cref="ChunkMatrix2D{T}"/> 与磁盘物理持久化存储 <see cref="ITimeseriesStore"/> 之间的连续挂载、
+    /// 统一管理非托管内存矩阵 <see cref="ChunkMatrix2D{T}"/> 与磁盘物理持久化存储 <see cref="ITimeseriesCache"/> 之间的连续挂载、
     /// 股票池列拓宽 (NaN填充)、实盘分块轮转 (Rollover) 与精准增量落盘 (Commit)。
     /// </summary>
     /// <typeparam name="T">非托管数值类型。</typeparam>
-    public sealed class TimeseriesChunkManager<T> : ITimeseriesChunkManager where T : unmanaged
+    public sealed class TimeseriesCacheManager<T> : ITimeseriesCacheManager where T : unmanaged
     {
         private readonly string _fieldName;
         private readonly IMarketMetadata _metadata;
-        private readonly IMarketSeriesSource _source;
-        private readonly ITimeseriesStore? _store;
+        private readonly ITimeseriesSource _source;
+        private readonly ITimeseriesCache? _store;
         private readonly int _pageSize;
         private readonly string _refreshMode;
         private readonly int _commitBatchSize;
@@ -188,13 +188,13 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 初始化 <see cref="TimeseriesChunkManager{T}"/> 实例（默认定量 64 行自动提交，默认 4 个常驻分块）。
+        /// 初始化 <see cref="TimeseriesCacheManager{T}"/> 实例（默认定量 64 行自动提交，默认 4 个常驻分块）。
         /// </summary>
-        public TimeseriesChunkManager(
+        public TimeseriesCacheManager(
             string fieldName,
             IMarketMetadata metadata,
-            IMarketSeriesSource source,
-            ITimeseriesStore? store,
+            ITimeseriesSource source,
+            ITimeseriesCache? store,
             int pageSize = 4096,
             string refreshMode = "lazy")
             : this(fieldName, metadata, source, store, pageSize, refreshMode, 64, 4)
@@ -202,13 +202,13 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 初始化 <see cref="TimeseriesChunkManager{T}"/> 实例。
+        /// 初始化 <see cref="TimeseriesCacheManager{T}"/> 实例。
         /// </summary>
-        public TimeseriesChunkManager(
+        public TimeseriesCacheManager(
             string fieldName,
             IMarketMetadata metadata,
-            IMarketSeriesSource source,
-            ITimeseriesStore? store,
+            ITimeseriesSource source,
+            ITimeseriesCache? store,
             int pageSize,
             string refreshMode,
             int commitBatchSize)
@@ -217,13 +217,13 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 初始化 <see cref="TimeseriesChunkManager{T}"/> 实例（包含常驻内存页数、预读与实盘模式配置）。
+        /// 初始化 <see cref="TimeseriesCacheManager{T}"/> 实例（包含常驻内存页数、预读与实盘模式配置）。
         /// </summary>
-        public TimeseriesChunkManager(
+        public TimeseriesCacheManager(
             string fieldName,
             IMarketMetadata metadata,
-            IMarketSeriesSource source,
-            ITimeseriesStore? store,
+            ITimeseriesSource source,
+            ITimeseriesCache? store,
             int pageSize,
             string refreshMode,
             int commitBatchSize,
@@ -346,13 +346,13 @@ namespace CarrotBacktesting.NET.Data
             int width = _metadata.Symbols.Count;
             T[] buffer = new T[rowsInChunk * width];
 
-            // 1. 优先快路径：从 TimeseriesStore 直接读取二进制压缩分块
+            // 1. 优先快路径：从 TimeseriesCache 直接读取二进制压缩分块
             if (_store != null && _store.TryReadChunk<T>(_fieldName, pageIndex, buffer.AsSpan(), out int rowsRead) && rowsRead == rowsInChunk)
             {
                 return buffer;
             }
 
-            // 2. 回退慢路径：从 IMarketSeriesSource 逐股票流式读取
+            // 2. 回退慢路径：从 ITimeseriesSource 逐股票流式读取
             T[] temp = ArrayPool<T>.Shared.Rent(rowsInChunk);
             try
             {

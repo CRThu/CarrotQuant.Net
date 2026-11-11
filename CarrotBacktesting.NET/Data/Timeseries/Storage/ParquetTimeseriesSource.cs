@@ -1,11 +1,9 @@
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using CarrotBacktesting.NET.Abstraction.Data;
 using Parquet;
 using Parquet.Data;
@@ -14,30 +12,17 @@ using Parquet.Schema;
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// Parquet 格式的纵向序列市场数据源实现（实现 IMarketSeriesSource 契约）。
-    /// 所有的物理路径定位与 schema 类型定义均由 IStorageResolver 提供。
-    /// 内部维护一个惰性滑动的月份数据列解压缓存。
+    /// Parquet 格式的纵向序列市场数据源实现（基于 Parquet.Net 列式读取与 YearCache 列缓存）。
+    /// 继承自 <see cref="TimeseriesSourceBase"/>，仅关注底层列式文件的解压与内存块拷贝。
     /// </summary>
-    public class ParquetMarketSeriesSource : IMarketSeriesSource, IDisposable
+    public class ParquetTimeseriesSource : TimeseriesSourceBase
     {
-        private readonly IStorageResolver _resolver;
-        private readonly string _tableId;
-        private readonly DateTime? _startDate;
-        private readonly DateTime? _endDate;
-        private readonly List<DateTime> _tradeDates;
-        private readonly List<string> _symbols;
-
         private readonly Dictionary<string, YearCache> _cachePool = new(StringComparer.OrdinalIgnoreCase);
-        private bool _disposed = false;
-
-        public IReadOnlyList<string> Symbols => _symbols;
-        public IReadOnlyList<string> FieldNames => _resolver.GetFieldNames(_tableId);
-        public IReadOnlyList<DateTime> TradeDates => _tradeDates;
 
         /// <summary>
         /// 便捷构造函数。
         /// </summary>
-        public ParquetMarketSeriesSource(string storageRoot, IFieldRegistry registry, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+        public ParquetTimeseriesSource(string storageRoot, IFieldRegistry registry, string tableId, DateTime? startDate = null, DateTime? endDate = null)
             : this(new StorageResolver(storageRoot), registry, tableId, startDate, endDate)
         {
         }
@@ -45,19 +30,9 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 核心构造函数，接收外部依赖注入的路径解析器。
         /// </summary>
-        public ParquetMarketSeriesSource(IStorageResolver resolver, IFieldRegistry registry, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+        public ParquetTimeseriesSource(IStorageResolver resolver, IFieldRegistry registry, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+            : base(resolver, registry, tableId, startDate, endDate)
         {
-            _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
-            _tableId = tableId;
-            _startDate = startDate;
-            _endDate = endDate;
-
-            // 自动注册 Schema
-            foreach (var fieldName in _resolver.GetFieldNames(_tableId))
-            {
-                registry.RegisterField(fieldName, _resolver.GetFieldType(_tableId, fieldName));
-            }
-
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var dateSet = new HashSet<DateTime>();
 
@@ -115,127 +90,75 @@ namespace CarrotBacktesting.NET.Data
             _tradeDates = dateSet.OrderBy(d => d).ToList();
         }
 
-        public Type GetFieldType(string fieldName)
+        /// <inheritdoc />
+        protected override int ReadRawSeriesFromFile<T>(
+            string symbol,
+            string fieldName,
+            DateTime minDate,
+            DateTime maxDate,
+            ref DateTime[] rawDates,
+            ref T[] rawValues)
         {
-            return _resolver.GetFieldType(_tableId, fieldName);
-        }
-
-        public int GetSymbolIndex(string symbol)
-        {
-            return _symbols.IndexOf(symbol);
-        }
-
-        public int GetDateIndex(DateTime date)
-        {
-            return _tradeDates.BinarySearch(date);
-        }
-
-        /// <summary>
-        /// 批量读取指定股票在交易日区间内的字段行情。
-        /// 仅解析目标窗口 [minDate, maxDate] 内的物理文件，零跨文件向左回溯，缺失单元格由对齐器天然置 NaN。
-        /// </summary>
-        public void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged
-        {
-            if (startIndex < 0 || startIndex + length > _tradeDates.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(startIndex), "Requested range is out of global TradeDates boundaries.");
-            }
-
-            if (destination.Length != length)
-            {
-                throw new ArgumentException($"Destination span length ({destination.Length}) must match requested length ({length}).");
-            }
-
-            DateTime minDate = _tradeDates[startIndex];
-            DateTime maxDate = _tradeDates[startIndex + length - 1];
-
-            // 获取指定时间区间内的物理数据文件列表（精确剪枝）
             var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, minDate, maxDate);
-
-            // 依据目标窗口长度自适应租借池化缓冲区，杜绝硬编码与多余内存放大
-            int capacity = Math.Max(length, 16);
-            DateTime[] rawDates = ArrayPool<DateTime>.Shared.Rent(capacity);
-            T[] rawValues = ArrayPool<T>.Shared.Rent(capacity);
             int count = 0;
 
-            try
+            foreach (var filePath in parquetFiles)
             {
-                // 依次填充当前窗口内的每个文件数据
-                foreach (var filePath in parquetFiles)
+                if (!_cachePool.TryGetValue(filePath, out var cache))
                 {
-                    // 从缓存池中获取，没有则创建
-                    if (!_cachePool.TryGetValue(filePath, out var cache))
+                    if (File.Exists(filePath))
                     {
-                        if (File.Exists(filePath))
-                        {
-                            cache = new YearCache(filePath);
-                            _cachePool[filePath] = cache;
-                        }
-                        else
-                        {
-                            continue;
-                        }
+                        cache = new YearCache(filePath);
+                        _cachePool[filePath] = cache;
                     }
-
-                    // 提取个股在该年度的起始物理行偏移量
-                    if (!cache.StockRanges.TryGetValue(symbol, out var range))
+                    else
                     {
-                        continue; // 无个股数据或停牌
-                    }
-
-                    // 提取字段对应的全列数组缓存
-                    Array colArray = cache.GetColumnData(fieldName);
-
-                    int endRow = range.StartRow + range.RowCount;
-                    for (int r = range.StartRow; r < endRow; r++)
-                    {
-                        DateTime rowDate = cache.Dates[r];
-
-                        if (count >= rawDates.Length)
-                        {
-                            int newCap = rawDates.Length * 2;
-                            var newDates = ArrayPool<DateTime>.Shared.Rent(newCap);
-                            var newVals = ArrayPool<T>.Shared.Rent(newCap);
-                            rawDates.AsSpan(0, count).CopyTo(newDates);
-                            rawValues.AsSpan(0, count).CopyTo(newVals);
-                            ArrayPool<DateTime>.Shared.Return(rawDates);
-                            ArrayPool<T>.Shared.Return(rawValues);
-                            rawDates = newDates;
-                            rawValues = newVals;
-                        }
-
-                        rawDates[count] = rowDate;
-                        rawValues[count] = ConvertArrayValue<T>(colArray, r);
-                        count++;
+                        continue;
                     }
                 }
 
-                if (count > 1 && rawDates[0] > rawDates[count - 1])
+                if (!cache.StockRanges.TryGetValue(symbol, out var range))
                 {
-                    Array.Sort(rawDates, rawValues, 0, count);
+                    continue; // 无个股数据或停牌
                 }
 
-                // 通过 MarketDataAligner 完成全局日历投影，缺失位置天然保留 NaN
-                MarketDataAligner.AlignAndFill(
-                    _tradeDates,
-                    startIndex,
-                    length,
-                    rawDates.AsSpan(0, count),
-                    rawValues.AsSpan(0, count),
-                    destination);
+                Array colArray = cache.GetColumnData(fieldName);
+                int endRow = range.StartRow + range.RowCount;
+
+                for (int r = range.StartRow; r < endRow; r++)
+                {
+                    DateTime rowDate = cache.Dates[r];
+
+                    EnsureCapacity(ref rawDates, ref rawValues, count);
+
+                    rawDates[count] = rowDate;
+                    rawValues[count] = ConvertArrayValue<T>(colArray, r);
+                    count++;
+                }
             }
-            finally
-            {
-                ArrayPool<DateTime>.Shared.Return(rawDates);
-                ArrayPool<T>.Shared.Return(rawValues);
-            }
+
+            return count;
         }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                foreach (var cache in _cachePool.Values)
+                {
+                    cache.Dispose();
+                }
+                _cachePool.Clear();
+            }
+            base.Dispose(disposing);
+        }
+
+        #region Parquet Low-Level Helpers
 
         private static Array ReadColumnFromGroup(ParquetRowGroupReader groupReader, DataField dataField)
         {
             int rowCount = (int)groupReader.RowCount;
             Type readType = dataField.ClrType;
-
             Array buffer = Array.CreateInstance(readType, rowCount);
 
             if (readType == typeof(ReadOnlyMemory<char>))
@@ -251,7 +174,6 @@ namespace CarrotBacktesting.NET.Data
             else
             {
                 int[] defLevels = new int[rowCount];
-
                 if (readType == typeof(double)) ReadColumnRawTyped<double>(groupReader, dataField, (double[])buffer, defLevels, double.NaN);
                 else if (readType == typeof(float)) ReadColumnRawTyped<float>(groupReader, dataField, (float[])buffer, defLevels, float.NaN);
                 else if (readType == typeof(long)) ReadColumnRawTyped<long>(groupReader, dataField, (long[])buffer, defLevels, 0);
@@ -297,6 +219,13 @@ namespace CarrotBacktesting.NET.Data
                     dates.Add(dt.Date);
                 }
             }
+            else if (columnData is DateTimeOffset[] dtoArr)
+            {
+                foreach (var dto in dtoArr)
+                {
+                    dates.Add(dto.DateTime.Date);
+                }
+            }
             else if (columnData is ReadOnlyMemory<char>[] romArr)
             {
                 foreach (var rom in romArr)
@@ -313,116 +242,80 @@ namespace CarrotBacktesting.NET.Data
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static T ConvertArrayValue<T>(Array arr, int index) where T : unmanaged
         {
+            if (arr is T[] directArr)
+            {
+                return directArr[index];
+            }
+
             if (arr is double[] dArr)
             {
-                if (typeof(T) == typeof(double))
-                {
-                    double val = dArr[index];
-                    return Unsafe.As<double, T>(ref val);
-                }
-                if (typeof(T) == typeof(float))
-                {
-                    float val = (float)dArr[index];
-                    return Unsafe.As<float, T>(ref val);
-                }
+                double d = dArr[index];
+                if (typeof(T) == typeof(double)) return Unsafe.As<double, T>(ref d);
+                if (typeof(T) == typeof(float)) { float f = (float)d; return Unsafe.As<float, T>(ref f); }
+                if (typeof(T) == typeof(long)) { long l = (long)d; return Unsafe.As<long, T>(ref l); }
+                if (typeof(T) == typeof(int)) { int i = (int)d; return Unsafe.As<int, T>(ref i); }
             }
-            if (arr is float[] fArr)
+            else if (arr is float[] fArr)
             {
-                if (typeof(T) == typeof(float))
-                {
-                    float val = fArr[index];
-                    return Unsafe.As<float, T>(ref val);
-                }
-                if (typeof(T) == typeof(double))
-                {
-                    double val = fArr[index];
-                    return Unsafe.As<double, T>(ref val);
-                }
+                float f = fArr[index];
+                if (typeof(T) == typeof(float)) return Unsafe.As<float, T>(ref f);
+                if (typeof(T) == typeof(double)) { double d = f; return Unsafe.As<double, T>(ref d); }
+                if (typeof(T) == typeof(long)) { long l = (long)f; return Unsafe.As<long, T>(ref l); }
+                if (typeof(T) == typeof(int)) { int i = (int)f; return Unsafe.As<int, T>(ref i); }
             }
-            if (arr is long[] lArr)
+            else if (arr is long[] lArr)
             {
-                if (typeof(T) == typeof(long))
-                {
-                    long val = lArr[index];
-                    return Unsafe.As<long, T>(ref val);
-                }
-                if (typeof(T) == typeof(double))
-                {
-                    double val = lArr[index];
-                    return Unsafe.As<double, T>(ref val);
-                }
+                long l = lArr[index];
+                if (typeof(T) == typeof(long)) return Unsafe.As<long, T>(ref l);
+                if (typeof(T) == typeof(double)) { double d = l; return Unsafe.As<double, T>(ref d); }
+                if (typeof(T) == typeof(float)) { float f = l; return Unsafe.As<float, T>(ref f); }
+                if (typeof(T) == typeof(int)) { int i = (int)l; return Unsafe.As<int, T>(ref i); }
             }
-            if (arr is int[] iArr)
+            else if (arr is int[] iArr)
             {
-                if (typeof(T) == typeof(int))
-                {
-                    int val = iArr[index];
-                    return Unsafe.As<int, T>(ref val);
-                }
-                if (typeof(T) == typeof(double))
-                {
-                    double val = iArr[index];
-                    return Unsafe.As<double, T>(ref val);
-                }
-            }
-            if (arr is bool[] bArr)
-            {
-                if (typeof(T) == typeof(bool))
-                {
-                    bool val = bArr[index];
-                    return Unsafe.As<bool, T>(ref val);
-                }
+                int i = iArr[index];
+                if (typeof(T) == typeof(int)) return Unsafe.As<int, T>(ref i);
+                if (typeof(T) == typeof(double)) { double d = i; return Unsafe.As<double, T>(ref d); }
+                if (typeof(T) == typeof(float)) { float f = i; return Unsafe.As<float, T>(ref f); }
+                if (typeof(T) == typeof(long)) { long l = i; return Unsafe.As<long, T>(ref l); }
             }
 
-            object valObj = arr.GetValue(index)!;
-            return (T)Convert.ChangeType(valObj, typeof(T));
+            return default;
         }
 
-        public void Dispose()
-        {
-            if (!_disposed)
-            {
-                foreach (var cache in _cachePool.Values)
-                {
-                    cache.Dispose();
-                }
-                _cachePool.Clear();
-                _disposed = true;
-            }
-        }
+        #endregion
 
-        /// <summary>
-        /// 维护单年 Parquet 数据文件的按需列解压缓存与证券索引偏移映射。
-        /// </summary>
-        private class YearCache : IDisposable
+        #region YearCache Nested Class
+
+        private sealed class YearCache : IDisposable
         {
             public string FilePath { get; }
+            public DateTime[] Dates { get; private set; } = Array.Empty<DateTime>();
+            public Dictionary<string, (int StartRow, int RowCount)> StockRanges { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-            public Dictionary<string, (int StartRow, int RowCount)> StockRanges { get; }
-            public DateTime[] Dates { get; }
-
-            private readonly FileStream _fs;
+            private readonly Dictionary<string, Array> _columns = new(StringComparer.OrdinalIgnoreCase);
             private readonly ParquetReader _parquetReader;
-            private readonly Dictionary<string, Array> _columns;
+            private readonly FileStream _fs;
             private readonly DataField[] _dataFields;
 
             public YearCache(string filePath)
             {
                 FilePath = filePath;
-                _columns = new Dictionary<string, Array>(StringComparer.OrdinalIgnoreCase);
-
                 _fs = File.OpenRead(filePath);
                 _parquetReader = ParquetReader.CreateAsync(_fs).GetAwaiter().GetResult();
                 _dataFields = _parquetReader.Schema.GetDataFields();
 
-                var symField = _dataFields.FirstOrDefault(f => f.Name.Equals("symbol", StringComparison.OrdinalIgnoreCase));
-                var dtField = _dataFields.FirstOrDefault(f => f.Name.Equals("datetime", StringComparison.OrdinalIgnoreCase))
-                           ?? _dataFields.FirstOrDefault(f => f.Name.Equals("timestamp", StringComparison.OrdinalIgnoreCase));
+                BuildIndex();
+            }
 
-                if (symField == null || dtField == null)
-                {
-                    throw new InvalidDataException($"Required 'symbol' or date column is missing in: {filePath}");
-                }
+            private void BuildIndex()
+            {
+                var symField = _dataFields.FirstOrDefault(f => f.Name.Equals("symbol", StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException($"Required column 'symbol' not found in {FilePath}");
+
+                var dtField = _dataFields.FirstOrDefault(f => f.Name.Equals("datetime", StringComparison.OrdinalIgnoreCase))
+                           ?? _dataFields.FirstOrDefault(f => f.Name.Equals("timestamp", StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException($"Required column 'datetime' or 'timestamp' not found in {FilePath}");
 
                 var symList = new List<string>();
                 var dateList = new List<DateTime>();
@@ -445,14 +338,14 @@ namespace CarrotBacktesting.NET.Data
 
                 Dates = dateList.ToArray();
 
-                StockRanges = new Dictionary<string, (int StartRow, int RowCount)>(StringComparer.OrdinalIgnoreCase);
+                StockRanges.Clear();
                 if (symList.Count > 0)
                 {
                     string currentSym = symList[0];
                     int startIdx = 0;
                     for (int i = 1; i < symList.Count; i++)
                     {
-                        if (symList[i] != currentSym)
+                        if (!symList[i].Equals(currentSym, StringComparison.OrdinalIgnoreCase))
                         {
                             StockRanges[currentSym] = (startIdx, i - startIdx);
                             currentSym = symList[i];
@@ -483,8 +376,8 @@ namespace CarrotBacktesting.NET.Data
                 for (int i = 0; i < _parquetReader.RowGroupCount; i++)
                 {
                     using var groupReader = _parquetReader.OpenRowGroupReader(i);
-                    Array chunkData = (Array)ReadColumnFromGroup(groupReader, targetField);
-                    
+                    Array chunkData = ReadColumnFromGroup(groupReader, targetField);
+
                     Array.Copy(chunkData, 0, mergedArray, currentOffset, chunkData.Length);
                     currentOffset += chunkData.Length;
                 }
@@ -500,5 +393,7 @@ namespace CarrotBacktesting.NET.Data
                 _fs.Dispose();
             }
         }
+
+        #endregion
     }
 }

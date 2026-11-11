@@ -60,11 +60,11 @@ namespace CarrotBacktesting.NET.Data
     }
 
     /// <summary>
-    /// 时序二进制持久化存储抽象契约。
+    /// 时序二进制分块缓存抽象契约。
     /// 隔离底层磁盘分块存储、LZ4块压缩与多维度元数据管理，
     /// 为上层时序数据流提供高性能、低开销的持久化与增量检索能力。
     /// </summary>
-    public interface ITimeseriesStore
+    public interface ITimeseriesCache
     {
         /// <summary>
         /// 时序表唯一标识符。

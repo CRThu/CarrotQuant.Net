@@ -9,36 +9,69 @@ CarrotQuant.NET v4 采用 **三层分离架构**，各层之间通过接口契�
 ```mermaid
 graph TD
     subgraph DataLayer [Data Layer - 数据层]
-        StorageResolver[StorageResolver]
-        CsvMarketSeriesSource[CsvMarketSeriesSource]
-        ParquetMarketSeriesSource[ParquetMarketSeriesSource]
-        SimpleFieldRegistry[SimpleFieldRegistry]
-        DataProviderFactory[DataProviderFactory]
-        CachedDataProvider[CachedDataProvider]
-        TimeseriesChunkManager[TimeseriesChunkManager&lt;T&gt;]
-        ITimeseriesStore[ITimeseriesStore]
-        ChunkMatrix2D[ChunkMatrix2D&lt;T&gt;]
-        IDataProvider[IDataProvider]
-        EventProvider[EventProvider&lt;T&gt;]
-        EventProviderBuilder[EventProviderBuilder]
-        EventRegistry[EventRegistry]
-        IEventProvider[IEventProvider&lt;T&gt;]
-        IEventRegistry[IEventRegistry]
+        subgraph Common [Common - 基础寻址]
+            StorageResolver[StorageResolver]
+        end
 
-        StorageResolver --> CsvMarketSeriesSource
-        StorageResolver --> ParquetMarketSeriesSource
-        DataProviderFactory --> CachedDataProvider
-        CsvMarketSeriesSource --> CachedDataProvider
-        ParquetMarketSeriesSource --> CachedDataProvider
-        SimpleFieldRegistry --> CachedDataProvider
-        CachedDataProvider --> TimeseriesChunkManager
-        TimeseriesChunkManager --> ITimeseriesStore
-        TimeseriesChunkManager --> ChunkMatrix2D
-        CachedDataProvider --> IDataProvider
-        StorageResolver --> EventProviderBuilder
-        EventProviderBuilder --> EventProvider
-        EventProvider --> IEventProvider
-        EventRegistry --> IEventProvider
+        subgraph FieldsSubsystem [Fields - 字段与标的属性]
+            SimpleFieldRegistry[SimpleFieldRegistry]
+        end
+
+        subgraph TimeseriesSubsystem [Timeseries - 时序子系统]
+            TimeseriesSourceBase[TimeseriesSourceBase]
+            CsvTimeseriesSource[CsvTimeseriesSource]
+            ParquetTimeseriesSource[ParquetTimeseriesSource]
+            TimeseriesSourceFactory[TimeseriesSourceFactory]
+            MarketDataAligner[MarketDataAligner]
+            DynamicMarketMetadata[DynamicMarketMetadata]
+            TimeseriesCache[TimeseriesCache]
+            TimeseriesCacheManager[TimeseriesCacheManager&lt;T&gt;]
+            ITimeseriesCache[ITimeseriesCache]
+            ChunkMatrix2D[ChunkMatrix2D&lt;T&gt;]
+            TimeseriesRegistry[TimeseriesRegistry]
+            TimeseriesRegistryFactory[TimeseriesRegistryFactory]
+            ITimeseriesRegistry[ITimeseriesRegistry]
+            ITimeseriesWriter[ITimeseriesWriter]
+
+            TimeseriesSourceBase --> CsvTimeseriesSource
+            TimeseriesSourceBase --> ParquetTimeseriesSource
+            MarketDataAligner --> TimeseriesSourceBase
+            DynamicMarketMetadata --> TimeseriesRegistry
+            TimeseriesSourceFactory --> CsvTimeseriesSource
+            TimeseriesSourceFactory --> ParquetTimeseriesSource
+            TimeseriesRegistryFactory --> TimeseriesRegistry
+            CsvTimeseriesSource --> TimeseriesRegistry
+            ParquetTimeseriesSource --> TimeseriesRegistry
+            TimeseriesRegistry --> TimeseriesCacheManager
+            TimeseriesCacheManager --> ITimeseriesCache
+            TimeseriesCacheManager --> ChunkMatrix2D
+            TimeseriesRegistry --> ITimeseriesRegistry
+            TimeseriesRegistry --> ITimeseriesWriter
+        end
+
+        subgraph EventsSubsystem [Events - 事件子系统]
+            EventSourceFactory[EventSourceFactory]
+            CsvEventSource[CsvEventSource]
+            ParquetEventSource[ParquetEventSource]
+            EventEntityMapper[EventEntityMapper]
+            EventTable[EventTable&lt;T&gt;]
+            EventRegistry[EventRegistry]
+            IEventTable[IEventTable&lt;T&gt;]
+            IEventRegistry[IEventRegistry]
+
+            EventSourceFactory --> CsvEventSource
+            EventSourceFactory --> ParquetEventSource
+            EventEntityMapper --> CsvEventSource
+            EventEntityMapper --> ParquetEventSource
+            CsvEventSource --> EventTable
+            ParquetEventSource --> EventTable
+            EventTable --> IEventTable
+            EventRegistry --> IEventTable
+        end
+
+        StorageResolver --> TimeseriesSourceFactory
+        StorageResolver --> EventSourceFactory
+        SimpleFieldRegistry --> TimeseriesRegistry
     end
 
     subgraph EngineExecutionLayer [Engine and Execution Layer - 引擎与执行层]
@@ -52,7 +85,7 @@ graph TD
 
         BacktestingEngine --> IEngine
         LivingEngine --> IEngine
-        IDataProvider --> IEngine
+        ITimeseriesRegistry --> IEngine
         IEventRegistry --> IEngine
         IEngine --> IExchangeGateway
         IEngine --> IBroker
@@ -73,11 +106,11 @@ graph TD
 
 | 分层 | 核心职责 | 核心组件 / 契约 |
 | :--- | :--- | :--- |
-| **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvMarketSeriesSource`, `ParquetMarketSeriesSource`, `CachedDataProvider`, `TimeseriesChunkManager<T>`, `IDataProvider`, `IEventProvider<T>`, `IEventRegistry` |
+| **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvTimeseriesSource`, `ParquetTimeseriesSource`, `TimeseriesRegistry`, `TimeseriesCacheManager<T>`, `ITimeseriesRegistry`, `IEventTable<T>`, `IEventRegistry` |
 | **Engine Layer (引擎层)** | 回测撮合与实盘路由、账户资产管理、上下文注入 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `IExchangeGateway`, `IMatchingEngine`, `IBroker`, `IMonitor` |
 | **Strategy Layer (策略层)** | 宏观决策、信号生成、组合管理与交易执行 | `IStrategy`, `IStrategyPipeline`, `IMarketStrategy`, `ISignalStrategy`, `IPortfolioStrategy` |
 
-- **数据流向**: `IDataProvider` → `IEngine` → (`IExchangeGateway` / `IBroker` / `IMonitor`) → `IEngineContext` → 策略层
+- **数据流向**: `ITimeseriesRegistry` → `IEngine` → (`IExchangeGateway` / `IBroker` / `IMonitor`) → `IEngineContext` → 策略层
 - **策略调度链**: `IPortfolioStrategy` → `IMarketStrategy` → `ISignalStrategy`
 
 ### 3. 策略协作机制
@@ -118,27 +151,29 @@ graph TD
 | 接口 / 类型 | 文件 | 职责 |
 | :--- | :--- | :--- |
 | `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 统一元数据契约（描述时间与代码维度及物理寻址） |
-| `IMarketSnapshotSource`| `Abstraction/Data/IMarketSnapshotSource.cs` | 流式读取宽表快照（Row = 交易日，Col = 全市场股票） |
-| `IMarketSeriesSource`  | `Abstraction/Data/IMarketSeriesSource.cs`   | 批量读取个股序列（Col = 股票，Row = 时间序列） |
+| `ITimeseriesSource`  | `Abstraction/Data/ITimeseriesSource.cs`   | 批量读取个股序列（Col = 股票，Row = 时间序列） |
 
 **物理实现与设计细节**：
-- `MoveNext()`: 驱动逐行/逐日遍历，零状态暴露。
-- `ReadFieldSnapshot<T>(fieldName, Span<T> destination)`: 直接写入调用方提供的内存块，严格零拷贝；`T : unmanaged` 约束兼容 MMF 布局。
-- `CsvMarketSeriesSource`: 支持 Hive 分区 `{root}/{table_id}/year={yyyy}/{symbol}.csv` 与 Flat 结构；基于 Sylvan.Data.Csv 流式解析，泛型分发 `ValueConverter<T>` 零装箱转换。
-- `ParquetMarketSeriesSource`: 支持按年/月分区 `{root}/{table_id}/year={yyyy}/[month={mm}/]data.parquet` 或单文件；基于 `YearCache` 按需列缓存解压，通过 `Unsafe.As` 零拷贝转换。
+- `TimeseriesSourceBase`: 模板方法抽象基类，收敛参数边界检查、ArrayPool 内存池租借与自适应翻倍扩容、时间戳排序、以及 `MarketDataAligner.AlignAndFill` 全局交易日历投射与 NaN 哨兵填充管线。
+- `TimeseriesSourceFactory`: 时序数据源工厂，根据 `StorageResolver.GetFormat(tableId)` 自动派发构建 `CsvTimeseriesSource` 或 `ParquetTimeseriesSource`，调用端零物理格式耦合。
+- `ReadSymbolSeries<T>(symbol, fieldName, startIndex, length, destination)`: 直接写入调用方提供的内存块，严格零拷贝；`T : unmanaged` 约束兼容 MMF/连续内存布局。
+- `CsvTimeseriesSource`: 支持 Hive 分区 `{root}/{table_id}/year={yyyy}/{symbol}.csv` 与 Flat 结构；基于 Sylvan.Data.Csv 流式解析，泛型分发 `ValueConverter<T>` 零装箱转换。
+- `ParquetTimeseriesSource`: 支持按年/月分区 `{root}/{table_id}/year={yyyy}/[month={mm}/]data.parquet` 或单文件；基于 `YearCache` 按需列缓存解压，通过 `Unsafe.As` 零拷贝转换。
+- **单一数据结构与零抽象分叉**：系统统一采用 `ChunkMatrix2D<T>`（`IReadOnlyMatrix2D<T>`）作为全市场稠密数据载体。横向截面快照统一由行切片（`ReadOnlyRowView<T>`）提供，纵向时序统一由列切片（`ReadOnlyColumnView<T>`）提供，废除孤立的流式 `IMarketSnapshotSource`，回测与实盘统一走 Matrix 供给。
 
 ### 2. 内存层接口与 Matrix 访问
 
 | 接口 / 类型 | 文件 | 职责 |
 | :--- | :--- | :--- |
-| `IDataProvider` | `Abstraction/Data/IDataProvider.cs` | 数据层统一输出入口，`GetMatrix<T>(fieldName)` 返回 `IReadOnlyMatrix2D<T>` |
+| `ITimeseriesRegistry` | `Abstraction/Data/ITimeseriesRegistry.cs` | 数据层只读输出入口，`GetMatrix<T>(fieldName)` 返回 `IReadOnlyMatrix2D<T>` |
+| `ITimeseriesWriter` | `Abstraction/Data/ITimeseriesWriter.cs` | 实盘时序写入与一致性落盘契约（`AppendRow`, `AppendCol`, `Commit`） |
 | `IFieldRegistry` | `Abstraction/Data/IFieldRegistry.cs` | 字段注册表，管理已加载与自定义指标字段元信息 |
 | `FieldInfo` | `Abstraction/Data/IFieldRegistry.cs` | 字段元数据 record: `(string Name, Type DataType, bool IsCustom)` |
-| `IEventProvider<T>` | `Abstraction/Data/IEventProvider.cs` | 异构 KV 数据流提供器（复权因子、分红、公告等） |
+| `IEventTable<T>` | `Abstraction/Data/IEventTable.cs` | 异构 KV 数据流提供器（复权因子、分红、公告等） |
 | `IEventRegistry` | `Abstraction/Data/IEventRegistry.cs` | 事件注册表，统一管理外部 KV 数据流 |
 
 **核心内存约束 (SSOT)**：
-1. `IDataProvider.GetMatrix<T>()` 必须返回只读类型 `IReadOnlyMatrix2D<T>`，严禁暴露可写 Matrix。单标的（$N=1$）回测通过 `provider.GetSeries<T>()` 获取只读一维时序序列。
+1. `ITimeseriesRegistry.GetMatrix<T>()` 必须返回只读类型 `IReadOnlyMatrix2D<T>`，严禁暴露可写 Matrix。单标的（$N=1$）回测通过 `provider.GetSeries<T>()` 获取只读一维时序序列。
 2. 维度严格对齐：`IMarketMetadata.Symbols` 顺序对应列索引；`TradeDates` 顺序对应行索引。
 3. 零内存暴露：严禁对外暴露 `List<T>`、`T[]` 等分配型集合供外部持有。
 4. **Symbol 维度契约（只增不减，只多不少）**：在系统生命周期内，标的代码（Symbols）具有全局唯一且单调递增的列索引（`SymbolIndex`）。退市标的绝不剔除（以 `NaN` 占位），新增标的只追加在尾部。已有列索引绝对不可变动，杜绝幸存者偏差。
@@ -146,11 +181,11 @@ graph TD
 ### 3. ChunkMatrix2D 内存容器与视图契约
 
 ```
-IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, Symbols)
+ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, Symbols)
          │
          │  ReadSymbolSeries<T>()
          ▼
-  ChunkMatrix2D<T> ──(实现)──► IReadOnlyMatrix2D<T> ──► IDataProvider.GetMatrix<T>()
+  ChunkMatrix2D<T> ──(实现)──► IReadOnlyMatrix2D<T> ──► ITimeseriesRegistry.GetMatrix<T>()
 ```
 - 架构归属：核心抽象契约位于 `CarrotBacktesting.NET.Abstraction.Data`，切片视图位于 `CarrotBacktesting.NET.Data.Views`。
 - 关键类型：`ChunkMatrix2D<T>`、`IReadOnlyMatrix2D<T>`、`IMatrix2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`、`RowView<T>`、`ColumnView<T>`、`MatrixExtensions`。
@@ -159,7 +194,7 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
 
 针对复权因子、龙虎榜、分红、停牌等异构 KV 数据，采用与稠密矩阵分离的双轨架构：
 
-| 特性 | **IDataProvider (稠密矩阵)** | **IEventRegistry (稀疏事件/KV)** |
+| 特性 | **ITimeseriesRegistry (稠密矩阵)** | **IEventRegistry (稀疏事件/KV)** |
 | :--- | :--- | :--- |
 | **物理形态** | 连续内存块 (`ChunkMatrix2D`, MMF) | 字典树、对象图 (`Dictionary<DateTime, Dictionary<string, T>>`) |
 | **访问范式** | 批量切片、二维索引 `(row, col)` 访问 | 随机、点对点 `(date, symbol)` 访问 |
@@ -167,9 +202,9 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
 | **对齐要求** | **强对齐**（日期与代码矩阵完整填补） | **弱对齐**（发生时存在记录，无需空位对齐） |
 | **优化目标** | **高吞吐 (Throughput)**，连续内存向量化批处理 | **低延迟 (Latency)**，O(1) 常数时间点查 |
 
-- **EventProvider\<T\>**: 内存字典二级索引，提供 O(1) 随机查询 `TryGet(date, symbol, out val)`。
-- **EventProviderBuilder**: 工厂类，自动检测 CSV/Parquet 格式，通过反射将 schema 字段映射到 T 的构造参数，免手写解析逻辑。
-- **EventRegistry**: 类型安全的事件流注册表，策略通过 `context.Events.GetProvider<T>("name")` 获取数据流。
+- **EventTable\<T\>**: 内存字典二级索引，提供 O(1) 随机查询 `TryGet(date, symbol, out val)`。
+- **EventSourceFactory**: 工厂类，自动检测 CSV/Parquet 格式，通过反射将 schema 字段映射到 T 的构造参数，免手写解析逻辑。
+- **EventRegistry**: 类型安全的事件流注册表，策略通过 `context.Events.GetTable<T>("name")` 获取数据流。
 
 ### 5. 存储调度与批量加载 (StorageResolver & Bulk Loader)
 
@@ -181,12 +216,31 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
     - `Flat`: `{root}/{table_id}/` 平铺存储，支持直接按 symbol 精确匹配或全量枚举。
 - **纵向批量加载流程**:
   1. `StorageResolver.ResolvePhysicalFiles()` 按表与日期区间返回物理文件列表。
-  2. `CsvMarketSeriesSource` / `ParquetMarketSeriesSource` 构造时扫描文件建立代码与全局交易日并集，并向 `SimpleFieldRegistry` 注册 schema 字段。
-  3. `CachedDataProvider.GetMatrix<T>()` 调度 `TimeseriesChunkManager<T>`，优先检查 `ITimeseriesStore`（支持 LZ4 原生块压缩与 4096 行分块），命中时直接单块解压注入非托管连续内存返回 `ChunkMatrix2D<T>`；未命中或不兼容时从源数据加载并持久化至 `.cache/{tableId}/{fieldName}/`。内存采用定长环形页表槽位管理（`max_pages`，默认 4），通过单指令双边界检查拦截越界访问；引擎推进时通过 `StepTo` 自动滑动窗口淘汰冷块，并由后台异步预读（`prefetch`，默认 true；实盘 Living 下一票否决强行关闭）下一块。实盘单行追加由 `TimeseriesChunkManager.AppendRow` 驱动，达到 4096 行时自动执行跨页轮转（Rollover），并通过 `Commit()` 精准增量落盘活跃分块，历史分块零写放大。单标的回测（$N=1$）可通过 `provider.GetSeries<T>()` 一键获取全周期只读一维列视图。策略回溯深度通过 `IStrategy.Lookback`（默认 200）与 `IStrategyPipeline.Lookback`（子策略自动取最大值）统筹定义。
+  2. `CsvTimeseriesSource` / `ParquetTimeseriesSource` 构造时扫描文件建立代码与全局交易日并集，并向 `SimpleFieldRegistry` 注册 schema 字段。
+  3. `TimeseriesRegistry.GetMatrix<T>()` 调度 `TimeseriesCacheManager<T>`，优先检查 `ITimeseriesCache`（支持 LZ4 原生块压缩与 4096 行分块），命中时直接单块解压注入非托管连续内存返回 `ChunkMatrix2D<T>`；未命中或不兼容时从源数据加载并持久化至 `.cache/{tableId}/{fieldName}/`。内存采用定长环形页表槽位管理（`max_pages`，默认 4），通过单指令双边界检查拦截越界访问；引擎推进时通过 `StepTo` 自动滑动窗口淘汰冷块，并由后台异步预读（`prefetch`，默认 true；实盘 Living 下一票否决强行关闭）下一块。实盘单行追加由 `TimeseriesCacheManager.AppendRow` 驱动，达到 4096 行时自动执行跨页轮转（Rollover），并通过 `Commit()` 精准增量落盘活跃分块，历史分块零写放大。单标的回测（$N=1$）可通过 `provider.GetSeries<T>()` 一键获取全周期只读一维列视图。策略回溯深度通过 `IStrategy.Lookback`（默认 200）与 `IStrategyPipeline.Lookback`（子策略自动取最大值）统筹定义。
 - **ReadSymbolSeries 核心机制**:
   - 方法契约：`ReadSymbolSeries(symbol, fieldName, startIndex, length, destination)`
   - CSV：定位 `{symbol}.csv` 逐行流式解析，按日期二分查找写入 `destination`，通过 `ValueConverter<T>` 零装箱转换。
   - Parquet：从 `YearCache` 预解压列直接按股票偏移批量拷贝，通过 `Unsafe.As` 零拷贝转换。
+
+### 6. 数据层模块化物理布局 (Data Directory Structure)
+
+`CarrotBacktesting.NET/Data/` 遵循领域高内聚（Package by Feature）与单一事实来源原则，纵向按业务子领域划分，统一归纳于 `CarrotBacktesting.NET.Data` 根命名空间：
+- `Timeseries/`: 时序数据完整纵向子系统（稠密矩阵数据流）。
+  - `Storage/`: 底层时序物理源驱动 (`TimeseriesSourceBase`, `CsvTimeseriesSource`, `ParquetTimeseriesSource`, `TimeseriesSourceFactory`)。
+  - `Cache/`: 时序分块本地存储与内存页槽位管理 (`ITimeseriesCache`, `TimeseriesCache`, `TimeseriesCacheManager`)。
+  - `Matrix/`: 连续二维非托管矩阵容器与行列切片视图 (`ChunkMatrix2D`, `MatrixExtensions`, `Views/`)。
+  - `Metadata/`: 二维矩阵坐标系（代码池与日历网格）(`DynamicMarketMetadata`)。
+  - `Registry/`: 统一供给门面与装配工厂 (`TimeseriesRegistry`, `TimeseriesRegistryFactory`)。
+  - `Utils/`: 交易日历网格对齐与缺失值填充 (`MarketDataAligner`)。
+- `Events/`: 异构事件完整纵向子系统（离散稀疏数据流）。
+  - `Storage/`: 底层事件物理抽取驱动 (`CsvEventSource`, `ParquetEventSource`, `EventSourceFactory`)。
+  - `Utils/`: 实体构造与参数类型映射工具 (`EventEntityMapper`)。
+  - 核心结构：强类型点查内存表 (`EventTable`) 与事件流注册中心 (`EventRegistry`)。
+- `Fields/`: 字段与标的静态属性子系统（数据字典与行业/板块属性扩展）。
+  - `SimpleFieldRegistry`: 字段 Schema 注册表（未来扩展行业、概念板块、标的静态属性字典）。
+- `Common/`: 跨模态共享底层基础设施。
+  - `StorageResolver`: 统一物理存储寻址（Hive/Flat 格式调度，TS/EV/Fields 共享）。
 
 ---
 
@@ -197,7 +251,7 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
 | 契约 / 类型 | 文件 | 职责说明 |
 | :--- | :--- | :--- |
 | `IEngine` | `Abstraction/Engine/IEngine.cs` | 核心驱动接口，支持 `Run` / `Pause` / `Stop` 与状态快照 (`SaveState` / `RestoreState`) |
-| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `IDataProvider`, `IBroker`, `IMarketState`, `IEventRegistry` |
+| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry` |
 | `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与持仓管理，提供订单提交与 `OnTrade` 成交回报事件 |
 | `IExchangeGateway`| `Abstraction/Engine/IExchangeGateway.cs` | 交易所物理网关抽象（屏蔽回测撮合器与实盘交易所 API） |
 | `IMatchingEngine` | `Abstraction/Engine/IMatchingEngine.cs` | 回测撮合引擎，按时间步驱动撮合逻辑 |

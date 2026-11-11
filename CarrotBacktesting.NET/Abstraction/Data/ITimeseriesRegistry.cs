@@ -1,11 +1,12 @@
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
 /// <summary>
-/// 数据层统一输出接口，供引擎层与策略层消费。
-/// 聚合市场元数据与各字段的高性能只读 Buffer。
-/// 遵循"只读优先"原则：所有暴露的 Buffer 均为 IReadOnlyBuffer2D，禁止引擎层对其写入。
+/// 时序注册表纯只读输出契约，供引擎层与策略层安全消费。
+/// 统筹管理所有加载的时序字段，聚合全局市场元数据（Metadata）与各字段非托管只读矩阵（GetMatrix）。
+/// 遵循“只读优先”原则：暴露的矩阵均为 IReadOnlyMatrix2D，禁止外部写入。
+/// 写入与生命周期调度请参见写入契约 <see cref="ITimeseriesWriter"/>。
 /// </summary>
-public interface IDataProvider
+public interface ITimeseriesRegistry
 {
     /// <summary>
     /// 获取行情元数据（交易日历、股票列表及维度索引）。
@@ -30,10 +31,4 @@ public interface IDataProvider
     /// <param name="fieldName">字段名称。</param>
     /// <returns>若字段已加载则返回 true，否则返回 false。</returns>
     bool HasField(string fieldName);
-
-    /// <summary>
-    /// 将内存中各字段最新的时序数据原子同步落盘至持久化分块缓存。
-    /// 供 LivingEngine 实盘时间步推进或盘后结算时调用。纯只读回测提供器可为空实现。
-    /// </summary>
-    void Commit();
 }

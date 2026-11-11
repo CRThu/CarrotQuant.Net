@@ -8,7 +8,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
     [TestClass]
-    public class TimeseriesChunkManagerTests
+    public class TimeseriesCacheManagerTests
     {
         private string _tempCacheDir = null!;
 
@@ -31,8 +31,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_InitialLoad_PropertiesAndAsReadOnly()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 10);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 10);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -62,8 +62,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_AppendRow_Rollover_PageBoundary()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 3);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 3);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -103,8 +103,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_AppendRow_4096DefaultBoundary_Rollover()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 4096);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 4096);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -130,11 +130,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_Commit_IncrementalFlushAndZeroHistoricalWriteAmplification()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
-            var cacheStore = new TimeseriesStore(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
 
             // 1. 首次加载：4 行正好写满 chunk 0
-            using (var manager = new TimeseriesChunkManager<double>(
+            using (var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -155,7 +155,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var chunk0LastWrite = File.GetLastWriteTimeUtc(chunk0Path);
 
             // 2. 模拟实盘运行：追加 2 行数据（跨入 chunk 1），然后精准 Commit
-            using (var manager = new TimeseriesChunkManager<double>(
+            using (var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -185,7 +185,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(chunk0LastWrite, chunk0NewWrite, "历史 chunk_0.bin 严禁被二次写入，必须保证零写放大。");
 
             // 4. 重启模拟：新实例从磁盘缓存重新载入，验证全量 6 行一致性
-            using (var recoveryManager = new TimeseriesChunkManager<double>(
+            using (var recoveryManager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -210,11 +210,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_UpdateRow_And_RewriteActiveChunkWithoutNewRows()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
-            var cacheStore = new TimeseriesStore(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
 
             // 1. 首次加载 4 行并缓存
-            using (var manager = new TimeseriesChunkManager<double>(
+            using (var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -226,7 +226,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 2. 模拟盘中行更新（行数未增加，但活跃分块内容被修订）
-            using (var manager = new TimeseriesChunkManager<double>(
+            using (var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -247,7 +247,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 3. 验证从磁盘恢复后，更新的值已精准持久化
-            using (var recoveryManager = new TimeseriesChunkManager<double>(
+            using (var recoveryManager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -266,8 +266,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_AppendRow_DimensionMismatch_ThrowsArgumentException()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 5);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 5);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -286,8 +286,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_Disposed_ThrowsObjectDisposedException()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 5);
-            var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 5);
+            var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -306,8 +306,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_BufferProperty_And_MarkDirty()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 4);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 4);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -327,8 +327,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_UpdateRow_Exceptions()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -354,11 +354,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_CorruptedCacheFallback_InLazyMode()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 4);
-            var cacheStore = new TimeseriesStore(_tempCacheDir, "table_corrupt", pageSize: 4, compression: "lz4");
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 4);
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_corrupt", pageSize: 4, compression: "lz4");
 
             // 1. 首次加载写入缓存
-            using (var manager = new TimeseriesChunkManager<double>(
+            using (var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -374,7 +374,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             File.WriteAllBytes(chunk0Path, new byte[] { 0xAA, 0xBB, 0xCC, 0xDD });
 
             // 3. 再次加载，触发 catch 分支并成功 fallback 从 source 重建
-            using (var manager2 = new TimeseriesChunkManager<double>(
+            using (var manager2 = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -391,11 +391,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_AppendRow_WithTimestamp_And_AutoCommitAtBatchSize()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 2);
-            var cacheStore = new TimeseriesStore(_tempCacheDir, "table_batch", pageSize: 16, compression: "lz4");
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 2);
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_batch", pageSize: 16, compression: "lz4");
 
             // 1. 初始化 2 行并写入缓存，设置 commitBatchSize: 3
-            using (var manager = new TimeseriesChunkManager<double>(
+            using (var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -423,7 +423,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 2. 磁盘恢复验证：5 行已全部入库，且时间戳保真
-            using (var recoveryManager = new TimeseriesChunkManager<double>(
+            using (var recoveryManager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -451,11 +451,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_Dispose_ForcesResidualCommit()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 2);
-            var cacheStore = new TimeseriesStore(_tempCacheDir, "table_residual", pageSize: 16, compression: "lz4");
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 2);
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_residual", pageSize: 16, compression: "lz4");
 
             // 追加了 1 行（未达到 64 行批次），未显式调用 Commit()，直接退出并 Dispose
-            using (var manager = new TimeseriesChunkManager<double>(
+            using (var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -472,7 +472,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 恢复验证：残留的那一行依然成功落盘
-            using (var recoveryManager = new TimeseriesChunkManager<double>(
+            using (var recoveryManager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -489,10 +489,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_AppendCol_FlushesRowsFirst_ThenExpandsWidthAndCommits()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 2);
-            var cacheStore = new TimeseriesStore(_tempCacheDir, "table_col", pageSize: 16, compression: "lz4");
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 2);
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_col", pageSize: 16, compression: "lz4");
 
-            using (var manager = new TimeseriesChunkManager<double>(
+            using (var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -542,8 +542,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int pageSize = 16;
             const int maxPages = 4;
 
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, totalRows);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, totalRows);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -574,8 +574,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_PrefetchDisabled_SetsCanPrefetchFalse()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 32);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 32);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -603,8 +603,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestChunkManager_LivingMode_DisablesPrefetchRegardlessOfPrefetchFlag()
         {
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 16);
-            using var manager = new TimeseriesChunkManager<double>(
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 16);
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -636,9 +636,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             int totalDays = 64;
             int pageSize = 4;
             int maxPages = 4;
-            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, totalDays);
+            var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, totalDays);
 
-            using var manager = new TimeseriesChunkManager<double>(
+            using var manager = new TimeseriesCacheManager<double>(
                 "close",
                 mock,
                 mock,
@@ -693,12 +693,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(manager.BaseRowIndex >= 48, $"BaseRowIndex 应推进到 48 以上，实际为: {manager.BaseRowIndex}");
         }
 
-        private class MockMarketSeriesSource : IMarketSeriesSource
+        private class MockTimeseriesSource : ITimeseriesSource
         {
             private readonly List<string> _symbols;
             private readonly List<DateTime> _dates;
 
-            public MockMarketSeriesSource(string[] symbols, int dateCount)
+            public MockTimeseriesSource(string[] symbols, int dateCount)
             {
                 _symbols = new List<string>(symbols);
                 _dates = new List<DateTime>(dateCount);

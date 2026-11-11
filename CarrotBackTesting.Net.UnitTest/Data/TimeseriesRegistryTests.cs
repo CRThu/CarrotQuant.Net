@@ -10,7 +10,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
     [TestClass]
-    public class CachedDataProviderTests
+    public class TimeseriesRegistryTests
     {
         private string _tempCacheDir = null!;
 
@@ -36,15 +36,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCachedDataProviderLoadAndDispose()
+        public void TestTimeseriesRegistryLoadAndDispose()
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
 
             var registry = new SimpleFieldRegistry();
-            using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
+            using var source = new CsvTimeseriesSource(csvRoot, registry, tableId);
             
-            using (var provider = new CachedDataProvider(source, registry, source, _tempCacheDir))
+            using (var provider = new TimeseriesRegistry(source, registry, source, _tempCacheDir))
             {
                 Assert.IsTrue(provider.HasField("close"));
                 
@@ -56,16 +56,16 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCachedDataProviderWithMultiLevelParquet()
+        public void TestTimeseriesRegistryWithMultiLevelParquet()
         {
             string testDataRoot = GetRawDataRoot();
             string parquetRoot = Path.Combine(testDataRoot, "parquet");
             string tableId = "ashare.kline.1m.raw.custom";
 
             var registry = new SimpleFieldRegistry();
-            using var source = new ParquetMarketSeriesSource(parquetRoot, registry, tableId);
+            using var source = new ParquetTimeseriesSource(parquetRoot, registry, tableId);
 
-            using var provider = new CachedDataProvider(source, registry, source, _tempCacheDir);
+            using var provider = new TimeseriesRegistry(source, registry, source, _tempCacheDir);
 
             Assert.IsTrue(provider.HasField("close"));
             Assert.IsTrue(provider.HasField("open"));
@@ -83,9 +83,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
 
             var registry = new SimpleFieldRegistry();
-            using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
+            using var source = new CsvTimeseriesSource(csvRoot, registry, tableId);
             
-            using var provider = new CachedDataProvider(source, registry, source, _tempCacheDir);
+            using var provider = new TimeseriesRegistry(source, registry, source, _tempCacheDir);
             
             Assert.ThrowsException<KeyNotFoundException>(() => provider.GetMatrix<double>("non_existent_field"));
         }
@@ -97,9 +97,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
 
             var registry = new SimpleFieldRegistry();
-            using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
+            using var source = new CsvTimeseriesSource(csvRoot, registry, tableId);
             
-            using var provider = new CachedDataProvider(source, registry, source, _tempCacheDir);
+            using var provider = new TimeseriesRegistry(source, registry, source, _tempCacheDir);
             var buffer = provider.GetMatrix<double>("close");
             
             Assert.AreEqual(provider.Metadata.TradeDates.Count, buffer.RowCount, "Buffer 行数与交易日数量不匹配");
@@ -113,9 +113,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
 
             var registry = new SimpleFieldRegistry();
-            using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
+            using var source = new CsvTimeseriesSource(csvRoot, registry, tableId);
             
-            using (var provider = new CachedDataProvider(source, registry, source, _tempCacheDir))
+            using (var provider = new TimeseriesRegistry(source, registry, source, _tempCacheDir))
             {
                 var buffer = provider.GetMatrix<double>("close");
                 
@@ -145,16 +145,16 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCachedDataProviderWithPersistentCache_EndToEnd()
+        public void TestTimeseriesRegistryWithPersistentCache_EndToEnd()
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
 
             var registry = new SimpleFieldRegistry();
-            using var source = new CsvMarketSeriesSource(csvRoot, registry, tableId);
+            using var source = new CsvTimeseriesSource(csvRoot, registry, tableId);
 
             // 1. 首次加载（缓存未命中，从源数据构建并写入磁盘缓存）
-            using (var provider1 = new CachedDataProvider(
+            using (var provider1 = new TimeseriesRegistry(
                 source, 
                 registry, 
                 source, 
@@ -169,14 +169,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(source.TradeDates.Count, buf1.RowCount);
             }
 
-            var store = new TimeseriesStore(_tempCacheDir, tableId, 1024);
+            var store = new TimeseriesCache(_tempCacheDir, tableId, 1024);
             Assert.IsTrue(store.HasField("close"));
             var meta = store.ReadMetadata("close");
             Assert.IsNotNull(meta);
             Assert.AreEqual(source.TradeDates.Count, meta.RowCount);
 
             // 2. 第二次加载（缓存命中，直接从二进制分块文件加载）
-            using (var provider2 = new CachedDataProvider(
+            using (var provider2 = new TimeseriesRegistry(
                 source, 
                 registry, 
                 source, 
@@ -193,7 +193,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 3. 强制刷新测试（force 模式清空并重新构建）
-            using (var provider3 = new CachedDataProvider(
+            using (var provider3 = new TimeseriesRegistry(
                 source, 
                 registry, 
                 source, 
@@ -217,7 +217,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new SimpleFieldRegistry();
             registry.RegisterField(fieldName, typeof(double), false);
 
-            var mockSource = new MockMarketSeriesSource();
+            var mockSource = new MockTimeseriesSource();
             mockSource.DatesList.AddRange(new[]
             {
                 new DateTime(2021, 1, 4),
@@ -227,7 +227,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             mockSource.SymbolsList.AddRange(new[] { "sh.600000", "sz.000001" });
 
-            using (var provider1 = new CachedDataProvider(
+            using (var provider1 = new TimeseriesRegistry(
                 mockSource,
                 registry,
                 mockSource,
@@ -244,7 +244,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(1.0, buf1[0, 1], 1e-4);
             }
 
-            var store = new TimeseriesStore(_tempCacheDir, tableId, 1024);
+            var store = new TimeseriesCache(_tempCacheDir, tableId, 1024);
             var meta1 = store.ReadMetadata(fieldName);
             Assert.IsNotNull(meta1);
             Assert.AreEqual(2, meta1.Width);
@@ -253,7 +253,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 扩充至 3 只股票
             mockSource.SymbolsList.Add("sz.000002");
 
-            using (var provider2 = new CachedDataProvider(
+            using (var provider2 = new TimeseriesRegistry(
                 mockSource,
                 registry,
                 mockSource,
@@ -279,19 +279,19 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCachedDataProvider_ExpandedSymbols_AutoFillsNaN()
+        public void TestTimeseriesRegistry_ExpandedSymbols_AutoFillsNaN()
         {
             string tableId = "test.expand.nan.table";
             string fieldPe = "pe_ttm";
 
-            var mockSource = new MockMarketSeriesSource();
+            var mockSource = new MockTimeseriesSource();
             mockSource.SymbolsList.Add("sz.000001");
             mockSource.DatesList.Add(new DateTime(2025, 1, 6));
 
             var registry = new SimpleFieldRegistry();
             registry.RegisterField(fieldPe, typeof(double));
 
-            using (var provider1 = new CachedDataProvider(
+            using (var provider1 = new TimeseriesRegistry(
                 mockSource,
                 registry,
                 mockSource,
@@ -307,7 +307,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             mockSource.SymbolsList.Add("sz.000002");
 
-            using (var provider2 = new CachedDataProvider(
+            using (var provider2 = new TimeseriesRegistry(
                 mockSource,
                 registry,
                 mockSource,
@@ -325,24 +325,24 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
         [TestMethod]
         [ExpectedException(typeof(InvalidOperationException))]
-        public void TestCachedDataProvider_TypeMismatch_ThrowsException()
+        public void TestTimeseriesRegistry_TypeMismatch_ThrowsException()
         {
-            var mockSource = new MockMarketSeriesSource();
+            var mockSource = new MockTimeseriesSource();
             mockSource.SymbolsList.Add("sh.600000");
             mockSource.DatesList.Add(new DateTime(2025, 1, 2));
 
             var registry = new SimpleFieldRegistry();
             registry.RegisterField("close", typeof(double));
 
-            using var provider = new CachedDataProvider(mockSource, registry, mockSource, _tempCacheDir);
+            using var provider = new TimeseriesRegistry(mockSource, registry, mockSource, _tempCacheDir);
             provider.GetMatrix<int>("close");
         }
 
         [TestMethod]
-        public void TestCachedDataProvider_Commit_SyncsActiveChunkToDisk()
+        public void TestTimeseriesRegistry_Commit_SyncsActiveChunkToDisk()
         {
             string tableId = "commit_test_table";
-            var mockSource = new MockMarketSeriesSource();
+            var mockSource = new MockTimeseriesSource();
             mockSource.SymbolsList.Add("sh.600000");
             mockSource.SymbolsList.Add("sz.000001");
             mockSource.DatesList.Add(new DateTime(2025, 1, 2));
@@ -351,7 +351,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             registry.RegisterField("close", typeof(double));
 
             // 1. 初始化 provider 并载入
-            using (var provider = new CachedDataProvider(
+            using (var provider = new TimeseriesRegistry(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
             {
@@ -359,7 +359,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(1, buffer.RowCount);
 
                 // 通过 Manager 追加实时行
-                var manager = provider.GetChunkManager<double>("close");
+                var manager = provider.GetCacheManager<double>("close");
                 double[] newRow = new double[] { 88.8, 99.9 };
                 manager.AppendRow(newRow);
 
@@ -373,7 +373,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 3. 重新打开一个 Provider，验证已落盘的 Cache 中数据准确
             mockSource.DatesList.Add(new DateTime(2025, 1, 3));
-            using (var providerRestart = new CachedDataProvider(
+            using (var providerRestart = new TimeseriesRegistry(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
             {
@@ -385,10 +385,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCachedDataProvider_AutoRefreshMode_And_CorruptedCacheFallback()
+        public void TestTimeseriesRegistry_AutoRefreshMode_And_CorruptedCacheFallback()
         {
             string tableId = "auto_refresh_table";
-            var mockSource = new MockMarketSeriesSource();
+            var mockSource = new MockTimeseriesSource();
             mockSource.SymbolsList.Add("sh.600000");
             for (int i = 0; i < 50; i++)
             {
@@ -399,7 +399,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             registry.RegisterField("close", typeof(double));
 
             // 1. auto 模式首次写入
-            using (var provider1 = new CachedDataProvider(
+            using (var provider1 = new TimeseriesRegistry(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
             {
@@ -408,7 +408,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 2. auto 模式同维度命中
-            using (var provider2 = new CachedDataProvider(
+            using (var provider2 = new TimeseriesRegistry(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
             {
@@ -418,7 +418,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 3. auto 模式扩展股票代码
             mockSource.SymbolsList.Add("sh.600001");
-            using (var provider3 = new CachedDataProvider(
+            using (var provider3 = new TimeseriesRegistry(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
             {
@@ -434,7 +434,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 File.WriteAllBytes(chunk0, new byte[] { 0xDE, 0xAD, 0xBE, 0xEF });
             }
 
-            using (var provider4 = new CachedDataProvider(
+            using (var provider4 = new TimeseriesRegistry(
                 mockSource, registry, mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
             {
@@ -444,9 +444,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCachedDataProvider_SingleSymbol_DegenerateAndGetSeries()
+        public void TestTimeseriesRegistry_SingleSymbol_DegenerateAndGetSeries()
         {
-            var mockSource = new MockMarketSeriesSource();
+            var mockSource = new MockTimeseriesSource();
             mockSource.SymbolsList.Add("BTCUSDT");
             for (int i = 0; i < 100; i++)
             {
@@ -457,7 +457,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             registry.RegisterField("close", typeof(double));
 
             // 使用精简构造函数（无需重复传 source）
-            using var provider = new CachedDataProvider(mockSource, registry, _tempCacheDir);
+            using var provider = new TimeseriesRegistry(mockSource, registry, _tempCacheDir);
 
             // 1. 验证通过一维扩展获取默认标的（第 0 列）全量时间序列
             var defaultSeries = provider.GetSeries<double>("close");
@@ -481,9 +481,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCachedDataProvider_MultiThreaded_ConcurrentRead_LockFree()
+        public void TestTimeseriesRegistry_MultiThreaded_ConcurrentRead_LockFree()
         {
-            var mockSource = new MockMarketSeriesSource();
+            var mockSource = new MockTimeseriesSource();
             for (int s = 0; s < 10; s++)
             {
                 mockSource.SymbolsList.Add($"SYM_{s:D2}");
@@ -496,7 +496,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = new SimpleFieldRegistry();
             registry.RegisterField("close", typeof(double));
 
-            using var provider = new CachedDataProvider(mockSource, registry, _tempCacheDir);
+            using var provider = new TimeseriesRegistry(mockSource, registry, _tempCacheDir);
             var buffer = provider.GetMatrix<double>("close");
 
             // 并发模拟：20 个线程、10,000 次高频并发随机访问同一个只读二维矩阵
@@ -511,37 +511,48 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestCachedDataProvider_GetChunkManager_Operations()
+        public void TestTimeseriesRegistry_GetCacheManager_Operations()
         {
-            var mockSource = new MockMarketSeriesSource();
+            var mockSource = new MockTimeseriesSource();
             mockSource.SymbolsList.Add("000001.SZ");
             mockSource.DatesList.Add(new DateTime(2025, 1, 1));
 
             var registry = new SimpleFieldRegistry();
             registry.RegisterField("close", typeof(double));
 
-            using var provider = new CachedDataProvider(mockSource, registry, _tempCacheDir);
+            using var provider = new TimeseriesRegistry(mockSource, registry, _tempCacheDir);
 
             // 1. 正确获取 Manager
-            var manager1 = provider.GetChunkManager<double>("close");
-            var manager2 = provider.GetChunkManager<double>("close");
+            var manager1 = provider.GetCacheManager<double>("close");
+            var manager2 = provider.GetCacheManager<double>("close");
             Assert.IsNotNull(manager1);
             Assert.AreSame(manager1, manager2);
 
             // 2. 类型不匹配抛出 InvalidOperationException
             Assert.ThrowsException<InvalidOperationException>(() =>
             {
-                provider.GetChunkManager<float>("close");
+                provider.GetCacheManager<float>("close");
             });
 
             // 3. 字段不存在抛出 KeyNotFoundException
             Assert.ThrowsException<KeyNotFoundException>(() =>
             {
-                provider.GetChunkManager<double>("non_existent");
+                provider.GetCacheManager<double>("non_existent");
             });
         }
 
-        private class MockMarketSeriesSource : IMarketSeriesSource
+        [TestMethod]
+        public void TimeseriesRegistry_ShouldImplementBothReadAndWriteContracts()
+        {
+            var mockSource = new MockTimeseriesSource();
+            var registry = new SimpleFieldRegistry();
+            using var timeseries = new TimeseriesRegistry(mockSource, registry, _tempCacheDir);
+
+            Assert.IsInstanceOfType(timeseries, typeof(ITimeseriesRegistry));
+            Assert.IsInstanceOfType(timeseries, typeof(ITimeseriesWriter));
+        }
+
+        private class MockTimeseriesSource : ITimeseriesSource
         {
             public List<string> SymbolsList { get; } = new();
             public List<DateTime> DatesList { get; } = new();

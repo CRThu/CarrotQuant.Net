@@ -4,12 +4,16 @@ using CarrotBacktesting.NET.Config;
 
 namespace CarrotBacktesting.NET.Data
 {
-    public static class DataProviderFactory
+    /// <summary>
+    /// 时序注册表装配工厂。
+    /// 统一装配并初始化 <see cref="TimeseriesRegistry"/> 实例。
+    /// </summary>
+    public static class TimeseriesRegistryFactory
     {
-        public static IDataProvider Create(
+        public static ITimeseriesRegistry Create(
             string storageRoot,
             IFieldRegistry registry, 
-            IMarketSeriesSource source,
+            ITimeseriesSource source,
             int pageSize = 4096,
             bool enableCache = false,
             string refreshMode = "lazy",
@@ -20,7 +24,7 @@ namespace CarrotBacktesting.NET.Data
             bool prefetch = true,
             bool isLive = false)
         {
-            return new CachedDataProvider(source, registry, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive);
+            return new TimeseriesRegistry(source, registry, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive);
         }
     }
 }

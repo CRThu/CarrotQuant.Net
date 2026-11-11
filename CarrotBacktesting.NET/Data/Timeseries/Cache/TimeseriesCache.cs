@@ -16,7 +16,7 @@ namespace CarrotBacktesting.NET.Data
     /// 原生支持 LZ4 超高速块压缩（3~5GB/s 解压吞吐，节省 60%~70% 磁盘 I/O），
     /// 提供纯非托管二进制零拷贝读写、增量行追加（Append）与原子元数据落盘能力。
     /// </summary>
-    public class TimeseriesStore : ITimeseriesStore
+    public class TimeseriesCache : ITimeseriesCache
     {
         private const string MetaFileName = "meta.json";
         private readonly string _storeRoot;
@@ -52,7 +52,7 @@ namespace CarrotBacktesting.NET.Data
         /// <param name="tableId">时序表唯一标识符</param>
         /// <param name="pageSize">分页行数大小，默认为 4096</param>
         /// <param name="compression">压缩格式，支持 "lz4"（默认）与 "none"（无压缩裸块）</param>
-        public TimeseriesStore(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4")
+        public TimeseriesCache(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4")
         {
             if (string.IsNullOrWhiteSpace(storeRoot))
             {
