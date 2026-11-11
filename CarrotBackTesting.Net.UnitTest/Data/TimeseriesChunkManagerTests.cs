@@ -36,7 +36,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                cacheStore: null,
+                store: null,
                 pageSize: 4,
                 refreshMode: "lazy");
 
@@ -67,7 +67,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                cacheStore: null,
+                store: null,
                 pageSize: 4,
                 refreshMode: "lazy");
 
@@ -108,7 +108,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                cacheStore: null,
+                store: null,
                 pageSize: 4096,
                 refreshMode: "lazy");
 
@@ -131,7 +131,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_Commit_IncrementalFlushAndZeroHistoricalWriteAmplification()
         {
             var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
-            var cacheStore = new TimeseriesCacheStore(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
+            var cacheStore = new TimeseriesStore(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
 
             // 1. 首次加载：4 行正好写满 chunk 0
             using (var manager = new TimeseriesChunkManager<double>(
@@ -211,7 +211,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_UpdateRow_And_RewriteActiveChunkWithoutNewRows()
         {
             var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
-            var cacheStore = new TimeseriesCacheStore(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
+            var cacheStore = new TimeseriesStore(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
 
             // 1. 首次加载 4 行并缓存
             using (var manager = new TimeseriesChunkManager<double>(
@@ -271,7 +271,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                cacheStore: null,
+                store: null,
                 pageSize: 4,
                 refreshMode: "lazy");
 
@@ -291,7 +291,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                cacheStore: null,
+                store: null,
                 pageSize: 4,
                 refreshMode: "lazy");
 
@@ -311,11 +311,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                cacheStore: null,
+                store: null,
                 pageSize: 4,
                 refreshMode: "lazy");
 
-            var rawBuffer = manager.Buffer;
+            var rawBuffer = manager.Matrix;
             Assert.IsNotNull(rawBuffer);
             Assert.AreEqual(4, rawBuffer.RowCount);
 
@@ -332,7 +332,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                cacheStore: null,
+                store: null,
                 pageSize: 4,
                 refreshMode: "lazy");
 
@@ -355,7 +355,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_CorruptedCacheFallback_InLazyMode()
         {
             var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 4);
-            var cacheStore = new TimeseriesCacheStore(_tempCacheDir, "table_corrupt", pageSize: 4, compression: "lz4");
+            var cacheStore = new TimeseriesStore(_tempCacheDir, "table_corrupt", pageSize: 4, compression: "lz4");
 
             // 1. 首次加载写入缓存
             using (var manager = new TimeseriesChunkManager<double>(
@@ -386,6 +386,152 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(4, manager2.TotalRows);
                 Assert.AreEqual(0.0, manager2.AsReadOnly()[0, 0]);
             }
+        }
+
+        [TestMethod]
+        public void TestChunkManager_AppendRow_WithTimestamp_And_AutoCommitAtBatchSize()
+        {
+            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 2);
+            var cacheStore = new TimeseriesStore(_tempCacheDir, "table_batch", pageSize: 16, compression: "lz4");
+
+            // 1. 初始化 2 行并写入缓存，设置 commitBatchSize: 3
+            using (var manager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                cacheStore,
+                pageSize: 16,
+                refreshMode: "force",
+                commitBatchSize: 3))
+            {
+                manager.EnsureLoaded();
+                Assert.AreEqual(2, manager.TotalRows);
+                Assert.AreEqual(0, manager.UncommittedRowCount);
+
+                // 追加第 1 行与第 2 行（尚未达到批次大小 3，处于纯内存缓冲态）
+                manager.AppendRow(new DateTime(2025, 1, 10), stackalloc double[] { 10.0, 20.0 });
+                manager.AppendRow(new DateTime(2025, 1, 11), stackalloc double[] { 11.0, 21.0 });
+                Assert.AreEqual(4, manager.TotalRows);
+                Assert.AreEqual(2, manager.UncommittedRowCount);
+                Assert.IsTrue(manager.IsDirty);
+
+                // 追加第 3 行，命中批次阈值 3，自动触发落盘并清空 uncommitted 缓冲！
+                manager.AppendRow(new DateTime(2025, 1, 12), stackalloc double[] { 12.0, 22.0 });
+                Assert.AreEqual(5, manager.TotalRows);
+                Assert.AreEqual(0, manager.UncommittedRowCount);
+                Assert.IsFalse(manager.IsDirty);
+            }
+
+            // 2. 磁盘恢复验证：5 行已全部入库，且时间戳保真
+            using (var recoveryManager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                cacheStore,
+                pageSize: 16,
+                refreshMode: "lazy"))
+            {
+                recoveryManager.EnsureLoaded();
+                Assert.AreEqual(5, recoveryManager.TotalRows);
+                var view = recoveryManager.AsReadOnly();
+                Assert.AreEqual(10.0, view[2, 0]);
+                Assert.AreEqual(20.0, view[2, 1]);
+                Assert.AreEqual(11.0, view[3, 0]);
+                Assert.AreEqual(21.0, view[3, 1]);
+                Assert.AreEqual(12.0, view[4, 0]);
+                Assert.AreEqual(22.0, view[4, 1]);
+
+                var meta = cacheStore.ReadMetadata("close");
+                Assert.IsNotNull(meta);
+                Assert.AreEqual(5, meta.TradeDates.Count);
+                Assert.AreEqual("2025-01-12", meta.TradeDates[4]);
+            }
+        }
+
+        [TestMethod]
+        public void TestChunkManager_Dispose_ForcesResidualCommit()
+        {
+            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 2);
+            var cacheStore = new TimeseriesStore(_tempCacheDir, "table_residual", pageSize: 16, compression: "lz4");
+
+            // 追加了 1 行（未达到 64 行批次），未显式调用 Commit()，直接退出并 Dispose
+            using (var manager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                cacheStore,
+                pageSize: 16,
+                refreshMode: "force",
+                commitBatchSize: 64))
+            {
+                manager.EnsureLoaded();
+                manager.AppendRow(new DateTime(2025, 2, 1), stackalloc double[] { 99.0 });
+                Assert.AreEqual(1, manager.UncommittedRowCount);
+                Assert.IsTrue(manager.IsDirty);
+                // 退出 using 块，自动触发 Dispose 中的保底 Commit()
+            }
+
+            // 恢复验证：残留的那一行依然成功落盘
+            using (var recoveryManager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                cacheStore,
+                pageSize: 16,
+                refreshMode: "lazy"))
+            {
+                recoveryManager.EnsureLoaded();
+                Assert.AreEqual(3, recoveryManager.TotalRows);
+                Assert.AreEqual(99.0, recoveryManager.AsReadOnly()[2, 0]);
+            }
+        }
+
+        [TestMethod]
+        public void TestChunkManager_AppendCol_FlushesRowsFirst_ThenExpandsWidthAndCommits()
+        {
+            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, 2);
+            var cacheStore = new TimeseriesStore(_tempCacheDir, "table_col", pageSize: 16, compression: "lz4");
+
+            using (var manager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                cacheStore,
+                pageSize: 16,
+                refreshMode: "force",
+                commitBatchSize: 64))
+            {
+                manager.EnsureLoaded();
+                // 1. 先在内存中追加一行（未提交）
+                manager.AppendRow(new DateTime(2025, 3, 1), stackalloc double[] { 10.0, 20.0 });
+                Assert.AreEqual(1, manager.UncommittedRowCount);
+
+                // 2. 新股上市（AppendCol）：应该先自动 Commit 未落盘行，再拓宽列为 3
+                manager.AppendCol("bj.920001");
+
+                Assert.AreEqual(0, manager.UncommittedRowCount);
+                Assert.AreEqual(3, manager.Matrix.Width);
+
+                // 验证旧历史行在新标的列上自动填充为 NaN
+                var view = manager.AsReadOnly();
+                Assert.AreEqual(3, view.RowCount);
+                Assert.IsTrue(double.IsNaN(view[0, 2]));
+                Assert.IsTrue(double.IsNaN(view[1, 2]));
+                Assert.IsTrue(double.IsNaN(view[2, 2]));
+
+                // 3. 从新股票上市开始，后续 AppendRow 直接使用 3 列数据
+                manager.AppendRow(new DateTime(2025, 3, 2), stackalloc double[] { 11.0, 21.0, 31.0 });
+                Assert.AreEqual(4, view.RowCount);
+                Assert.AreEqual(31.0, view[3, 2]);
+
+                manager.Commit();
+            }
+
+            // 4. 磁盘恢复验证：3 只股票，新宽度已持久化
+            var meta = cacheStore.ReadMetadata("close");
+            Assert.IsNotNull(meta);
+            Assert.AreEqual(3, meta.Symbols.Count);
+            Assert.AreEqual("bj.920001", meta.Symbols[2]);
         }
 
         private class MockMarketSeriesSource : IMarketSeriesSource
@@ -429,3 +575,4 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
     }
 }
+

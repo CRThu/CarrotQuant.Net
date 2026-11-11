@@ -1,15 +1,14 @@
 using System;
 using CarrotBacktesting.NET.Data.Views;
-using CommunityToolkit.HighPerformance;
 
 namespace CarrotBacktesting.NET.Abstraction.Data
 {
     /// <summary>
-    /// 提供对二维内存缓冲区的可读写访问契约。
-    /// 该接口继承自 <see cref="IReadOnlyBuffer2D{T}"/>，并提供修改数据的能力。
+    /// 提供对二维时序矩阵的可读写访问契约。
+    /// 继承自 <see cref="IReadOnlyMatrix2D{T}"/>，并提供原位修改与向量化批量填充能力。
     /// </summary>
     /// <typeparam name="T">存储的数据类型，必须为非托管类型。</typeparam>
-    public interface IBuffer2D<T> : IReadOnlyBuffer2D<T>, IDisposable where T : unmanaged
+    public interface IMatrix2D<T> : IReadOnlyMatrix2D<T>, IDisposable where T : unmanaged
     {
         /// <summary>
         /// 获取指定行号和列号的数据可写引用。
@@ -20,7 +19,7 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         new ref T this[int r, int c] { get; }
 
         /// <summary>
-        /// 获取指定行中某一段的水平可写视图（行视图）。
+        /// 获取指定行中某一段的水平可写视图（截面视图）。
         /// </summary>
         /// <param name="row">起始行索引。</param>
         /// <param name="col">起始列索引。</param>
@@ -29,7 +28,7 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         new RowView<T> GetRowView(int row, int col, int len);
 
         /// <summary>
-        /// 获取指定列中某一段的垂直可写视图（列视图），支持跨页。
+        /// 获取指定列中某一段的垂直可写视图（序列视图），支持跨页连续寻址。
         /// </summary>
         /// <param name="row">起始行索引。</param>
         /// <param name="col">列索引。</param>
@@ -38,7 +37,7 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         new ColumnView<T> GetColumnView(int row, int col, int len);
 
         /// <summary>
-        /// 在指定位置设置单个元素。
+        /// 在指定行列坐标设置单个元素。
         /// </summary>
         /// <param name="r">行索引。</param>
         /// <param name="c">列索引。</param>
@@ -46,7 +45,7 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         void SetElement(int r, int c, T value);
 
         /// <summary>
-        /// 批量设置单行截面数据。
+        /// 批量写入单行截面数据。
         /// </summary>
         /// <param name="r">行索引。</param>
         /// <param name="c">起始列索引。</param>
@@ -54,7 +53,7 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         void SetRow(int r, int c, ReadOnlySpan<T> data);
 
         /// <summary>
-        /// 批量设置单列时序数据。
+        /// 批量写入单列时序数据。
         /// </summary>
         /// <param name="r">起始行索引。</param>
         /// <param name="c">列索引。</param>
@@ -62,11 +61,9 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         void SetColumn(int r, int c, ReadOnlySpan<T> data);
 
         /// <summary>
-        /// 将二维数据块写入指定位置。
+        /// 原子拓宽矩阵列维度（新标的上市扩列）。
         /// </summary>
-        /// <param name="r">起始行。</param>
-        /// <param name="c">起始列。</param>
-        /// <param name="data">待写入的数据块。</param>
-        void SetBlock(int r, int c, ReadOnlySpan2D<T> data);
+        /// <param name="newWidth">新列总数。</param>
+        void ExpandWidth(int newWidth);
     }
 }

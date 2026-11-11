@@ -7,7 +7,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
     [TestClass]
-    public class TimeseriesCacheStoreTests
+    public class TimeseriesStoreTests
     {
         private string _tempDir = "";
 
@@ -30,21 +30,21 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestConstructor_ValidatesParameters()
         {
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesCacheStore("", "t1"));
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesCacheStore("   ", "t1"));
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesCacheStore(_tempDir, ""));
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesCacheStore(_tempDir, "   "));
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesCacheStore(_tempDir, "t1", 0));
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesCacheStore(_tempDir, "t1", 1000)); // 非 2 的幂
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesStore("", "t1"));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesStore("   ", "t1"));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesStore(_tempDir, ""));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesStore(_tempDir, "   "));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesStore(_tempDir, "t1", 0));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesStore(_tempDir, "t1", 1000)); // 非 2 的幂
 
-            var store = new TimeseriesCacheStore(_tempDir, "table_1", 2048, "none");
+            var store = new TimeseriesStore(_tempDir, "table_1", 2048, "none");
             Assert.AreEqual("table_1", store.TableId);
             Assert.AreEqual(2048, store.PageSize);
             Assert.AreEqual("none", store.Compression);
         }
 
         [TestMethod]
-        public void TestWriteAndLoadBuffer_AcrossMultipleChunks()
+        public void TestWriteAndLoadMatrix_AcrossMultipleChunks()
         {
             const string tableId = "ashare.kline.1d.raw.baostock";
             const string fieldName = "close";
@@ -52,7 +52,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int totalRows = 2500; // 跨越 3 个 chunk: 1024 + 1024 + 452
             const int width = 20;
 
-            var store = new TimeseriesCacheStore(_tempDir, tableId, pageSize);
+            var store = new TimeseriesStore(_tempDir, tableId, pageSize);
             Assert.IsFalse(store.HasCache(fieldName));
 
             // 1. 准备原始测试数据与 Buffer
@@ -63,7 +63,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var startDate = new DateTime(2020, 1, 1);
             for (int r = 0; r < totalRows; r++) tradeDates.Add(startDate.AddDays(r));
 
-            using var buffer = new ChunkBuffer2D<double>(width, pageSize, totalRows);
+            using var buffer = new ChunkMatrix2D<double>(width, pageSize, totalRows);
             for (int r = 0; r < totalRows; r++)
             {
                 for (int c = 0; c < width; c++)
@@ -73,7 +73,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 2. 写入缓存
-            store.WriteBuffer(fieldName, buffer, symbols, tradeDates);
+            store.WriteMatrix(fieldName, buffer, symbols, tradeDates);
             Assert.IsTrue(store.HasCache(fieldName));
 
             string fieldDir = store.GetFieldCacheDir(fieldName);
@@ -82,7 +82,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(File.Exists(Path.Combine(fieldDir, "chunk_2.bin")));
 
             // 3. 从缓存恢复加载 Buffer
-            using var loadedBuffer = store.LoadBuffer<double>(fieldName);
+            using var loadedBuffer = store.LoadMatrix<double>(fieldName);
 
             Assert.IsNotNull(loadedBuffer);
             Assert.AreEqual(totalRows, loadedBuffer.RowCount);
@@ -122,7 +122,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int appendRows = 500; // 1000 + 500 = 1500 行，跨越 1024 分页边界
             const int width = 10;
 
-            var store = new TimeseriesCacheStore(_tempDir, tableId, pageSize);
+            var store = new TimeseriesStore(_tempDir, tableId, pageSize);
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"sz.00000{c:D2}");
@@ -132,7 +132,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             for (int r = 0; r < initialRows; r++) tradeDates.Add(baseDate.AddDays(r));
 
             // 初始写入 1000 行
-            using (var initBuffer = new ChunkBuffer2D<float>(width, pageSize, initialRows))
+            using (var initBuffer = new ChunkMatrix2D<float>(width, pageSize, initialRows))
             {
                 for (int r = 0; r < initialRows; r++)
                 {
@@ -141,7 +141,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                         initBuffer[r, c] = (float)(r * 10.0 + c);
                     }
                 }
-                store.WriteBuffer(fieldName, initBuffer, symbols, tradeDates);
+                store.WriteMatrix(fieldName, initBuffer, symbols, tradeDates);
             }
 
             // 增量追加 500 行
@@ -160,7 +160,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }, newDates);
 
             // 验证增量后的完整性
-            using var loadedBuffer = store.LoadBuffer<float>(fieldName);
+            using var loadedBuffer = store.LoadMatrix<float>(fieldName);
             Assert.AreEqual(initialRows + appendRows, loadedBuffer.RowCount);
 
             for (int r = 0; r < initialRows + appendRows; r++)
@@ -188,7 +188,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int appendRows = 100; // 500 + 100 = 600 行，跨越 512 边界
             const int width = 10;
 
-            var store = new TimeseriesCacheStore(_tempDir, tableId, pageSize, compression: "none");
+            var store = new TimeseriesStore(_tempDir, tableId, pageSize, compression: "none");
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
@@ -196,7 +196,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var baseDate = new DateTime(2021, 1, 1);
             for (int r = 0; r < initialRows; r++) tradeDates.Add(baseDate.AddDays(r));
 
-            using (var initBuffer = new ChunkBuffer2D<float>(width, pageSize, initialRows))
+            using (var initBuffer = new ChunkMatrix2D<float>(width, pageSize, initialRows))
             {
                 for (int r = 0; r < initialRows; r++)
                 {
@@ -205,7 +205,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                         initBuffer[r, c] = r * 10.0f + c;
                     }
                 }
-                store.WriteBuffer(fieldName, initBuffer, symbols, tradeDates);
+                store.WriteMatrix(fieldName, initBuffer, symbols, tradeDates);
             }
 
             var newDates = new List<DateTime>();
@@ -216,7 +216,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 for (int c = 0; c < width; c++) destSpan[c] = rowIdx * 10.0f + c;
             }, newDates);
 
-            using var loadedBuffer = store.LoadBuffer<float>(fieldName);
+            using var loadedBuffer = store.LoadMatrix<float>(fieldName);
             Assert.AreEqual(initialRows + appendRows, loadedBuffer.RowCount);
 
             for (int r = 0; r < initialRows + appendRows; r++)
@@ -233,13 +233,13 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             const string tableId = "test_table";
             const string fieldName = "close";
-            var store = new TimeseriesCacheStore(_tempDir, tableId, 1024);
+            var store = new TimeseriesStore(_tempDir, tableId, 1024);
 
-            using var buffer = new ChunkBuffer2D<double>(5, 1024, 10);
-            store.WriteBuffer(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new DateTime[10]);
+            using var buffer = new ChunkMatrix2D<double>(5, 1024, 10);
+            store.WriteMatrix(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new DateTime[10]);
 
             // 写入的是 double，尝试作为 long 加载应抛出强类型异常
-            Assert.ThrowsException<InvalidOperationException>(() => store.LoadBuffer<long>(fieldName));
+            Assert.ThrowsException<InvalidOperationException>(() => store.LoadMatrix<long>(fieldName));
         }
 
         [TestMethod]
@@ -247,27 +247,27 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             const string tableId = "test_table";
             const string fieldName = "close";
-            var store = new TimeseriesCacheStore(_tempDir, tableId, 1024);
+            var store = new TimeseriesStore(_tempDir, tableId, 1024);
 
-            using var buffer = new ChunkBuffer2D<double>(5, 1024, 10);
-            store.WriteBuffer(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new DateTime[10]);
+            using var buffer = new ChunkMatrix2D<double>(5, 1024, 10);
+            store.WriteMatrix(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new DateTime[10]);
 
             // 篡改文件大小模拟损坏
             string chunkPath = Path.Combine(store.GetFieldCacheDir(fieldName), "chunk_0.bin");
             File.WriteAllBytes(chunkPath, new byte[10]); // 故意截断为 10 字节
 
-            Assert.ThrowsException<InvalidDataException>(() => store.LoadBuffer<double>(fieldName));
+            Assert.ThrowsException<InvalidDataException>(() => store.LoadMatrix<double>(fieldName));
         }
 
         [TestMethod]
         public void TestClearAndClearTable()
         {
             const string tableId = "test_table";
-            var store = new TimeseriesCacheStore(_tempDir, tableId, 1024);
+            var store = new TimeseriesStore(_tempDir, tableId, 1024);
 
-            using var buffer = new ChunkBuffer2D<double>(2, 1024, 5);
-            store.WriteBuffer("close", buffer, new[] { "s1", "s2" }, new DateTime[5]);
-            store.WriteBuffer("open", buffer, new[] { "s1", "s2" }, new DateTime[5]);
+            using var buffer = new ChunkMatrix2D<double>(2, 1024, 5);
+            store.WriteMatrix("close", buffer, new[] { "s1", "s2" }, new DateTime[5]);
+            store.WriteMatrix("open", buffer, new[] { "s1", "s2" }, new DateTime[5]);
 
             Assert.IsTrue(store.HasCache("close"));
             Assert.IsTrue(store.HasCache("open"));
@@ -290,14 +290,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int width = 100;
             long rawByteCount = (long)rows * width * sizeof(double); // 819,200 字节
 
-            var store = new TimeseriesCacheStore(_tempDir, tableId, pageSize, compression: "lz4");
+            var store = new TimeseriesStore(_tempDir, tableId, pageSize, compression: "lz4");
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
             var dates = new List<DateTime>();
             for (int r = 0; r < rows; r++) dates.Add(new DateTime(2022, 1, 1).AddDays(r));
 
-            using (var buffer = new ChunkBuffer2D<double>(width, pageSize, rows))
+            using (var buffer = new ChunkMatrix2D<double>(width, pageSize, rows))
             {
                 // 模拟具有周期性与局部相似性的量价特征数据
                 for (int r = 0; r < rows; r++)
@@ -307,7 +307,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                         buffer[r, c] = (r % 20) * 1000.0 + (c % 10);
                     }
                 }
-                store.WriteBuffer(fieldName, buffer, symbols, dates);
+                store.WriteMatrix(fieldName, buffer, symbols, dates);
             }
 
             // 1. 验证磁盘压缩效果（LZ4 应将 819KB 至少压缩 50% 以上）
@@ -316,7 +316,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(fi.Length < rawByteCount / 2, $"LZ4 压缩效果未达标: 原始 {rawByteCount} 字节, 压缩后 {fi.Length} 字节");
 
             // 2. 验证解压恢复数值的 100% 纯正
-            using var loaded = store.LoadBuffer<double>(fieldName);
+            using var loaded = store.LoadMatrix<double>(fieldName);
             Assert.AreEqual(rows, loaded.RowCount);
             Assert.AreEqual(width, loaded.Width);
 
@@ -340,14 +340,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int width = 10;
             long expectedBytes = (long)rows * width * sizeof(float);
 
-            var store = new TimeseriesCacheStore(_tempDir, tableId, pageSize, compression: "none");
+            var store = new TimeseriesStore(_tempDir, tableId, pageSize, compression: "none");
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
             var dates = new List<DateTime>();
             for (int r = 0; r < rows; r++) dates.Add(new DateTime(2023, 1, 1).AddDays(r));
 
-            using (var buffer = new ChunkBuffer2D<float>(width, pageSize, rows))
+            using (var buffer = new ChunkMatrix2D<float>(width, pageSize, rows))
             {
                 for (int r = 0; r < rows; r++)
                 {
@@ -356,7 +356,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                         buffer[r, c] = r + c * 0.5f;
                     }
                 }
-                store.WriteBuffer(fieldName, buffer, symbols, dates);
+                store.WriteMatrix(fieldName, buffer, symbols, dates);
             }
 
             // 无压缩模式下，文件大小必须完全等于 raw 字节
@@ -364,7 +364,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var fi = new FileInfo(chunkFile);
             Assert.AreEqual(expectedBytes, fi.Length, "无压缩模式下 chunk 文件大小必须精确等于 raw 字节");
 
-            using var loaded = store.LoadBuffer<float>(fieldName);
+            using var loaded = store.LoadMatrix<float>(fieldName);
             Assert.AreEqual(rows, loaded.RowCount);
             for (int r = 0; r < rows; r++)
             {
@@ -385,13 +385,13 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int totalRows = 300; // 非满页（仅填充满 300/1024）
             const int width = 5;
 
-            var store = new TimeseriesCacheStore(_tempDir, tableId, pageSize, compression: "lz4");
+            var store = new TimeseriesStore(_tempDir, tableId, pageSize, compression: "lz4");
 
             var symbols = new List<string> { "s_ipo_late", "s_delisted", "s_normal", "s_halted", "s_all_nan" };
             var dates = new List<DateTime>();
             for (int r = 0; r < totalRows; r++) dates.Add(new DateTime(2021, 1, 1).AddDays(r));
 
-            using (var buffer = new ChunkBuffer2D<double>(width, pageSize, totalRows))
+            using (var buffer = new ChunkMatrix2D<double>(width, pageSize, totalRows))
             {
                 for (int r = 0; r < totalRows; r++)
                 {
@@ -411,11 +411,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                     buffer[r, 4] = double.NaN;
                 }
 
-                store.WriteBuffer(fieldName, buffer, symbols, dates);
+                store.WriteMatrix(fieldName, buffer, symbols, dates);
             }
 
             // 从 LZ4 压缩缓存直接反序列化
-            using var loaded = store.LoadBuffer<double>(fieldName);
+            using var loaded = store.LoadMatrix<double>(fieldName);
             Assert.AreEqual(totalRows, loaded.RowCount);
             Assert.AreEqual(width, loaded.Width);
 
@@ -456,14 +456,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int totalRows = 2500; // 跨越 3 个分块 (0: 1024行, 1: 1024行, 2: 452行)
             const int width = 4;
 
-            var store = new TimeseriesCacheStore(_tempDir, tableId, pageSize, compression: "lz4");
+            var store = new TimeseriesStore(_tempDir, tableId, pageSize, compression: "lz4");
 
             var symbols = new List<string> { "s0", "s1", "s2", "s3" };
             var dates = new List<DateTime>();
             for (int r = 0; r < totalRows; r++) dates.Add(new DateTime(2021, 1, 1).AddDays(r));
 
             // 1. 初始构建 3 个分块的缓存
-            using (var buffer = new ChunkBuffer2D<double>(width, pageSize, totalRows))
+            using (var buffer = new ChunkMatrix2D<double>(width, pageSize, totalRows))
             {
                 for (int r = 0; r < totalRows; r++)
                 {
@@ -472,7 +472,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                         buffer[r, c] = r * 10.0 + c;
                     }
                 }
-                store.WriteBuffer(fieldName, buffer, symbols, dates);
+                store.WriteMatrix(fieldName, buffer, symbols, dates);
             }
 
             string fieldDir = Path.Combine(_tempDir, tableId, fieldName);
@@ -503,7 +503,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             CollectionAssert.AreEqual(chunk2BytesBefore, chunk2BytesAfter, "Chunk 2 不应被写入或触碰");
 
             // 4. 重新反序列化全量 Buffer 校验数据精度
-            using var loaded = store.LoadBuffer<double>(fieldName);
+            using var loaded = store.LoadMatrix<double>(fieldName);
             Assert.AreEqual(totalRows, loaded.RowCount);
             Assert.AreEqual(width, loaded.Width);
 
@@ -561,21 +561,21 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int totalRows = 1500; // Chunk 0 (1024行), Chunk 1 (476行)
             const int initialWidth = 2;
 
-            var store = new TimeseriesCacheStore(_tempDir, tableId, pageSize, compression: "lz4");
+            var store = new TimeseriesStore(_tempDir, tableId, pageSize, compression: "lz4");
 
             var initialSymbols = new List<string> { "s0", "s1" };
             var dates = new List<DateTime>();
             for (int r = 0; r < totalRows; r++) dates.Add(new DateTime(2021, 1, 1).AddDays(r));
 
             // 1. 初始构建 2 列分块
-            using (var buffer = new ChunkBuffer2D<double>(initialWidth, pageSize, totalRows))
+            using (var buffer = new ChunkMatrix2D<double>(initialWidth, pageSize, totalRows))
             {
                 for (int r = 0; r < totalRows; r++)
                 {
                     buffer[r, 0] = r * 10.0 + 0;
                     buffer[r, 1] = r * 10.0 + 1;
                 }
-                store.WriteBuffer(fieldName, buffer, initialSymbols, dates);
+                store.WriteMatrix(fieldName, buffer, initialSymbols, dates);
             }
 
             string fieldDir = Path.Combine(_tempDir, tableId, fieldName);
@@ -611,7 +611,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(4, meta.GetChunkWidth(1), "Chunk 1 应更新为宽度 4");
 
             // 5. 载入 4 列宽度的完整内存 Buffer，验证内存自动拓宽对齐
-            using var loaded = store.LoadBuffer<double>(fieldName, 4);
+            using var loaded = store.LoadMatrix<double>(fieldName, 4);
             Assert.AreEqual(totalRows, loaded.RowCount);
             Assert.AreEqual(4, loaded.Width);
 
@@ -639,22 +639,22 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             const string tableId = "compat_test_table";
             const string fieldName = "close";
-            var store = new TimeseriesCacheStore(_tempDir, tableId, 1024);
+            var store = new TimeseriesStore(_tempDir, tableId, 1024);
 
             var symbols = new List<string> { "sh.600000", "sh.600001" };
             var dates = new List<DateTime> { DateTime.Today };
-            using (var buffer = new ChunkBuffer2D<double>(2, 1024, 1))
+            using (var buffer = new ChunkMatrix2D<double>(2, 1024, 1))
             {
                 buffer[0, 0] = 1.0;
                 buffer[0, 1] = 2.0;
-                store.WriteBuffer(fieldName, buffer, symbols, dates);
+                store.WriteMatrix(fieldName, buffer, symbols, dates);
             }
 
             // 1. 类型不匹配
             Assert.IsFalse(store.IsCacheCompatible(fieldName, symbols, typeof(int), out _));
 
             // 2. PageSize 不匹配 (用 pageSize=2048 的 store 检查)
-            var store2048 = new TimeseriesCacheStore(_tempDir, tableId, 2048);
+            var store2048 = new TimeseriesStore(_tempDir, tableId, 2048);
             Assert.IsFalse(store2048.IsCacheCompatible(fieldName, symbols, typeof(double), out _));
 
             // 3. 股票代码集合缩减
@@ -673,13 +673,13 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestRewriteChunk_InvalidIndex_ThrowsException()
         {
             const string tableId = "rewrite_invalid_idx";
-            var store = new TimeseriesCacheStore(_tempDir, tableId, 64);
+            var store = new TimeseriesStore(_tempDir, tableId, 64);
             var symbols = new List<string> { "sh.600000" };
             var dates = new List<DateTime> { DateTime.Today };
 
-            using (var buffer = new ChunkBuffer2D<double>(1, 64, 1))
+            using (var buffer = new ChunkMatrix2D<double>(1, 64, 1))
             {
-                store.WriteBuffer("close", buffer, symbols, dates);
+                store.WriteMatrix("close", buffer, symbols, dates);
             }
 
             // 负数索引抛出 ArgumentOutOfRangeException
@@ -696,3 +696,4 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
     }
 }
+

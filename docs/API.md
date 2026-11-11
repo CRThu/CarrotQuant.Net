@@ -2,14 +2,15 @@
 
 本文档面向策略研发工程师与框架二次开发者，作为底层接口字典收录 CarrotQuant.NET v4 的核心契约签名与数据模型。
 
-> 💡 **业务原理与使用指南**：若需了解端到端回测流程与配置范例，请参阅 [标准研发工作流 (workflow.md)](workflow.md) 及 [配置体系指南 (configuration.md)](configuration.md)。
+> [!TIP]
+> **业务原理与使用指南**：若需了解端到端回测流程与配置范例，请参阅 [标准研发工作流 (workflow.md)](workflow.md) 及 [配置体系指南 (configuration.md)](configuration.md)。
 
 ---
 
 ## 目录
 - [一、配置层 (CarrotBacktesting.NET.Config)](#一配置层-carrotbacktestingnetconfig)
 - [二、存储调度与数据物理层 (Abstraction.Data & Data)](#二存储调度与数据物理层-abstractiondata--data)
-- [三、内存数据供给层 (IDataProvider & ChunkBuffer2D)](#三内存数据供给层-idataprovider--chunkbuffer2d)
+- [三、内存数据供给层 (IDataProvider & ChunkMatrix2D)](#三内存数据供给层-idataprovider--chunkmatrix2d)
 - [四、异构事件流系统 (Event Stream System)](#四异构事件流系统-event-stream-system)
 - [五、引擎与黑板上下文 (Engine & Execution Context)](#五引擎与黑板上下文-engine--execution-context)
 - [六、策略与管线开发 (Strategy & Pipeline)](#六策略与管线开发-strategy--pipeline)
@@ -159,6 +160,8 @@ public interface IMarketMetadata
     Type GetFieldType(string fieldName);
     int GetSymbolIndex(string symbol);                // O(1) 或二分查找
     int GetDateIndex(DateTime date);                  // O(1) 或二分查找
+    int AppendDate(DateTime date);                    // 实盘时序原子推进（默认抛出 NotSupportedException）
+    int AppendSymbol(string symbol);                  // 新标的上市原子扩列（默认抛出 NotSupportedException）
 }
 ```
 
@@ -178,10 +181,10 @@ public interface IMarketMetadata
 
 ---
 
-## 三、内存数据供给层 (IDataProvider & ChunkBuffer2D)
+## 三、内存数据供给层 (IDataProvider & ChunkMatrix2D)
 
 ### 1. IDataProvider
-数据层向引擎与策略提供只读数据访问契约，统一返回非托管内存块的只读视图。
+数据层向引擎与策略提供只读数据访问契约，统一返回非托管时序矩阵的只读视图。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Data;
@@ -192,24 +195,24 @@ public interface IDataProvider
     bool HasField(string fieldName);
     
     /// <summary>
-    /// 获取指定字段的全局二维只读 Buffer（Row=交易日/时间步，Col=股票代码）。
+    /// 获取指定字段的全局二维只读时序矩阵（Row=交易日/时间步，Col=股票代码）。
     /// </summary>
-    IReadOnlyBuffer2D<T> GetBuffer<T>(string fieldName) where T : unmanaged;
+    IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
 
     /// <summary>
-    /// 原子提交所有字段缓存数据，增量落盘持久化至 TimeseriesCacheStore。
+    /// 原子提交所有字段缓存数据，增量落盘持久化至 TimeseriesStore。
     /// </summary>
     void Commit();
 }
 ```
 
-### 2. ChunkBuffer2D<T>
-基于连续定长分页（Chunk）的高性能二维无锁只读/可写内存容器。底座采用非托管内存管理（`NativeMemory`），寻址全面采用位运算（Shift/Mask）实现零除法开销；读取路径提供无锁（Lock-Free）零并发竞争保证。
+### 2. ChunkMatrix2D<T>
+基于连续定长分页（Chunk）的高性能二维无锁只读/可写内存矩阵。底座采用非托管内存管理（`NativeMemory`），寻址全面采用位运算（Shift/Mask）实现零除法开销；读取路径提供无锁（Lock-Free）零并发竞争保证。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
 
-public sealed unsafe class ChunkBuffer2D<T> : IBuffer2D<T>, IReadOnlyBuffer2D<T>, IDisposable 
+public sealed unsafe class ChunkMatrix2D<T> : IMatrix2D<T>, IReadOnlyMatrix2D<T>, IDisposable 
     where T : unmanaged
 {
     public int RowCount { get; }
@@ -217,17 +220,16 @@ public sealed unsafe class ChunkBuffer2D<T> : IBuffer2D<T>, IReadOnlyBuffer2D<T>
     public int PageSize { get; }
     public int PageCount { get; }
 
-    public ChunkBuffer2D(int width, int pageSize = 4096, int initialRowCount = 0);
+    public ChunkMatrix2D(int width, int pageSize = 4096, int initialRowCount = 0);
 
     // 读写索引器（无锁快速通道）
     public ref T this[int r, int c] { get; }
-    public IReadOnlyBuffer2D<T> AsReadOnly();
+    public IReadOnlyMatrix2D<T> AsReadOnly();
 
     // 批量向量化 I/O
     public void SetElement(int r, int c, T value);
     public void SetRow(int r, int c, ReadOnlySpan<T> data);
     public void SetColumn(int r, int c, ReadOnlySpan<T> data);
-    public void SetBlock(int r, int c, ReadOnlySpan2D<T> data);
     public void CopyRow(int r, int c, Span<T> destination);
     public void CopyColumn(int r, int c, Span<T> destination);
 
@@ -240,94 +242,70 @@ public sealed unsafe class ChunkBuffer2D<T> : IBuffer2D<T>, IReadOnlyBuffer2D<T>
     public ReadOnlySpan<T> GetReadOnlyPageSpan(int pageIndex, int rowsInPage);
 
     public void EnsureCapacity(int targetRowCount);
+    public void ExpandWidth(int newWidth);
     public void Dispose();
 }
 ```
 
 ### 3. 核心访问模式
-`IDataProvider.GetBuffer<T>` 返回 `IReadOnlyBuffer2D<T>`，支持无 GC 压力的批量截面切片与序列点查：
+`IDataProvider.GetMatrix<T>` 返回 `IReadOnlyMatrix2D<T>`，支持无 GC 压力的批量截面切片与序列点查：
 
 ```csharp
-// 1. 获取收盘价矩阵
-IReadOnlyBuffer2D<double> closeBuffer = provider.GetBuffer<double>("close");
+// 1. 获取收盘价时序矩阵（全市场二维宽表）
+IReadOnlyMatrix2D<double> closeMatrix = provider.GetMatrix<double>("close");
 
 // 2. 根据元数据索引定位物理坐标
 int dateIdx = provider.Metadata.GetDateIndex(new DateTime(2025, 1, 15));
 int symbolIdx = provider.Metadata.GetSymbolIndex("sh.600000");
 
 // 3. 常数时间点查 (O(1))
-double closePrice = closeBuffer[dateIdx, symbolIdx];
+double closePrice = closeMatrix[dateIdx, symbolIdx];
 
 // 4. 行切片（当日全市场截面，零拷贝）
-ReadOnlyRowView<double> marketSnapshot = closeBuffer.GetRowView(dateIdx, 0, closeBuffer.Width);
+ReadOnlyRowView<double> marketSnapshot = closeMatrix.GetRowView(dateIdx, 0, closeMatrix.Width);
 
 // 5. 列切片（单只个股全时序序列，零拷贝）
-ReadOnlyColumnView<double> stockHistory = closeBuffer.GetColumnView(0, symbolIdx, closeBuffer.RowCount);
+ReadOnlyColumnView<double> stockHistory = closeMatrix.GetColumnView(0, symbolIdx, closeMatrix.RowCount);
 
 // 6. 单标的回测退化便捷语法（CTA、期货、加密货币单币回测）
 ReadOnlyColumnView<double> singleStockSeries = provider.GetSeries<double>("close");
 ReadOnlyColumnView<double> btcSeries = provider.GetSeries<double>("close", "BTCUSDT");
 ```
 
-### 4. ITimeseriesCacheStore 与 TimeseriesCacheStore
-基于 4096 行分块与原生 LZ4 块压缩的时序二进制持久化缓存存储器抽象与实现。支持分块独立自描述宽度（Variable Width per Bin），在内存载入时根据目标宽度自动拓展列并填充 NaN，仅重刷当前活跃分块，彻底消除历史分块的写放大与无意义存储膨胀。
+### 4. ITimeseriesStore 与 TimeseriesStore
+基于 4096 行分块与原生 LZ4 块压缩的时序二进制持久化存储器抽象与实现。支持分块独立自描述宽度（Variable Width per Bin），在内存载入时根据目标宽度自动拓展列并填充 NaN，仅重刷当前活跃分块，彻底消除历史分块的写放大与无意义存储膨胀。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
 
-public interface ITimeseriesCacheStore
+public interface ITimeseriesStore
 {
-    string CacheRoot { get; }
     string TableId { get; }
     int PageSize { get; }
-    string Compression { get; }
 
-    bool HasCache(string fieldName);
-    TimeseriesCacheMetadata? ReadMetadata(string fieldName);
-    bool IsCacheCompatible(string fieldName, IReadOnlyList<string> expectedSymbols, Type expectedType, out TimeseriesCacheMetadata? metadata);
+    bool HasField(string fieldName);
+    TimeseriesMetadata? ReadMetadata(string fieldName);
+    bool IsCompatible(string fieldName, IReadOnlyList<string> expectedSymbols, Type expectedType, out TimeseriesMetadata? metadata);
 
-    ChunkBuffer2D<T> LoadBuffer<T>(string fieldName, int? targetWidth = null) where T : unmanaged;
-    void WriteBuffer<T>(string fieldName, ChunkBuffer2D<T> buffer, IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates) where T : unmanaged;
+    ChunkMatrix2D<T> LoadMatrix<T>(string fieldName, int? targetWidth = null) where T : unmanaged;
+    void WriteMatrix<T>(string fieldName, ChunkMatrix2D<T> matrix, IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates) where T : unmanaged;
     void RewriteChunk<T>(string fieldName, int pageIndex, Action<int, Span<T>> rowProvider, int? newChunkWidth = null, IReadOnlyList<string>? updatedSymbols = null) where T : unmanaged;
     void AppendRows<T>(string fieldName, int deltaRows, Action<int, Span<T>> rowProvider, IReadOnlyList<DateTime> newTradeDates) where T : unmanaged;
     void Clear(string fieldName);
     void ClearTable();
 }
 
-public class TimeseriesCacheStore : ITimeseriesCacheStore
+public class TimeseriesStore : ITimeseriesStore
 {
-    public TimeseriesCacheStore(string cacheRoot, string tableId, int pageSize = 4096, string compression = "lz4");
-    // (实现 ITimeseriesCacheStore 契约)
-}
-```
-
-    // 单分块精准重刷（仅针对单个 chunk_{pageIndex}.bin 进行覆盖写，支持扩充当前分块宽度，其他历史分块零 I/O 放大）
-    public void RewriteChunk<T>(
-        string fieldName, 
-        int pageIndex, 
-        Action<int, Span<T>> rowProvider,
-        int? newChunkWidth = null,
-        IReadOnlyList<string>? updatedSymbols = null) where T : unmanaged;
-
-    // 全量写入与读取（LoadBuffer 支持传入 targetWidth 触发内存自动列拓宽与 NaN 填充）
-    public void WriteBuffer<T>(string fieldName, ChunkBuffer2D<T> buffer, IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates) where T : unmanaged;
-    public ChunkBuffer2D<T> LoadBuffer<T>(string fieldName, int? targetWidth = null) where T : unmanaged;
-
-    // 增量跨分块追加
-    public void AppendRows<T>(string fieldName, int appendRowCount, Action<int, Span<T>> rowProvider, IReadOnlyList<DateTime> newTradeDates) where T : unmanaged;
-
-    // 元数据与生命周期
-    public TimeseriesCacheMetadata? ReadMetadata(string fieldName);
-    public bool HasCache(string fieldName);
-    public void Clear(string fieldName);
-    public void ClearTable();
+    public TimeseriesStore(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4");
+    // (实现 ITimeseriesStore 契约)
 }
 ```
 
 ### 5. TimeseriesChunkManager<T> 与 CachedDataProvider
 时序连续分块状态机与高性能供给门面：
-- **TimeseriesChunkManager<T>**: 单表单字段连续多分块调度器，管理非托管内存容器与磁盘分块缓存间的分块挂载、实盘单行追加与跨页分块轮转（Rollover，每 4096 行开辟新块），以及精准增量提交（`Commit`，仅落盘活跃分块，历史分块零写放大）。
-- **CachedDataProvider**: 满足 `IDataProvider` 契约的高性能数据门面。统一持有各字段的 `TimeseriesChunkManager`，对外提供只读二维时序矩阵（`GetBuffer<T>`）、分块调度器检索（`GetChunkManager<T>`）与原子落盘（`Commit`）。
+- **TimeseriesChunkManager<T>**: 单表单字段连续多分块调度器，管理非托管内存矩阵与磁盘分块持久化存储间的分块挂载、实盘单行追加与跨页分块轮转（Rollover，每 4096 行开辟新块），以及精准增量提交（`Commit`，仅落盘活跃分块，历史分块零写放大）。
+- **CachedDataProvider**: 满足 `IDataProvider` 契约的高性能数据门面。遵循单一职责原则，底层存储与分块工厂完全外包隔离，对内纯粹持有并协调各字段的 `TimeseriesChunkManager`，对外提供只读二维时序矩阵（`GetMatrix<T>`）、分块调度器检索（`GetChunkManager<T>`）与原子落盘（`Commit`）。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
@@ -340,10 +318,13 @@ public sealed class TimeseriesChunkManager<T> : ITimeseriesChunkManager where T 
     public int ActivePageIndex { get; }
     public int ActivePageRowCount { get; }
     public bool IsDirty { get; }
-    public ChunkBuffer2D<T> Buffer { get; }
+    public int UncommittedRowCount { get; }
+    public ChunkMatrix2D<T> Matrix { get; }
 
-    public IReadOnlyBuffer2D<T> AsReadOnly();
-    public void AppendRow(ReadOnlySpan<T> rowValues);
+    public IReadOnlyMatrix2D<T> AsReadOnly();
+    public void AppendRow(DateTime timestamp, ReadOnlySpan<T> rowValues);
+    public void AppendRow(ReadOnlySpan<T> rowValues); // 兼容重载
+    public void AppendCol(string symbol);
     public void UpdateRow(int rowIndex, ReadOnlySpan<T> rowValues);
     public void MarkDirty();
     public void Commit();
@@ -354,15 +335,17 @@ public class CachedDataProvider : IDataProvider, IDisposable
 {
     public IMarketMetadata Metadata { get; }
     public bool HasField(string fieldName);
-    public IReadOnlyBuffer2D<T> GetBuffer<T>(string fieldName) where T : unmanaged;
+    public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
     public TimeseriesChunkManager<T> GetChunkManager<T>(string fieldName) where T : unmanaged;
+    public void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
+    public void AppendCol(string symbol);
     public void Commit();
     public void Dispose();
 }
 ```
 
-### 6. MarketDataAligner
-市场行情时间序列数据日历对齐组件。
+### 6. MarketDataAligner 与 MatrixExtensions
+市场行情时间序列数据日历对齐组件与扩展方法。
 将物理数据文件的离散时序投射至全市场权威交易日历网格。遵循第一性原理，数据层忠实反映物理数据真相：
 - **物理事实投影**：物理文件存在的交易记录原样写入网格对应位置；物理缺失的单元格（停牌、未上市、已退市或漏采）统一严格置 `NaN`（整型采用标准哨兵值 `MinValue`，杜绝 `0` 歧义）；
 - **停牌前置契约**：停牌日向前沿用（`ffill`）必须由上游数据源/离线 ETL 脚本预先处理完毕后落盘存入宽表；回测框架数据层严格反映物理数据真相，不对其执行隐式向前沿用或伪造。
@@ -388,10 +371,14 @@ public static class MarketDataAligner
         Span<T> destination) where T : unmanaged;
 }
 
-// 缓冲区扩展方法：一键判定单元格是否缺失
-public static class BufferExtensions
+// 时序二维矩阵与单标的实用扩展方法
+public static class MatrixExtensions
 {
-    public static bool IsNaN<T>(this IReadOnlyBuffer2D<T> buffer, int row, int col) where T : unmanaged;
+    public static bool IsNaN<T>(this IReadOnlyMatrix2D<T> matrix, int row, int col) where T : unmanaged;
+    public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, int symbolIndex = 0) where T : unmanaged;
+    public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, string symbol, IMarketMetadata metadata) where T : unmanaged;
+    public static ReadOnlyColumnView<T> GetSeries<T>(this IDataProvider provider, string fieldName, int symbolIndex = 0) where T : unmanaged;
+    public static ReadOnlyColumnView<T> GetSeries<T>(this IDataProvider provider, string fieldName, string symbol) where T : unmanaged;
 }
 ```
 
@@ -552,8 +539,8 @@ public class MovingAverageCrossStrategy : IStrategy
         var marketState = context.Market.GetState<MarketContext>();
         if (marketState?.SkipAlpha == true) return;
 
-        // 2. 获取行情只读 Buffer
-        var closeBuffer = context.Data.GetBuffer<double>("close");
+        // 2. 获取行情只读矩阵
+        var closeMatrix = context.Data.GetMatrix<double>("close");
         int row = context.CurrentIndex;
         if (row < 20) return; // 历史数据不足
 
@@ -561,9 +548,9 @@ public class MovingAverageCrossStrategy : IStrategy
         for (int col = 0; col < context.Data.Metadata.SymbolCount; col++)
         {
             string symbol = context.Data.Metadata.Symbols[col];
-            double todayClose = closeBuffer[row, col];
+            double todayClose = closeMatrix[row, col];
             double ma20 = 0.0;
-            for (int k = 0; k < 20; k++) ma20 += closeBuffer[row - k, col];
+            for (int k = 0; k < 20; k++) ma20 += closeMatrix[row - k, col];
             ma20 /= 20.0;
 
             // 4. 交易执行

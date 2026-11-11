@@ -281,7 +281,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestBufferExtension_IsNaN()
         {
-            using var buffer = new ChunkBuffer2D<double>(2, 1024, 2);
+            using var buffer = new ChunkMatrix2D<double>(2, 1024, 2);
             buffer[0, 0] = 10.5;
             buffer[0, 1] = double.NaN;
             buffer[1, 0] = double.NaN;
@@ -294,3 +294,4 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
     }
 }
+

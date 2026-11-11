@@ -14,9 +14,10 @@ namespace CarrotBacktesting.NET.Data
             bool enableCache = false,
             string refreshMode = "lazy",
             string tableId = "default",
-            string compression = "lz4")
+            string compression = "lz4",
+            int commitBatchSize = 64)
         {
-            return new CachedDataProvider(source, registry, storageRoot, pageSize, enableCache, refreshMode, tableId, compression);
+            return new CachedDataProvider(source, registry, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize);
         }
     }
 }

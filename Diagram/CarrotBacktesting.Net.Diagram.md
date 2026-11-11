@@ -1,34 +1,36 @@
 ```mermaid
 graph TD
     subgraph DataLayer [Data Layer - 数据层]
-        ETL[ETL]
-        MMFPageProvider[MMFPageProvider]
-        ParquetDataReader[ParquetDataReader]
-        CsvDataReader[CsvDataReader]
-        PagedBuffer2D[PagedBuffer2D]
-        IRowReader[IRowReader]
-        IColumnReader[IColumnReader]
-        IBuffer2D[IBuffer2D]
-        BufferedDataProvider[BufferedDataProvider]
-        StreamDataProvider[StreamDataProvider]
+        StorageResolver[StorageResolver]
+        CsvMarketSeriesSource[CsvMarketSeriesSource]
+        ParquetMarketSeriesSource[ParquetMarketSeriesSource]
+        SimpleFieldRegistry[SimpleFieldRegistry]
+        DataProviderFactory[DataProviderFactory]
+        CachedDataProvider[CachedDataProvider]
+        TimeseriesChunkManager[TimeseriesChunkManager&lt;T&gt;]
+        ITimeseriesCacheStore[ITimeseriesCacheStore]
+        ChunkMatrix2D[ChunkMatrix2D&lt;T&gt;]
         IDataProvider[IDataProvider]
+        EventProvider[EventProvider&lt;T&gt;]
+        EventProviderBuilder[EventProviderBuilder]
+        EventRegistry[EventRegistry]
+        IEventProvider[IEventProvider&lt;T&gt;]
         IEventRegistry[IEventRegistry]
-        IEventProvider[IEventProvider]
 
-        ETL --> MMFPageProvider
-        ETL --> ParquetDataReader
-        ETL --> CsvDataReader
-        MMFPageProvider --> PagedBuffer2D
-        ParquetDataReader --> IRowReader
-        CsvDataReader --> IColumnReader
-        PagedBuffer2D --> IBuffer2D
-        IBuffer2D --> BufferedDataProvider
-        IRowReader --> BufferedDataProvider
-        IColumnReader --> StreamDataProvider
-        IRowReader --> StreamDataProvider
-        BufferedDataProvider --> IDataProvider
-        StreamDataProvider --> IDataProvider
-        IEventRegistry --> IEventProvider
+        StorageResolver --> CsvMarketSeriesSource
+        StorageResolver --> ParquetMarketSeriesSource
+        DataProviderFactory --> CachedDataProvider
+        CsvMarketSeriesSource --> CachedDataProvider
+        ParquetMarketSeriesSource --> CachedDataProvider
+        SimpleFieldRegistry --> CachedDataProvider
+        CachedDataProvider --> TimeseriesChunkManager
+        TimeseriesChunkManager --> ITimeseriesCacheStore
+        TimeseriesChunkManager --> ChunkMatrix2D
+        CachedDataProvider --> IDataProvider
+        StorageResolver --> EventProviderBuilder
+        EventProviderBuilder --> EventProvider
+        EventProvider --> IEventProvider
+        EventRegistry --> IEventProvider
     end
 
     subgraph EngineExecutionLayer [Engine and Execution Layer - 引擎与执行层]

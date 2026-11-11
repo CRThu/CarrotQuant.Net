@@ -13,16 +13,16 @@ public interface IDataProvider
     IMarketMetadata Metadata { get; }
 
     /// <summary>
-    /// 获取指定字段的只读二维 Buffer。
-    /// Buffer 的行维度为 TradeDates（时间），列维度为 Symbols（股票）。
+    /// 获取指定字段的只读二维时序矩阵。
+    /// 矩阵的行维度为 TradeDates（时间步），列维度为 Symbols（股票代码）。
     /// </summary>
     /// <typeparam name="T">
     /// 数据类型，必须为非托管类型（unmanaged），以匹配非托管内存物理布局。
     /// 通常为 <see cref="float"/> 或 <see cref="double"/>。
     /// </typeparam>
     /// <param name="fieldName">字段名称，例如 "close"、"open"、"volume"。</param>
-    /// <returns>对应字段的只读 Buffer，零拷贝访问。</returns>
-    IReadOnlyBuffer2D<T> GetBuffer<T>(string fieldName) where T : unmanaged;
+    /// <returns>对应字段的只读时序矩阵，零拷贝访问。</returns>
+    IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
 
     /// <summary>
     /// 检查是否存在指定字段的数据。

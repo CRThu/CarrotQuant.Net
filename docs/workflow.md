@@ -4,6 +4,16 @@
 
 ---
 
+## 目录
+- [全流程概览](#全流程概览)
+- [步骤一：准备物理数据](#步骤一准备物理数据)
+- [步骤二：组织 YAML 配置文件](#步骤二组织-yaml-配置文件)
+- [步骤三：编写量化策略](#步骤三编写量化策略)
+- [步骤四：装配与驱动回测引擎](#步骤四装配与驱动回测引擎)
+- [步骤五：获取全过程分析报告](#步骤五获取全过程分析报告)
+
+---
+
 ## 全流程概览
 
 ```mermaid
@@ -26,6 +36,7 @@ CarrotQuant.NET 采用“时序行情矩阵 (TS)”与“异构事件流 (EV)”
    - 路径范例：`./data/ashare.adj_factor.baostock/year=2025/data.csv` 或 `./data/ashare.adj_factor.baostock/data.csv`
 3. **元数据 (`metadata.json`)**：每个表根目录下定义 schema（包含字段名与数据类型）。
 
+> [!NOTE]
 > 详细物理存储结构、Table ID 规范、双时间轴契约与缺省回退推断请参阅 [数据存储与格式规范 (data_format.md)](data_format.md)。
 
 ---
@@ -88,7 +99,7 @@ public class DoubleMaStrategy : IStrategy
         if (market?.SkipAlpha == true) return;
 
         // 2. 获取行情矩阵与事件流
-        IReadOnlyBuffer2D<double> closeBuffer = context.Data.GetBuffer<double>("close");
+        IReadOnlyMatrix2D<double> closeMatrix = context.Data.GetMatrix<double>("close");
         IEventProvider<AdjustmentFactor> adjProvider = context.Events.GetProvider<AdjustmentFactor>("adjustments");
 
         int currentRow = context.CurrentIndex;
@@ -98,12 +109,12 @@ public class DoubleMaStrategy : IStrategy
         for (int col = 0; col < context.Data.Metadata.SymbolCount; col++)
         {
             string symbol = context.Data.Metadata.Symbols[col];
-            double todayClose = closeBuffer[currentRow, col];
+            double todayClose = closeMatrix[currentRow, col];
 
             // 简单均线计算
             double ma5 = 0.0, ma20 = 0.0;
-            for (int i = 0; i < 5; i++) ma5 += closeBuffer[currentRow - i, col];
-            for (int i = 0; i < 20; i++) ma20 += closeBuffer[currentRow - i, col];
+            for (int i = 0; i < 5; i++) ma5 += closeMatrix[currentRow - i, col];
+            for (int i = 0; i < 20; i++) ma20 += closeMatrix[currentRow - i, col];
             ma5 /= 5.0;
             ma20 /= 20.0;
 
@@ -151,7 +162,7 @@ var resolver = new StorageResolver(config.Data.Root);
 // 3. 构造数据供给器 (IDataProvider)
 var fieldRegistry = new SimpleFieldRegistry();
 var seriesSource = new ParquetMarketSeriesSource(resolver, "ashare.kline.1d.raw.baostock", fieldRegistry);
-var dataProvider = new CachedDataProvider(seriesSource, fieldRegistry, seriesSource, config.Data.Root);
+var dataProvider = new CachedDataProvider(seriesSource, fieldRegistry, config.Data.Root);
 
 // 4. 挂载事件流
 var eventRegistry = new EventRegistry();

@@ -82,6 +82,13 @@ namespace CarrotBacktesting.NET.Config
         /// 缓存块压缩格式: "lz4" (默认，3~5GB/s 超高速解压缩，节省 60%~70% 磁盘空间), "none" (无压缩裸二进制块)。
         /// </summary>
         public string Compression { get; set; } = "lz4";
+
+        /// <summary>
+        /// 内存增量行定量落盘批次大小，默认 64 行。
+        /// 实盘单行追加达到该行数阈值时自动触发批量 Commit 增量落盘；
+        /// 设为 0 或负数则禁用定量落盘，仅在引擎停止或 Dispose 时触发保底 Commit。
+        /// </summary>
+        public int CommitBatchSize { get; set; } = 64;
     }
 
     /// <summary>

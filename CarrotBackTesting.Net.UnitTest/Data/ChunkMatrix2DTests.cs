@@ -4,32 +4,31 @@ using System.Threading.Tasks;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Data.Views;
-using CommunityToolkit.HighPerformance;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
     [TestClass]
-    public class ChunkBuffer2DTests
+    public class ChunkMatrix2DTests
     {
         [TestMethod]
         public void TestConstructor_ValidatesParameters()
         {
             // 验证宽度为 0 或负数抛错
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new ChunkBuffer2D<double>(0, 4096));
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new ChunkBuffer2D<double>(-5, 4096));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new ChunkMatrix2D<double>(0, 4096));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new ChunkMatrix2D<double>(-5, 4096));
 
             // 验证 PageSize 非 2 的幂抛错
-            Assert.ThrowsException<ArgumentException>(() => new ChunkBuffer2D<double>(100, 1000));
-            Assert.ThrowsException<ArgumentException>(() => new ChunkBuffer2D<double>(100, 0));
-            Assert.ThrowsException<ArgumentException>(() => new ChunkBuffer2D<double>(100, -4096));
+            Assert.ThrowsException<ArgumentException>(() => new ChunkMatrix2D<double>(100, 1000));
+            Assert.ThrowsException<ArgumentException>(() => new ChunkMatrix2D<double>(100, 0));
+            Assert.ThrowsException<ArgumentException>(() => new ChunkMatrix2D<double>(100, -4096));
 
             // 验证合法构造（支持 1024, 2048, 4096, 8192 等非硬编码分页大小）
-            using var buf1024 = new ChunkBuffer2D<double>(50, 1024);
+            using var buf1024 = new ChunkMatrix2D<double>(50, 1024);
             Assert.AreEqual(1024, buf1024.PageSize);
             Assert.AreEqual(50, buf1024.Width);
 
-            using var buf4096 = new ChunkBuffer2D<double>(500, 4096, 8000);
+            using var buf4096 = new ChunkMatrix2D<double>(500, 4096, 8000);
             Assert.AreEqual(4096, buf4096.PageSize);
             Assert.AreEqual(500, buf4096.Width);
             Assert.AreEqual(8000, buf4096.RowCount);
@@ -39,7 +38,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestElementReadWrite_And_IndexBounds()
         {
-            using var buffer = new ChunkBuffer2D<double>(width: 10, pageSize: 1024);
+            using var buffer = new ChunkMatrix2D<double>(width: 10, pageSize: 1024);
 
             // 动态扩容写入
             buffer.SetElement(0, 0, 123.456);
@@ -50,7 +49,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(789.012, buffer[2050, 9]);
 
             // 通过只读接口访问
-            IReadOnlyBuffer2D<double> readOnly = buffer;
+            IReadOnlyMatrix2D<double> readOnly = buffer;
             Assert.AreEqual(123.456, readOnly[0, 0]);
             Assert.AreEqual(789.012, readOnly[2050, 9]);
 
@@ -68,7 +67,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int pageSize = 1024;
             const int colIdx = 3;
 
-            using var buffer = new ChunkBuffer2D<double>(width: 10, pageSize: pageSize);
+            using var buffer = new ChunkMatrix2D<double>(width: 10, pageSize: pageSize);
 
             double[] srcData = new double[totalRows];
             for (int i = 0; i < totalRows; i++)
@@ -101,7 +100,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestSetRow_And_CopyRow_And_RowView()
         {
             const int width = 100;
-            using var buffer = new ChunkBuffer2D<float>(width: width, pageSize: 1024);
+            using var buffer = new ChunkMatrix2D<float>(width: width, pageSize: 1024);
 
             float[] rowData = new float[width];
             for (int i = 0; i < width; i++)
@@ -127,7 +126,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 3. 只读接口 RowView 校验
-            IReadOnlyBuffer2D<float> readOnly = buffer;
+            IReadOnlyMatrix2D<float> readOnly = buffer;
             var roRowView = readOnly.GetRowView(50, 10, 20);
             Assert.AreEqual(20, roRowView.Length);
             for (int i = 0; i < 20; i++)
@@ -140,7 +139,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestColumnView_CrossPages()
         {
             const int pageSize = 1024;
-            using var buffer = new ChunkBuffer2D<long>(width: 20, pageSize: pageSize, initialRowCount: 3000);
+            using var buffer = new ChunkMatrix2D<long>(width: 20, pageSize: pageSize, initialRowCount: 3000);
 
             for (int r = 0; r < 3000; r++)
             {
@@ -158,37 +157,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestSetBlock_Span2D()
-        {
-            using var buffer = new ChunkBuffer2D<int>(width: 10, pageSize: 1024);
-
-            int[,] rawMatrix = new int[3, 4]
-            {
-                { 1, 2, 3, 4 },
-                { 5, 6, 7, 8 },
-                { 9, 10, 11, 12 }
-            };
-
-            var span2d = new ReadOnlySpan2D<int>(rawMatrix);
-            buffer.SetBlock(10, 2, span2d);
-
-            Assert.AreEqual(13, buffer.RowCount);
-            for (int r = 0; r < 3; r++)
-            {
-                for (int c = 0; c < 4; c++)
-                {
-                    Assert.AreEqual(rawMatrix[r, c], buffer[10 + r, 2 + c]);
-                }
-            }
-        }
-
-        [TestMethod]
         public void TestMultiThreaded_HighPerformanceRead_Reliability()
         {
             // 构造 10,000 行 x 500 列的行情矩阵（跨越 3 个 4096 页面）
             const int rows = 10000;
             const int cols = 500;
-            using var buffer = new ChunkBuffer2D<double>(width: cols, pageSize: 4096, initialRowCount: rows);
+            using var buffer = new ChunkMatrix2D<double>(width: cols, pageSize: 4096, initialRowCount: rows);
 
             // 填充确定性特征数据: value = r * 10000 + c
             for (int c = 0; c < cols; c++)
@@ -201,7 +175,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 buffer.SetColumn(0, c, colData);
             }
 
-            IReadOnlyBuffer2D<double> roBuffer = buffer;
+            IReadOnlyMatrix2D<double> roBuffer = buffer;
 
             // 启动 16 个并发工作任务，同时执行不同模式的并发读取：
             // 1. 垂直时序读取（列切片 / 模拟策略提取单股票时序特征）
@@ -263,9 +237,67 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
+        public void TestConcurrent_WriterExpandsCapacity_ReaderLockFreeReads()
+        {
+            // 验证当写线程不断扩容甚至跨页分配新页时，并发读线程在 Acquire 屏障保护下绝对不会抛出 IndexOutOfRangeException 或崩溃
+            const int width = 100;
+            const int pageSize = 128;
+            using var matrix = new ChunkMatrix2D<long>(width: width, pageSize: pageSize, initialRowCount: 100);
+
+            for (int r = 0; r < 100; r++)
+            {
+                for (int c = 0; c < width; c++)
+                {
+                    matrix.SetElement(r, c, r * 1000L + c);
+                }
+            }
+
+            var roMatrix = matrix.AsReadOnly();
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var token = cts.Token;
+
+            var readTask = Task.Run(() =>
+            {
+                var rand = new Random(42);
+                long sum = 0;
+                while (!token.IsCancellationRequested)
+                {
+                    int currentRows = roMatrix.RowCount;
+                    if (currentRows > 0)
+                    {
+                        int r = rand.Next(0, currentRows);
+                        int c = rand.Next(0, roMatrix.Width);
+                        long val = roMatrix[r, c];
+                        sum += val;
+                    }
+                }
+                return sum;
+            });
+
+            var writeTask = Task.Run(() =>
+            {
+                for (int targetRows = 200; targetRows <= 5000; targetRows += 200)
+                {
+                    matrix.EnsureCapacity(targetRows);
+                    for (int c = 0; c < width; c++)
+                    {
+                        matrix.SetElement(targetRows - 1, c, (targetRows - 1) * 1000L + c);
+                    }
+                    System.Threading.Thread.Sleep(5);
+                }
+            });
+
+            Task.WaitAll(writeTask);
+            cts.Cancel();
+            Task.WaitAll(readTask);
+
+            Assert.IsTrue(matrix.RowCount >= 5000);
+        }
+
+        [TestMethod]
         public void TestDispose_Idempotency_And_ThrowsAfterDisposed()
         {
-            var buffer = new ChunkBuffer2D<double>(width: 10, pageSize: 1024, initialRowCount: 2000);
+            var buffer = new ChunkMatrix2D<double>(width: 10, pageSize: 1024, initialRowCount: 2000);
             buffer.SetElement(10, 5, 99.9);
 
             // 多次 Dispose 不抛出异常
@@ -282,31 +314,21 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestRowCount_Initial_ShouldBeZero()
         {
-            using var buffer = new ChunkBuffer2D<int>(width: 100, pageSize: 1024);
+            using var buffer = new ChunkMatrix2D<int>(width: 100, pageSize: 1024);
             Assert.AreEqual(0, buffer.RowCount);
         }
 
         [TestMethod]
         public void TestSetElement_NegativeRow_ShouldThrow()
         {
-            using var buffer = new ChunkBuffer2D<int>(width: 100, pageSize: 1024);
+            using var buffer = new ChunkMatrix2D<int>(width: 100, pageSize: 1024);
             Assert.ThrowsException<IndexOutOfRangeException>(() => buffer.SetElement(-1, 0, 100));
-        }
-
-        [TestMethod]
-        public void TestSetBlock_InvalidWidthBound_ShouldThrowArgumentException()
-        {
-            const int width = 100;
-            using var buffer = new ChunkBuffer2D<int>(width: width, pageSize: 1024);
-            int[,] invalidData = new int[1, width + 1];
-
-            Assert.ThrowsException<ArgumentException>(() => buffer.SetBlock(0, 0, invalidData.AsSpan2D()));
         }
 
         [TestMethod]
         public void TestRowView_ModifyElement_ReflectedInParent()
         {
-            using var buffer = new ChunkBuffer2D<int>(width: 50, pageSize: 1024);
+            using var buffer = new ChunkMatrix2D<int>(width: 50, pageSize: 1024);
             buffer.SetElement(0, 5, 100);
 
             var rowView = buffer.GetRowView(0, 0, 10);
@@ -318,7 +340,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestColumnView_ModifyElement_ReflectedInParent()
         {
-            using var buffer = new ChunkBuffer2D<double>(width: 50, pageSize: 1024, initialRowCount: 20);
+            using var buffer = new ChunkMatrix2D<double>(width: 50, pageSize: 1024, initialRowCount: 20);
             buffer.SetElement(10, 2, 55.5);
 
             var colView = buffer.GetColumnView(5, 2, 10);
@@ -330,10 +352,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestAsReadOnly_VerifyIsolation()
         {
-            using var buffer = new ChunkBuffer2D<int>(width: 50, pageSize: 1024);
+            using var buffer = new ChunkMatrix2D<int>(width: 50, pageSize: 1024);
             buffer.SetElement(0, 0, 100);
 
-            IReadOnlyBuffer2D<int> readOnly = buffer.AsReadOnly();
+            IReadOnlyMatrix2D<int> readOnly = buffer.AsReadOnly();
             Assert.AreEqual(100, readOnly[0, 0]);
 
             var rowView = readOnly.GetRowView(0, 0, 1);
@@ -344,7 +366,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public async Task TestConcurrentWriters_DifferentRows_AllDataCorrect()
         {
             const int writeCount = 1000;
-            using var buffer = new ChunkBuffer2D<int>(width: 10, pageSize: 64);
+            using var buffer = new ChunkMatrix2D<int>(width: 10, pageSize: 64);
 
             var tasks = new Task[writeCount];
             for (int i = 0; i < writeCount; i++)
@@ -369,7 +391,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public async Task TestConcurrentReadersAndWriters_DuringExpansion_Stable()
         {
             const int targetRows = 2000;
-            using var buffer = new ChunkBuffer2D<int>(width: 10, pageSize: 64);
+            using var buffer = new ChunkMatrix2D<int>(width: 10, pageSize: 64);
             bool running = true;
 
             var readerTask = Task.Run(() =>
@@ -406,7 +428,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestCopyRowAndColumn_And_RowColumnViews()
         {
-            using var buffer = new ChunkBuffer2D<double>(width: 4, pageSize: 64, initialRowCount: 100);
+            using var buffer = new ChunkMatrix2D<double>(width: 4, pageSize: 64, initialRowCount: 100);
             for (int r = 0; r < 100; r++)
             {
                 for (int c = 0; c < 4; c++)
@@ -437,7 +459,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(51.0, rowView[0]);
             Assert.AreEqual(52.0, rowView[1]);
 
-            IReadOnlyBuffer2D<double> ro = buffer;
+            IReadOnlyMatrix2D<double> ro = buffer;
             var roRowView = ro.GetRowView(5, 1, 2);
             Assert.AreEqual(2, roRowView.Length);
             Assert.AreEqual(51.0, roRowView[0]);
@@ -458,7 +480,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestBoundaryExceptions_ThrowsProperly()
         {
-            using var buffer = new ChunkBuffer2D<double>(width: 4, pageSize: 64, initialRowCount: 10);
+            using var buffer = new ChunkMatrix2D<double>(width: 4, pageSize: 64, initialRowCount: 10);
 
             // SetElement 越界
             Assert.ThrowsException<IndexOutOfRangeException>(() => buffer.SetElement(-1, 0, 1.0));
@@ -484,7 +506,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.ThrowsException<IndexOutOfRangeException>(() => buffer.GetColumnView(0, 4, 1));
             Assert.ThrowsException<IndexOutOfRangeException>(() => buffer.GetColumnView(9, 0, 5));
 
-            IReadOnlyBuffer2D<double> ro = buffer;
+            IReadOnlyMatrix2D<double> ro = buffer;
             Assert.ThrowsException<IndexOutOfRangeException>(() => ro.GetRowView(10, 0, 1));
             Assert.ThrowsException<IndexOutOfRangeException>(() => ro.GetRowView(0, 3, 2));
             Assert.ThrowsException<IndexOutOfRangeException>(() => ro.GetColumnView(0, 4, 1));
@@ -498,19 +520,19 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestIBuffer2D_AndViews_FullContract()
+        public void TestIMatrix2D_AndViews_FullContract()
         {
-            // 验证通过 IBuffer2D 抽象契约多态调用各操作与视图
-            using IBuffer2D<int> buffer = new ChunkBuffer2D<int>(width: 10, pageSize: 64, initialRowCount: 20);
+            // 验证通过 IMatrix2D 抽象契约多态调用各操作与视图
+            using IMatrix2D<int> buffer = new ChunkMatrix2D<int>(width: 10, pageSize: 64, initialRowCount: 20);
 
             Assert.AreEqual(10, buffer.Width);
             Assert.AreEqual(20, buffer.RowCount);
 
-            // 1. IBuffer2D.SetElement 与索引器
+            // 1. IMatrix2D.SetElement 与索引器
             buffer.SetElement(2, 3, 42);
             Assert.AreEqual(42, buffer[2, 3]);
 
-            // 2. IBuffer2D.SetRow 与 RowView / AsSpan
+            // 2. IMatrix2D.SetRow 与 RowView / AsSpan
             int[] rowData = new int[] { 101, 102, 103 };
             buffer.SetRow(5, 2, rowData);
             RowView<int> rowView = buffer.GetRowView(5, 2, 3);
@@ -520,7 +542,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(103, rowView[2]);
             Assert.AreEqual(3, rowView.AsSpan().Length);
 
-            // 3. IBuffer2D.SetColumn 与 ColumnView
+            // 3. IMatrix2D.SetColumn 与 ColumnView
             int[] colData = new int[] { 201, 202, 203, 204 };
             buffer.SetColumn(10, 4, colData);
             ColumnView<int> colView = buffer.GetColumnView(10, 4, 4);
@@ -529,7 +551,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(204, colView[3]);
 
             // 4. 只读视图 ReadOnlyRowView / ReadOnlyColumnView
-            IReadOnlyBuffer2D<int> ro = buffer;
+            IReadOnlyMatrix2D<int> ro = buffer;
             ReadOnlyRowView<int> roRowView = ro.GetRowView(5, 2, 3);
             Assert.AreEqual(3, roRowView.Length);
             Assert.AreEqual(101, roRowView[0]);
@@ -582,7 +604,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestViews_ComprehensivePaths_ImplicitConversion_Foreach_And_CrossPage()
         {
             // 验证全部视图的隐式转换、foreach 枚举、跨页穿透与空视图路径
-            using IBuffer2D<int> buffer = new ChunkBuffer2D<int>(width: 10, pageSize: 64, initialRowCount: 128);
+            using IMatrix2D<int> buffer = new ChunkMatrix2D<int>(width: 10, pageSize: 64, initialRowCount: 128);
 
             // 1. RowView 隐式转换为 ReadOnlySpan 与 Span
             buffer.SetRow(1, 0, new int[] { 10, 20, 30 });
@@ -624,7 +646,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(1001, buffer[crossStart + 9, 5]);
 
             // 4. 只读跨页 ReadOnlyColumnView 的 foreach 验证
-            IReadOnlyBuffer2D<int> roBuffer = buffer;
+            IReadOnlyMatrix2D<int> roBuffer = buffer;
             ReadOnlyColumnView<int> roCrossColView = roBuffer.GetColumnView(crossStart, 5, crossLen);
             int roColSum = 0;
             foreach (var val in roCrossColView)
@@ -651,5 +673,54 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             foreach (var _ in roEmptyColView) emptyCount++;
             Assert.AreEqual(0, emptyCount);
         }
+
+        [TestMethod]
+        public void TestChunkMatrix2D_ExpandWidth_PreservesDataAndFillsNaN()
+        {
+            const int initialWidth = 4;
+            const int pageSize = 16;
+            using var matrix = new ChunkMatrix2D<double>(initialWidth, pageSize, initialRowCount: 20);
+
+            // 填充 20 行 x 4 列
+            for (int r = 0; r < 20; r++)
+            {
+                for (int c = 0; c < initialWidth; c++)
+                {
+                    matrix.SetElement(r, c, r * 10.0 + c);
+                }
+            }
+
+            Assert.AreEqual(4, matrix.Width);
+            Assert.AreEqual(20, matrix.RowCount);
+
+            // 拓宽宽度至 7（例如上市 3 只新股票）
+            matrix.ExpandWidth(7);
+
+            Assert.AreEqual(7, matrix.Width);
+            Assert.AreEqual(20, matrix.RowCount);
+
+            // 验证：旧数据 100% 保真
+            for (int r = 0; r < 20; r++)
+            {
+                for (int c = 0; c < initialWidth; c++)
+                {
+                    Assert.AreEqual(r * 10.0 + c, matrix[r, c]);
+                }
+            }
+
+            // 验证：新追加的列（c = 4, 5, 6）全部自动填充 NaN
+            for (int r = 0; r < 20; r++)
+            {
+                for (int c = initialWidth; c < 7; c++)
+                {
+                    Assert.IsTrue(double.IsNaN(matrix[r, c]));
+                }
+            }
+
+            // 若请求宽度小于等于当前宽度，幂等无损
+            matrix.ExpandWidth(5);
+            Assert.AreEqual(7, matrix.Width);
+        }
     }
 }
+

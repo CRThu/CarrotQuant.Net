@@ -7,24 +7,24 @@ using CarrotBacktesting.NET.Data.Views;
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// 时序二维缓冲区（<see cref="IReadOnlyBuffer2D{T}"/>）与数据供给器（<see cref="IDataProvider"/>）的实用扩展方法。
+    /// 时序二维矩阵（<see cref="IReadOnlyMatrix2D{T}"/>）与数据供给器（<see cref="IDataProvider"/>）的实用扩展方法。
     /// 为单标的回测（CTA、期货、加密货币、单股策略）及标的时序分析提供轻量、零拷贝的一维时序序列语义。
     /// </summary>
-    public static class BufferExtensions
+    public static class MatrixExtensions
     {
         /// <summary>
         /// 判定指定单元格 (row, col) 的数值是否为 NaN 或缺失哨兵值。
         /// 无论底层是浮点类型（double.NaN / float.NaN）还是整型哨兵（MinValue），统一一键判定。
         /// </summary>
         /// <typeparam name="T">非托管数值类型</typeparam>
-        /// <param name="buffer">只读二维缓冲区</param>
+        /// <param name="matrix">只读二维时序矩阵</param>
         /// <param name="row">交易日行索引</param>
         /// <param name="col">标的代码列索引</param>
         /// <returns>若该单元格为 NaN 或缺失哨兵值则返回 true，否则返回 false</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsNaN<T>(this IReadOnlyBuffer2D<T> buffer, int row, int col) where T : unmanaged
+        public static bool IsNaN<T>(this IReadOnlyMatrix2D<T> matrix, int row, int col) where T : unmanaged
         {
-            return MarketDataAligner.IsValueNaN(buffer[row, col]);
+            return MarketDataAligner.IsValueNaN(matrix[row, col]);
         }
 
         /// <summary>
@@ -32,24 +32,24 @@ namespace CarrotBacktesting.NET.Data
         /// 针对单标的回测（CTA、期货、加密货币、单股策略），消除二维矩阵认知负担与切片计算摩擦。
         /// </summary>
         /// <typeparam name="T">非托管数值类型</typeparam>
-        /// <param name="buffer">只读二维缓冲区</param>
+        /// <param name="matrix">只读二维时序矩阵</param>
         /// <param name="symbolIndex">标的列索引，默认为 0（单标的回测场景）</param>
         /// <returns>标的的全周期连续只读一维列视图</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyBuffer2D<T> buffer, int symbolIndex = 0) where T : unmanaged
+        public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, int symbolIndex = 0) where T : unmanaged
         {
-            return buffer.GetColumnView(0, symbolIndex, buffer.RowCount);
+            return matrix.GetColumnView(0, symbolIndex, matrix.RowCount);
         }
 
         /// <summary>
         /// 根据标的代码名称获取其全生命周期只读一维时序序列视图。
         /// </summary>
         /// <typeparam name="T">非托管数值类型</typeparam>
-        /// <param name="buffer">只读二维缓冲区</param>
+        /// <param name="matrix">只读二维时序矩阵</param>
         /// <param name="symbol">标的代码（如 "sh.600000"）</param>
         /// <param name="metadata">市场元数据</param>
         /// <returns>标的的全周期连续只读一维列视图</returns>
-        public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyBuffer2D<T> buffer, string symbol, IMarketMetadata metadata) where T : unmanaged
+        public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, string symbol, IMarketMetadata metadata) where T : unmanaged
         {
             ArgumentNullException.ThrowIfNull(metadata);
             int symbolIndex = metadata.GetSymbolIndex(symbol);
@@ -57,7 +57,7 @@ namespace CarrotBacktesting.NET.Data
             {
                 throw new KeyNotFoundException($"Symbol '{symbol}' not found in metadata.");
             }
-            return buffer.GetColumnView(0, symbolIndex, buffer.RowCount);
+            return matrix.GetColumnView(0, symbolIndex, matrix.RowCount);
         }
 
         /// <summary>
@@ -71,7 +71,7 @@ namespace CarrotBacktesting.NET.Data
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ReadOnlyColumnView<T> GetSeries<T>(this IDataProvider provider, string fieldName, int symbolIndex = 0) where T : unmanaged
         {
-            return provider.GetBuffer<T>(fieldName).GetSeries(symbolIndex);
+            return provider.GetMatrix<T>(fieldName).GetSeries(symbolIndex);
         }
 
         /// <summary>
@@ -84,7 +84,7 @@ namespace CarrotBacktesting.NET.Data
         /// <returns>标的的全周期连续只读一维列视图</returns>
         public static ReadOnlyColumnView<T> GetSeries<T>(this IDataProvider provider, string fieldName, string symbol) where T : unmanaged
         {
-            return provider.GetBuffer<T>(fieldName).GetSeries(symbol, provider.Metadata);
+            return provider.GetMatrix<T>(fieldName).GetSeries(symbol, provider.Metadata);
         }
     }
 }

@@ -5,98 +5,58 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using CarrotBacktesting.NET.Config;
 using K4os.Compression.LZ4;
 
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// 时序二进制缓存元数据描述契约。
-    /// 记录表标识、字段名称、数据类型、压缩算法、定长分页大小、行列规模以及完整时空维度（代码与交易日列表）。
-    /// </summary>
-    public class TimeseriesCacheMetadata
-    {
-        [JsonPropertyName("table_id")]
-        public string TableId { get; set; } = "";
-
-        [JsonPropertyName("field_name")]
-        public string FieldName { get; set; } = "";
-
-        [JsonPropertyName("data_type")]
-        public string DataType { get; set; } = "";
-
-        [JsonPropertyName("compression")]
-        public string Compression { get; set; } = "lz4";
-
-        [JsonPropertyName("page_size")]
-        public int PageSize { get; set; } = 4096;
-
-        [JsonPropertyName("width")]
-        public int Width { get; set; }
-
-        [JsonPropertyName("row_count")]
-        public int RowCount { get; set; }
-
-        [JsonPropertyName("start_date")]
-        public DateTime? StartDate { get; set; }
-
-        [JsonPropertyName("end_date")]
-        public DateTime? EndDate { get; set; }
-
-        [JsonPropertyName("symbols")]
-        public List<string> Symbols { get; set; } = new();
-
-        [JsonPropertyName("trade_dates")]
-        public List<string> TradeDates { get; set; } = new();
-
-        [JsonPropertyName("chunk_widths")]
-        public List<int>? ChunkWidths { get; set; }
-
-        /// <summary>
-        /// 获取指定分块的物理列宽（自描述分块宽度，支持历史窄分块与当前活跃分块共存）。
-        /// </summary>
-        public int GetChunkWidth(int pageIndex)
-        {
-            if (ChunkWidths != null && pageIndex >= 0 && pageIndex < ChunkWidths.Count)
-            {
-                return ChunkWidths[pageIndex];
-            }
-            return Width;
-        }
-    }
-
-    /// <summary>
-    /// 时序二进制对齐缓存存储管理器。
+    /// 时序二进制对齐持久化存储管理器。
     /// 负责按 4096 行（或自定义定长）将行情宽表切分为 chunk_{i}.bin 文件进行物理持久化，
     /// 原生支持 LZ4 超高速块压缩（3~5GB/s 解压吞吐，节省 60%~70% 磁盘 I/O），
     /// 提供纯非托管二进制零拷贝读写、增量行追加（Append）与原子元数据落盘能力。
     /// </summary>
-    public class TimeseriesCacheStore : ITimeseriesCacheStore
+    public class TimeseriesStore : ITimeseriesStore
     {
         private const string MetaFileName = "meta.json";
-        private readonly string _cacheRoot;
+        private readonly string _storeRoot;
         private readonly string _tableId;
         private readonly int _pageSize;
         private readonly string _compression;
 
-        public string CacheRoot => _cacheRoot;
+        /// <summary>
+        /// 持久化物理根目录路径。
+        /// </summary>
+        public string StoreRoot => _storeRoot;
+
+        /// <summary>
+        /// 兼容属性：物理根目录路径。
+        /// </summary>
+        public string CacheRoot => _storeRoot;
+
+        /// <inheritdoc />
         public string TableId => _tableId;
+
+        /// <inheritdoc />
         public int PageSize => _pageSize;
+
+        /// <summary>
+        /// 压缩算法名称（如 "lz4", "none"）。
+        /// </summary>
         public string Compression => _compression;
 
         /// <summary>
-        /// 初始化缓存管理器。
+        /// 初始化时序持久化存储管理器。
         /// </summary>
-        /// <param name="cacheRoot">缓存物理根目录（例如 {storage_root}/.cache 或表级目录）</param>
+        /// <param name="storeRoot">物理存储根目录（例如 {storage_root}/.cache 或表级存储目录）</param>
         /// <param name="tableId">时序表唯一标识符</param>
         /// <param name="pageSize">分页行数大小，默认为 4096</param>
         /// <param name="compression">压缩格式，支持 "lz4"（默认）与 "none"（无压缩裸块）</param>
-        public TimeseriesCacheStore(string cacheRoot, string tableId, int pageSize = 4096, string compression = "lz4")
+        public TimeseriesStore(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4")
         {
-            if (string.IsNullOrWhiteSpace(cacheRoot))
+            if (string.IsNullOrWhiteSpace(storeRoot))
             {
-                throw new ArgumentException("Cache root directory cannot be null or empty.", nameof(cacheRoot));
+                throw new ArgumentException("Store root directory cannot be null or empty.", nameof(storeRoot));
             }
             if (string.IsNullOrWhiteSpace(tableId))
             {
@@ -107,45 +67,44 @@ namespace CarrotBacktesting.NET.Data
                 throw new ArgumentException("PageSize 必须为大于 0 且为 2 的整数次幂。", nameof(pageSize));
             }
 
-            _cacheRoot = Path.GetFullPath(cacheRoot);
+            _storeRoot = Path.GetFullPath(storeRoot);
             _tableId = tableId;
             _pageSize = pageSize;
             _compression = string.IsNullOrWhiteSpace(compression) ? "lz4" : compression.ToLowerInvariant();
         }
 
         /// <summary>
-        /// 获取指定字段的缓存文件存储目录路径：{cacheRoot}/{tableId}/{fieldName}
+        /// 获取指定字段的物理文件存储目录路径：{storeRoot}/{tableId}/{fieldName}
         /// </summary>
-        public string GetFieldCacheDir(string fieldName)
+        public string GetFieldStoreDir(string fieldName)
         {
-            return Path.Combine(_cacheRoot, _tableId, fieldName);
+            return Path.Combine(_storeRoot, _tableId, fieldName);
         }
 
         /// <summary>
-        /// 检查指定字段的持久化缓存是否存在且元数据有效。
+        /// 兼容方法：获取指定字段的物理文件存储目录路径。
         /// </summary>
-        public bool HasCache(string fieldName)
+        public string GetFieldCacheDir(string fieldName) => GetFieldStoreDir(fieldName);
+
+        /// <inheritdoc />
+        public bool HasField(string fieldName)
         {
-            string dir = GetFieldCacheDir(fieldName);
+            string dir = GetFieldStoreDir(fieldName);
             string metaPath = Path.Combine(dir, MetaFileName);
             return File.Exists(metaPath);
         }
 
         /// <summary>
-        /// 深度校验指定字段的缓存是否与当前运行环境严格兼容。
-        /// 检查维度涵盖：数据类型、列宽数量（Width）、股票代码清单及顺序（Symbols）、分页大小（PageSize）。
-        /// 彻底防御因股票新增（IPO 上市）或退市导致列维度变更时的跨列寻址污染。
+        /// 检查指定字段的持久化数据是否存在且元数据有效。
         /// </summary>
-        /// <param name="fieldName">字段名称</param>
-        /// <param name="expectedSymbols">期望的代码全集列表</param>
-        /// <param name="expectedType">期望的数据类型</param>
-        /// <param name="metadata">若有效则输出元数据对象</param>
-        /// <returns>若完全兼容返回 true，否则返回 false</returns>
-        public bool IsCacheCompatible(
+        public bool HasCache(string fieldName) => HasField(fieldName);
+
+        /// <inheritdoc />
+        public bool IsCompatible(
             string fieldName, 
             IReadOnlyList<string> expectedSymbols, 
             Type expectedType, 
-            out TimeseriesCacheMetadata? metadata)
+            out TimeseriesMetadata? metadata)
         {
             metadata = ReadMetadata(fieldName);
             if (metadata == null) return false;
@@ -182,15 +141,15 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 精确重写/刷新单个指定分块（chunk_{pageIndex}.bin），保持其他所有历史分块物理零触碰。
-        /// 彻底将 I/O 放大比严格限制在单个分块以内（几十 MB），适用于局部数据订正、单块增量回填以及当前活跃分块扩列。
+        /// 兼容方法：深度校验指定字段的持久化数据是否与当前运行环境严格兼容。
         /// </summary>
-        /// <typeparam name="T">非托管数据类型</typeparam>
-        /// <param name="fieldName">字段名称</param>
-        /// <param name="pageIndex">目标分块索引（0-based）</param>
-        /// <param name="rowProvider">行填充提供器 (globalRowIndex, destinationRowSpan)</param>
-        /// <param name="newChunkWidth">可选的新分块列宽（若当前分块需扩列，则传入最新宽度）</param>
-        /// <param name="updatedSymbols">可选的最新代码列表（配合扩列时更新元数据代码列表）</param>
+        public bool IsCacheCompatible(
+            string fieldName, 
+            IReadOnlyList<string> expectedSymbols, 
+            Type expectedType, 
+            out TimeseriesMetadata? metadata) => IsCompatible(fieldName, expectedSymbols, expectedType, out metadata);
+
+        /// <inheritdoc />
         public void RewriteChunk<T>(
             string fieldName, 
             int pageIndex, 
@@ -203,7 +162,7 @@ namespace CarrotBacktesting.NET.Data
             var meta = ReadMetadata(fieldName);
             if (meta == null)
             {
-                throw new InvalidOperationException($"Cache for field '{fieldName}' does not exist.");
+                throw new InvalidOperationException($"Store for field '{fieldName}' does not exist.");
             }
 
             int totalRows = meta.RowCount;
@@ -218,7 +177,7 @@ namespace CarrotBacktesting.NET.Data
             int rowsInChunk = Math.Min(_pageSize, totalRows - startRow);
             int width = newChunkWidth ?? meta.GetChunkWidth(pageIndex);
             bool useLz4 = string.Equals(meta.Compression, "lz4", StringComparison.OrdinalIgnoreCase);
-            string dir = GetFieldCacheDir(fieldName);
+            string dir = GetFieldStoreDir(fieldName);
             string chunkPath = Path.Combine(dir, $"chunk_{pageIndex}.bin");
 
             T[] chunkBuffer = new T[rowsInChunk * width];
@@ -268,47 +227,42 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        /// <summary>
-        /// 读取指定字段的缓存元数据。若不存在则返回 null。
-        /// </summary>
-        public TimeseriesCacheMetadata? ReadMetadata(string fieldName)
+        /// <inheritdoc />
+        public TimeseriesMetadata? ReadMetadata(string fieldName)
         {
-            string dir = GetFieldCacheDir(fieldName);
+            string dir = GetFieldStoreDir(fieldName);
             string metaPath = Path.Combine(dir, MetaFileName);
             if (!File.Exists(metaPath)) return null;
 
             string json = File.ReadAllText(metaPath);
-            return JsonSerializer.Deserialize<TimeseriesCacheMetadata>(json);
+            return JsonSerializer.Deserialize<TimeseriesMetadata>(json);
         }
 
-        /// <summary>
-        /// 将内存容器全量写入磁盘分块缓存文件（chunk_{i}.bin 与 meta.json）。
-        /// 写入采用先写入 .tmp 后原子替换原则。
-        /// </summary>
-        public unsafe void WriteBuffer<T>(
+        /// <inheritdoc />
+        public unsafe void WriteMatrix<T>(
             string fieldName,
-            ChunkBuffer2D<T> buffer,
+            ChunkMatrix2D<T> matrix,
             IReadOnlyList<string> symbols,
             IReadOnlyList<DateTime> tradeDates) where T : unmanaged
         {
-            ArgumentNullException.ThrowIfNull(buffer);
+            ArgumentNullException.ThrowIfNull(matrix);
             ArgumentNullException.ThrowIfNull(symbols);
             ArgumentNullException.ThrowIfNull(tradeDates);
 
-            if (buffer.Width != symbols.Count)
+            if (matrix.Width != symbols.Count)
             {
-                throw new ArgumentException($"Buffer width ({buffer.Width}) does not match symbols count ({symbols.Count}).");
+                throw new ArgumentException($"Matrix width ({matrix.Width}) does not match symbols count ({symbols.Count}).");
             }
-            if (buffer.RowCount != tradeDates.Count)
+            if (matrix.RowCount != tradeDates.Count)
             {
-                throw new ArgumentException($"Buffer row count ({buffer.RowCount}) does not match tradeDates count ({tradeDates.Count}).");
+                throw new ArgumentException($"Matrix row count ({matrix.RowCount}) does not match tradeDates count ({tradeDates.Count}).");
             }
 
-            string dir = GetFieldCacheDir(fieldName);
+            string dir = GetFieldStoreDir(fieldName);
             Directory.CreateDirectory(dir);
 
-            int totalRows = buffer.RowCount;
-            int width = buffer.Width;
+            int totalRows = matrix.RowCount;
+            int width = matrix.Width;
             int neededPages = totalRows > 0 ? (int)(((long)totalRows + _pageSize - 1) / _pageSize) : 0;
             bool useLz4 = string.Equals(_compression, "lz4", StringComparison.OrdinalIgnoreCase);
 
@@ -319,7 +273,7 @@ namespace CarrotBacktesting.NET.Data
                 int rowsInChunk = Math.Min(_pageSize, totalRows - startRow);
                 string chunkPath = Path.Combine(dir, $"chunk_{pageIdx}.bin");
 
-                var pageSpan = buffer.GetReadOnlyPageSpan(pageIdx, rowsInChunk);
+                var pageSpan = matrix.GetReadOnlyPageSpan(pageIdx, rowsInChunk);
                 var rawBytes = MemoryMarshal.AsBytes(pageSpan);
 
                 WriteChunkFile(chunkPath, rawBytes, useLz4);
@@ -335,7 +289,7 @@ namespace CarrotBacktesting.NET.Data
             var chunkWidths = new List<int>(neededPages);
             for (int i = 0; i < neededPages; i++) chunkWidths.Add(width);
 
-            var meta = new TimeseriesCacheMetadata
+            var meta = new TimeseriesMetadata
             {
                 TableId = _tableId,
                 FieldName = fieldName,
@@ -354,18 +308,13 @@ namespace CarrotBacktesting.NET.Data
             SaveMetadata(fieldName, meta);
         }
 
-        /// <summary>
-        /// 从磁盘二进制缓存直接恢复并组装 ChunkBuffer2D 容器。
-        /// 支持分块各自独立列宽，在载入时根据目标宽度自动在内存中完成列拓宽与 NaN 填充（零历史重写、零磁盘浪费）。
-        /// </summary>
-        /// <param name="fieldName">字段名称</param>
-        /// <param name="targetWidth">目标内存列宽（若为 null 则使用 meta.Width，若大于各分块宽度则自动扩充）</param>
-        public unsafe ChunkBuffer2D<T> LoadBuffer<T>(string fieldName, int? targetWidth = null) where T : unmanaged
+        /// <inheritdoc />
+        public unsafe ChunkMatrix2D<T> LoadMatrix<T>(string fieldName, int? targetWidth = null) where T : unmanaged
         {
             var meta = ReadMetadata(fieldName);
             if (meta == null)
             {
-                throw new FileNotFoundException($"Cache metadata not found for field '{fieldName}' in table '{_tableId}'.");
+                throw new FileNotFoundException($"Store metadata not found for field '{fieldName}' in table '{_tableId}'.");
             }
 
             if (!string.Equals(meta.DataType, typeof(T).Name, StringComparison.OrdinalIgnoreCase))
@@ -373,11 +322,11 @@ namespace CarrotBacktesting.NET.Data
                 throw CreateTypeMismatchException(fieldName, meta.DataType, typeof(T).Name);
             }
 
-            string dir = GetFieldCacheDir(fieldName);
+            string dir = GetFieldStoreDir(fieldName);
             int totalRows = meta.RowCount;
             int width = Math.Max(meta.Width, targetWidth ?? meta.Width);
 
-            var buffer = new ChunkBuffer2D<T>(width, _pageSize, totalRows);
+            var matrix = new ChunkMatrix2D<T>(width, _pageSize, totalRows);
             int neededPages = totalRows > 0 ? (int)(((long)totalRows + _pageSize - 1) / _pageSize) : 0;
             bool useLz4 = string.Equals(meta.Compression, "lz4", StringComparison.OrdinalIgnoreCase);
 
@@ -395,7 +344,7 @@ namespace CarrotBacktesting.NET.Data
                     if (chunkWidth == width)
                     {
                         // 极速快路径：单次裸内存直灌
-                        var targetSpan = buffer.GetPageSpan(pageIdx, rowsInChunk);
+                        var targetSpan = matrix.GetPageSpan(pageIdx, rowsInChunk);
                         var targetBytes = MemoryMarshal.AsBytes(targetSpan);
                         ReadChunkFile(chunkPath, targetBytes, useLz4);
                     }
@@ -408,7 +357,7 @@ namespace CarrotBacktesting.NET.Data
                             Span<byte> rawBytes = MemoryMarshal.AsBytes(tempChunk.AsSpan(0, rowsInChunk * chunkWidth));
                             ReadChunkFile(chunkPath, rawBytes, useLz4);
 
-                            var pageSpan = buffer.GetPageSpan(pageIdx, rowsInChunk);
+                            var pageSpan = matrix.GetPageSpan(pageIdx, rowsInChunk);
                             for (int r = 0; r < rowsInChunk; r++)
                             {
                                 var srcRow = tempChunk.AsSpan(r * chunkWidth, chunkWidth);
@@ -426,22 +375,15 @@ namespace CarrotBacktesting.NET.Data
                 }
                 catch
                 {
-                    buffer.Dispose();
+                    matrix.Dispose();
                     throw;
                 }
             }
 
-            return buffer;
+            return matrix;
         }
 
-        /// <summary>
-        /// 向现有二进制缓存文件末尾增量追加若干新行（Append）。
-        /// 自动完成对末尾 Chunk 的解压填补、LZ4 重新压缩与新分块创建。
-        /// </summary>
-        /// <param name="fieldName">字段名称</param>
-        /// <param name="deltaRows">新增行的数量</param>
-        /// <param name="rowProvider">按绝对行索引获取单行切片的回调委托</param>
-        /// <param name="newTradeDates">新追加行的日期列表</param>
+        /// <inheritdoc />
         public unsafe void AppendRows<T>(
             string fieldName,
             int deltaRows,
@@ -455,14 +397,14 @@ namespace CarrotBacktesting.NET.Data
             var meta = ReadMetadata(fieldName);
             if (meta == null)
             {
-                throw new InvalidOperationException($"Cannot append to non-existent cache for field '{fieldName}'.");
+                throw new InvalidOperationException($"Cannot append to non-existent store for field '{fieldName}'.");
             }
             if (newTradeDates.Count != deltaRows)
             {
                 throw new ArgumentException($"newTradeDates count ({newTradeDates.Count}) must equal deltaRows ({deltaRows}).");
             }
 
-            string dir = GetFieldCacheDir(fieldName);
+            string dir = GetFieldStoreDir(fieldName);
             int oldRowCount = meta.RowCount;
             int width = meta.Width;
             int targetRowCount = oldRowCount + deltaRows;
@@ -522,24 +464,20 @@ namespace CarrotBacktesting.NET.Data
             SaveMetadata(fieldName, meta);
         }
 
-        /// <summary>
-        /// 清空或删除指定字段的所有持久化缓存数据。
-        /// </summary>
+        /// <inheritdoc />
         public void Clear(string fieldName)
         {
-            string dir = GetFieldCacheDir(fieldName);
+            string dir = GetFieldStoreDir(fieldName);
             if (Directory.Exists(dir))
             {
                 Directory.Delete(dir, true);
             }
         }
 
-        /// <summary>
-        /// 清空整个表的所有字段缓存。
-        /// </summary>
+        /// <inheritdoc />
         public void ClearTable()
         {
-            string tableDir = Path.Combine(_cacheRoot, _tableId);
+            string tableDir = Path.Combine(_storeRoot, _tableId);
             if (Directory.Exists(tableDir))
             {
                 Directory.Delete(tableDir, true);
@@ -616,9 +554,9 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        private void SaveMetadata(string fieldName, TimeseriesCacheMetadata meta)
+        private void SaveMetadata(string fieldName, TimeseriesMetadata meta)
         {
-            string dir = GetFieldCacheDir(fieldName);
+            string dir = GetFieldStoreDir(fieldName);
             string metaPath = Path.Combine(dir, MetaFileName);
             string tmpMetaPath = metaPath + ".tmp";
 
@@ -632,7 +570,7 @@ namespace CarrotBacktesting.NET.Data
 
         private static InvalidOperationException CreateTypeMismatchException(string field, string expected, string actual)
         {
-            return new InvalidOperationException($"Cache type mismatch for field '{field}'. Stored type is '{expected}', requested '{actual}'.");
+            return new InvalidOperationException($"Store type mismatch for field '{field}'. Stored type is '{expected}', requested '{actual}'.");
         }
     }
 }

@@ -11,7 +11,7 @@ CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易�
 
 - **三层分离架构**: 数据层 / 引擎层 / 策略层通过接口契约解耦，各层可独立演进。
 - **双格式数据源**: 统一支持 CSV 与 Parquet 格式，通过 `IStorageResolver` 屏蔽物理存储差异。
-- **稠密矩阵 + 稀疏事件**: `IDataProvider` 提供高性能二维 Buffer 访问，`IEventProvider<T>` 提供 O(1) 点查。
+- **稠密矩阵 + 稀疏事件**: `IDataProvider` 提供高性能二维时序矩阵（`GetMatrix`）与单标的一维序列（`GetSeries`）访问，`IEventProvider<T>` 提供 O(1) 点查。
 - **泛型事件系统**: 用户只需定义 record 类型，框架自动完成 CSV/Parquet → T 的零配置映射。
 - **策略管线**: 支持串联/并联组合模式，引擎启动前通过 `Compile()` 优化拓扑。
 - **Context 黑板模式**: 策略间通过 `IEngineContext` 共享状态与数据，实现策略逻辑与交易执行的解耦。

@@ -6,20 +6,19 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Data.Views;
-using CommunityToolkit.HighPerformance;
 
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// 基于连续定长分页（Chunk）的高性能二维无锁只读/可写内存容器。
-    /// 专为大规模行情矩阵设计，底座采用非托管内存管理，消除 GC 碎片；
+    /// 基于连续定长分页（Chunk）的高性能二维无锁只读/可写内存矩阵。
+    /// 专为大规模金融时序数据设计，底座采用非托管内存管理（NativeMemory），消除 GC 碎片；
     /// 寻址全面采用位运算（Shift/Mask）实现零除法开销；
     /// 读取路径提供无锁（Lock-Free）零并发竞争保证，满足高并发多线程回测读取需求。
     /// </summary>
     /// <typeparam name="T">非托管数值类型（如 double, float, long, int 等）。</typeparam>
-    public sealed unsafe class ChunkBuffer2D<T> : IBuffer2D<T>, IReadOnlyBuffer2D<T>, IDisposable where T : unmanaged
+    public sealed unsafe class ChunkMatrix2D<T> : IMatrix2D<T>, IReadOnlyMatrix2D<T>, IDisposable where T : unmanaged
     {
-        private readonly int _width;
+        private int _width;
         private readonly int _pageSize;
         private readonly int _shift;
         private readonly int _mask;
@@ -34,7 +33,7 @@ namespace CarrotBacktesting.NET.Data
         public int RowCount => Volatile.Read(ref _rowCount);
 
         /// <inheritdoc />
-        public int Width => _width;
+        public int Width => Volatile.Read(ref _width);
 
         /// <summary>
         /// 获取单页行数容量。
@@ -47,12 +46,12 @@ namespace CarrotBacktesting.NET.Data
         public int PageCount => Volatile.Read(ref _pageCount);
 
         /// <summary>
-        /// 初始化 <see cref="ChunkBuffer2D{T}"/> 实例。
+        /// 初始化 <see cref="ChunkMatrix2D{T}"/> 实例。
         /// </summary>
         /// <param name="width">矩阵宽度（列数，如股票代码总数）。</param>
         /// <param name="pageSize">单页行数容量，必须为大于 0 且为 2 的整数幂（如 1024, 2048, 4096）。默认为 4096。</param>
         /// <param name="initialRowCount">初始预分配行数。默认为 0。</param>
-        public ChunkBuffer2D(int width, int pageSize = 4096, int initialRowCount = 0)
+        public ChunkMatrix2D(int width, int pageSize = 4096, int initialRowCount = 0)
         {
             if (width <= 0)
             {
@@ -84,7 +83,7 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 获取当前实例的只读视图接口。
         /// </summary>
-        public IReadOnlyBuffer2D<T> AsReadOnly() => this;
+        public IReadOnlyMatrix2D<T> AsReadOnly() => this;
 
         /// <summary>
         /// 获取或设置指定行列位置的元素引用。
@@ -98,7 +97,8 @@ namespace CarrotBacktesting.NET.Data
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                if ((uint)r >= (uint)_rowCount || (uint)c >= (uint)_width)
+                int rowCount = Volatile.Read(ref _rowCount);
+                if ((uint)r >= (uint)rowCount || (uint)c >= (uint)_width)
                 {
                     ThrowIndexOutOfRangeException("行列索引越界。");
                 }
@@ -110,14 +110,14 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
-        ref readonly T IReadOnlyBuffer2D<T>.this[int r, int c]
+        ref readonly T IReadOnlyMatrix2D<T>.this[int r, int c]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => ref this[r, c];
         }
 
         /// <summary>
-        /// 确保容器总行数容量至少达到 <paramref name="targetRowCount"/>。
+        /// 确保矩阵总行数容量至少达到 <paramref name="targetRowCount"/>。
         /// 写入阶段线程安全，多线程扩容受内部锁保护；读线程不受阻断。
         /// </summary>
         /// <param name="targetRowCount">目标行数容量。</param>
@@ -131,22 +131,86 @@ namespace CarrotBacktesting.NET.Data
                 if (targetRowCount <= _rowCount) return;
 
                 int neededPages = (int)(((long)targetRowCount + _pageSize - 1) >> _shift);
+                nuint bytesPerPage = (nuint)_pageSize * (nuint)_width * (nuint)sizeof(T);
+
                 if (neededPages > _pages.Length)
                 {
                     int newCap = Math.Max(neededPages, _pages.Length * 2);
                     var newPages = new T*[newCap];
                     Array.Copy(_pages, newPages, _pageCount);
+                    while (_pageCount < neededPages)
+                    {
+                        newPages[_pageCount] = (T*)NativeMemory.AllocZeroed(bytesPerPage);
+                        _pageCount++;
+                    }
                     Volatile.Write(ref _pages, newPages);
                 }
-
-                nuint bytesPerPage = (nuint)_pageSize * (nuint)_width * (nuint)sizeof(T);
-                while (_pageCount < neededPages)
+                else
                 {
-                    _pages[_pageCount] = (T*)NativeMemory.AllocZeroed(bytesPerPage);
-                    _pageCount++;
+                    while (_pageCount < neededPages)
+                    {
+                        _pages[_pageCount] = (T*)NativeMemory.AllocZeroed(bytesPerPage);
+                        _pageCount++;
+                    }
                 }
 
                 Volatile.Write(ref _rowCount, targetRowCount);
+            }
+        }
+
+        /// <summary>
+        /// 原子拓宽矩阵列维度（新股/新标的上市）。
+        /// 遵循单一事实来源（SSOT）契约：列宽只增不减；旧列数据保持不变，新扩展列的已有历史行全部自动填充 NaN。
+        /// </summary>
+        /// <param name="newWidth">新的列宽度，必须大于当前 Width。</param>
+        public void ExpandWidth(int newWidth)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            if (newWidth <= _width) return;
+
+            lock (_gate)
+            {
+                if (newWidth <= _width) return;
+
+                int oldWidth = _width;
+                int pageCount = _pageCount;
+                nuint newBytesPerPage = (nuint)_pageSize * (nuint)newWidth * (nuint)sizeof(T);
+                T*[] newPages = new T*[_pages.Length];
+                T nanValue = MarketDataAligner.GetNaNValue<T>();
+
+                for (int p = 0; p < pageCount; p++)
+                {
+                    T* pNewPage = (T*)NativeMemory.AllocZeroed(newBytesPerPage);
+                    newPages[p] = pNewPage;
+                    T* pOldPage = _pages[p];
+
+                    // 计算该页有效行数
+                    int rowsInPage = (p == pageCount - 1 && (_rowCount & _mask) != 0)
+                        ? (_rowCount & _mask) 
+                        : _pageSize;
+
+                    for (int r = 0; r < rowsInPage; r++)
+                    {
+                        T* pSrcRow = pOldPage + ((long)r * oldWidth);
+                        T* pDstRow = pNewPage + ((long)r * newWidth);
+
+                        // 1. 拷贝旧标的数据
+                        Buffer.MemoryCopy(pSrcRow, pDstRow, (long)oldWidth * sizeof(T), (long)oldWidth * sizeof(T));
+
+                        // 2. 新标的上市前的历史行填充 NaN
+                        for (int c = oldWidth; c < newWidth; c++)
+                        {
+                            pDstRow[c] = nanValue;
+                        }
+                    }
+
+                    // 释放旧页内存
+                    NativeMemory.Free(pOldPage);
+                }
+
+                // 原子更新分页引用与宽度
+                Volatile.Write(ref _pages, newPages);
+                Volatile.Write(ref _width, newWidth);
             }
         }
 
@@ -265,27 +329,6 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        /// <inheritdoc />
-        public void SetBlock(int r, int c, ReadOnlySpan2D<T> data)
-        {
-            ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            if (r < 0 || c < 0 || (uint)(c + data.Width) > (uint)_width)
-            {
-                throw new ArgumentException("写入区域越界或非法。");
-            }
-
-            int targetRowCount = r + data.Height;
-            if (targetRowCount > _rowCount)
-            {
-                EnsureCapacity(targetRowCount);
-            }
-
-            for (int i = 0; i < data.Height; i++)
-            {
-                SetRow(r + i, c, data.GetRowSpan(i));
-            }
-        }
-
         /// <summary>
         /// 垂直批量读取单列数据到目标内存缓冲区。
         /// </summary>
@@ -295,7 +338,8 @@ namespace CarrotBacktesting.NET.Data
         public void CopyColumn(int r, int c, Span<T> destination)
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            if ((uint)c >= (uint)_width || (uint)r + (uint)destination.Length > (uint)_rowCount)
+            int rowCount = Volatile.Read(ref _rowCount);
+            if ((uint)c >= (uint)_width || (uint)r + (uint)destination.Length > (uint)rowCount)
             {
                 ThrowIndexOutOfRangeException("列读取越界。");
             }
@@ -341,7 +385,8 @@ namespace CarrotBacktesting.NET.Data
         public void CopyRow(int r, int c, Span<T> destination)
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            if ((uint)r >= (uint)_rowCount || (uint)c + (uint)destination.Length > (uint)_width)
+            int rowCount = Volatile.Read(ref _rowCount);
+            if ((uint)r >= (uint)rowCount || (uint)c + (uint)destination.Length > (uint)_width)
             {
                 ThrowIndexOutOfRangeException("行读取越界。");
             }
@@ -362,7 +407,8 @@ namespace CarrotBacktesting.NET.Data
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public RowView<T> GetRowView(int row, int col, int len)
         {
-            if ((uint)row >= (uint)_rowCount || (uint)col + (uint)len > (uint)_width)
+            int rowCount = Volatile.Read(ref _rowCount);
+            if ((uint)row >= (uint)rowCount || (uint)col + (uint)len > (uint)_width)
             {
                 ThrowIndexOutOfRangeException("行视图索引或截取长度越界。");
             }
@@ -376,9 +422,10 @@ namespace CarrotBacktesting.NET.Data
 
         /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        ReadOnlyRowView<T> IReadOnlyBuffer2D<T>.GetRowView(int row, int col, int len)
+        ReadOnlyRowView<T> IReadOnlyMatrix2D<T>.GetRowView(int row, int col, int len)
         {
-            if ((uint)row >= (uint)_rowCount || (uint)col + (uint)len > (uint)_width)
+            int rowCount = Volatile.Read(ref _rowCount);
+            if ((uint)row >= (uint)rowCount || (uint)col + (uint)len > (uint)_width)
             {
                 ThrowIndexOutOfRangeException("只读行视图索引或截取长度越界。");
             }
@@ -394,7 +441,8 @@ namespace CarrotBacktesting.NET.Data
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ColumnView<T> GetColumnView(int row, int col, int len)
         {
-            if ((uint)col >= (uint)_width || (uint)row + (uint)len > (uint)_rowCount)
+            int rowCount = Volatile.Read(ref _rowCount);
+            if ((uint)col >= (uint)_width || (uint)row + (uint)len > (uint)rowCount)
             {
                 ThrowIndexOutOfRangeException("列视图索引或截取长度越界。");
             }
@@ -404,9 +452,10 @@ namespace CarrotBacktesting.NET.Data
 
         /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        ReadOnlyColumnView<T> IReadOnlyBuffer2D<T>.GetColumnView(int row, int col, int len)
+        ReadOnlyColumnView<T> IReadOnlyMatrix2D<T>.GetColumnView(int row, int col, int len)
         {
-            if ((uint)col >= (uint)_width || (uint)row + (uint)len > (uint)_rowCount)
+            int rowCount = Volatile.Read(ref _rowCount);
+            if ((uint)col >= (uint)_width || (uint)row + (uint)len > (uint)rowCount)
             {
                 ThrowIndexOutOfRangeException("只读列视图索引或截取长度越界。");
             }
@@ -479,7 +528,7 @@ namespace CarrotBacktesting.NET.Data
             GC.SuppressFinalize(this);
         }
 
-        ~ChunkBuffer2D()
+        ~ChunkMatrix2D()
         {
             Dispose();
         }
