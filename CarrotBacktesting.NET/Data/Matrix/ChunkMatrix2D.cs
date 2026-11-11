@@ -22,15 +22,29 @@ namespace CarrotBacktesting.NET.Data
         private readonly int _pageSize;
         private readonly int _shift;
         private readonly int _mask;
+        private readonly int _maxPages;
+        private readonly int _slotMask;
         private readonly object _gate = new();
 
         private T*[] _pages;
         private int _pageCount;
         private int _rowCount;
+        private int _baseRowIndex;
         private int _disposed;
 
         /// <inheritdoc />
         public int RowCount => Volatile.Read(ref _rowCount);
+
+        /// <summary>
+        /// 获取当前常驻有效区间的起始基准行号（老于该行号的数据已滑出常驻内存）。
+        /// 全量常驻模式下恒为 0。
+        /// </summary>
+        public int BaseRowIndex => Volatile.Read(ref _baseRowIndex);
+
+        /// <summary>
+        /// 获取最大常驻内存页数（0 表示全量常驻，无上限）。
+        /// </summary>
+        public int MaxPages => _maxPages;
 
         /// <inheritdoc />
         public int Width => Volatile.Read(ref _width);
@@ -51,7 +65,8 @@ namespace CarrotBacktesting.NET.Data
         /// <param name="width">矩阵宽度（列数，如股票代码总数）。</param>
         /// <param name="pageSize">单页行数容量，必须为大于 0 且为 2 的整数幂（如 1024, 2048, 4096）。默认为 4096。</param>
         /// <param name="initialRowCount">初始预分配行数。默认为 0。</param>
-        public ChunkMatrix2D(int width, int pageSize = 4096, int initialRowCount = 0)
+        /// <param name="maxPages">最大常驻内存页数，必须为 0 或 2 的整数幂（如 2, 4, 8）。设为 0 或负数表示不限常驻页数（全量常驻）。默认为 0。</param>
+        public ChunkMatrix2D(int width, int pageSize = 4096, int initialRowCount = 0, int maxPages = 0)
         {
             if (width <= 0)
             {
@@ -65,14 +80,27 @@ namespace CarrotBacktesting.NET.Data
             {
                 throw new ArgumentOutOfRangeException(nameof(initialRowCount), "InitialRowCount 不能为负数。");
             }
+            if (maxPages > 0 && (maxPages & (maxPages - 1)) != 0)
+            {
+                throw new ArgumentException("MaxPages 必须为 2 的整数次幂（例如 2, 4, 8, 16）。", nameof(maxPages));
+            }
 
             _width = width;
             _pageSize = pageSize;
             _shift = BitOperations.TrailingZeroCount((uint)pageSize);
             _mask = pageSize - 1;
+            _maxPages = maxPages > 0 ? maxPages : 0;
+            _slotMask = _maxPages > 0 ? (_maxPages - 1) : 0;
 
-            int initialPages = initialRowCount > 0 ? (int)(((long)initialRowCount + pageSize - 1) >> _shift) : 4;
-            _pages = new T*[Math.Max(4, initialPages)];
+            if (_maxPages > 0)
+            {
+                _pages = new T*[_maxPages];
+            }
+            else
+            {
+                int initialPages = initialRowCount > 0 ? (int)(((long)initialRowCount + pageSize - 1) >> _shift) : 4;
+                _pages = new T*[Math.Max(4, initialPages)];
+            }
 
             if (initialRowCount > 0)
             {
@@ -98,14 +126,16 @@ namespace CarrotBacktesting.NET.Data
             get
             {
                 int rowCount = Volatile.Read(ref _rowCount);
-                if ((uint)r >= (uint)rowCount || (uint)c >= (uint)_width)
+                int baseRow = Volatile.Read(ref _baseRowIndex);
+                if ((uint)(r - baseRow) >= (uint)(rowCount - baseRow) || (uint)c >= (uint)_width)
                 {
-                    ThrowIndexOutOfRangeException("行列索引越界。");
+                    ThrowIndexOutOfRangeException("行列索引越界或请求的历史行已滑出常驻内存窗口。");
                 }
                 int pageIdx = r >> _shift;
                 int rowInPage = r & _mask;
+                int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
                 var pages = Volatile.Read(ref _pages);
-                return ref *(pages[pageIdx] + ((long)rowInPage * _width + c));
+                return ref *(pages[slotIdx] + ((long)rowInPage * _width + c));
             }
         }
 
@@ -114,6 +144,21 @@ namespace CarrotBacktesting.NET.Data
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => ref this[r, c];
+        }
+
+        /// <summary>
+        /// 推进常驻有效区间的起始基准行号（淘汰老于 <paramref name="newBaseRowIndex"/> 的分块）。
+        /// </summary>
+        public void AdvanceBaseRow(int newBaseRowIndex)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            lock (_gate)
+            {
+                if (newBaseRowIndex > _baseRowIndex)
+                {
+                    Volatile.Write(ref _baseRowIndex, newBaseRowIndex);
+                }
+            }
         }
 
         /// <summary>
@@ -133,28 +178,54 @@ namespace CarrotBacktesting.NET.Data
                 int neededPages = (int)(((long)targetRowCount + _pageSize - 1) >> _shift);
                 nuint bytesPerPage = (nuint)_pageSize * (nuint)_width * (nuint)sizeof(T);
 
-                if (neededPages > _pages.Length)
+                if (_maxPages > 0)
                 {
-                    int newCap = Math.Max(neededPages, _pages.Length * 2);
-                    var newPages = new T*[newCap];
-                    Array.Copy(_pages, newPages, _pageCount);
-                    while (_pageCount < neededPages)
-                    {
-                        newPages[_pageCount] = (T*)NativeMemory.AllocZeroed(bytesPerPage);
-                        _pageCount++;
-                    }
-                    Volatile.Write(ref _pages, newPages);
-                }
-                else
-                {
-                    while (_pageCount < neededPages)
+                    // 环形槽位模式：槽位数量固定为 _maxPages
+                    while (_pageCount < Math.Min(neededPages, _maxPages))
                     {
                         _pages[_pageCount] = (T*)NativeMemory.AllocZeroed(bytesPerPage);
                         _pageCount++;
                     }
-                }
 
-                Volatile.Write(ref _rowCount, targetRowCount);
+                    // 若目标行数跨越的逻辑页超出常驻页数，自动向前推进 BaseRowIndex 淘汰最老页
+                    int oldestAllowedPage = neededPages - _maxPages;
+                    if (oldestAllowedPage > 0)
+                    {
+                        int newBaseRow = oldestAllowedPage * _pageSize;
+                        if (newBaseRow > _baseRowIndex)
+                        {
+                            Volatile.Write(ref _baseRowIndex, newBaseRow);
+                        }
+                    }
+
+                    Volatile.Write(ref _rowCount, targetRowCount);
+                }
+                else
+                {
+                    // 全量线性模式
+                    if (neededPages > _pages.Length)
+                    {
+                        int newCap = Math.Max(neededPages, _pages.Length * 2);
+                        var newPages = new T*[newCap];
+                        Array.Copy(_pages, newPages, _pageCount);
+                        while (_pageCount < neededPages)
+                        {
+                            newPages[_pageCount] = (T*)NativeMemory.AllocZeroed(bytesPerPage);
+                            _pageCount++;
+                        }
+                        Volatile.Write(ref _pages, newPages);
+                    }
+                    else
+                    {
+                        while (_pageCount < neededPages)
+                        {
+                            _pages[_pageCount] = (T*)NativeMemory.AllocZeroed(bytesPerPage);
+                            _pageCount++;
+                        }
+                    }
+
+                    Volatile.Write(ref _rowCount, targetRowCount);
+                }
             }
         }
 
@@ -222,9 +293,9 @@ namespace CarrotBacktesting.NET.Data
             {
                 ThrowIndexOutOfRangeException("列索引越界。");
             }
-            if (r < 0)
+            if (r < _baseRowIndex)
             {
-                ThrowIndexOutOfRangeException("行索引不能为负数。");
+                ThrowIndexOutOfRangeException("行索引不能小于当前常驻基准行。");
             }
             if (r >= _rowCount)
             {
@@ -233,8 +304,9 @@ namespace CarrotBacktesting.NET.Data
 
             int pageIdx = r >> _shift;
             int rowInPage = r & _mask;
+            int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
             var pages = Volatile.Read(ref _pages);
-            pages[pageIdx][(long)rowInPage * _width + c] = value;
+            pages[slotIdx][(long)rowInPage * _width + c] = value;
         }
 
         /// <summary>
@@ -251,9 +323,9 @@ namespace CarrotBacktesting.NET.Data
             {
                 ThrowIndexOutOfRangeException("列索引越界。");
             }
-            if (r < 0)
+            if (r < _baseRowIndex)
             {
-                ThrowIndexOutOfRangeException("起始行索引不能为负数。");
+                ThrowIndexOutOfRangeException("起始行索引不能小于当前常驻基准行。");
             }
             if (data.Length == 0) return;
 
@@ -274,8 +346,9 @@ namespace CarrotBacktesting.NET.Data
                 {
                     int pageIdx = currRow >> _shift;
                     int rowInPage = currRow & _mask;
+                    int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
                     int canWrite = Math.Min(_pageSize - rowInPage, remaining);
-                    T* pDstPage = pages[pageIdx];
+                    T* pDstPage = pages[slotIdx];
 
                     T* pDst = pDstPage + ((long)rowInPage * _width + c);
                     T* pCurSrc = pSrc + srcOffset;
@@ -304,9 +377,9 @@ namespace CarrotBacktesting.NET.Data
         public void SetRow(int r, int c, ReadOnlySpan<T> data)
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            if (r < 0)
+            if (r < _baseRowIndex)
             {
-                ThrowIndexOutOfRangeException("行索引不能为负数。");
+                ThrowIndexOutOfRangeException("行索引不能小于当前常驻基准行。");
             }
             if ((uint)c + (uint)data.Length > (uint)_width)
             {
@@ -320,8 +393,9 @@ namespace CarrotBacktesting.NET.Data
 
             int pageIdx = r >> _shift;
             int rowInPage = r & _mask;
+            int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
             var pages = Volatile.Read(ref _pages);
-            T* pDst = pages[pageIdx] + ((long)rowInPage * _width + c);
+            T* pDst = pages[slotIdx] + ((long)rowInPage * _width + c);
 
             fixed (T* pSrc = data)
             {
@@ -339,9 +413,10 @@ namespace CarrotBacktesting.NET.Data
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
             int rowCount = Volatile.Read(ref _rowCount);
-            if ((uint)c >= (uint)_width || (uint)r + (uint)destination.Length > (uint)rowCount)
+            int baseRow = Volatile.Read(ref _baseRowIndex);
+            if ((uint)c >= (uint)_width || r < baseRow || (uint)(r - baseRow) + (uint)destination.Length > (uint)(rowCount - baseRow))
             {
-                ThrowIndexOutOfRangeException("列读取越界。");
+                ThrowIndexOutOfRangeException("列读取越界或已滑出常驻内存窗口。");
             }
             if (destination.Length == 0) return;
 
@@ -356,8 +431,9 @@ namespace CarrotBacktesting.NET.Data
                 {
                     int pageIdx = currRow >> _shift;
                     int rowInPage = currRow & _mask;
+                    int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
                     int canRead = Math.Min(_pageSize - rowInPage, remaining);
-                    T* pSrcPage = pages[pageIdx];
+                    T* pSrcPage = pages[slotIdx];
 
                     T* pSrc = pSrcPage + ((long)rowInPage * _width + c);
                     T* pCurDst = pDst + dstOffset;
@@ -386,16 +462,18 @@ namespace CarrotBacktesting.NET.Data
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
             int rowCount = Volatile.Read(ref _rowCount);
-            if ((uint)r >= (uint)rowCount || (uint)c + (uint)destination.Length > (uint)_width)
+            int baseRow = Volatile.Read(ref _baseRowIndex);
+            if ((uint)(r - baseRow) >= (uint)(rowCount - baseRow) || (uint)c + (uint)destination.Length > (uint)_width)
             {
-                ThrowIndexOutOfRangeException("行读取越界。");
+                ThrowIndexOutOfRangeException("行读取越界或已滑出常驻内存窗口。");
             }
             if (destination.Length == 0) return;
 
             int pageIdx = r >> _shift;
             int rowInPage = r & _mask;
+            int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
             var pages = Volatile.Read(ref _pages);
-            T* pSrc = pages[pageIdx] + ((long)rowInPage * _width + c);
+            T* pSrc = pages[slotIdx] + ((long)rowInPage * _width + c);
 
             fixed (T* pDst = destination)
             {
@@ -408,15 +486,17 @@ namespace CarrotBacktesting.NET.Data
         public RowView<T> GetRowView(int row, int col, int len)
         {
             int rowCount = Volatile.Read(ref _rowCount);
-            if ((uint)row >= (uint)rowCount || (uint)col + (uint)len > (uint)_width)
+            int baseRow = Volatile.Read(ref _baseRowIndex);
+            if ((uint)(row - baseRow) >= (uint)(rowCount - baseRow) || (uint)col + (uint)len > (uint)_width)
             {
-                ThrowIndexOutOfRangeException("行视图索引或截取长度越界。");
+                ThrowIndexOutOfRangeException("行视图索引或截取长度越界（或已滑出常驻内存窗口）。");
             }
 
             int pageIdx = row >> _shift;
             int rowInPage = row & _mask;
+            int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
             var pages = Volatile.Read(ref _pages);
-            T* ptr = pages[pageIdx] + ((long)rowInPage * _width + col);
+            T* ptr = pages[slotIdx] + ((long)rowInPage * _width + col);
             return new RowView<T>(new Span<T>(ptr, len));
         }
 
@@ -425,15 +505,17 @@ namespace CarrotBacktesting.NET.Data
         ReadOnlyRowView<T> IReadOnlyMatrix2D<T>.GetRowView(int row, int col, int len)
         {
             int rowCount = Volatile.Read(ref _rowCount);
-            if ((uint)row >= (uint)rowCount || (uint)col + (uint)len > (uint)_width)
+            int baseRow = Volatile.Read(ref _baseRowIndex);
+            if ((uint)(row - baseRow) >= (uint)(rowCount - baseRow) || (uint)col + (uint)len > (uint)_width)
             {
-                ThrowIndexOutOfRangeException("只读行视图索引或截取长度越界。");
+                ThrowIndexOutOfRangeException("只读行视图索引或截取长度越界（或已滑出常驻内存窗口）。");
             }
 
             int pageIdx = row >> _shift;
             int rowInPage = row & _mask;
+            int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
             var pages = Volatile.Read(ref _pages);
-            T* ptr = pages[pageIdx] + ((long)rowInPage * _width + col);
+            T* ptr = pages[slotIdx] + ((long)rowInPage * _width + col);
             return new ReadOnlyRowView<T>(new ReadOnlySpan<T>(ptr, len));
         }
 
@@ -442,9 +524,10 @@ namespace CarrotBacktesting.NET.Data
         public ColumnView<T> GetColumnView(int row, int col, int len)
         {
             int rowCount = Volatile.Read(ref _rowCount);
-            if ((uint)col >= (uint)_width || (uint)row + (uint)len > (uint)rowCount)
+            int baseRow = Volatile.Read(ref _baseRowIndex);
+            if ((uint)col >= (uint)_width || row < baseRow || (uint)(row - baseRow) + (uint)len > (uint)(rowCount - baseRow))
             {
-                ThrowIndexOutOfRangeException("列视图索引或截取长度越界。");
+                ThrowIndexOutOfRangeException("列视图索引或截取长度越界（或已滑出常驻内存窗口）。");
             }
 
             return new ColumnView<T>(this, row, col, len);
@@ -455,9 +538,10 @@ namespace CarrotBacktesting.NET.Data
         ReadOnlyColumnView<T> IReadOnlyMatrix2D<T>.GetColumnView(int row, int col, int len)
         {
             int rowCount = Volatile.Read(ref _rowCount);
-            if ((uint)col >= (uint)_width || (uint)row + (uint)len > (uint)rowCount)
+            int baseRow = Volatile.Read(ref _baseRowIndex);
+            if ((uint)col >= (uint)_width || row < baseRow || (uint)(row - baseRow) + (uint)len > (uint)(rowCount - baseRow))
             {
-                ThrowIndexOutOfRangeException("只读列视图索引或截取长度越界。");
+                ThrowIndexOutOfRangeException("只读列视图索引或截取长度越界（或已滑出常驻内存窗口）。");
             }
 
             return new ReadOnlyColumnView<T>(this, row, col, len);
@@ -473,16 +557,23 @@ namespace CarrotBacktesting.NET.Data
         public Span<T> GetPageSpan(int pageIndex, int rowsInPage)
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            if ((uint)pageIndex >= (uint)_pageCount)
-            {
-                ThrowIndexOutOfRangeException("分页索引越界。");
-            }
             if (rowsInPage < 0 || rowsInPage > _pageSize)
             {
                 ThrowIndexOutOfRangeException("单页行数超出页容量。");
             }
+            int basePage = _baseRowIndex >> _shift;
+            int maxPage = _rowCount > 0 ? ((_rowCount + _pageSize - 1) >> _shift) : 0;
+            if (pageIndex < basePage || pageIndex >= maxPage)
+            {
+                ThrowIndexOutOfRangeException("页索引越界或已滑出常驻内存窗口。");
+            }
+            int slotIdx = _maxPages > 0 ? (pageIndex & _slotMask) : pageIndex;
             var pages = Volatile.Read(ref _pages);
-            return new Span<T>(pages[pageIndex], rowsInPage * _width);
+            if (pages[slotIdx] == null)
+            {
+                ThrowIndexOutOfRangeException("目标分块槽位尚未分配。");
+            }
+            return new Span<T>(pages[slotIdx], rowsInPage * _width);
         }
 
         /// <summary>
@@ -494,16 +585,23 @@ namespace CarrotBacktesting.NET.Data
         public ReadOnlySpan<T> GetReadOnlyPageSpan(int pageIndex, int rowsInPage)
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            if ((uint)pageIndex >= (uint)_pageCount)
-            {
-                ThrowIndexOutOfRangeException("分页索引越界。");
-            }
             if (rowsInPage < 0 || rowsInPage > _pageSize)
             {
                 ThrowIndexOutOfRangeException("单页行数超出页容量。");
             }
+            int basePage = _baseRowIndex >> _shift;
+            int maxPage = _rowCount > 0 ? ((_rowCount + _pageSize - 1) >> _shift) : 0;
+            if (pageIndex < basePage || pageIndex >= maxPage)
+            {
+                ThrowIndexOutOfRangeException("页索引越界或已滑出常驻内存窗口。");
+            }
+            int slotIdx = _maxPages > 0 ? (pageIndex & _slotMask) : pageIndex;
             var pages = Volatile.Read(ref _pages);
-            return new ReadOnlySpan<T>(pages[pageIndex], rowsInPage * _width);
+            if (pages[slotIdx] == null)
+            {
+                ThrowIndexOutOfRangeException("目标分块槽位尚未分配。");
+            }
+            return new ReadOnlySpan<T>(pages[slotIdx], rowsInPage * _width);
         }
 
         /// <inheritdoc />
@@ -513,7 +611,8 @@ namespace CarrotBacktesting.NET.Data
 
             lock (_gate)
             {
-                for (int i = 0; i < _pageCount; i++)
+                int pagesToFree = _maxPages > 0 ? Math.Min(_pageCount, _maxPages) : _pageCount;
+                for (int i = 0; i < pagesToFree; i++)
                 {
                     if (_pages[i] != null)
                     {

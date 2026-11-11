@@ -8,7 +8,7 @@ graph TD
         DataProviderFactory[DataProviderFactory]
         CachedDataProvider[CachedDataProvider]
         TimeseriesChunkManager[TimeseriesChunkManager&lt;T&gt;]
-        ITimeseriesCacheStore[ITimeseriesCacheStore]
+        ITimeseriesStore[ITimeseriesStore]
         ChunkMatrix2D[ChunkMatrix2D&lt;T&gt;]
         IDataProvider[IDataProvider]
         EventProvider[EventProvider&lt;T&gt;]
@@ -24,7 +24,7 @@ graph TD
         ParquetMarketSeriesSource --> CachedDataProvider
         SimpleFieldRegistry --> CachedDataProvider
         CachedDataProvider --> TimeseriesChunkManager
-        TimeseriesChunkManager --> ITimeseriesCacheStore
+        TimeseriesChunkManager --> ITimeseriesStore
         TimeseriesChunkManager --> ChunkMatrix2D
         CachedDataProvider --> IDataProvider
         StorageResolver --> EventProviderBuilder

@@ -89,6 +89,19 @@ namespace CarrotBacktesting.NET.Config
         /// 设为 0 或负数则禁用定量落盘，仅在引擎停止或 Dispose 时触发保底 Commit。
         /// </summary>
         public int CommitBatchSize { get; set; } = 64;
+
+        /// <summary>
+        /// 最大常驻内存页数，默认为 4（必须为 2 的整数幂，如 2, 4, 8, 16 等）。
+        /// 底层以环形槽位管理内存分页，最老冷数据自动淘汰释放，确保超长高频回测与实盘常驻内存严格守恒。
+        /// 设为 0 或负数则禁用环形淘汰（全量常驻内存）。
+        /// </summary>
+        public int MaxPages { get; set; } = 4;
+
+        /// <summary>
+        /// 是否启用后台异步双缓冲预读（Prefetch），默认为 true。
+        /// 仅在回测模式下生效；在实盘（Living）模式下自动物理禁用。
+        /// </summary>
+        public bool Prefetch { get; set; } = true;
     }
 
     /// <summary>

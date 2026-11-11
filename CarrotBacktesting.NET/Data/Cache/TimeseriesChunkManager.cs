@@ -48,6 +48,22 @@ namespace CarrotBacktesting.NET.Data
         int UncommittedRowCount { get; }
 
         /// <summary>
+        /// 最大常驻内存页数（0 表示不设上限全量常驻）。
+        /// </summary>
+        int MaxPages { get; }
+
+        /// <summary>
+        /// 当前常驻内存窗口的最老有效基准行号。
+        /// </summary>
+        int BaseRowIndex { get; }
+
+        /// <summary>
+        /// 时间步步进通知：告知管理器当前引擎已推进至第 <paramref name="currentLogicalRow"/> 行。
+        /// 触发后台自动异步预读（Prefetch）并推进常驻窗口基准行（淘汰冷分块）。
+        /// </summary>
+        void StepTo(int currentLogicalRow);
+
+        /// <summary>
         /// 手动标记当前分块处于脏状态。
         /// </summary>
         void MarkDirty();
@@ -80,6 +96,10 @@ namespace CarrotBacktesting.NET.Data
         private readonly int _pageSize;
         private readonly string _refreshMode;
         private readonly int _commitBatchSize;
+        private readonly int _maxPages;
+        private readonly bool _prefetch;
+        private readonly bool _isLive;
+        private readonly bool _canPrefetch;
 
         private ChunkMatrix2D<T>? _matrix;
         private int _totalRows;
@@ -88,6 +108,10 @@ namespace CarrotBacktesting.NET.Data
         private bool _isDirty;
         private bool _disposed;
         private readonly object _gate = new();
+
+        private Task<T[]>? _prefetchTask;
+        private int _prefetchedPageIndex = -1;
+        private int _loadedMaxPageIndex = -1;
 
         /// <inheritdoc />
         public string FieldName => _fieldName;
@@ -102,6 +126,29 @@ namespace CarrotBacktesting.NET.Data
             {
                 EnsureLoaded();
                 return _totalRows;
+            }
+        }
+
+        /// <inheritdoc />
+        public int MaxPages => _maxPages;
+
+        /// <summary>
+        /// 是否允许异步预读（回测且未显式禁用时为 true；实盘 Living 下强制为 false）。
+        /// </summary>
+        public bool CanPrefetch => _canPrefetch;
+
+        /// <summary>
+        /// 是否运行于实盘（Living）模式。
+        /// </summary>
+        public bool IsLive => _isLive;
+
+        /// <inheritdoc />
+        public int BaseRowIndex
+        {
+            get
+            {
+                EnsureLoaded();
+                return _matrix!.BaseRowIndex;
             }
         }
 
@@ -141,7 +188,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 初始化 <see cref="TimeseriesChunkManager{T}"/> 实例（默认定量 64 行自动提交）。
+        /// 初始化 <see cref="TimeseriesChunkManager{T}"/> 实例（默认定量 64 行自动提交，默认 4 个常驻分块）。
         /// </summary>
         public TimeseriesChunkManager(
             string fieldName,
@@ -150,7 +197,7 @@ namespace CarrotBacktesting.NET.Data
             ITimeseriesStore? store,
             int pageSize = 4096,
             string refreshMode = "lazy")
-            : this(fieldName, metadata, source, store, pageSize, refreshMode, 64)
+            : this(fieldName, metadata, source, store, pageSize, refreshMode, 64, 4)
         {
         }
 
@@ -165,6 +212,24 @@ namespace CarrotBacktesting.NET.Data
             int pageSize,
             string refreshMode,
             int commitBatchSize)
+            : this(fieldName, metadata, source, store, pageSize, refreshMode, commitBatchSize, 4)
+        {
+        }
+
+        /// <summary>
+        /// 初始化 <see cref="TimeseriesChunkManager{T}"/> 实例（包含常驻内存页数、预读与实盘模式配置）。
+        /// </summary>
+        public TimeseriesChunkManager(
+            string fieldName,
+            IMarketMetadata metadata,
+            IMarketSeriesSource source,
+            ITimeseriesStore? store,
+            int pageSize,
+            string refreshMode,
+            int commitBatchSize,
+            int maxPages = 4,
+            bool prefetch = true,
+            bool isLive = false)
         {
             _fieldName = fieldName ?? throw new ArgumentNullException(nameof(fieldName));
             ArgumentNullException.ThrowIfNull(metadata);
@@ -176,6 +241,10 @@ namespace CarrotBacktesting.NET.Data
             _pageSize = pageSize;
             _refreshMode = refreshMode;
             _commitBatchSize = commitBatchSize > 0 ? commitBatchSize : 64;
+            _maxPages = maxPages > 0 ? maxPages : 4;
+            _prefetch = prefetch;
+            _isLive = isLive;
+            _canPrefetch = prefetch && !isLive;
         }
 
         /// <summary>
@@ -197,6 +266,112 @@ namespace CarrotBacktesting.NET.Data
                 EnsureLoaded();
                 return _matrix!;
             }
+        }
+
+        /// <inheritdoc />
+        public void StepTo(int currentLogicalRow)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            EnsureLoaded();
+
+            if (currentLogicalRow < 0) return;
+
+            int targetPage = currentLogicalRow / _pageSize;
+            int rowInPage = currentLogicalRow % _pageSize;
+
+            // 1. 若当前步进入了尚未挂接但已存在的分块（跨页推进，防跨步跳跃）
+            if (targetPage > _loadedMaxPageIndex && _matrix != null && _totalRows > 0)
+            {
+                lock (_gate)
+                {
+                    while (_loadedMaxPageIndex < targetPage && (_loadedMaxPageIndex + 1) * _pageSize < _totalRows)
+                    {
+                        int pageToMount = _loadedMaxPageIndex + 1;
+                        MountTargetPage(pageToMount);
+                    }
+                }
+            }
+
+            // 2. 检查是否达到预读阈值（后 25%），自动触发后台异步预读下一块（实盘与禁用预读时物理熔断）
+            if (_canPrefetch && _maxPages > 0 && rowInPage >= (_pageSize * 3 / 4))
+            {
+                int nextPrefetchPage = targetPage + 1;
+                int totalPages = (_totalRows + _pageSize - 1) / _pageSize;
+
+                if (nextPrefetchPage < totalPages && nextPrefetchPage != _prefetchedPageIndex && _prefetchTask == null)
+                {
+                    lock (_gate)
+                    {
+                        if (nextPrefetchPage < totalPages && nextPrefetchPage != _prefetchedPageIndex && _prefetchTask == null)
+                        {
+                            _prefetchedPageIndex = nextPrefetchPage;
+                            _prefetchTask = Task.Run(() => LoadChunkData(nextPrefetchPage));
+                        }
+                    }
+                }
+            }
+        }
+
+        private void MountTargetPage(int targetPage)
+        {
+            T[]? pageData = null;
+            if (_prefetchedPageIndex == targetPage && _prefetchTask != null)
+            {
+                pageData = _prefetchTask.GetAwaiter().GetResult();
+                _prefetchTask = null;
+                _prefetchedPageIndex = -1;
+            }
+            else
+            {
+                pageData = LoadChunkData(targetPage);
+            }
+
+            int startRow = targetPage * _pageSize;
+            int rowsInChunk = Math.Min(_pageSize, _totalRows - startRow);
+            int width = _metadata.Symbols.Count;
+
+            _matrix!.EnsureCapacity((targetPage + 1) * _pageSize);
+            for (int r = 0; r < rowsInChunk; r++)
+            {
+                _matrix.SetRow(startRow + r, 0, pageData.AsSpan(r * width, width));
+            }
+
+            _loadedMaxPageIndex = targetPage;
+        }
+
+        private T[] LoadChunkData(int pageIndex)
+        {
+            int startRow = pageIndex * _pageSize;
+            int rowsInChunk = Math.Min(_pageSize, _totalRows - startRow);
+            int width = _metadata.Symbols.Count;
+            T[] buffer = new T[rowsInChunk * width];
+
+            // 1. 优先快路径：从 TimeseriesStore 直接读取二进制压缩分块
+            if (_store != null && _store.TryReadChunk<T>(_fieldName, pageIndex, buffer.AsSpan(), out int rowsRead) && rowsRead == rowsInChunk)
+            {
+                return buffer;
+            }
+
+            // 2. 回退慢路径：从 IMarketSeriesSource 逐股票流式读取
+            T[] temp = ArrayPool<T>.Shared.Rent(rowsInChunk);
+            try
+            {
+                for (int c = 0; c < width; c++)
+                {
+                    string sym = _metadata.Symbols[c];
+                    _source.ReadSymbolSeries(sym, _fieldName, startRow, rowsInChunk, temp.AsSpan(0, rowsInChunk));
+                    for (int r = 0; r < rowsInChunk; r++)
+                    {
+                        buffer[r * width + c] = temp[r];
+                    }
+                }
+            }
+            finally
+            {
+                ArrayPool<T>.Shared.Return(temp);
+            }
+
+            return buffer;
         }
 
         /// <summary>
@@ -230,7 +405,8 @@ namespace CarrotBacktesting.NET.Data
                 _totalRows++;
                 _isDirty = true;
 
-                if (_uncommittedDates.Count >= _commitBatchSize)
+                // 满 64 行定时落盘，或跨越整页边界时保底落盘
+                if (_uncommittedDates.Count >= _commitBatchSize || (_totalRows % _pageSize == 0))
                 {
                     shouldCommit = true;
                 }
@@ -393,10 +569,11 @@ namespace CarrotBacktesting.NET.Data
                 if (string.Equals(_refreshMode, "force", StringComparison.OrdinalIgnoreCase))
                 {
                     _store.Clear(_fieldName);
-                    var mat = LoadFromSource(totalDays);
-                    _store.WriteMatrix(_fieldName, mat, _metadata.Symbols, _metadata.TradeDates);
-                    _matrix = mat;
-                    _totalRows = totalDays;
+                    using (var fullMat = LoadFromSource(totalDays))
+                    {
+                        _store.WriteMatrix(_fieldName, fullMat, _metadata.Symbols, _metadata.TradeDates);
+                    }
+                    _matrix = InitializeMatrix(totalDays);
                     _committedRowCount = totalDays;
                     _uncommittedDates.Clear();
                     _isDirty = false;
@@ -406,27 +583,27 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (_store.IsCompatible(_fieldName, _metadata.Symbols, typeof(T), out var meta))
                     {
-                        if (meta!.RowCount == totalDays)
+                        if (meta!.RowCount >= totalDays)
                         {
                             if (_metadata.Symbols.Count > meta.Symbols.Count)
                             {
                                 RefreshActiveChunkForExpandedSymbols(meta);
                             }
 
-                            var mat = _store.LoadMatrix<T>(_fieldName, _metadata.Symbols.Count);
-                            _matrix = mat;
-                            _totalRows = mat.RowCount;
-                            _committedRowCount = mat.RowCount;
+                            int effectiveRows = Math.Max(totalDays, meta.RowCount);
+                            _matrix = InitializeMatrix(effectiveRows);
+                            _committedRowCount = effectiveRows;
                             _uncommittedDates.Clear();
                             _isDirty = false;
                             return;
                         }
                     }
 
-                    var fallbackMat = LoadFromSource(totalDays);
-                    _store.WriteMatrix(_fieldName, fallbackMat, _metadata.Symbols, _metadata.TradeDates);
-                    _matrix = fallbackMat;
-                    _totalRows = totalDays;
+                    using (var fallbackMat = LoadFromSource(totalDays))
+                    {
+                        _store.WriteMatrix(_fieldName, fallbackMat, _metadata.Symbols, _metadata.TradeDates);
+                    }
+                    _matrix = InitializeMatrix(totalDays);
                     _committedRowCount = totalDays;
                     _uncommittedDates.Clear();
                     _isDirty = false;
@@ -443,10 +620,9 @@ namespace CarrotBacktesting.NET.Data
                                 RefreshActiveChunkForExpandedSymbols(meta);
                             }
 
-                            var mat = _store.LoadMatrix<T>(_fieldName, _metadata.Symbols.Count);
-                            _matrix = mat;
-                            _totalRows = mat.RowCount;
-                            _committedRowCount = mat.RowCount;
+                            int effectiveRows = Math.Max(totalDays, meta!.RowCount);
+                            _matrix = InitializeMatrix(effectiveRows);
+                            _committedRowCount = effectiveRows;
                             _uncommittedDates.Clear();
                             _isDirty = false;
                             return;
@@ -457,10 +633,11 @@ namespace CarrotBacktesting.NET.Data
                         }
                     }
 
-                    var fallbackMat = LoadFromSource(totalDays);
-                    _store.WriteMatrix(_fieldName, fallbackMat, _metadata.Symbols, _metadata.TradeDates);
-                    _matrix = fallbackMat;
-                    _totalRows = totalDays;
+                    using (var fallbackMat = LoadFromSource(totalDays))
+                    {
+                        _store.WriteMatrix(_fieldName, fallbackMat, _metadata.Symbols, _metadata.TradeDates);
+                    }
+                    _matrix = InitializeMatrix(totalDays);
                     _committedRowCount = totalDays;
                     _uncommittedDates.Clear();
                     _isDirty = false;
@@ -469,12 +646,38 @@ namespace CarrotBacktesting.NET.Data
             }
 
             // 无持久化存储模式，直接从原始数据源加载
-            var directMat = LoadFromSource(totalDays);
-            _matrix = directMat;
-            _totalRows = totalDays;
+            _matrix = InitializeMatrix(totalDays);
             _committedRowCount = totalDays;
             _uncommittedDates.Clear();
             _isDirty = false;
+        }
+
+        private ChunkMatrix2D<T> InitializeMatrix(int totalRows)
+        {
+            _totalRows = totalRows;
+            int totalPages = (totalRows + _pageSize - 1) / _pageSize;
+            int initialPages = (_maxPages > 0 && totalPages > _maxPages) 
+                ? _maxPages 
+                : totalPages;
+            int initialRows = Math.Min(totalRows, initialPages * _pageSize);
+
+            var matrix = new ChunkMatrix2D<T>(_metadata.Symbols.Count, _pageSize, initialRows, _maxPages);
+            int width = _metadata.Symbols.Count;
+
+            for (int p = 0; p < initialPages; p++)
+            {
+                T[] chunkData = LoadChunkData(p);
+                int startRow = p * _pageSize;
+                int rowsInChunk = Math.Min(_pageSize, totalRows - startRow);
+
+                for (int r = 0; r < rowsInChunk; r++)
+                {
+                    matrix.SetRow(startRow + r, 0, chunkData.AsSpan(r * width, width));
+                }
+            }
+
+            _loadedMaxPageIndex = initialPages - 1;
+            return matrix;
         }
 
         private void RefreshActiveChunkForExpandedSymbols(TimeseriesMetadata meta)
@@ -523,7 +726,7 @@ namespace CarrotBacktesting.NET.Data
 
         private ChunkMatrix2D<T> LoadFromSource(int totalDays)
         {
-            var matrix = new ChunkMatrix2D<T>(_metadata.Symbols.Count, _pageSize, totalDays);
+            var matrix = new ChunkMatrix2D<T>(_metadata.Symbols.Count, _pageSize, totalDays, maxPages: 0);
 
             T[] temp = ArrayPool<T>.Shared.Rent(totalDays);
             try
@@ -554,6 +757,12 @@ namespace CarrotBacktesting.NET.Data
                 // 退出时保底提交：将残留未满 64 行的数据强制持久化落盘
                 try
                 {
+                    if (_prefetchTask != null)
+                    {
+                        try { _prefetchTask.Wait(500); } catch { }
+                        _prefetchTask = null;
+                    }
+
                     if (_isDirty && _uncommittedDates.Count > 0)
                     {
                         Commit();

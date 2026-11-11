@@ -98,6 +98,16 @@ namespace CarrotBacktesting.NET.Data
         ChunkMatrix2D<T> LoadMatrix<T>(string fieldName, int? targetWidth = null) where T : unmanaged;
 
         /// <summary>
+        /// 尝试直接读取并解压单个分块数据到目标内存缓冲区。
+        /// </summary>
+        /// <param name="fieldName">字段名称。</param>
+        /// <param name="pageIndex">分块页索引。</param>
+        /// <param name="destination">目标输出内存切片。</param>
+        /// <param name="rowsRead">实际读取的行数。</param>
+        /// <returns>若分块存在且成功读取返回 true，否则返回 false。</returns>
+        bool TryReadChunk<T>(string fieldName, int pageIndex, Span<T> destination, out int rowsRead) where T : unmanaged;
+
+        /// <summary>
         /// 将非托管内存矩阵全量写入分块持久化存储。
         /// </summary>
         void WriteMatrix<T>(string fieldName, ChunkMatrix2D<T> matrix, IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates) where T : unmanaged;

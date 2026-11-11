@@ -465,6 +465,44 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
+        public bool TryReadChunk<T>(string fieldName, int pageIndex, Span<T> destination, out int rowsRead) where T : unmanaged
+        {
+            rowsRead = 0;
+            var meta = ReadMetadata(fieldName);
+            if (meta == null) return false;
+
+            int totalRows = meta.RowCount;
+            int startRow = pageIndex * _pageSize;
+            if (startRow >= totalRows) return false;
+
+            int rowsInChunk = Math.Min(_pageSize, totalRows - startRow);
+            int chunkWidth = meta.GetChunkWidth(pageIndex);
+            string dir = GetFieldStoreDir(fieldName);
+            string chunkPath = Path.Combine(dir, $"chunk_{pageIndex}.bin");
+
+            if (!File.Exists(chunkPath)) return false;
+
+            bool useLz4 = string.Equals(meta.Compression, "lz4", StringComparison.OrdinalIgnoreCase);
+
+            try
+            {
+                if (chunkWidth * rowsInChunk > destination.Length)
+                {
+                    return false;
+                }
+
+                Span<byte> targetBytes = MemoryMarshal.AsBytes(destination.Slice(0, rowsInChunk * chunkWidth));
+                ReadChunkFile(chunkPath, targetBytes, useLz4);
+                rowsRead = rowsInChunk;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <inheritdoc />
         public void Clear(string fieldName)
         {
             string dir = GetFieldStoreDir(fieldName);

@@ -22,6 +22,25 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             
             Assert.IsNotNull(provider);
             Assert.IsInstanceOfType(provider, typeof(CachedDataProvider));
+
+            var providerWithCustomParams = DataProviderFactory.Create(
+                storageRoot,
+                registry,
+                source,
+                pageSize: 2048,
+                enableCache: false,
+                refreshMode: "lazy",
+                tableId: tableId,
+                compression: "lz4",
+                commitBatchSize: 32,
+                maxPages: 8,
+                prefetch: false,
+                isLive: true);
+
+            Assert.IsNotNull(providerWithCustomParams);
+            Assert.IsInstanceOfType(providerWithCustomParams, typeof(CachedDataProvider));
+            ((System.IDisposable)provider).Dispose();
+            ((System.IDisposable)providerWithCustomParams).Dispose();
         }
     }
 }

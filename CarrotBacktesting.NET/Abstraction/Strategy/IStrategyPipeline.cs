@@ -26,4 +26,20 @@ public interface IStrategyPipeline : IStrategy
     /// </summary>
     /// <returns>子策略的枚举集合。</returns>
     IEnumerable<IStrategy> GetStrategies();
+
+    /// <summary>
+    /// 管线整体的最大回溯深度，等于所有子策略 Lookback 的最大值。
+    /// </summary>
+    new int Lookback
+    {
+        get
+        {
+            int max = 0;
+            foreach (var s in GetStrategies())
+            {
+                if (s.Lookback > max) max = s.Lookback;
+            }
+            return max > 0 ? max : 200;
+        }
+    }
 }

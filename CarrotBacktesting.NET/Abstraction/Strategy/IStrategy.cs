@@ -19,6 +19,13 @@ public interface IStrategy
     /// </summary>
     /// <returns>所需列名的集合。</returns>
     IEnumerable<string> GetRequiredColumns() => Array.Empty<string>();
+
+    /// <summary>
+    /// 获取策略执行所需依赖的历史时序最大回溯深度（行数，如 200 行均线窗口）。
+    /// 供引擎和数据层自动计算非托管内存常驻分块容量。
+    /// 默认为 200。
+    /// </summary>
+    int Lookback => 200;
     
     /// <summary>
     /// 策略初始化回调。在引擎加载策略后、启动前调用，用于配置参数。

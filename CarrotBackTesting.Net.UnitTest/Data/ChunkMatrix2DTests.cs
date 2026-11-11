@@ -721,6 +721,63 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             matrix.ExpandWidth(5);
             Assert.AreEqual(7, matrix.Width);
         }
+
+        [TestMethod]
+        public void TestRingBufferMode_EvictsOldPages_And_KeepsSlotsBounded()
+        {
+            // 单页 16 行，常驻 4 个分页，总容量 64 行
+            const int pageSize = 16;
+            const int maxPages = 4;
+            const int width = 3;
+
+            using var matrix = new ChunkMatrix2D<double>(width, pageSize, 0, maxPages);
+            Assert.AreEqual(4, matrix.MaxPages);
+            Assert.AreEqual(0, matrix.BaseRowIndex);
+
+            // 1. 写入前 64 行（刚好占满 4 个槽位：逻辑页 0, 1, 2, 3）
+            for (int r = 0; r < 64; r++)
+            {
+                matrix.SetRow(r, 0, new double[] { r, r * 10, r * 100 });
+            }
+
+            Assert.AreEqual(64, matrix.RowCount);
+            Assert.AreEqual(0, matrix.BaseRowIndex);
+            Assert.AreEqual(4, matrix.PageCount);
+
+            // 验证 0..63 行全部可正常访问
+            for (int r = 0; r < 64; r++)
+            {
+                Assert.AreEqual(r, matrix[r, 0]);
+                Assert.AreEqual(r * 10, matrix[r, 1]);
+            }
+
+            // 2. 继续推进写入第 64..79 行（触发第 5 个逻辑页，槽位 0 被轮转复用，逻辑页 0 被淘汰）
+            for (int r = 64; r < 80; r++)
+            {
+                matrix.SetRow(r, 0, new double[] { r, r * 10, r * 100 });
+            }
+
+            Assert.AreEqual(80, matrix.RowCount);
+            // 最老有效基准行推进到 16（逻辑页 1 的起始行）
+            Assert.AreEqual(16, matrix.BaseRowIndex);
+            Assert.AreEqual(4, matrix.PageCount); // 常驻槽位严格守恒，不膨胀！
+
+            // 3. 断言：已淘汰的逻辑页 0（行 0..15）严格抛出 IndexOutOfRangeException
+            Assert.ThrowsException<IndexOutOfRangeException>(() => { var _ = matrix[0, 0]; });
+            Assert.ThrowsException<IndexOutOfRangeException>(() => { var _ = matrix[15, 0]; });
+            Assert.ThrowsException<IndexOutOfRangeException>(() => { var _ = matrix.GetPageSpan(0, 16); });
+            Assert.ThrowsException<IndexOutOfRangeException>(() => { var _ = matrix.GetReadOnlyPageSpan(0, 16); });
+            // 超界页同样拦截
+            Assert.ThrowsException<IndexOutOfRangeException>(() => { var _ = matrix.GetPageSpan(10, 16); });
+            Assert.ThrowsException<IndexOutOfRangeException>(() => { var _ = matrix.GetReadOnlyPageSpan(10, 16); });
+
+            // 4. 断言：当前有效常驻窗口内的数据（行 16..79）精准读取
+            for (int r = 16; r < 80; r++)
+            {
+                Assert.AreEqual(r, matrix[r, 0]);
+                Assert.AreEqual(r * 10, matrix[r, 1]);
+            }
+        }
     }
 }
 

@@ -182,7 +182,7 @@ IMarketSeriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates
 - **纵向批量加载流程**:
   1. `StorageResolver.ResolvePhysicalFiles()` 按表与日期区间返回物理文件列表。
   2. `CsvMarketSeriesSource` / `ParquetMarketSeriesSource` 构造时扫描文件建立代码与全局交易日并集，并向 `SimpleFieldRegistry` 注册 schema 字段。
-  3. `CachedDataProvider.GetMatrix<T>()` 调度 `TimeseriesChunkManager<T>`，优先检查 `ITimeseriesStore`（支持 LZ4 原生块压缩与 4096 行分块），命中时直接流式反序列化注入非托管连续内存返回 `ChunkMatrix2D<T>`；未命中或不兼容时从源数据加载并持久化至 `.cache/{tableId}/{fieldName}/`。实盘单行追加由 `TimeseriesChunkManager.AppendRow` 驱动，达到 4096 行时自动执行跨页轮转（Rollover），并通过 `Commit()` 精准增量落盘活跃分块，历史分块零写放大。单标的回测（$N=1$）可通过 `provider.GetSeries<T>()` 一键获取全周期只读一维列视图。
+  3. `CachedDataProvider.GetMatrix<T>()` 调度 `TimeseriesChunkManager<T>`，优先检查 `ITimeseriesStore`（支持 LZ4 原生块压缩与 4096 行分块），命中时直接单块解压注入非托管连续内存返回 `ChunkMatrix2D<T>`；未命中或不兼容时从源数据加载并持久化至 `.cache/{tableId}/{fieldName}/`。内存采用定长环形页表槽位管理（`max_pages`，默认 4），通过单指令双边界检查拦截越界访问；引擎推进时通过 `StepTo` 自动滑动窗口淘汰冷块，并由后台异步预读（`prefetch`，默认 true；实盘 Living 下一票否决强行关闭）下一块。实盘单行追加由 `TimeseriesChunkManager.AppendRow` 驱动，达到 4096 行时自动执行跨页轮转（Rollover），并通过 `Commit()` 精准增量落盘活跃分块，历史分块零写放大。单标的回测（$N=1$）可通过 `provider.GetSeries<T>()` 一键获取全周期只读一维列视图。策略回溯深度通过 `IStrategy.Lookback`（默认 200）与 `IStrategyPipeline.Lookback`（子策略自动取最大值）统筹定义。
 - **ReadSymbolSeries 核心机制**:
   - 方法契约：`ReadSymbolSeries(symbol, fieldName, startIndex, length, destination)`
   - CSV：定位 `{symbol}.csv` 逐行流式解析，按日期二分查找写入 `destination`，通过 `ValueConverter<T>` 零装箱转换。

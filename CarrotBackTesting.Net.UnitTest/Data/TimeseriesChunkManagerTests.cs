@@ -534,6 +534,165 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual("bj.920001", meta.Symbols[2]);
         }
 
+        [TestMethod]
+        public void TestChunkManager_StepTo_TriggersPrefetch_And_AdvancesBaseRow()
+        {
+            // 64 行数据，单页 16 行，常驻 4 块
+            const int totalRows = 64;
+            const int pageSize = 16;
+            const int maxPages = 4;
+
+            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, totalRows);
+            using var manager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                store: null,
+                pageSize: pageSize,
+                refreshMode: "lazy",
+                commitBatchSize: 64,
+                maxPages: maxPages);
+
+            Assert.AreEqual(4, manager.MaxPages);
+            Assert.AreEqual(64, manager.TotalRows);
+            Assert.AreEqual(0, manager.BaseRowIndex);
+
+            // 1. 步进到第 12 行（当前页 75% 处，触发向后台发起预读页 1 的任务）
+            manager.StepTo(12);
+
+            // 2. 步进跨入第 16 行（挂载页 1）
+            manager.StepTo(16);
+            Assert.AreEqual(0, manager.BaseRowIndex);
+
+            // 3. 继续推进到第 63 行
+            manager.StepTo(63);
+
+            // 验证常驻块数依然受限
+            Assert.AreEqual(4, manager.MaxPages);
+        }
+
+        [TestMethod]
+        public void TestChunkManager_PrefetchDisabled_SetsCanPrefetchFalse()
+        {
+            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 32);
+            using var manager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                store: null,
+                pageSize: 16,
+                refreshMode: "lazy",
+                commitBatchSize: 64,
+                maxPages: 4,
+                prefetch: false,
+                isLive: false);
+
+            Assert.IsFalse(manager.CanPrefetch);
+            Assert.IsFalse(manager.IsLive);
+
+            // 推进到第 12 行（正常会触发 prefetch 的位置）
+            manager.StepTo(12);
+            // 推进到第 16 行（正常跨页位置）
+            manager.StepTo(16);
+
+            var view = manager.AsReadOnly();
+            Assert.AreEqual(32, view.RowCount);
+            Assert.AreEqual(1600.0, view[16, 0]);
+        }
+
+        [TestMethod]
+        public void TestChunkManager_LivingMode_DisablesPrefetchRegardlessOfPrefetchFlag()
+        {
+            var mock = new MockMarketSeriesSource(new[] { "000001.SZ" }, 16);
+            using var manager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                store: null,
+                pageSize: 16,
+                refreshMode: "lazy",
+                commitBatchSize: 64,
+                maxPages: 4,
+                prefetch: true,
+                isLive: true);
+
+            // 核心断言：实盘模式下即便 prefetch=true，也必须被一票否决
+            Assert.IsTrue(manager.IsLive);
+            Assert.IsFalse(manager.CanPrefetch);
+
+            // 实盘模式推进到第 12 行，不触发任何预读
+            manager.StepTo(12);
+
+            // 实盘追加第 17 行（新页 Rollover）
+            manager.AppendRow(stackalloc double[] { 9999.0 });
+            Assert.AreEqual(17, manager.TotalRows);
+            Assert.AreEqual(1, manager.ActivePageIndex);
+        }
+
+        [TestMethod]
+        public void TestChunkManager_LargeDataset_SlidingWindowAndEvictionEndToEnd()
+        {
+            // 构造 64 行数据，pageSize = 4（共 16 个页），maxPages = 4（最多常驻 4 页 = 16 行）
+            int totalDays = 64;
+            int pageSize = 4;
+            int maxPages = 4;
+            var mock = new MockMarketSeriesSource(new[] { "000001.SZ", "600000.SH" }, totalDays);
+
+            using var manager = new TimeseriesChunkManager<double>(
+                "close",
+                mock,
+                mock,
+                store: null,
+                pageSize: pageSize,
+                refreshMode: "lazy",
+                commitBatchSize: 64,
+                maxPages: maxPages,
+                prefetch: true,
+                isLive: false);
+
+            manager.EnsureLoaded();
+            Assert.AreEqual(64, manager.TotalRows);
+            Assert.AreEqual(0, manager.BaseRowIndex);
+
+            var view = manager.AsReadOnly();
+            // 初始时常驻前 4 个页（16 行）
+            Assert.AreEqual(16, view.RowCount);
+            Assert.AreEqual(0.0, view[0, 0]);
+            Assert.AreEqual(1.0, view[0, 1]);
+            Assert.AreEqual(1500.0, view[15, 0]);
+            Assert.AreEqual(1501.0, view[15, 1]);
+
+            // 逐行步进推进回测，模拟引擎从第 0 行推进到第 32 行（页 8）
+            for (int r = 0; r <= 32; r++)
+            {
+                manager.StepTo(r);
+            }
+
+            // 推进到第 32 行时，当前挂载了页 8（32~35行），常驻窗口容量为 4 页（16 行）
+            // 因此最老允许的页是 9 - 4 = 5，基准行 BaseRowIndex 应已推进到 5 * 4 = 20 行！
+            Assert.IsTrue(manager.BaseRowIndex >= 20, $"BaseRowIndex 应已推进以淘汰冷页，实际为: {manager.BaseRowIndex}");
+
+            // 验证当前窗口内数据完全准确
+            Assert.AreEqual(3200.0, view[32, 0]);
+            Assert.AreEqual(3201.0, view[32, 1]);
+
+            // 验证已被淘汰的冷页（如第 0 行）访问时被物理拦截，零假阳性
+            Assert.ThrowsException<IndexOutOfRangeException>(() =>
+            {
+                var val = view[0, 0];
+            });
+
+            // 继续逐行步进推进到最后一行（第 63 行，页 15）
+            for (int r = 33; r < 64; r++)
+            {
+                manager.StepTo(r);
+            }
+
+            Assert.AreEqual(6300.0, view[63, 0]);
+            Assert.AreEqual(6301.0, view[63, 1]);
+            Assert.IsTrue(manager.BaseRowIndex >= 48, $"BaseRowIndex 应推进到 48 以上，实际为: {manager.BaseRowIndex}");
+        }
+
         private class MockMarketSeriesSource : IMarketSeriesSource
         {
             private readonly List<string> _symbols;

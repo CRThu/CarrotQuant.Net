@@ -56,8 +56,11 @@ namespace CarrotBacktesting.NET.Data
             string refreshMode = "lazy",
             string tableId = "default",
             string compression = "lz4",
-            int commitBatchSize = 64)
-            : this(source, registry, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize))
+            int commitBatchSize = 64,
+            int maxPages = 4,
+            bool prefetch = true,
+            bool isLive = false)
+            : this(source, registry, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
         {
         }
 
@@ -74,8 +77,11 @@ namespace CarrotBacktesting.NET.Data
             string refreshMode = "lazy",
             string tableId = "default",
             string compression = "lz4",
-            int commitBatchSize = 64)
-            : this(metadata, registry, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize))
+            int commitBatchSize = 64,
+            int maxPages = 4,
+            bool prefetch = true,
+            bool isLive = false)
+            : this(metadata, registry, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
         {
         }
 
@@ -87,7 +93,10 @@ namespace CarrotBacktesting.NET.Data
             string refreshMode,
             string tableId,
             string compression,
-            int commitBatchSize = 64)
+            int commitBatchSize = 64,
+            int maxPages = 4,
+            bool prefetch = true,
+            bool isLive = false)
         {
             ITimeseriesStore? store = null;
             if (enableCache && !string.IsNullOrWhiteSpace(storageRoot))
@@ -106,7 +115,10 @@ namespace CarrotBacktesting.NET.Data
                     store,
                     pageSize,
                     refreshMode,
-                    commitBatchSize)!;
+                    commitBatchSize,
+                    maxPages,
+                    prefetch,
+                    isLive)!;
             };
         }
 
@@ -178,6 +190,19 @@ namespace CarrotBacktesting.NET.Data
             foreach (var manager in _managers.Values)
             {
                 manager.AppendCol(symbol);
+            }
+        }
+
+        /// <summary>
+        /// 门面级时间步步进通知：广播通知所有活跃的分块管理器推进至第 <paramref name="currentLogicalRow"/> 行，
+        /// 触发后台异步预读（Prefetch）与常驻窗口滑动淘汰。
+        /// </summary>
+        public void StepTo(int currentLogicalRow)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            foreach (var manager in _managers.Values)
+            {
+                manager.StepTo(currentLogicalRow);
             }
         }
 

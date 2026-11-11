@@ -694,6 +694,50 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 store.RewriteChunk<double>("close", 100, (r, span) => span.Fill(1.0));
             });
         }
+
+        [TestMethod]
+        public void TestTryReadChunk_ReadsSingleChunk_Accurately()
+        {
+            const string tableId = "try_read_chunk_table";
+            var store = new TimeseriesStore(_tempDir, tableId, 16, "lz4");
+            var symbols = new List<string> { "sh.600000", "sz.000001" };
+            var dates = new List<DateTime>();
+            for (int i = 0; i < 35; i++) dates.Add(DateTime.Today.AddDays(i));
+
+            using (var buffer = new ChunkMatrix2D<double>(2, 16, 35))
+            {
+                for (int r = 0; r < 35; r++)
+                {
+                    buffer[r, 0] = r * 1.0;
+                    buffer[r, 1] = r * 2.0;
+                }
+                store.WriteMatrix("close", buffer, symbols, dates);
+            }
+
+            // 读取第 0 块（16 行，32 个 double）
+            double[] chunk0 = new double[32];
+            bool ok0 = store.TryReadChunk<double>("close", 0, chunk0, out int rows0);
+            Assert.IsTrue(ok0);
+            Assert.AreEqual(16, rows0);
+            Assert.AreEqual(0.0, chunk0[0]);
+            Assert.AreEqual(15.0, chunk0[30]); // 第 15 行第 0 列
+
+            // 读取第 2 块（最后 3 行：35 - 32 = 3 行，6 个 double）
+            double[] chunk2 = new double[32];
+            bool ok2 = store.TryReadChunk<double>("close", 2, chunk2, out int rows2);
+            Assert.IsTrue(ok2);
+            Assert.AreEqual(3, rows2);
+            Assert.AreEqual(32.0, chunk2[0]); // 第 32 行
+
+            // 读取不存在的第 5 块
+            bool ok5 = store.TryReadChunk<double>("close", 5, chunk0, out _);
+            Assert.IsFalse(ok5);
+
+            // 缓冲区容量不足安全返回 false
+            double[] small = new double[5];
+            bool okSmall = store.TryReadChunk<double>("close", 0, small, out _);
+            Assert.IsFalse(okSmall);
+        }
     }
 }
 

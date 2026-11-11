@@ -216,11 +216,13 @@ public sealed unsafe class ChunkMatrix2D<T> : IMatrix2D<T>, IReadOnlyMatrix2D<T>
     where T : unmanaged
 {
     public int RowCount { get; }
+    public int BaseRowIndex { get; }
+    public int MaxPages { get; }
     public int Width { get; }
     public int PageSize { get; }
     public int PageCount { get; }
 
-    public ChunkMatrix2D(int width, int pageSize = 4096, int initialRowCount = 0);
+    public ChunkMatrix2D(int width, int pageSize = 4096, int initialRowCount = 0, int maxPages = 0);
 
     // 读写索引器（无锁快速通道）
     public ref T this[int r, int c] { get; }
@@ -242,6 +244,7 @@ public sealed unsafe class ChunkMatrix2D<T> : IMatrix2D<T>, IReadOnlyMatrix2D<T>
     public ReadOnlySpan<T> GetReadOnlyPageSpan(int pageIndex, int rowsInPage);
 
     public void EnsureCapacity(int targetRowCount);
+    public void AdvanceBaseRow(int newBaseRowIndex);
     public void ExpandWidth(int newWidth);
     public void Dispose();
 }
@@ -319,9 +322,12 @@ public sealed class TimeseriesChunkManager<T> : ITimeseriesChunkManager where T 
     public int ActivePageRowCount { get; }
     public bool IsDirty { get; }
     public int UncommittedRowCount { get; }
+    public int MaxPages { get; }
+    public int BaseRowIndex { get; }
     public ChunkMatrix2D<T> Matrix { get; }
 
     public IReadOnlyMatrix2D<T> AsReadOnly();
+    public void StepTo(int currentLogicalRow);
     public void AppendRow(DateTime timestamp, ReadOnlySpan<T> rowValues);
     public void AppendRow(ReadOnlySpan<T> rowValues); // 兼容重载
     public void AppendCol(string symbol);
@@ -337,6 +343,7 @@ public class CachedDataProvider : IDataProvider, IDisposable
     public bool HasField(string fieldName);
     public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
     public TimeseriesChunkManager<T> GetChunkManager<T>(string fieldName) where T : unmanaged;
+    public void StepTo(int currentLogicalRow);
     public void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
     public void AppendCol(string symbol);
     public void Commit();
@@ -515,6 +522,7 @@ public interface IStrategy
 {
     string Name { get; }
     IEnumerable<string> GetRequiredColumns() => Array.Empty<string>();
+    int Lookback => 200;                                                // 历史最大回溯深度（行数，供常驻分块容量自动推导）
     
     void OnInitial(IEngineContext context) { }
     void OnStart(IEngineContext context) { }
