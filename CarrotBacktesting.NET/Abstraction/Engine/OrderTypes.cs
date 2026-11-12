@@ -8,7 +8,70 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 /// <param name="Type">订单类型（市价/限价）。</param>
 /// <param name="Price">委托价格。对于市价单，此值通常忽略。</param>
 /// <param name="Quantity">委托数量。</param>
-public record OrderRequest(string Symbol, OrderDirection Direction, OrderType Type, double Price, decimal Quantity);
+public record OrderRequest(string Symbol, OrderDirection Direction, OrderType Type, double Price, decimal Quantity)
+{
+    /// <summary>
+    /// 市价单便捷构造函数（价格默认为 0.0）。
+    /// </summary>
+    public OrderRequest(string symbol, OrderDirection direction, decimal quantity)
+        : this(symbol, direction, OrderType.Market, 0.0, quantity)
+    {
+    }
+
+    /// <summary>
+    /// 限价单便捷构造函数。
+    /// </summary>
+    public OrderRequest(string symbol, OrderDirection direction, double price, decimal quantity)
+        : this(symbol, direction, OrderType.Limit, price, quantity)
+    {
+    }
+
+    /// <summary>
+    /// 是否为买入订单。
+    /// </summary>
+    public bool IsBuy => Direction == OrderDirection.Buy;
+
+    /// <summary>
+    /// 是否为卖出订单。
+    /// </summary>
+    public bool IsSell => Direction == OrderDirection.Sell;
+
+    /// <summary>
+    /// 本地客户端订单 ID（UUID），用于防重推、去重和实盘柜台唯一映射。若未指定可由系统自动生成。
+    /// </summary>
+    public string ClientOrderId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 开平仓标识（针对期货实盘与高级衍生品开平仓）。股票现货默认为 None。
+    /// </summary>
+    public OrderOffset Offset { get; init; } = OrderOffset.None;
+}
+
+/// <summary>
+/// 定义订单的开平仓类型。
+/// </summary>
+public enum OrderOffset
+{
+    /// <summary>
+    /// 默认/现货无特殊开平区分（由买卖方向与持仓状态自然转移）。
+    /// </summary>
+    None,
+
+    /// <summary>
+    /// 开仓（增加多头或空头持仓）。
+    /// </summary>
+    Open,
+
+    /// <summary>
+    /// 平仓（减少已有持仓）。
+    /// </summary>
+    Close,
+
+    /// <summary>
+    /// 平今仓（针对国内部分期货交易所区分昨仓与今仓的手续费与交割）。
+    /// </summary>
+    CloseToday
+}
 
 /// <summary>
 /// 表示一笔成交的执行回报，包含了物理成交的详细信息。

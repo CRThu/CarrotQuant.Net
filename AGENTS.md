@@ -295,10 +295,37 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 | 契约 / 类型 | 命名空间 | 职责说明 |
 | :--- | :--- | :--- |
-| `IStrategy` | `Abstraction.Strategy` | 策略基础契约，包含 `Initial`/`Start`/`Update`/`Stop` 及订单/成交回调 |
+| `IStrategy` | `Abstraction.Strategy` | 策略通用基础契约，定义名称、所需列名、`Lookback` 回溯深度与生命周期 |
+| `ISignalStrategy` | `Abstraction.Strategy` | 纯信号策略契约，专注于 `CheckSignal` 纯打点分析，无账户与持仓负担，面向胜率与因子表现 |
+| `ITradeStrategy` | `Abstraction.Strategy` | 规则与交易模拟策略契约，包含 `CheckEntry`（开仓）与 `CheckExit`（平仓止盈止损）带状态机逻辑 |
 | `IStrategyPipeline` | `Abstraction.Strategy` | 策略管线契约，支持管线编排与密封编译 |
 | `ICheckpointable<T>`| `Abstraction.Strategy` | 强类型状态快照扩展，实现断点续传 |
 | `IRecorder` | `Abstraction.Analysis` | 全过程流水采集（订单、成交、净值快照），通过 `GetReport()` 输出 `BacktestReport` |
+
+### 3. Broker 交易规则与对称 Hook 架构 (v4.3)
+
+系统彻底摒弃碎接口与过度设计，采用**“三大支柱配置（Engine, Broker, Data）+ 对称 Hook 动态拦截”**架构：
+1. **多资产数学状态转移统一**：
+   - 占用资金 / 保证金：$|\text{Volume}| \times \text{Price} \times \text{Multiplier} \times \text{MarginRate}$
+   - 浮动盈亏：$\text{Direction} \times (\text{CurrentPrice} - \text{OpenPrice}) \times \text{Volume} \times \text{Multiplier}$
+   - 股票、期货、ETF、美股通用同一套数学状态机，仅依靠标的物理属性（乘数、杠杆率、T+N、做空开关）区分，底层零冗余分叉。
+2. **纯数值配置与对称 Hook 矩阵 (零隐式逻辑)**：
+   - 系统计算严格遵循配置给定值，严禁在底层隐式猜列或自作聪明回退查维表；
+   - 每一个核心配置项对称挂接一个覆盖 Hook，用户需要特化时显式挂载 Lambda：
+     - `VolumeLimit` 对应 `OnCheckVolume`（成交量流动性硬约束与分批撮合）；
+     - `SettleDays` 对应 `OnGetSettleDays`（0 即 T+0，1 即 T+1）；
+     - `CheckLimit` 对应 `OnCheckLimit`（涨跌停封板与停牌拦截，由用户代码判定）；
+     - `FeeRate` + `MinFee` 对应 `OnCalculateFee`（自定义单向印花税或阶梯佣金）；
+     - `Slippage` 对应 `OnCalculateSlippage`（动态冲击成本模型）；
+     - `Multiplier` 对应 `OnGetMultiplier`（用户显式从 `Fields` 维表查期货合约规格）；
+     - `MarginRate` 对应 `OnGetMarginRate`（用户显式从 `Fields` 维表查保证金率）。
+3. **通用量化基准默认值与多市场预设 (Universal Default & Presets)**：
+   - 默认基线（`new BrokerConfig()`）：`InitialCash=1000000.0`, `SettleDays=0 (T+0)`, `AllowShort=false`, `FeeRate=0.001`, `MinFee=0.0`, `Slippage=0.001`, `VolumeLimit=0.05 (5%流动性硬约束)`, `CheckLimit=false`, `Multiplier=1.0`, `MarginRate=1.0`。
+   - 官方典范静态预设：
+     - `BrokerConfig.Universal`：现代通用量化基线；
+     - `BrokerConfig.AStock`：中国 A 股现货实战预设（T+1, 禁裸空, 万三佣金, 5元起收, 千一滑点, 开启涨跌停检查）；
+     - `BrokerConfig.Futures(marginRate, multiplier)`：期货/CTA 实战预设（T+0, 允许双向做空, 万零点五费率, 0元起收, 杠杆率与乘数）；
+     - `BrokerConfig.Crypto()`：加密货币预设（T+0, 支持做空, 万五费率, 0元起收, 千一滑点）。
 
 ---
 

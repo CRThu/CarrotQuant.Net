@@ -47,7 +47,8 @@ namespace CarrotBacktesting.NET.Config
                 // 1. 外部独立数据配置引用：data: "path/to/data.yaml"
                 config = new EngineConfig
                 {
-                    Engine = rawConfig.Engine ?? new EngineSettings()
+                    Engine = rawConfig.Engine ?? new EngineSettings(),
+                    Broker = rawConfig.Broker ?? new BrokerConfig()
                 };
 
                 string fullDataPath = Path.IsPathRooted(externalDataPath)
@@ -112,6 +113,7 @@ namespace CarrotBacktesting.NET.Config
         private class RawEngineConfig
         {
             public EngineSettings? Engine { get; set; }
+            public BrokerConfig? Broker { get; set; }
             public object? Data { get; set; }
         }
 

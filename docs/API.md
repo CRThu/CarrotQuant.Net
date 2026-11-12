@@ -40,11 +40,13 @@ public static class EngineConfigLoader
 ```
 
 ### 2. 配置模型
-- **`EngineConfig`**: 顶层聚合配置，包含 `EngineSettings Engine` 与 `DataConfig Data`。
-- **`EngineSettings`**: `Mode` (`backtest`/`living`)、`StartDate` (DateTime?)、`EndDate` (DateTime?)、`InitialCash` (double)。
-- **`DataConfig`**: `Root` (string)、`Timeseries` (`List<TimeseriesConfig>`)、`Events` (`List<EventStreamConfig>`)。
-- **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)。
+- **`EngineConfig`**: 顶层聚合配置三大支柱：`EngineSettings Engine`、`BrokerConfig Broker` 与 `DataConfig Data`。
+- **`EngineSettings`**: `Mode` (`backtest`/`living`)、`StartDate` (DateTime?)、`EndDate` (DateTime?)。
+- **`BrokerConfig`**: `InitialCash` (double)、`SettleDays` (int: 0 即 T+0, 1 即 T+1)、`AllowShort` (bool)、`FeeRate` (double)、`MinFee` (double)、`Slippage` (double)、`VolumeLimit` (double)、`CheckLimit` (bool)、`Multiplier` (double)、`MarginRate` (double)，对称覆盖 Hook，以及内置静态市场预设（`Universal`, `AStock`, `Futures`, `Crypto`）。
+- **`DataConfig`**: `Root` (string)、`Timeseries` (`List<TimeseriesConfig>`)、`Events` (`List<EventStreamConfig>`)、`Fields` (`List<FieldTableConfig>`)。
+- **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)、`Cache` (bool)、`PageSize` (int)、`Refresh` (string)、`Compression` (string)、`CommitBatchSize` (int)、`MaxPages` (int)、`Prefetch` (bool)。
 - **`EventStreamConfig`**: `Name` (string)、`TableId` (string)。
+- **`FieldTableConfig`**: `Name` (string)、`TableId` (string)、`KeyColumn` (string?)、`ValueColumns` (`List<string>?`)。
 
 > 详细参数字典、类型、默认值与必填约束详见 [配置参数全量字典 (configuration.md)](configuration.md#二配置参数全量字典-parameter-reference)。
 
@@ -53,7 +55,7 @@ public static class EngineConfigLoader
 // 加载策略主配置（自动识别并合并外链的 shared/data.yaml）
 EngineConfig config = EngineConfigLoader.Load("configs/strategy_cta.yaml");
 
-Console.WriteLine($"回测模式: {config.Engine.Mode}, 初始资金: {config.Engine.InitialCash}");
+Console.WriteLine($"回测模式: {config.Engine.Mode}, 初始资金: {config.Broker.InitialCash}, 结算: T+{config.Broker.SettleDays}");
 Console.WriteLine($"数据根目录: {config.Data.Root}");
 ```
 

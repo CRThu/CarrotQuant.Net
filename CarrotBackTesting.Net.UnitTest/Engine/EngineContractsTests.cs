@@ -19,6 +19,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             public event Action<string, OrderStatus>? OnOrderStatusChanged;
             public event Action<ExecutionReport>? OnTrade;
+            public event Action<PositionEvent>? OnPositionChanged;
 
             public void SimulateOrderStatus(string orderId, OrderStatus status)
             {
@@ -28,6 +29,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public void SimulateTrade(ExecutionReport report)
             {
                 OnTrade?.Invoke(report);
+            }
+
+            public void SimulatePosition(PositionEvent e)
+            {
+                OnPositionChanged?.Invoke(e);
             }
         }
 
@@ -84,6 +90,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.IsNotNull(receivedReport);
             Assert.AreEqual(10.5, receivedReport.FillPrice);
             Assert.AreEqual(1000m, receivedReport.FillQuantity);
+
+            PositionEvent? receivedPosition = null;
+            broker.OnPositionChanged += p => receivedPosition = p;
+            var posEvent = new PositionEvent("sh.600000", 1000m, 10.5, DateTime.UtcNow);
+            broker.SimulatePosition(posEvent);
+            Assert.IsNotNull(receivedPosition);
+            Assert.AreEqual(1000m, receivedPosition.NewQuantity);
 
             // 测试策略回调调用
             strategy.OnOrderStatusChanged(null!, "ord-200", OrderStatus.Filled);

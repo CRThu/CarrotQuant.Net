@@ -10,9 +10,14 @@ namespace CarrotBacktesting.NET.Config
     public class EngineConfig
     {
         /// <summary>
-        /// 引擎运行参数设置（模式、起止时间、初始资金）。
+        /// 引擎运行参数设置（模式、起止时间）。
         /// </summary>
         public EngineSettings Engine { get; set; } = new();
+
+        /// <summary>
+        /// 虚拟经纪商设置（资金账户、结算天数、成本滑点、风控与资产乘数）。
+        /// </summary>
+        public BrokerConfig Broker { get; set; } = new();
 
         /// <summary>
         /// 数据层配置。
@@ -28,7 +33,6 @@ namespace CarrotBacktesting.NET.Config
         public string Mode { get; set; } = "backtest";
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
-        public double InitialCash { get; set; } = 1000000.0;
     }
 
     /// <summary>

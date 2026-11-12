@@ -37,7 +37,10 @@ namespace CarrotBackTesting.Net.UnitTest.Config
                 {
                     Mode = "backtest",
                     StartDate = new DateTime(2025, 1, 1),
-                    EndDate = new DateTime(2025, 12, 31),
+                    EndDate = new DateTime(2025, 12, 31)
+                },
+                Broker = new BrokerConfig
+                {
                     InitialCash = 1000000.0
                 },
                 Data = new DataConfig
@@ -172,6 +175,49 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             var closeMatrix = tsRegistry.GetMatrix<double>("close");
             Assert.IsNotNull(closeMatrix);
             Assert.IsTrue(closeMatrix.RowCount > 0);
+        }
+
+        [TestMethod]
+        public void CodeConfig_BrokerConfig_PropertiesAndHooks_ShouldBeConfigurable()
+        {
+            // 纯代码配置 BrokerConfig 并挂载对称 Hook
+            var brokerConfig = new BrokerConfig
+            {
+                InitialCash = 3000000.0,
+                SettleDays = 1,
+                AllowShort = false,
+                FeeRate = 0.0002,
+                MinFee = 5.0,
+                Slippage = 0.0008,
+                VolumeLimit = 0.05,
+                CheckLimit = true,
+                Multiplier = 1.0,
+                MarginRate = 1.0,
+                OnCheckLimit = (order, bar) => !order.IsBuy,
+                OnCalculateFee = (order, turnover) => Math.Max(5.0, turnover * 0.0002),
+                OnCheckVolume = (order, bar) => true,
+                OnCalculateSlippage = (order, price, bar) => price * 1.0008,
+                OnGetSettleDays = symbol => symbol.StartsWith("sh.5") ? 0 : 1,
+                OnGetMultiplier = (symbol, ctx) => 1.0,
+                OnGetMarginRate = (symbol, ctx) => 1.0
+            };
+
+            Assert.AreEqual(3000000.0, brokerConfig.InitialCash);
+            Assert.AreEqual(1, brokerConfig.SettleDays);
+            Assert.IsFalse(brokerConfig.AllowShort);
+            Assert.AreEqual(0.0002, brokerConfig.FeeRate);
+            Assert.AreEqual(5.0, brokerConfig.MinFee);
+            Assert.AreEqual(0.0008, brokerConfig.Slippage);
+            Assert.AreEqual(0.05, brokerConfig.VolumeLimit);
+            Assert.IsTrue(brokerConfig.CheckLimit);
+
+            // 验证 Hook 委托能正常执行
+            Assert.IsNotNull(brokerConfig.OnGetSettleDays);
+            Assert.AreEqual(0, brokerConfig.OnGetSettleDays("sh.510300"));
+            Assert.AreEqual(1, brokerConfig.OnGetSettleDays("sh.600000"));
+
+            Assert.IsNotNull(brokerConfig.OnCalculateFee);
+            Assert.AreEqual(20.0, brokerConfig.OnCalculateFee(null!, 100000.0));
         }
     }
 }

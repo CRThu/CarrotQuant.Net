@@ -7,39 +7,65 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 ## 目录
 - [一、配置设计规范](#一配置设计规范)
 - [二、配置参数全量字典 (Parameter Reference)](#二配置参数全量字典-parameter-reference)
-- [三、配置组织最佳实践：外链复用模式 (Recommended)](#三配置组织最佳实践外链复用模式-recommended)
-- [四、相对路径级联解析机制 (Path Resolution)](#四相对路径级联解析机制-path-resolution)
-- [五、直接内嵌配置模式 (Inline)](#五直接内嵌配置模式-inline)
-- [六、配置序列化与动态导出 (Serialization & Saving)](#六配置序列化与动态导出-serialization--saving)
-- [七、纯代码配置用法 (Code-First Configuration)](#七纯代码配置用法-code-first-configuration)
+- [三、Broker 交易规则与对称 Hook 体系](#三-broker-交易规则与对称-hook-体系)
+- [四、配置组织最佳实践：外链复用模式 (Recommended)](#四配置组织最佳实践外链复用模式-recommended)
+- [五、相对路径级联解析机制 (Path Resolution)](#五相对路径级联解析机制-path-resolution)
+- [六、直接内嵌配置模式 (Inline)](#六直接内嵌配置模式-inline)
+- [七、配置序列化与动态导出 (Serialization & Saving)](#七配置序列化与动态导出-serialization--saving)
+- [八、纯代码配置用法 (Code-First Configuration)](#八纯代码配置用法-code-first-configuration)
 
 ---
 
 ## 一、配置设计规范
 
 1. **蛇形命名标准 (`snake_case`)**：配置参数采用标准蛇形命名（如 `start_date`, `initial_cash`, `table_id`）。
-2. **“2 层浅嵌套”结构**：
-   - **Level 1（模块划分）**：`engine:`、`data:`；
-   - **Level 2（模块内部参数）**：直接平铺（如 `mode:`、`root:`、`timeseries:`）。
+2. **“三大支柱”浅嵌套结构**：
+   - **`engine:`**：运行环境与生命周期（模式、起止时间）；
+   - **`broker:`**：账户资金、交易制度、成本滑点、风控与资产乘数；
+   - **`data:`**：时序数据、事件流、静态维表。
    - 保持两层以内结构，避免深层缩进导致的排版与解析错误。
 3. **多态统一入口**：
    - 统一使用 `data` 字段，不额外引入辅助配置项；
    - `data` 节点支持两种赋值形式：直接赋字符串表示外部文件路径；直接赋字典表示内嵌配置对象。
+4. **单一事实来源与零隐式逻辑**：
+   - 系统计算严格遵循配置给定值，绝不在底层隐式猜列或自动回退查维表；
+   - 动态特化一律由用户显式挂载对应的 Hook 承载。
 
 ---
 
 ## 二、配置参数全量字典 (Parameter Reference)
 
-### 1. `engine` 模块 (`EngineSettings`)
+### 1. `engine` 运行环境设置 (`EngineSettings`)
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
 | `mode` | `Mode` | `string` | 否 | `"backtest"` | 引擎运行模式。可选值：`"backtest"`（历史回测）、`"living"`（实盘驱动）。 |
 | `start_date` | `StartDate` | `DateTime?` | 否 | `null` | 回测起始日期。格式：`"YYYY-MM-DD"`（如 `"2025-01-01"`）。为空表示不限制起始时间。 |
 | `end_date` | `EndDate` | `DateTime?` | 否 | `null` | 回测结束日期。格式：`"YYYY-MM-DD"`（如 `"2025-03-31"`）。为空表示不限制结束时间。 |
-| `initial_cash`| `InitialCash`| `double` | 否 | `1000000.0` | 初始账户资产（本金），单位为元。 |
 
-### 2. `data` 统一入口 (`DataConfig`)
+### 2. `broker` 虚拟经纪商设置 (`BrokerConfig`)
+
+| YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| `initial_cash` | `InitialCash` | `double` | 否 | `1000000.0` | 初始账户可用资金（本金），单位为元。 |
+| `settle_days` | `SettleDays` | `int` | 否 | `0` | 结算可用天数：`0` 即 T+0（日内即时可用，现代通用量化基准）；`1` 即 T+1（A 股次日可用）。 |
+| `allow_short` | `AllowShort` | `bool` | 否 | `false` | 是否允许卖空。默认 `false`（现货多头安全基准，防止意外裸空穿仓；期货/外盘设为 `true`）。 |
+| `fee_rate` | `FeeRate` | `double` | 否 | `0.001` | 基础综合交易摩擦费率（默认千分之一）。 |
+| `min_fee` | `MinFee` | `double` | 否 | `0.0` | 单笔成交最低手续费门槛（通用国际市场为 0.0；A 股券商实战通常设 5.0）。 |
+| `slippage` | `Slippage` | `double` | 否 | `0.001` | 固定比例滑点（如 `0.001` 代表买入上滑千一、卖出下滑千一；`0.0` 表示理想零滑点）。 |
+| `volume_limit` | `VolumeLimit` | `double` | 否 | `0.05` | 成交量流动性硬约束：单笔最大允许成交量占当前 Bar 成交量的最大比例（默认 `0.05` 即 5%），严格杜绝无量封板或流动性枯竭时的虚假成交；设为 `0.0` 表示不限制流动性。 |
+| `check_limit` | `CheckLimit` | `bool` | 否 | `false` | 是否开启涨跌停检查。开启后若挂载了 `OnCheckLimit` Hook 则执行封板拦截。 |
+| `multiplier` | `Multiplier` | `double` | 否 | `1.0` | 默认合约乘数。股票按“股”计算为 `1.0`，期货按“手”计算填一手规格（如螺纹钢填 `10.0`）。 |
+| `margin_rate` | `MarginRate` | `double` | 否 | `1.0` | 默认保证金率。股票全额现货为 `1.0`，期货按杠杆率填写（如 10 倍杠杆填 `0.1`）。 |
+
+> [!TIP]
+> **开箱即用市场预设 (Presets)**：
+> - `BrokerConfig.Universal`: 现代量化通用基线（T+0, 千一摩擦, 0元起收门槛, 千一滑点, 5%流动性约束）；
+> - `BrokerConfig.AStock`: 中国 A 股现货实战预设（T+1, 禁止做空, 万三佣金, 5元起收, 千一滑点, 开启涨跌停检查）；
+> - `BrokerConfig.Futures(marginRate, multiplier)`: 期货与 CTA 实战预设（T+0, 允许双向做空, 万零点五费率, 0元起收, 杠杆率与合约规格）；
+> - `BrokerConfig.Crypto()`: 加密货币与外盘预设（T+0, 支持做空, 万五费率, 0元起收, 千一滑点）。
+
+### 3. `data` 统一入口 (`DataConfig`)
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
@@ -83,7 +109,60 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 
 ---
 
-## 三、配置组织最佳实践：外链复用模式 (Recommended)
+## 三、Broker 交易规则与对称 Hook 体系
+
+系统遵循**“静态数值配置驱动 95% 场景，对称 Hook 动态接管 5% 特化”**的设计哲学。系统计算严格使用配置值，绝不在底层隐式查询任何外部数据；仅当用户显式挂载 Hook 时，才由 Hook 覆盖对应环节的默认行为。
+
+### 1. 配置参数与 Hook 对称映射矩阵
+
+| 交易控制环节 | 基础配置参数 (纯数值/全局开关) | 对称 Hook 委托签名 | 默认行为与覆盖逻辑 |
+| :--- | :--- | :--- | :--- |
+| **成交量流动性** | `volume_limit` (`double`) | `Func<OrderRequest, IDataRow, bool>? OnCheckVolume` | 默认：若配置大于 0，单笔订单量超过 `bar.Volume * volume_limit` 则拦截或部分成交；<br>Hook 覆盖：自定义日内动态成交量、分档撮合。 |
+| **结算可用天数** | `settle_days` (`int`) | `Func<string, int>? OnGetSettleDays` | 默认：全品种统一按配置结算天数执行（`0` 即 T+0，`1` 即 T+1）；<br>Hook 覆盖：多资产混合时按标的动态返回（如股票返回 1，ETF/期货返回 0）。 |
+| **涨跌停判定** | `check_limit` (`bool`) | `Func<OrderRequest, IDataRow, bool>? OnCheckLimit` | 默认：若未挂载 Hook 则不限制；<br>Hook 覆盖：用户自主比对数据列（如 `limit_up`）或自定义板块涨跌停阈值。 |
+| **交易手续费** | `fee_rate` + `min_fee` (`double`) | `Func<OrderRequest, double, double>? OnCalculateFee` | 默认：$\max(\text{min\_fee}, \text{turnover} \times \text{fee\_rate})$；<br>Hook 覆盖：用户自定义单向印花税、阶梯费率或返佣。 |
+| **滑点摩擦** | `slippage` (`double`) | `Func<OrderRequest, double, IDataRow, double>? OnCalculateSlippage` | 默认：$\text{Price} \times (1 \pm \text{slippage})$；<br>Hook 覆盖：基于订单规模占全市场成交量比例计算二次方冲击成本。 |
+| **合约乘数** | `multiplier` (`double`) | `Func<string, IEngineContext, double>? OnGetMultiplier` | 默认：全品种使用配置纯数值（股票为 1.0）；<br>Hook 覆盖：多品种期货回测中，显式由用户读取 `context.Fields["specs"]` 维表。 |
+| **保证金率** | `margin_rate` (`double`) | `Func<string, IEngineContext, double>? OnGetMarginRate` | 默认：全品种使用配置纯数值（现货全额为 1.0）；<br>Hook 覆盖：按品种或杠杆分级显式从维表动态获取。 |
+
+### 2. 代码配置与 Hook 挂载示例
+
+```csharp
+var config = new EngineConfig
+{
+    Broker = new BrokerConfig
+    {
+        InitialCash = 1_000_000,
+        SettleDays = 1,          // A 股 T+1
+        AllowShort = false,
+        FeeRate = 0.0003,        // 万三佣金
+        MinFee = 5.0,            // 最低 5 元
+        Slippage = 0.001,        // 千一滑点
+        VolumeLimit = 0.1,       // 单笔不超过当前 Bar 成交量的 10%
+        CheckLimit = true        // 开启涨跌停检查
+    }
+};
+
+// 1. 自定义涨跌停拦截 Hook（检查数据中是否包含权威 limit_up 列）
+config.Broker.OnCheckLimit = (order, bar) =>
+{
+    if (order.IsBuy && bar.TryGetDouble("limit_up", out var upPrice) && bar.Close >= upPrice)
+        return false; // 涨停禁止买入
+    return true;
+};
+
+// 2. 自定义印花税 Hook（仅卖出额外收取千分之 0.5）
+config.Broker.OnCalculateFee = (order, turnover) =>
+{
+    double commission = Math.Max(5.0, turnover * 0.0003);
+    double stampTax = order.IsSell ? turnover * 0.0005 : 0.0;
+    return commission + stampTax;
+};
+```
+
+---
+
+## 四、配置组织最佳实践：外链复用模式 (Recommended)
 
 在实际应用中，数据存储区通常是全局统一的公共资源，而不同策略通常仅需调整回测起止时间与初始资金。因此推荐采用**“共享数据文件 + 独立策略配置”**的组织方式：
 
@@ -117,21 +196,29 @@ fields:
 ```
 
 ### 2. 主策略配置文件 (`strategy_alpha_1.yaml`)
-主策略配置通过 `data` 字段指向外部共享数据配置文件：
+主策略配置包含运行参数、交易经纪商设置，并通过 `data` 字段指向外部共享数据配置文件：
 
 ```yaml
 engine:
   mode: "backtest"
   start_date: "2025-01-01"
   end_date: "2025-03-31"
+
+broker:
   initial_cash: 2000000.0
+  settle_days: 1
+  fee_rate: 0.0003
+  min_fee: 5.0
+  slippage: 0.001
+  volume_limit: 0.1
+  check_limit: true
 
 data: "shared/data_production.yaml"
 ```
 
 ---
 
-## 四、相对路径级联解析机制 (Path Resolution)
+## 五、相对路径级联解析机制 (Path Resolution)
 
 跨子目录引用相对路径时，依赖当前工作目录（`Environment.CurrentDirectory`）可能导致路径寻址失败。系统采用以配置文件所在物理目录为基准的级联解析机制：
 
@@ -151,7 +238,7 @@ flowchart TD
 
 ---
 
-## 五、直接内嵌配置模式 (Inline)
+## 六、直接内嵌配置模式 (Inline)
 
 针对独立实验脚本或单元测试，系统支持单文件内嵌配置：
 
@@ -160,7 +247,13 @@ engine:
   mode: "backtest"
   start_date: "2025-01-01"
   end_date: "2025-03-31"
+
+broker:
   initial_cash: 1000000.0
+  settle_days: 1
+  fee_rate: 0.0003
+  min_fee: 5.0
+  slippage: 0.001
 
 data:
   root: "./test_data"
@@ -175,7 +268,7 @@ data:
 
 ---
 
-## 六、配置序列化与动态导出 (Serialization & Saving)
+## 七、配置序列化与动态导出 (Serialization & Saving)
 
 系统不仅支持通过 `EngineConfigLoader.Load()` 反序列化加载配置，还通过 `EngineConfigSerializer` 提供了对等的序列化与落盘保存能力，形成完整的生命周期闭环：
 
@@ -185,7 +278,14 @@ using CarrotBacktesting.NET.Config;
 // 1. 在代码中构建或修改配置对象
 var config = new EngineConfig
 {
-    Engine = new EngineSettings { Mode = "backtest", InitialCash = 1000000.0 },
+    Engine = new EngineSettings { Mode = "backtest" },
+    Broker = new BrokerConfig
+    {
+        InitialCash = 1000000.0,
+        SettleDays = 1,
+        FeeRate = 0.0003,
+        Slippage = 0.001
+    },
     Data = new DataConfig
     {
         Root = "D:/QuantData",
@@ -207,7 +307,7 @@ EngineConfigSerializer.Save(config, "configs/strategy_auto.yaml");
 
 ---
 
-## 七、纯代码配置用法 (Code-First Configuration)
+## 八、纯代码配置用法 (Code-First Configuration)
 
 除了基于 YAML 文件的驱动方式，系统完全支持**纯代码驱动（Code-First）**。无需创建任何物理文件，直接通过 C# 强类型对象进行装配，适合量化研发、实验脚本、单元测试与动态组合策略。
 
@@ -225,8 +325,17 @@ var config = new EngineConfig
     {
         Mode = "backtest",
         StartDate = new DateTime(2025, 1, 1),
-        EndDate = new DateTime(2025, 12, 31),
-        InitialCash = 1000000.0
+        EndDate = new DateTime(2025, 12, 31)
+    },
+    Broker = new BrokerConfig
+    {
+        InitialCash = 1000000.0,
+        SettleDays = 1,
+        FeeRate = 0.0003,
+        MinFee = 5.0,
+        Slippage = 0.001,
+        VolumeLimit = 0.1,
+        CheckLimit = true
     },
     Data = new DataConfig
     {

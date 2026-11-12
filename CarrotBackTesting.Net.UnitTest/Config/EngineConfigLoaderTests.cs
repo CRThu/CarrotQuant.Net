@@ -34,6 +34,8 @@ engine:
   mode: ""backtest""
   start_date: ""2025-01-01""
   end_date: ""2025-03-31""
+
+broker:
   initial_cash: 500000.0
 
 data:
@@ -54,7 +56,9 @@ data:
             Assert.AreEqual("backtest", config.Engine.Mode);
             Assert.AreEqual(new DateTime(2025, 1, 1), config.Engine.StartDate);
             Assert.AreEqual(new DateTime(2025, 3, 31), config.Engine.EndDate);
-            Assert.AreEqual(500000.0, config.Engine.InitialCash);
+
+            Assert.IsNotNull(config.Broker);
+            Assert.AreEqual(500000.0, config.Broker.InitialCash);
 
             Assert.IsNotNull(config.Data);
             string expectedRoot = Path.GetFullPath(Path.Combine(_tempDir, "my_data"));
@@ -91,6 +95,8 @@ events:
             string mainYaml = @"
 engine:
   mode: ""living""
+
+broker:
   initial_cash: 2000000.0
 
 data: ""shared/data.yaml""
@@ -102,7 +108,7 @@ data: ""shared/data.yaml""
             var config = EngineConfigLoader.Load(mainConfigPath);
 
             Assert.AreEqual("living", config.Engine.Mode);
-            Assert.AreEqual(2000000.0, config.Engine.InitialCash);
+            Assert.AreEqual(2000000.0, config.Broker.InitialCash);
 
             Assert.IsNotNull(config.Data);
             string expectedRoot = Path.GetFullPath(Path.Combine(sharedDir, "../data_store"));
@@ -246,6 +252,8 @@ data: ""shared/data.yaml""
             string mainYaml = @"
 engine:
   mode: ""backtest""
+
+broker:
   initial_cash: 800000.0
 ";
             string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
@@ -255,7 +263,7 @@ engine:
 
             Assert.IsNotNull(config.Engine);
             Assert.AreEqual("backtest", config.Engine.Mode);
-            Assert.AreEqual(800000.0, config.Engine.InitialCash);
+            Assert.AreEqual(800000.0, config.Broker.InitialCash);
             Assert.IsNotNull(config.Data);
             Assert.AreEqual(string.Empty, config.Data.Root);
             Assert.AreEqual(0, config.Data.Timeseries.Count);
@@ -397,7 +405,10 @@ data:
                 {
                     Mode = "backtest",
                     StartDate = new DateTime(2025, 1, 1),
-                    EndDate = new DateTime(2025, 12, 31),
+                    EndDate = new DateTime(2025, 12, 31)
+                },
+                Broker = new BrokerConfig
+                {
                     InitialCash = 888888.0
                 },
                 Data = new DataConfig
@@ -426,7 +437,7 @@ data:
             Assert.AreEqual(original.Engine.Mode, loaded.Engine.Mode);
             Assert.AreEqual(original.Engine.StartDate, loaded.Engine.StartDate);
             Assert.AreEqual(original.Engine.EndDate, loaded.Engine.EndDate);
-            Assert.AreEqual(original.Engine.InitialCash, loaded.Engine.InitialCash);
+            Assert.AreEqual(original.Broker.InitialCash, loaded.Broker.InitialCash);
 
             Assert.AreEqual(1, loaded.Data.Timeseries.Count);
             Assert.AreEqual("ashare.kline.1d.raw.baostock", loaded.Data.Timeseries[0].TableId);
@@ -481,8 +492,9 @@ data: ""{sharedPath.Replace("\\", "/")}""
                 .WithEngineSettings(
                     mode: "living",
                     start: new DateTime(2025, 2, 1, 9, 30, 0),
-                    end: new DateTime(2025, 11, 30, 15, 0, 0),
-                    cash: 3000000.5)
+                    end: new DateTime(2025, 11, 30, 15, 0, 0))
+                .WithBrokerSettings(
+                    initialCash: 3000000.5)
                 .WithRoot(_tempDir)
                 .AddTimeseries(
                     tableId: "ashare.kline.1d.raw.baostock",
@@ -526,11 +538,11 @@ data: ""{sharedPath.Replace("\\", "/")}""
             // 3. 通过 EngineConfigLoader 反序列化并逐个字段严格断言
             var loaded = EngineConfigLoader.Load(fullYamlPath);
 
-            // EngineSettings 参数 (4/4)
+            // EngineSettings 参数 (3/3)
             Assert.AreEqual("living", loaded.Engine.Mode);
             Assert.AreEqual(new DateTime(2025, 2, 1, 9, 30, 0), loaded.Engine.StartDate);
             Assert.AreEqual(new DateTime(2025, 11, 30, 15, 0, 0), loaded.Engine.EndDate);
-            Assert.AreEqual(3000000.5, loaded.Engine.InitialCash, 1e-4);
+            Assert.AreEqual(3000000.5, loaded.Broker.InitialCash, 1e-4);
 
             // DataConfig 参数 (4/4)
             Assert.AreEqual(Path.GetFullPath(_tempDir), loaded.Data.Root);
@@ -565,6 +577,108 @@ data: ""{sharedPath.Replace("\\", "/")}""
             Assert.AreEqual("symbol", fd.KeyColumn);
             Assert.IsNotNull(fd.ValueColumns);
             CollectionAssert.AreEqual(new[] { "board_name", "stock_name" }, fd.ValueColumns);
+        }
+
+        [TestMethod]
+        public void TestLoadBrokerConfig_FullParameters()
+        {
+            string yaml = @"
+engine:
+  mode: ""backtest""
+  start_date: ""2025-01-01""
+  end_date: ""2025-12-31""
+
+broker:
+  initial_cash: 5000000.0
+  settle_days: 0
+  allow_short: true
+  fee_rate: 0.0001
+  min_fee: 0.0
+  slippage: 0.0005
+  volume_limit: 0.15
+  check_limit: true
+  multiplier: 10.0
+  margin_rate: 0.1
+
+data:
+  root: ""./test_data""
+";
+            string configPath = Path.Combine(_tempDir, "broker_full.yaml");
+            File.WriteAllText(configPath, yaml);
+
+            var config = EngineConfigLoader.Load(configPath);
+
+            Assert.IsNotNull(config.Broker);
+            Assert.AreEqual(5000000.0, config.Broker.InitialCash, 1e-4);
+            Assert.AreEqual(0, config.Broker.SettleDays);
+            Assert.IsTrue(config.Broker.AllowShort);
+            Assert.AreEqual(0.0001, config.Broker.FeeRate, 1e-6);
+            Assert.AreEqual(0.0, config.Broker.MinFee, 1e-4);
+            Assert.AreEqual(0.0005, config.Broker.Slippage, 1e-6);
+            Assert.AreEqual(0.15, config.Broker.VolumeLimit, 1e-4);
+            Assert.IsTrue(config.Broker.CheckLimit);
+            Assert.AreEqual(10.0, config.Broker.Multiplier, 1e-4);
+            Assert.AreEqual(0.1, config.Broker.MarginRate, 1e-4);
+        }
+
+        [TestMethod]
+        public void TestBrokerConfig_SerializationAndHookIgnored()
+        {
+            var config = new EngineConfig
+            {
+                Engine = new EngineSettings { Mode = "backtest" },
+                Broker = new BrokerConfig
+                {
+                    InitialCash = 2000000.0,
+                    SettleDays = 1,
+                    AllowShort = false,
+                    FeeRate = 0.0003,
+                    MinFee = 5.0,
+                    Slippage = 0.001,
+                    VolumeLimit = 0.1,
+                    CheckLimit = true,
+                    Multiplier = 1.0,
+                    MarginRate = 1.0,
+
+                    // 挂载动态 Hook 委托
+                    OnCheckLimit = (order, bar) => true,
+                    OnCalculateFee = (order, turnover) => turnover * 0.0003,
+                    OnCheckVolume = (order, bar) => true,
+                    OnCalculateSlippage = (order, price, bar) => price * 1.001,
+                    OnGetSettleDays = symbol => 1,
+                    OnGetMultiplier = (symbol, ctx) => 1.0,
+                    OnGetMarginRate = (symbol, ctx) => 1.0
+                },
+                Data = new DataConfig { Root = _tempDir }
+            };
+
+            // 序列化为 YAML 文本
+            string yaml = EngineConfigSerializer.Serialize(config);
+
+            // 验证生成的 YAML 包含 broker 的纯数值属性，且由于 [YamlIgnore] 绝对不包含委托或报错
+            StringAssert.Contains(yaml, "broker:");
+            StringAssert.Contains(yaml, "initial_cash: 2000000");
+            StringAssert.Contains(yaml, "settle_days: 1");
+            StringAssert.Contains(yaml, "fee_rate: 0.0003");
+            StringAssert.Contains(yaml, "min_fee: 5");
+            StringAssert.Contains(yaml, "slippage: 0.001");
+            StringAssert.Contains(yaml, "volume_limit: 0.1");
+            StringAssert.Contains(yaml, "check_limit: true");
+            Assert.IsFalse(yaml.Contains("on_check_limit"));
+            Assert.IsFalse(yaml.Contains("on_calculate_fee"));
+
+            // 保存后重新加载，断言数据完整闭环
+            string savedPath = Path.Combine(_tempDir, "saved_broker.yaml");
+            EngineConfigSerializer.Save(config, savedPath);
+            var reloaded = EngineConfigLoader.Load(savedPath);
+
+            Assert.AreEqual(2000000.0, reloaded.Broker.InitialCash, 1e-4);
+            Assert.AreEqual(1, reloaded.Broker.SettleDays);
+            Assert.AreEqual(0.0003, reloaded.Broker.FeeRate, 1e-6);
+            Assert.AreEqual(5.0, reloaded.Broker.MinFee, 1e-4);
+            Assert.AreEqual(0.001, reloaded.Broker.Slippage, 1e-6);
+            Assert.AreEqual(0.1, reloaded.Broker.VolumeLimit, 1e-4);
+            Assert.IsTrue(reloaded.Broker.CheckLimit);
         }
     }
 }

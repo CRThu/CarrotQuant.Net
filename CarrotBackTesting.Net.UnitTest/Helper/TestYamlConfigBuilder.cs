@@ -18,18 +18,45 @@ namespace CarrotBackTesting.Net.UnitTest.Helper
             {
                 Mode = "backtest",
                 StartDate = new DateTime(2025, 1, 1),
-                EndDate = new DateTime(2025, 12, 31),
+                EndDate = new DateTime(2025, 12, 31)
+            },
+            Broker = new BrokerConfig
+            {
                 InitialCash = 1000000.0
             },
             Data = new DataConfig()
         };
 
-        public TestYamlConfigBuilder WithEngineSettings(string mode = "backtest", DateTime? start = null, DateTime? end = null, double cash = 1000000.0)
+        public TestYamlConfigBuilder WithEngineSettings(string mode = "backtest", DateTime? start = null, DateTime? end = null)
         {
             _config.Engine.Mode = mode;
             if (start.HasValue) _config.Engine.StartDate = start.Value;
             if (end.HasValue) _config.Engine.EndDate = end.Value;
-            _config.Engine.InitialCash = cash;
+            return this;
+        }
+
+        public TestYamlConfigBuilder WithBrokerSettings(
+            double initialCash = 1000000.0,
+            int settleDays = 1,
+            bool allowShort = false,
+            double feeRate = 0.0003,
+            double minFee = 5.0,
+            double slippage = 0.001,
+            double volumeLimit = 0.0,
+            bool checkLimit = false,
+            double multiplier = 1.0,
+            double marginRate = 1.0)
+        {
+            _config.Broker.InitialCash = initialCash;
+            _config.Broker.SettleDays = settleDays;
+            _config.Broker.AllowShort = allowShort;
+            _config.Broker.FeeRate = feeRate;
+            _config.Broker.MinFee = minFee;
+            _config.Broker.Slippage = slippage;
+            _config.Broker.VolumeLimit = volumeLimit;
+            _config.Broker.CheckLimit = checkLimit;
+            _config.Broker.Multiplier = multiplier;
+            _config.Broker.MarginRate = marginRate;
             return this;
         }
 
