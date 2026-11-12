@@ -1,53 +1,44 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CarrotBacktesting.NET.Abstraction.Data;
 
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// 事件注册表实现。
-    /// 管理所有已加载的事件表，支持按 streamName 检索。
+    /// 事件流注册中心实现。管理已加载的事件流表实例。
     /// </summary>
     public class EventRegistry : IEventRegistry
     {
-        private readonly Dictionary<string, object> _tables = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IEventTable> _tables = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>
-        /// 注册一个强类型事件表。
-        /// </summary>
-        /// <typeparam name="T">事件数据实体类型。</typeparam>
-        /// <param name="streamName">数据流名称（如 "adjustments"）。</param>
-        /// <param name="table">事件表实例。</param>
-        public void Register<T>(string streamName, IEventTable<T> table) where T : class
+        public IEventTable this[string name] => GetTable(name);
+
+        public IEventTable GetTable(string name)
         {
-            if (string.IsNullOrWhiteSpace(streamName))
-                throw new ArgumentException("Stream name cannot be null or empty.", nameof(streamName));
-            if (table == null)
-                throw new ArgumentNullException(nameof(table));
-
-            _tables[streamName] = table;
-        }
-
-        /// <inheritdoc />
-        public IEventTable<T> GetTable<T>(string streamName) where T : class
-        {
-            if (_tables.TryGetValue(streamName, out var table))
+            if (_tables.TryGetValue(name, out var table))
             {
-                if (table is IEventTable<T> typed)
-                    return typed;
-
-                throw new InvalidCastException(
-                    $"Event stream '{streamName}' is registered as {table.GetType().Name}, " +
-                    $"not IEventTable<{typeof(T).Name}>.");
+                return table;
             }
-
-            throw new KeyNotFoundException($"Event stream '{streamName}' not found. Available: [{string.Join(", ", _tables.Keys)}]");
+            throw new KeyNotFoundException($"Event table '{name}' is not registered.");
         }
 
-        /// <inheritdoc />
-        public bool HasStream(string streamName)
+        public bool HasTable(string name)
         {
-            return _tables.ContainsKey(streamName);
+            return _tables.ContainsKey(name);
+        }
+
+        public void Register(string name, IEventTable table)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            ArgumentNullException.ThrowIfNull(table);
+
+            _tables[name] = table;
+        }
+
+        public IReadOnlyList<string> GetTableNames()
+        {
+            return _tables.Keys.OrderBy(n => n).ToList();
         }
     }
 }

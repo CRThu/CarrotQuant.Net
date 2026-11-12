@@ -1,26 +1,36 @@
-namespace CarrotBacktesting.NET.Abstraction.Data;
+using System.Collections.Generic;
 
-/// <summary>
-/// 事件注册表接口。
-/// 统筹管理所有已加载的异构事件流（如复权因子表、分红表、龙虎榜表等）。
-/// </summary>
-public interface IEventRegistry
+namespace CarrotBacktesting.NET.Abstraction.Data
 {
     /// <summary>
-    /// 获取指定名称的强类型事件表。
+    /// 时态事件表注册中心契约。
+    /// 统一管理时态事件表，提供 Events["adjustments"][date, symbol] 索引访问与流式投影。
     /// </summary>
-    /// <typeparam name="T">事件数据实体类型。</typeparam>
-    /// <param name="streamName">事件流名称（如 "adjustments"）。</param>
-    /// <returns>类型安全的事件表实例。</returns>
-    IEventTable<T> GetTable<T>(string streamName) where T : class;
+    public interface IEventRegistry
+    {
+        /// <summary>
+        /// 事件表索引器：Events["adjustments"] -> IEventTable。
+        /// </summary>
+        IEventTable this[string name] { get; }
 
-    /// <summary>
-    /// 注册一个强类型事件表。
-    /// </summary>
-    void Register<T>(string streamName, IEventTable<T> table) where T : class;
+        /// <summary>
+        /// 获取事件表。
+        /// </summary>
+        IEventTable GetTable(string name);
 
-    /// <summary>
-    /// 检查指定名称的事件表是否已注册。
-    /// </summary>
-    bool HasStream(string streamName);
+        /// <summary>
+        /// 检查指定名称的事件表是否存在。
+        /// </summary>
+        bool HasTable(string name);
+
+        /// <summary>
+        /// 注册事件表。
+        /// </summary>
+        void Register(string name, IEventTable table);
+
+        /// <summary>
+        /// 获取所有已加载的事件表名称列表。
+        /// </summary>
+        IReadOnlyList<string> GetTableNames();
+    }
 }

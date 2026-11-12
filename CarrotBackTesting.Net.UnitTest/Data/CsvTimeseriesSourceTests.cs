@@ -68,8 +68,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(physicalData.Count > 0, "Physical data should contain rows.");
 
             // 2. 通过 CsvTimeseriesSource 载入序列
-            var registry = new SimpleFieldRegistry();
-            using var source = new CsvTimeseriesSource(csvRoot, registry, tableId);
+            using var source = new CsvTimeseriesSource(csvRoot, tableId);
             
             // 测试元数据接口
             int symbolIdx = source.GetSymbolIndex(testSymbol);
@@ -108,8 +107,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 string csvContent = "symbol,datetime,open,high,low,close,volume\n\"sh.600000\",\"2025-01-02\",\"10.50\",\" 11.20 \",\"9.80\",\"10.95\",\"100000\"\n";
                 File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
 
-                var registry = new SimpleFieldRegistry();
-                using var source = new CsvTimeseriesSource(tempDir, registry, tableId);
+                using var source = new CsvTimeseriesSource(tempDir, tableId);
 
                 Assert.AreEqual(1, source.Symbols.Count);
                 Assert.AreEqual(1, source.TradeDates.Count);
@@ -144,8 +142,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 string csvContent = $"symbol,timestamp,open,close,volume\nsh.600000,{ts1},12.5,13.0,1000\nsh.600000,{ts2},10.0,11.5,500\n";
                 File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
 
-                var registry = new SimpleFieldRegistry();
-                using var source = new CsvTimeseriesSource(tempDir, registry, tableId);
+                using var source = new CsvTimeseriesSource(tempDir, tableId);
 
                 Assert.AreEqual(1, source.Symbols.Count);
                 Assert.AreEqual(2, source.TradeDates.Count);
@@ -220,14 +217,57 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 sw.Flush();
                 sw.Close();
 
-                var registry = new SimpleFieldRegistry();
-                using var source = new CsvTimeseriesSource(tempDir, registry, tableId);
+                using var source = new CsvTimeseriesSource(tempDir, tableId);
 
                 // 请求只取 5 天，但底层文件扫描时读入 35 行触发扩容
                 double[] dest = new double[5];
                 source.ReadSymbolSeries("sh.600000", "close", 0, 5, dest);
                 Assert.AreEqual(10.0, dest[0]);
                 Assert.AreEqual(10.0, dest[4]);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public void TestCsvTimeseriesSource_PartitionNone_DataCsv_MultipleSymbols_ShouldFilterCorrectly()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "CarrotCsvPartitionNoneTest_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string tableId = "none_partition_table";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+
+                // 单文件 data.csv 包含两只股票不同日期的行情
+                string csvContent = "symbol,datetime,close\n" +
+                                    "sh.600000,2025-01-02,10.0\n" +
+                                    "sz.000001,2025-01-02,20.0\n" +
+                                    "sh.600000,2025-01-03,11.0\n" +
+                                    "sz.000001,2025-01-03,21.0\n";
+                File.WriteAllText(Path.Combine(tableDir, "data.csv"), csvContent);
+
+                using var source = new CsvTimeseriesSource(tempDir, tableId);
+
+                // 验证两只标的均被正确提取，且没有空集合
+                Assert.AreEqual(2, source.Symbols.Count);
+                CollectionAssert.Contains((System.Collections.ICollection)source.Symbols, "sh.600000");
+                CollectionAssert.Contains((System.Collections.ICollection)source.Symbols, "sz.000001");
+                Assert.AreEqual(2, source.TradeDates.Count);
+
+                // 读取 sh.600000：验证只读取自己的 10.0 和 11.0，绝不混入 sz.000001 的 20.0 和 21.0
+                double[] dest600 = new double[2];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 2, dest600);
+                Assert.AreEqual(10.0, dest600[0]);
+                Assert.AreEqual(11.0, dest600[1]);
+
+                // 读取 sz.000001
+                double[] dest001 = new double[2];
+                source.ReadSymbolSeries("sz.000001", "close", 0, 2, dest001);
+                Assert.AreEqual(20.0, dest001[0]);
+                Assert.AreEqual(21.0, dest001[1]);
             }
             finally
             {

@@ -1,9 +1,8 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using CarrotBacktesting.NET.Abstraction.Data;
 
-namespace CarrotBacktesting.NET.Data.Views
+namespace CarrotBacktesting.NET.Abstraction.Data
 {
     /// <summary>
     /// 专用于列访问的静态视图类型，封装行列索引与 <see cref="IMatrix2D{T}"/> 的寻址逻辑。
@@ -60,7 +59,7 @@ namespace CarrotBacktesting.NET.Data.Views
         public Enumerator GetEnumerator() => new(this);
 
         /// <summary>
-        /// 可写列视图枚举器。
+        /// 列视图枚举器。
         /// </summary>
         public ref struct Enumerator
         {

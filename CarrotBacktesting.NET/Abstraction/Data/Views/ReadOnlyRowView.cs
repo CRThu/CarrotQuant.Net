@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace CarrotBacktesting.NET.Data.Views
+namespace CarrotBacktesting.NET.Abstraction.Data
 {
     /// <summary>
     /// 专用于行访问的只读静态视图类型，直接包装 <see cref="ReadOnlySpan{T}"/>。

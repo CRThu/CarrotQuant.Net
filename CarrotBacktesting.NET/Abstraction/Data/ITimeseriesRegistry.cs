@@ -31,4 +31,11 @@ public interface ITimeseriesRegistry
     /// <param name="fieldName">字段名称。</param>
     /// <returns>若字段已加载则返回 true，否则返回 false。</returns>
     bool HasField(string fieldName);
+
+    /// <summary>
+    /// 推进时间步至指定逻辑行，触发常驻分块页面滑动淘汰与后台异步预读（Prefetch）。
+    /// 默认空实现，由支持滑动分块调度的实现重写。
+    /// </summary>
+    /// <param name="currentLogicalRow">当前时间步对应的全局行索引。</param>
+    void StepTo(int currentLogicalRow) { }
 }

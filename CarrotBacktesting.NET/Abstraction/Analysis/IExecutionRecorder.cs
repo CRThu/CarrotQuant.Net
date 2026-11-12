@@ -40,7 +40,7 @@ public interface IRecorder
 /// <param name="Symbol">交易品种。</param>
 /// <param name="Direction">买卖方向。</param>
 /// <param name="Price">委托或成交价格。</param>
-/// <param name="Volume">委托或成交数量。</param>
+/// <param name="Quantity">委托或成交数量。</param>
 /// <param name="Status">订单当前状态。</param>
 /// <param name="Time">记录时间。</param>
 public record OrderContext(
@@ -48,7 +48,7 @@ public record OrderContext(
     string Symbol, 
     OrderDirection Direction, 
     double Price, 
-    double Volume, 
+    decimal Quantity, 
     OrderStatus Status, 
     DateTime Time
 );

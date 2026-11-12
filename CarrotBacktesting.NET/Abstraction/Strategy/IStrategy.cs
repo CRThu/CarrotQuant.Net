@@ -53,11 +53,19 @@ public interface IStrategy
     void OnStop(IEngineContext context) { }
 
     /// <summary>
-    /// 订单状态变更回调。当策略提交的订单状态发生变化或产生执行回报时由引擎调用。
+    /// 订单状态变更回调。当策略提交的订单状态发生变化（例如：提交成功、被拒绝、撤销成功）时由引擎调用。
     /// </summary>
     /// <param name="context">引擎运行上下文。</param>
-    /// <param name="e">订单执行回报详情。</param>
-    void OnOrderChanged(IEngineContext context, ExecutionReport e) { }
+    /// <param name="orderId">订单 ID。</param>
+    /// <param name="status">最新的订单生命周期状态。</param>
+    void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status) { }
+
+    /// <summary>
+    /// 成交回报回调。当策略提交的订单发生实际物理成交（部分成交或全部成交）时由引擎调用。
+    /// </summary>
+    /// <param name="context">引擎运行上下文。</param>
+    /// <param name="e">成交执行回报详情（包含实际成交价、量、手续费与时间戳）。</param>
+    void OnTrade(IEngineContext context, ExecutionReport e) { }
 
     /// <summary>
     /// 持仓变更回调。当账户中品种的持仓数量发生变化时由引擎调用。

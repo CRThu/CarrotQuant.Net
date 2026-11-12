@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using CarrotBacktesting.NET.Abstraction.Data;
-using CarrotBacktesting.NET.Data.Views;
 
 namespace CarrotBacktesting.NET.Data
 {

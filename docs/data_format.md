@@ -35,6 +35,8 @@
 | `ashare.kline.1d.adj.baostock` | A 股 K 线 | 日线 / 后复权 | BaoStock |
 | `ashare.adj_factor.baostock` | 复权因子事件流 | 事件级 / 后复权因子 | BaoStock |
 | `ashare.dragon_tiger.eastmoney`| 龙虎榜事件流 | 每日异动 | 东方财富 |
+| `ashare.industry.eastmoney`    | 标的行业维表 | 平铺维表 (静态) | 东方财富 |
+| `ashare.concept.eastmoney`     | 标的概念维表 | 平铺维表 (静态) | 东方财富 |
 
 ---
 
@@ -76,7 +78,7 @@
 └── data.parquet (或 data.csv / {symbol}.csv)
 ```
 
-- **适用场景**：低频事件数据（如复权因子、公告）、单文件宽表或小样本数据集。
+- **适用场景**：静态平铺维表（如东财行业对应表、概念对应表）、低频事件数据（如复权因子、公告）、单文件宽表或小样本数据集。标的维表通常不包含时间戳，默认主键为 `symbol`。
 
 ### 分区维度模式 (`partition`)
 - **`partition: "none"`**：整表存储为单个或按年划分的单文件（通常命名为 `data.parquet` 或 `data.csv`），文件内部包含全市场代码数据。

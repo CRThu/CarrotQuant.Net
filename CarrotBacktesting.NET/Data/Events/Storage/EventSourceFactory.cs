@@ -4,8 +4,8 @@ using CarrotBacktesting.NET.Abstraction.Data;
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// 异构事件市场数据源工厂。
-    /// 依据表的物理格式（由 IStorageResolver 自动推断）自适应派发并构建强类型事件表容器。
+    /// 事件数据源工厂。
+    /// 根据存储格式自动选择对应的驱动并加载 IEventTable 实例。
     /// </summary>
     public static class EventSourceFactory
     {
@@ -13,9 +13,13 @@ namespace CarrotBacktesting.NET.Data
         private static readonly ParquetEventSource _parquetSource = new();
 
         /// <summary>
-        /// 基于路径调度器自适应构建强类型事件表。
+        /// 加载事件表，支持按时间区间进行分区剪枝。
         /// </summary>
-        public static IEventTable<T> Create<T>(IStorageResolver resolver, string tableId) where T : class
+        public static IEventTable Create(
+            IStorageResolver resolver,
+            string tableId,
+            DateTime? startDate = null,
+            DateTime? endDate = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);
             ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
@@ -28,15 +32,19 @@ namespace CarrotBacktesting.NET.Data
                 _ => throw new NotSupportedException($"Unsupported event storage format: '{format}' for table '{tableId}'.")
             };
 
-            return source.LoadTable<T>(resolver, tableId);
+            return source.LoadTable(resolver, tableId, startDate, endDate);
         }
 
         /// <summary>
-        /// 基于物理存储根目录自适应构建强类型事件表。
+        /// 基于存储根目录快速构建事件表。
         /// </summary>
-        public static IEventTable<T> Create<T>(string storageRoot, string tableId) where T : class
+        public static IEventTable Create(
+            string storageRoot,
+            string tableId,
+            DateTime? startDate = null,
+            DateTime? endDate = null)
         {
-            return Create<T>(new StorageResolver(storageRoot), tableId);
+            return Create(new StorageResolver(storageRoot), tableId, startDate, endDate);
         }
     }
 }

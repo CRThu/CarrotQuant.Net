@@ -1,9 +1,8 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using CarrotBacktesting.NET.Abstraction.Data;
 
-namespace CarrotBacktesting.NET.Data.Views
+namespace CarrotBacktesting.NET.Abstraction.Data
 {
     /// <summary>
     /// 专用于列访问的只读静态视图类型，封装行列索引与 <see cref="IReadOnlyMatrix2D{T}"/> 的寻址逻辑。

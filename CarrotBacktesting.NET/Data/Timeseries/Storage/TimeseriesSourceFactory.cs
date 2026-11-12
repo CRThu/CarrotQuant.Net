@@ -14,20 +14,18 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public static ITimeseriesSource Create(
             IStorageResolver resolver,
-            IFieldRegistry registry,
             string tableId,
             DateTime? startDate = null,
             DateTime? endDate = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);
-            ArgumentNullException.ThrowIfNull(registry);
             ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
 
             string format = resolver.GetFormat(tableId);
             return format.ToLowerInvariant() switch
             {
-                "csv" => new CsvTimeseriesSource(resolver, registry, tableId, startDate, endDate),
-                "parquet" => new ParquetTimeseriesSource(resolver, registry, tableId, startDate, endDate),
+                "csv" => new CsvTimeseriesSource(resolver, tableId, startDate, endDate),
+                "parquet" => new ParquetTimeseriesSource(resolver, tableId, startDate, endDate),
                 _ => throw new NotSupportedException($"Unsupported market series storage format: '{format}' for table '{tableId}'.")
             };
         }
@@ -37,12 +35,11 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public static ITimeseriesSource Create(
             string storageRoot,
-            IFieldRegistry registry,
             string tableId,
             DateTime? startDate = null,
             DateTime? endDate = null)
         {
-            return Create(new StorageResolver(storageRoot), registry, tableId, startDate, endDate);
+            return Create(new StorageResolver(storageRoot), tableId, startDate, endDate);
         }
     }
 }

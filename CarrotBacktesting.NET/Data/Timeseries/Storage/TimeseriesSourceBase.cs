@@ -18,6 +18,7 @@ namespace CarrotBacktesting.NET.Data
         protected readonly DateTime? _startDate;
         protected readonly DateTime? _endDate;
         protected List<string> _symbols = new();
+        protected Dictionary<string, int>? _symbolMap;
         protected List<DateTime> _tradeDates = new();
         private bool _disposed;
 
@@ -31,11 +32,10 @@ namespace CarrotBacktesting.NET.Data
         public IReadOnlyList<DateTime> TradeDates => _tradeDates;
 
         /// <summary>
-        /// 基类受保护构造函数，自动向注册表同步 Schema 字段定义。
+        /// 基类受保护构造函数。
         /// </summary>
         protected TimeseriesSourceBase(
             IStorageResolver resolver,
-            IFieldRegistry registry,
             string tableId,
             DateTime? startDate = null,
             DateTime? endDate = null)
@@ -44,14 +44,6 @@ namespace CarrotBacktesting.NET.Data
             _tableId = tableId ?? throw new ArgumentNullException(nameof(tableId));
             _startDate = startDate;
             _endDate = endDate;
-
-            if (registry != null)
-            {
-                foreach (var fieldName in _resolver.GetFieldNames(_tableId))
-                {
-                    registry.RegisterField(fieldName, _resolver.GetFieldType(_tableId, fieldName));
-                }
-            }
         }
 
         /// <inheritdoc />
@@ -63,7 +55,19 @@ namespace CarrotBacktesting.NET.Data
         /// <inheritdoc />
         public int GetSymbolIndex(string symbol)
         {
-            return _symbols.IndexOf(symbol);
+            if (string.IsNullOrEmpty(symbol)) return -1;
+
+            if (_symbolMap == null)
+            {
+                var map = new Dictionary<string, int>(_symbols.Count, StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < _symbols.Count; i++)
+                {
+                    map[_symbols[i]] = i;
+                }
+                _symbolMap = map;
+            }
+
+            return _symbolMap.TryGetValue(symbol, out int idx) ? idx : -1;
         }
 
         /// <inheritdoc />

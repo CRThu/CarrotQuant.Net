@@ -1,5 +1,4 @@
 using System;
-using CarrotBacktesting.NET.Data.Views;
 
 namespace CarrotBacktesting.NET.Abstraction.Data
 {

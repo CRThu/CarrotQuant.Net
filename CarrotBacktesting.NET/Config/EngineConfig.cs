@@ -50,6 +50,11 @@ namespace CarrotBacktesting.NET.Config
         /// 需要挂载的异构事件流列表（稀疏数据）。
         /// </summary>
         public List<EventStreamConfig> Events { get; set; } = new();
+
+        /// <summary>
+        /// 需要挂载的静态字段与多维属性字典表列表（如行业、概念、标的静态资料）。
+        /// </summary>
+        public List<FieldTableConfig> Fields { get; set; } = new();
     }
 
     /// <summary>
@@ -79,7 +84,7 @@ namespace CarrotBacktesting.NET.Config
         public string Refresh { get; set; } = "lazy";
 
         /// <summary>
-        /// 缓存块压缩格式: "lz4" (默认，3~5GB/s 超高速解压缩，节省 60%~70% 磁盘空间), "none" (无压缩裸二进制块)。
+        /// 缓存块压缩格式: "lz4" (默认，LZ4 原生块压缩), "none" (无压缩二进制块)。
         /// </summary>
         public string Compression { get; set; } = "lz4";
 
@@ -111,5 +116,17 @@ namespace CarrotBacktesting.NET.Config
     {
         public string Name { get; set; } = "";
         public string TableId { get; set; } = "";
+        public List<string>? Fields { get; set; }
+    }
+
+    /// <summary>
+    /// 单个静态字段/维表配置。
+    /// </summary>
+    public class FieldTableConfig
+    {
+        public string Name { get; set; } = "";
+        public string TableId { get; set; } = "";
+        public string? KeyColumn { get; set; }
+        public List<string>? ValueColumns { get; set; }
     }
 }

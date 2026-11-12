@@ -10,6 +10,8 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 - [三、配置组织最佳实践：外链复用模式 (Recommended)](#三配置组织最佳实践外链复用模式-recommended)
 - [四、相对路径级联解析机制 (Path Resolution)](#四相对路径级联解析机制-path-resolution)
 - [五、直接内嵌配置模式 (Inline)](#五直接内嵌配置模式-inline)
+- [六、配置序列化与动态导出 (Serialization & Saving)](#六配置序列化与动态导出-serialization--saving)
+- [七、纯代码配置用法 (Code-First Configuration)](#七纯代码配置用法-code-first-configuration)
 
 ---
 
@@ -45,6 +47,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `root` | `Root` | `string` | 是 | `""` | 数据存储区物理根目录。支持以当前配置文件所在目录为基准的相对路径（如 `"../../data"`）或操作系统绝对路径。 |
 | `timeseries` | `Timeseries` | `List<TimeseriesConfig>` | 否 | `[]` | 时序行情矩阵列表（稠密数据），用于加载 OHLCV 宽表。 |
 | `events` | `Events` | `List<EventStreamConfig>` | 否 | `[]` | 异构事件流列表（稀疏数据），用于挂载复权因子、公告、龙虎榜等 KV 数据。 |
+| `fields` | `Fields` | `List<FieldTableConfig>` | 否 | `[]` | 标的静态属性与维表列表，用于挂载概念、行业、静态属性等平铺维表。 |
 
 ### 3. `timeseries` 时序项配置 (`TimeseriesConfig`)
 
@@ -67,8 +70,16 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
-| `name` | `Name` | `string` | 是 | - | 事件流在引擎上下文事件注册表 (`IEventRegistry`) 中的别名，策略通过 `context.Events.GetTable<T>(name)` 依据此名称获取。 |
+| `name` | `Name` | `string` | 是 | - | 事件流在引擎上下文事件注册表 (`IEventRegistry`) 中的别名，策略通过 `context.Events.GetTable(name)` 或 `context.Events[name]` 依据此名称获取。 |
 | `table_id` | `TableId` | `string` | 是 | - | 事件流物理存储表的唯一标识符（如 `"ashare.adj_factor.baostock"`）。 |
+
+### 5. `fields` 标的静态维表配置 (`FieldTableConfig`)
+
+| YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| `name` | `Name` | `string` | 是 | - | 维表在引擎上下文维表注册表 (`IFieldRegistry`) 中的别名，策略通过 `context.Fields[name]` 或 `context.Fields.GetTable(name)` 访问。 |
+| `table_id` | `TableId` | `string` | 是 | - | 维表物理存储表的唯一标识符（如 `"ashare.industry.eastmoney"`）。 |
+| `key_column` | `KeyColumn` | `string?` | 否 | `null` | 主键列名。缺省时优先自动推断 `symbol` 列；若无 `symbol` 则采用首列。 |
 
 ---
 
@@ -98,6 +109,11 @@ timeseries:
 events:
   - name: "adjustments"
     table_id: "ashare.adj_factor.baostock"
+fields:
+  - name: "industry"
+    table_id: "ashare.industry.eastmoney"
+  - name: "concept"
+    table_id: "ashare.concept.eastmoney"
 ```
 
 ### 2. 主策略配置文件 (`strategy_alpha_1.yaml`)
@@ -156,3 +172,142 @@ data:
 ```
 
 加载器根据 YAML 节点类型（标量字符串或字典映射）自动解析对应配置模型。
+
+---
+
+## 六、配置序列化与动态导出 (Serialization & Saving)
+
+系统不仅支持通过 `EngineConfigLoader.Load()` 反序列化加载配置，还通过 `EngineConfigSerializer` 提供了对等的序列化与落盘保存能力，形成完整的生命周期闭环：
+
+```csharp
+using CarrotBacktesting.NET.Config;
+
+// 1. 在代码中构建或修改配置对象
+var config = new EngineConfig
+{
+    Engine = new EngineSettings { Mode = "backtest", InitialCash = 1000000.0 },
+    Data = new DataConfig
+    {
+        Root = "D:/QuantData",
+        Timeseries = new List<TimeseriesConfig>
+        {
+            new() { TableId = "ashare.kline.1d.raw.baostock", Cache = true }
+        }
+    }
+};
+
+// 2. 导出为规范的标准下划线 YAML 文本
+string yaml = EngineConfigSerializer.Serialize(config);
+
+// 3. 或直接落盘保存至物理文件
+EngineConfigSerializer.Save(config, "configs/strategy_auto.yaml");
+```
+
+针对测试环境与自动化脚本，测试工具箱提供了 Fluent 模式的 `TestYamlConfigBuilder`，支持链式组合、无硬编码地动态构建测试 YAML。
+
+---
+
+## 七、纯代码配置用法 (Code-First Configuration)
+
+除了基于 YAML 文件的驱动方式，系统完全支持**纯代码驱动（Code-First）**。无需创建任何物理文件，直接通过 C# 强类型对象进行装配，适合量化研发、实验脚本、单元测试与动态组合策略。
+
+### 1. 强类型对象声明法（POCO / Object Initializer）
+最结构化的配置方式，配置对象可跨模块传递，并支持后续随时一键序列化为 YAML：
+
+```csharp
+using CarrotBacktesting.NET.Config;
+using CarrotBacktesting.NET.Data;
+
+// 1. 直接通过 C# 对象声明完整配置
+var config = new EngineConfig
+{
+    Engine = new EngineSettings
+    {
+        Mode = "backtest",
+        StartDate = new DateTime(2025, 1, 1),
+        EndDate = new DateTime(2025, 12, 31),
+        InitialCash = 1000000.0
+    },
+    Data = new DataConfig
+    {
+        Root = "D:/QuantData",
+        Timeseries = new List<TimeseriesConfig>
+        {
+            new()
+            {
+                TableId = "ashare.kline.1d.raw.baostock",
+                Cache = true,
+                PageSize = 4096,
+                MaxPages = 4,
+                Prefetch = true
+            }
+        },
+        Events = new List<EventStreamConfig>
+        {
+            new() { Name = "adjustments", TableId = "ashare.adj_factor.baostock" }
+        },
+        Fields = new List<FieldTableConfig>
+        {
+            new() { Name = "industry", TableId = "ashare.industry.eastmoney", KeyColumn = "symbol" }
+        }
+    }
+};
+
+// 2. 通过统一路径解析器与装配工厂一键构建
+var resolver = new StorageResolver(config.Data.Root);
+var timeseries = TimeseriesRegistryFactory.Create(resolver, config.Data.Timeseries[0]);
+var events = EventRegistryFactory.Create(resolver, config.Data.Events);
+var fields = FieldRegistryFactory.Create(resolver, config.Data.Fields);
+```
+
+### 2. 工厂直连装配法（Direct Factory API）
+无需中间配置模型对象，直接面向存储根目录与具名参数快速装配，代码极致精炼：
+
+```csharp
+using CarrotBacktesting.NET.Data;
+
+string storageRoot = "D:/QuantData";
+
+// 时序子系统（自动识别 CSV / Parquet）
+var timeseries = TimeseriesRegistryFactory.Create(
+    storageRoot: storageRoot,
+    source: TimeseriesSourceFactory.Create(storageRoot, "ashare.kline.1d.raw.baostock"),
+    pageSize: 4096,
+    maxPages: 4,
+    enableCache: true,
+    prefetch: true
+);
+
+// 事件子系统（批量装配）
+var events = EventRegistryFactory.Create(storageRoot, new[]
+{
+    new EventStreamConfig { Name = "adjustments", TableId = "ashare.adj_factor.baostock" }
+});
+
+// 维表子系统（批量装配）
+var fields = FieldRegistryFactory.Create(storageRoot, new[]
+{
+    new FieldTableConfig { Name = "industry", TableId = "ashare.industry.eastmoney", KeyColumn = "symbol" }
+});
+```
+
+### 3. 底层物理驱动组合装配（First-Principles Composability）
+对于低级定制化开发、高性能测试或单表操作，可直接调用最底层的数据源工厂：
+
+```csharp
+using CarrotBacktesting.NET.Data;
+
+var resolver = new StorageResolver("D:/QuantData");
+
+// 直接获取独立维表并进行双向倒排检索
+var industryTable = FieldSourceFactory.Create(resolver, "ashare.industry.eastmoney", keyColumn: "symbol");
+var molyStocks = industryTable.GetKeys("钼");
+
+// 直接获取单表事件流并自动执行年份分区剪枝
+var adjTable = EventSourceFactory.Create(
+    resolver, 
+    "ashare.adj_factor.baostock", 
+    startDate: new DateTime(2025, 1, 1), 
+    endDate: new DateTime(2025, 12, 31)
+);
+```

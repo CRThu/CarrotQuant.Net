@@ -75,6 +75,15 @@ data:
   events:
     - name: "adjustments"
       table_id: "ashare.adj_factor.baostock"
+  fields:
+    - name: "industry"
+      table_id: "ashare.industry.eastmoney"
+      key_column: "symbol"
+      value_columns: ["board_name"]
+    - name: "concept"
+      table_id: "ashare.concept.eastmoney"
+      key_column: "symbol"
+      value_columns: ["board_name"]
 ```
 
 #### 模式 B：外链复用独立配置 (Linked / External)
@@ -97,6 +106,11 @@ data:
   events:
     - name: "adjustments"
       table_id: "ashare.adj_factor.baostock"
+  fields:
+    - name: "industry"
+      table_id: "ashare.industry.eastmoney"
+      key_column: "symbol"
+      value_columns: ["board_name"]
   ```
 
 ---
@@ -175,7 +189,7 @@ public interface IMarketMetadata
   - `ParquetTimeseriesSource`: 继承基类，基于 Parquet 列式存储与 YearCache 列缓存提供极速列切片提取。
 - **`TimeseriesSourceFactory`**: 时序数据源工厂类，依据 `IStorageResolver.GetFormat(tableId)` 自动派发构建对应数据源：
   ```csharp
-  ITimeseriesSource source = TimeseriesSourceFactory.Create(storageRoot, fieldRegistry, tableId);
+  ITimeseriesSource source = TimeseriesSourceFactory.Create(storageRoot, tableId);
   ```
 
 > [!NOTE]
@@ -403,74 +417,149 @@ public static class MatrixExtensions
 
 ## 四、异构事件流系统 (Event Stream System)
 
-针对非对齐、稀疏或结构不规则数据（如复权因子、公告、龙虎榜席位），通过强类型事件流进行点查。
+针对非对齐、稀疏或结构不规则数据（如复权因子、公告、龙虎榜席位），通过时态事件流进行点查。系统原生支持免定义动态链式索引与预编译强类型实体映射。
 
-### 1. IEventTable<T>
+### 1. IEventTable (时态事件契约)
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
-public interface IEventTable<T> where T : class
+public interface IEventTable : IEnumerable<KeyValuePair<DateTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>>
 {
-    /// <summary>
-    /// 依据交易日与股票代码进行 O(1) 索引查询。
-    /// </summary>
-    bool TryGet(DateTime date, string symbol, out T? value);
+    string Name { get; }
+    int Count { get; }
+    IEnumerable<DateTime> Dates { get; } // 按时间递增严格排序
+    IReadOnlyDictionary<string, IReadOnlyList<IDataRow>> this[DateTime date] { get; } // 索引器: table[date] -> 当日截面字典
+    IDataRow this[DateTime date, string key] { get; } // 二维复合索引器: table[date, symbol] -> 首条事件
+    bool TryGetDay(DateTime date, out IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>? dayMap);
+    IReadOnlyList<IDataRow> GetRows(DateTime timestamp, string key);
+    bool TryGet(DateTime timestamp, string key, out IReadOnlyList<IDataRow> rows);
+    bool TryGetFirst(DateTime timestamp, string key, out IDataRow? row);
+    bool TryGetGlobal(DateTime timestamp, out IReadOnlyList<IDataRow> globalRows);
+    bool ContainsDate(DateTime date);
 
-    /// <summary>
-    /// 获取指定交易日全市场所有发生该事件的品种字典。
-    /// </summary>
-    bool TryGetDaily(DateTime date, out IReadOnlyDictionary<string, T> values);
+    // 强类型即时点查与流式 LINQ
+    T Get<T>(DateTime timestamp, string key) where T : class;
+    bool TryGet<T>(DateTime timestamp, string key, out T? value) where T : class;
+    IEnumerable<T> As<T>(DateTime timestamp) where T : class; // 当日截面流
+    IEnumerable<T> As<T>(string key) where T : class;          // 单标的历史流
+    IEnumerable<T> As<T>() where T : class;                   // 全量历史流
 }
 ```
 
-### 2. EventSourceFactory (自动反射映射工厂)
-框架通过读取表元数据自动识别 schema，并利用反射将数据字段映射到 record 构造函数，无需手动编写文件解析器。
+### 2. EventSourceFactory (高性能编译映射工厂)
+框架通过读取表元数据自动识别 schema，并利用 `EntityMapper` 表达式树将数据字段一次性预编译为原生构造委托 `Func<string[], T>`，消除逐行反射与装箱开销；支持按回测时间区间动态执行物理年份分区剪枝。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
 
 public static class EventSourceFactory
 {
-    public static IEventTable<T> Build<T>(IStorageResolver resolver, string tableId) where T : class;
+    public static IEventTable Create(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null);
+    public static IEventTable Create<T>(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null) where T : class;
 }
 ```
 
-### 3. IEventRegistry
-全局事件提供器容器中心。
-
+### 3. 调用范例
 ```csharp
-namespace CarrotBacktesting.NET.Abstraction.Data;
-
-public interface IEventRegistry
-{
-    IEventTable<T> GetTable<T>(string streamName) where T : class;
-    bool HasStream(string streamName);
-}
-```
-
-#### 调用范例
-```csharp
-// 1. 定义事件数据模型 (Record)
+// 1. 强类型即时点查与流式 LINQ
 public record AdjustmentFactor(double BackAdjFactor);
+var table = EventSourceFactory.Create(resolver, "ashare.adj_factor.baostock");
 
-// 2. 自动构建并注册事件流
-var resolver = new StorageResolver("D:/QuantData");
-var adjProvider = EventSourceFactory.Build<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+// 点查: table.Get<T>(date, symbol)
+double factor = table.Get<AdjustmentFactor>(new DateTime(2021, 7, 21), "sh.600000").BackAdjFactor;
 
-var registry = new EventRegistry();
-registry.Register("adjustments", adjProvider);
+// 流式 LINQ: 当日截面投射
+var factors = table.As<AdjustmentFactor>(new DateTime(2021, 7, 21)).ToList();
 
-// 3. 消费端查询 (O(1))
-var provider = registry.GetTable<AdjustmentFactor>("adjustments");
-if (provider.TryGet(new DateTime(2025, 1, 15), "sh.600000", out var factor))
+// 2. 免定义动态链式索引: table[date, symbol][col]
+string factorStr = table[new DateTime(2021, 7, 21), "sh.600000"]["back_adj_factor"];
+
+// 3. 全市场日截面快照字典遍历: table[date]
+var todayEvents = table[new DateTime(2021, 7, 21)];
+foreach (var (symbol, rows) in todayEvents)
 {
-    Console.WriteLine($"复权因子: {factor!.BackAdjFactor}");
+    IDataRow row = rows[0];
+    Console.WriteLine($"{symbol} 因子: {row.GetDouble("back_adj_factor")}");
 }
 ```
 
 ---
 
-## 五、引擎与黑板上下文 (Engine & Execution Context)
+## 五、标的静态属性与维表系统 (Fields System)
+
+管理板块、概念、行业及标的静态资料等无时间戳平铺维表，系统提供统一的一维静态索引与双向倒排选股服务。
+
+### 1. IFieldTable (维表契约)
+```csharp
+namespace CarrotBacktesting.NET.Abstraction.Data;
+
+public interface IFieldTable : IEnumerable<KeyValuePair<string, IReadOnlyList<IDataRow>>>
+{
+    string Name { get; }
+    int Count { get; }
+    IEnumerable<string> Keys { get; }
+    IDataRow this[string key] { get; } // 索引器: table[symbol] -> IDataRow
+    bool TryGetRow(string key, out IDataRow? row);
+    bool TryGetRows(string key, out IReadOnlyList<IDataRow> rows);
+    IReadOnlyList<IDataRow> GetRows(string key);
+    IReadOnlyList<string> GetValues(string key, string column); // 1:N 多值便捷提取
+    IReadOnlyList<string> GetKeys(string value, string? column = null); // 动态倒排选股 (省略列名全表全列反查)
+
+    // 强类型即时点查与流式 LINQ
+    T Get<T>(string key) where T : class;
+    bool TryGet<T>(string key, out T? value) where T : class;
+    IReadOnlyList<string> GetKeys<T>(Func<T, bool> predicate) where T : class; // 强类型谓词倒排选股
+    IEnumerable<T> As<T>() where T : class;                                   // 强类型流式 LINQ
+    IEnumerable<KeyValuePair<string, T>> AsPairs<T>() where T : class;        // 强类型键值对流式 LINQ
+}
+```
+
+### 2. FieldSourceFactory (维表加载工厂)
+```csharp
+namespace CarrotBacktesting.NET.Data;
+
+public static class FieldSourceFactory
+{
+    public static IFieldTable Create(IStorageResolver resolver, string tableId, string? keyColumn = null);
+    public static IFieldTable Create(string storageRoot, string tableId, string? keyColumn = null);
+}
+```
+
+### 3. 调用范例
+```csharp
+var resolver = new StorageResolver("D:/QuantData");
+
+// 方式 A：免定义动态点查、多值提取与倒排选股
+var conceptTable = FieldSourceFactory.Create(resolver, "ashare.concept.eastmoney");
+string name = conceptTable["sh.600000"]["board_name"];            // 链式索引器
+var allConcepts = conceptTable.GetValues("sh.600000", "board_name"); // 1:N 多值便捷提取
+var pool1 = conceptTable.GetKeys("低空经济");                     // 全局倒排秒级圈选 (无需记忆列名)
+var pool2 = conceptTable.GetKeys("低空经济", "board_name");       // 精确指定列倒排
+
+// 遍历标的池
+foreach (var symbol in conceptTable.Keys) { ... }
+foreach (var (symbol, rows) in conceptTable) { ... }
+
+// 方式 B：强类型 Record 点查与 Lambda 选股（推荐）
+public record IndustryProfile(string BoardName, string BoardCode, string StockName); // 字段无序自适应
+var industryTable = FieldSourceFactory.Create(resolver, "ashare.industry.eastmoney");
+
+IndustryProfile ind = industryTable.Get<IndustryProfile>("sh.601958");
+string name = ind.BoardName;
+var pool = industryTable.GetKeys<IndustryProfile>(x => x.BoardName == "钼"); // 编译期类型安全，杜绝拼写错误
+
+// 方式 C：从配置清单批量装配（FieldRegistryFactory）
+var configs = new List<FieldTableConfig>
+{
+    new() { Name = "industry", TableId = "ashare.industry.eastmoney" },
+    new() { Name = "concept", TableId = "ashare.concept.eastmoney" }
+};
+IFieldRegistry fieldRegistry = FieldRegistryFactory.Create(resolver, configs);
+```
+
+---
+
+## 六、引擎与黑板上下文 (Engine & Execution Context)
 
 ### 1. IEngineContext (黑板上下文)
 策略层运行时的核心宿主环境，隔离具体回测撮合引擎或实盘网关细节。
@@ -482,8 +571,9 @@ public interface IEngineContext
 {
     DateTime CurrentTime { get; }       // 当前时间步
     int CurrentIndex { get; }           // 当前交易日行索引
-    ITimeseriesRegistry Data { get; }         // 行情矩阵输入
-    IEventRegistry Events { get; }       // 异构事件流
+    ITimeseriesRegistry Data { get; }   // 行情矩阵输入
+    IEventRegistry Events { get; }      // 异构事件流
+    IFieldRegistry Fields { get; }      // 标的静态属性与维表字典
     IBroker Broker { get; }             // 账户持仓与报单
     IMarketState Market { get; }        // 宏观市场决策黑板
 }
@@ -507,8 +597,8 @@ public interface IBroker
     void CancelOrder(string orderId);
     OrderStatus GetOrderStatus(string orderId);
     
-    event Action<ExecutionReport> OnOrderStatusChanged;
-    event Action<string, OrderStatus> OnTrade;
+    event Action<string, OrderStatus> OnOrderStatusChanged;
+    event Action<ExecutionReport> OnTrade;
 }
 ```
 
@@ -538,7 +628,8 @@ public interface IStrategy
     void OnStart(IEngineContext context) { }
     void OnUpdate(IEngineContext context);                              // 核心时步计算
     void OnStop(IEngineContext context) { }
-    void OnOrderChanged(IEngineContext context, ExecutionReport e) { }  // 报单状态回报
+    void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status) { } // 订单状态变更回报
+    void OnTrade(IEngineContext context, ExecutionReport e) { }         // 成交执行回报
     void OnPositionChanged(IEngineContext context, PositionEvent e) { } // 持仓状态变更
 }
 ```
@@ -558,14 +649,14 @@ public class MovingAverageCrossStrategy : IStrategy
         if (marketState?.SkipAlpha == true) return;
 
         // 2. 获取行情只读矩阵
-        var closeMatrix = context.Data.GetMatrix<double>("close");
+        var closeMatrix = context.Timeseries.GetMatrix<double>("close");
         int row = context.CurrentIndex;
         if (row < 20) return; // 历史数据不足
 
         // 3. 个股遍历与信号计算
-        for (int col = 0; col < context.Data.Metadata.SymbolCount; col++)
+        for (int col = 0; col < context.Timeseries.Metadata.Symbols.Count; col++)
         {
-            string symbol = context.Data.Metadata.Symbols[col];
+            string symbol = context.Timeseries.Metadata.Symbols[col];
             double todayClose = closeMatrix[row, col];
             double ma20 = 0.0;
             for (int k = 0; k < 20; k++) ma20 += closeMatrix[row - k, col];

@@ -42,10 +42,10 @@ public interface IBroker
     /// <summary>
     /// 当订单的生命周期状态发生变化时触发（例如：提交成功、被拒绝、撤销成功）。
     /// </summary>
-    event Action<ExecutionReport> OnOrderStatusChanged;
+    event Action<string, OrderStatus> OnOrderStatusChanged;
 
     /// <summary>
     /// 当订单发生实际成交（部分成交或全部成交）时触发。
     /// </summary>
-    event Action<string, OrderStatus> OnTrade;
+    event Action<ExecutionReport> OnTrade;
 }

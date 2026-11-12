@@ -85,8 +85,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(physicalData.Count > 0, "Physical Parquet data should contain rows.");
 
             // 2. 使用 ParquetTimeseriesSource 加载序列
-            var registry = new SimpleFieldRegistry();
-            using var source = new ParquetTimeseriesSource(parquetRoot, registry, tableId);
+            using var source = new ParquetTimeseriesSource(parquetRoot, tableId);
             
             // 测试元数据接口
             int symbolIdx = source.GetSymbolIndex(testSymbol);
@@ -118,8 +117,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string parquetRoot = Path.Combine(testDataRoot, "parquet");
             string tableId = "ashare.kline.1m.raw.custom";
 
-            var registry = new SimpleFieldRegistry();
-            using var source = new ParquetTimeseriesSource(parquetRoot, registry, tableId);
+            using var source = new ParquetTimeseriesSource(parquetRoot, tableId);
 
             Assert.IsTrue(source.Symbols.Count > 0, "Symbols should not be empty.");
             Assert.IsTrue(source.TradeDates.Count > 0, "TradeDates should not be empty.");

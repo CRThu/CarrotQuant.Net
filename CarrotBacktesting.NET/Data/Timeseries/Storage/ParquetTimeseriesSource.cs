@@ -22,16 +22,16 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 便捷构造函数。
         /// </summary>
-        public ParquetTimeseriesSource(string storageRoot, IFieldRegistry registry, string tableId, DateTime? startDate = null, DateTime? endDate = null)
-            : this(new StorageResolver(storageRoot), registry, tableId, startDate, endDate)
+        public ParquetTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+            : this(new StorageResolver(storageRoot), tableId, startDate, endDate)
         {
         }
 
         /// <summary>
         /// 核心构造函数，接收外部依赖注入的路径解析器。
         /// </summary>
-        public ParquetTimeseriesSource(IStorageResolver resolver, IFieldRegistry registry, string tableId, DateTime? startDate = null, DateTime? endDate = null)
-            : base(resolver, registry, tableId, startDate, endDate)
+        public ParquetTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null)
+            : base(resolver, tableId, startDate, endDate)
         {
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var dateSet = new HashSet<DateTime>();
@@ -41,13 +41,11 @@ namespace CarrotBacktesting.NET.Data
             foreach (var file in parquetFiles)
             {
                 using var fs = File.OpenRead(file);
-                var reader = ParquetReader.CreateAsync(fs).GetAwaiter().GetResult();
+                var reader = ParquetReaderExtensions.OpenParquetReaderSync(fs);
                 try
                 {
-                    var fields = reader.Schema.GetDataFields();
-                    var symField = fields.FirstOrDefault(f => f.Name.Equals("symbol", StringComparison.OrdinalIgnoreCase));
-                    var dtField = fields.FirstOrDefault(f => f.Name.Equals("datetime", StringComparison.OrdinalIgnoreCase))
-                               ?? fields.FirstOrDefault(f => f.Name.Equals("timestamp", StringComparison.OrdinalIgnoreCase));
+                    var symField = reader.Schema.FindDataFieldIgnoreCase(DefaultDataColumns.SymbolCandidates);
+                    var dtField = reader.Schema.FindDataFieldIgnoreCase(DefaultDataColumns.TimeCandidates);
 
                     if (symField != null)
                     {
@@ -82,7 +80,7 @@ namespace CarrotBacktesting.NET.Data
                 }
                 finally
                 {
-                    reader.DisposeAsync().GetAwaiter().GetResult();
+                    reader.DisposeSync();
                 }
             }
 
@@ -165,7 +163,7 @@ namespace CarrotBacktesting.NET.Data
             {
                 int[] defLevels = new int[rowCount];
                 var memBuf = (ReadOnlyMemory<char>[])buffer;
-                groupReader.ReadRawAsync<ReadOnlyMemory<char>>(dataField, memBuf, defLevels, null, default).GetAwaiter().GetResult();
+                groupReader.ReadRawSync(dataField, memBuf, defLevels);
                 for (int i = 0; i < rowCount; i++)
                 {
                     if (defLevels[i] == 0) memBuf[i] = ReadOnlyMemory<char>.Empty;
@@ -181,7 +179,7 @@ namespace CarrotBacktesting.NET.Data
                 else if (readType == typeof(bool)) ReadColumnRawTyped<bool>(groupReader, dataField, (bool[])buffer, defLevels, false);
                 else if (readType == typeof(DateTimeOffset))
                 {
-                    groupReader.ReadRawAsync<DateTimeOffset>(dataField, (DateTimeOffset[])buffer, defLevels, null, default).GetAwaiter().GetResult();
+                    groupReader.ReadRawSync(dataField, (DateTimeOffset[])buffer, defLevels);
                 }
                 else
                 {
@@ -195,7 +193,7 @@ namespace CarrotBacktesting.NET.Data
         private static void ReadColumnRawTyped<T>(ParquetRowGroupReader groupReader, DataField field, T[] buffer, int[] defLevels, T defaultValue)
             where T : unmanaged
         {
-            groupReader.ReadRawAsync<T>(field, buffer, defLevels, null, default).GetAwaiter().GetResult();
+            groupReader.ReadRawSync(field, buffer, defLevels);
             for (int i = 0; i < buffer.Length; i++)
             {
                 if (defLevels[i] == 0) buffer[i] = defaultValue;
@@ -302,7 +300,7 @@ namespace CarrotBacktesting.NET.Data
             {
                 FilePath = filePath;
                 _fs = File.OpenRead(filePath);
-                _parquetReader = ParquetReader.CreateAsync(_fs).GetAwaiter().GetResult();
+                _parquetReader = ParquetReaderExtensions.OpenParquetReaderSync(_fs);
                 _dataFields = _parquetReader.Schema.GetDataFields();
 
                 BuildIndex();
@@ -310,12 +308,11 @@ namespace CarrotBacktesting.NET.Data
 
             private void BuildIndex()
             {
-                var symField = _dataFields.FirstOrDefault(f => f.Name.Equals("symbol", StringComparison.OrdinalIgnoreCase))
-                    ?? throw new InvalidOperationException($"Required column 'symbol' not found in {FilePath}");
+                var symField = _parquetReader.Schema.FindDataFieldIgnoreCase(DefaultDataColumns.SymbolCandidates)
+                    ?? throw new InvalidOperationException($"Required symbol column not found in {FilePath}");
 
-                var dtField = _dataFields.FirstOrDefault(f => f.Name.Equals("datetime", StringComparison.OrdinalIgnoreCase))
-                           ?? _dataFields.FirstOrDefault(f => f.Name.Equals("timestamp", StringComparison.OrdinalIgnoreCase))
-                    ?? throw new InvalidOperationException($"Required column 'datetime' or 'timestamp' not found in {FilePath}");
+                var dtField = _parquetReader.Schema.FindDataFieldIgnoreCase(DefaultDataColumns.TimeCandidates)
+                    ?? throw new InvalidOperationException($"Required datetime column not found in {FilePath}");
 
                 var symList = new List<string>();
                 var dateList = new List<DateTime>();
@@ -389,7 +386,7 @@ namespace CarrotBacktesting.NET.Data
             public void Dispose()
             {
                 _columns.Clear();
-                _parquetReader.DisposeAsync().GetAwaiter().GetResult();
+                _parquetReader.DisposeSync();
                 _fs.Dispose();
             }
         }

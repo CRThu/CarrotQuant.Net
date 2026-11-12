@@ -264,7 +264,7 @@ namespace CarrotBacktesting.NET.Data
             if (format == "parquet")
             {
                 using var fs = File.OpenRead(sampleFile);
-                var reader = ParquetReader.CreateAsync(fs).GetAwaiter().GetResult();
+                var reader = ParquetReaderExtensions.OpenParquetReaderSync(fs);
                 try
                 {
                     foreach (var field in reader.Schema.GetDataFields())
@@ -281,7 +281,7 @@ namespace CarrotBacktesting.NET.Data
                 }
                 finally
                 {
-                    reader.DisposeAsync().GetAwaiter().GetResult();
+                    reader.DisposeSync();
                 }
             }
             else if (format == "csv")
@@ -295,9 +295,9 @@ namespace CarrotBacktesting.NET.Data
                     {
                         fieldNames.Add(col);
                         string lower = col.ToLowerInvariant();
-                        if (lower == "symbol") fieldTypes[col] = typeof(string);
-                        else if (lower == "datetime" || lower == "date") fieldTypes[col] = typeof(DateTime);
-                        else if (lower == "timestamp") fieldTypes[col] = typeof(long);
+                        if (DefaultDataColumns.SymbolCandidates.Contains(lower)) fieldTypes[col] = typeof(string);
+                        else if (lower == DefaultDataColumns.DateTime || lower == DefaultDataColumns.Date) fieldTypes[col] = typeof(DateTime);
+                        else if (lower == DefaultDataColumns.Timestamp) fieldTypes[col] = typeof(long);
                         else fieldTypes[col] = typeof(double);
                     }
                 }
@@ -314,11 +314,13 @@ namespace CarrotBacktesting.NET.Data
             return (schemaTypeStr ?? string.Empty).ToLowerInvariant() switch
             {
                 "string" => typeof(string),
-                "int64" => typeof(long),
-                "float64" => typeof(double),
-                "date" => typeof(DateTime),
-                "datetime" => typeof(DateTime),
-                "boolean" => typeof(bool),
+                "int64" or "long" => typeof(long),
+                "int32" or "int" => typeof(int),
+                "float64" or "double" => typeof(double),
+                "float32" or "float" => typeof(float),
+                "decimal" => typeof(decimal),
+                "date" or "datetime" => typeof(DateTime),
+                "boolean" or "bool" => typeof(bool),
                 _ => typeof(string)
             };
         }

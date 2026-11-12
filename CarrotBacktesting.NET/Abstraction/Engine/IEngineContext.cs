@@ -24,14 +24,14 @@ public interface IEngineContext
     ITimeseriesRegistry Timeseries { get; }
 
     /// <summary>
-    /// 便捷时序访问入口（等价于 <see cref="Timeseries"/>）。
-    /// </summary>
-    ITimeseriesRegistry Data => Timeseries;
-
-    /// <summary>
     /// 获取事件注册表，用于访问外部异构事件流表（如复权因子、公告、龙虎榜等）。
     /// </summary>
     IEventRegistry Events { get; }
+
+    /// <summary>
+    /// 获取字段与标的静态属性注册表，提供时序指标元数据自省与静态维表（如分类、标签、属性）的双向索引查询。
+    /// </summary>
+    IFieldRegistry Fields { get; }
 
     /// <summary>
     /// 获取经纪商接口，用于执行下单、撤单及查询账户资金持仓。

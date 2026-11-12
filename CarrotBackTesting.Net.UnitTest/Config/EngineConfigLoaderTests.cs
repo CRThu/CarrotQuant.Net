@@ -342,5 +342,229 @@ data:
             Assert.AreEqual("force", ts1.Refresh);
             Assert.AreEqual("lz4", ts1.Compression);
         }
+
+        [TestMethod]
+        public void TestLoadConfig_WithFieldsSection_InlineConfiguration()
+        {
+            string yaml = @"
+engine:
+  mode: ""backtest""
+data:
+  root: ""./data""
+  fields:
+    - name: ""industry""
+      table_id: ""ashare.industry.eastmoney""
+      key_column: ""symbol""
+      value_columns:
+        - ""board_name""
+    - name: ""concept""
+      table_id: ""ashare.concept.eastmoney""
+      key_column: ""symbol""
+      value_columns:
+        - ""board_name""
+";
+            string configPath = Path.Combine(_tempDir, "fields_test.yaml");
+            File.WriteAllText(configPath, yaml);
+
+            var config = EngineConfigLoader.Load(configPath);
+
+            Assert.IsNotNull(config.Data);
+            Assert.IsNotNull(config.Data.Fields);
+            Assert.AreEqual(2, config.Data.Fields.Count);
+
+            var f0 = config.Data.Fields[0];
+            Assert.AreEqual("industry", f0.Name);
+            Assert.AreEqual("ashare.industry.eastmoney", f0.TableId);
+            Assert.AreEqual("symbol", f0.KeyColumn);
+            Assert.IsNotNull(f0.ValueColumns);
+            Assert.AreEqual(1, f0.ValueColumns.Count);
+            Assert.AreEqual("board_name", f0.ValueColumns[0]);
+
+            var f1 = config.Data.Fields[1];
+            Assert.AreEqual("concept", f1.Name);
+            Assert.AreEqual("ashare.concept.eastmoney", f1.TableId);
+            Assert.AreEqual("symbol", f1.KeyColumn);
+            Assert.IsNotNull(f1.ValueColumns);
+            Assert.AreEqual("board_name", f1.ValueColumns[0]);
+        }
+
+        [TestMethod]
+        public void TestEngineConfigSerializer_Roundtrip()
+        {
+            var original = new EngineConfig
+            {
+                Engine = new EngineSettings
+                {
+                    Mode = "backtest",
+                    StartDate = new DateTime(2025, 1, 1),
+                    EndDate = new DateTime(2025, 12, 31),
+                    InitialCash = 888888.0
+                },
+                Data = new DataConfig
+                {
+                    Root = _tempDir,
+                    Timeseries = new System.Collections.Generic.List<TimeseriesConfig>
+                    {
+                        new() { TableId = "ashare.kline.1d.raw.baostock", Cache = true, PageSize = 4096, Compression = "lz4" }
+                    },
+                    Events = new System.Collections.Generic.List<EventStreamConfig>
+                    {
+                        new() { Name = "adjustments", TableId = "ashare.adj_factor.baostock" }
+                    },
+                    Fields = new System.Collections.Generic.List<FieldTableConfig>
+                    {
+                        new() { Name = "industry", TableId = "ashare.industry.eastmoney", KeyColumn = "symbol" }
+                    }
+                }
+            };
+
+            string filePath = Path.Combine(_tempDir, "roundtrip.yaml");
+            EngineConfigSerializer.Save(original, filePath);
+
+            var loaded = EngineConfigLoader.Load(filePath);
+
+            Assert.AreEqual(original.Engine.Mode, loaded.Engine.Mode);
+            Assert.AreEqual(original.Engine.StartDate, loaded.Engine.StartDate);
+            Assert.AreEqual(original.Engine.EndDate, loaded.Engine.EndDate);
+            Assert.AreEqual(original.Engine.InitialCash, loaded.Engine.InitialCash);
+
+            Assert.AreEqual(1, loaded.Data.Timeseries.Count);
+            Assert.AreEqual("ashare.kline.1d.raw.baostock", loaded.Data.Timeseries[0].TableId);
+            Assert.IsTrue(loaded.Data.Timeseries[0].Cache);
+
+            Assert.AreEqual(1, loaded.Data.Events.Count);
+            Assert.AreEqual("adjustments", loaded.Data.Events[0].Name);
+
+            Assert.AreEqual(1, loaded.Data.Fields.Count);
+            Assert.AreEqual("industry", loaded.Data.Fields[0].Name);
+        }
+
+        [TestMethod]
+        public void TestDataConfigSerializer_SharedDataYaml_Roundtrip()
+        {
+            var dataConfig = new DataConfig
+            {
+                Root = "./shared_data",
+                Timeseries = new System.Collections.Generic.List<TimeseriesConfig>
+                {
+                    new() { TableId = "kline_1d" }
+                }
+            };
+
+            string sharedPath = Path.Combine(_tempDir, "shared_data.yaml");
+            EngineConfigSerializer.Save(dataConfig, sharedPath);
+
+            // 主配置引用该共享文件
+            var mainConfig = new EngineConfig
+            {
+                Engine = new EngineSettings { Mode = "living" }
+            };
+            string mainYaml = $@"
+engine:
+  mode: ""living""
+data: ""{sharedPath.Replace("\\", "/")}""
+";
+            string mainPath = Path.Combine(_tempDir, "main.yaml");
+            File.WriteAllText(mainPath, mainYaml);
+
+            var loaded = EngineConfigLoader.Load(mainPath);
+            Assert.AreEqual("living", loaded.Engine.Mode);
+            Assert.AreEqual(1, loaded.Data.Timeseries.Count);
+            Assert.AreEqual("kline_1d", loaded.Data.Timeseries[0].TableId);
+        }
+
+        [TestMethod]
+        public void Test_ExhaustiveAllParameters_YamlAndCode_Coverage()
+        {
+            // 穷举全量参数：包含 24 个参数的非默认显式定义
+            var builder = new Helper.TestYamlConfigBuilder()
+                .WithEngineSettings(
+                    mode: "living",
+                    start: new DateTime(2025, 2, 1, 9, 30, 0),
+                    end: new DateTime(2025, 11, 30, 15, 0, 0),
+                    cash: 3000000.5)
+                .WithRoot(_tempDir)
+                .AddTimeseries(
+                    tableId: "ashare.kline.1d.raw.baostock",
+                    cache: true,
+                    pageSize: 2048,
+                    refresh: "auto",
+                    compression: "none",
+                    commitBatchSize: 32,
+                    maxPages: 8,
+                    prefetch: true,
+                    fields: new System.Collections.Generic.List<string> { "open", "high", "low", "close", "volume" })
+                .AddEvent(
+                    name: "adj",
+                    tableId: "ashare.adj_factor.baostock",
+                    fields: new System.Collections.Generic.List<string> { "back_adj_factor" })
+                .AddField(
+                    name: "ind",
+                    tableId: "ashare.industry.eastmoney",
+                    keyColumn: "symbol",
+                    valueColumns: new System.Collections.Generic.List<string> { "board_name", "stock_name" });
+
+            // 1. 保存为物理 YAML 文件
+            string fullYamlPath = builder.Save(_tempDir, "exhaustive.yaml");
+            string yamlText = File.ReadAllText(fullYamlPath);
+
+            // 2. 校验生成的 YAML 文本中是否包含了所有符合规范的蛇形命名字段
+            StringAssert.Contains(yamlText, "mode: living");
+            StringAssert.Contains(yamlText, "initial_cash: 3000000.5");
+            StringAssert.Contains(yamlText, "table_id: ashare.kline.1d.raw.baostock");
+            StringAssert.Contains(yamlText, "cache: true");
+            StringAssert.Contains(yamlText, "page_size: 2048");
+            StringAssert.Contains(yamlText, "refresh: auto");
+            StringAssert.Contains(yamlText, "compression: none");
+            StringAssert.Contains(yamlText, "commit_batch_size: 32");
+            StringAssert.Contains(yamlText, "max_pages: 8");
+            StringAssert.Contains(yamlText, "prefetch: true");
+            StringAssert.Contains(yamlText, "name: adj");
+            StringAssert.Contains(yamlText, "table_id: ashare.adj_factor.baostock");
+            StringAssert.Contains(yamlText, "key_column: symbol");
+
+            // 3. 通过 EngineConfigLoader 反序列化并逐个字段严格断言
+            var loaded = EngineConfigLoader.Load(fullYamlPath);
+
+            // EngineSettings 参数 (4/4)
+            Assert.AreEqual("living", loaded.Engine.Mode);
+            Assert.AreEqual(new DateTime(2025, 2, 1, 9, 30, 0), loaded.Engine.StartDate);
+            Assert.AreEqual(new DateTime(2025, 11, 30, 15, 0, 0), loaded.Engine.EndDate);
+            Assert.AreEqual(3000000.5, loaded.Engine.InitialCash, 1e-4);
+
+            // DataConfig 参数 (4/4)
+            Assert.AreEqual(Path.GetFullPath(_tempDir), loaded.Data.Root);
+            Assert.AreEqual(1, loaded.Data.Timeseries.Count);
+            Assert.AreEqual(1, loaded.Data.Events.Count);
+            Assert.AreEqual(1, loaded.Data.Fields.Count);
+
+            // TimeseriesConfig 参数 (9/9)
+            var ts = loaded.Data.Timeseries[0];
+            Assert.AreEqual("ashare.kline.1d.raw.baostock", ts.TableId);
+            Assert.IsTrue(ts.Cache);
+            Assert.AreEqual(2048, ts.PageSize);
+            Assert.AreEqual("auto", ts.Refresh);
+            Assert.AreEqual("none", ts.Compression);
+            Assert.AreEqual(32, ts.CommitBatchSize);
+            Assert.AreEqual(8, ts.MaxPages);
+            Assert.IsTrue(ts.Prefetch);
+            Assert.IsNotNull(ts.Fields);
+            CollectionAssert.AreEqual(new[] { "open", "high", "low", "close", "volume" }, ts.Fields);
+
+            // EventStreamConfig 参数 (3/3)
+            var ev = loaded.Data.Events[0];
+            Assert.AreEqual("adj", ev.Name);
+            Assert.AreEqual("ashare.adj_factor.baostock", ev.TableId);
+            Assert.IsNotNull(ev.Fields);
+            CollectionAssert.AreEqual(new[] { "back_adj_factor" }, ev.Fields);
+
+            // FieldTableConfig 参数 (4/4)
+            var fd = loaded.Data.Fields[0];
+            Assert.AreEqual("ind", fd.Name);
+            Assert.AreEqual("ashare.industry.eastmoney", fd.TableId);
+            Assert.AreEqual("symbol", fd.KeyColumn);
+            Assert.IsNotNull(fd.ValueColumns);
+            CollectionAssert.AreEqual(new[] { "board_name", "stock_name" }, fd.ValueColumns);
+        }
     }
 }

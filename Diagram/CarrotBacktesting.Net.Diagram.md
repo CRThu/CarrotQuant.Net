@@ -5,8 +5,17 @@ graph TD
             StorageResolver[StorageResolver]
         end
 
-        subgraph FieldsSubsystem [Fields - 字段与标的属性]
-            SimpleFieldRegistry[SimpleFieldRegistry]
+        subgraph FieldsSubsystem [Fields - 标的属性与维表子系统]
+            FieldSourceFactory[FieldSourceFactory]
+            FieldTable[FieldTable]
+            FieldRegistry[FieldRegistry]
+            FieldRegistryFactory[FieldRegistryFactory]
+            IFieldRegistry[IFieldRegistry]
+
+            FieldSourceFactory --> FieldTable
+            FieldTable --> FieldRegistry
+            FieldRegistryFactory --> FieldRegistry
+            FieldRegistry --> IFieldRegistry
         end
 
         subgraph TimeseriesSubsystem [Timeseries - 时序子系统]
@@ -45,25 +54,27 @@ graph TD
             EventSourceFactory[EventSourceFactory]
             CsvEventSource[CsvEventSource]
             ParquetEventSource[ParquetEventSource]
-            EventEntityMapper[EventEntityMapper]
-            EventTable[EventTable&lt;T&gt;]
+            EntityMapper[EntityMapper]
+            EventTable[EventTable]
             EventRegistry[EventRegistry]
-            IEventTable[IEventTable&lt;T&gt;]
+            EventRegistryFactory[EventRegistryFactory]
+            IEventTable[IEventTable]
             IEventRegistry[IEventRegistry]
 
             EventSourceFactory --> CsvEventSource
             EventSourceFactory --> ParquetEventSource
-            EventEntityMapper --> CsvEventSource
-            EventEntityMapper --> ParquetEventSource
+            EntityMapper --> CsvEventSource
+            EntityMapper --> ParquetEventSource
             CsvEventSource --> EventTable
             ParquetEventSource --> EventTable
             EventTable --> IEventTable
             EventRegistry --> IEventTable
+            EventRegistryFactory --> EventRegistry
         end
 
         StorageResolver --> TimeseriesSourceFactory
         StorageResolver --> EventSourceFactory
-        SimpleFieldRegistry --> TimeseriesRegistry
+        StorageResolver --> FieldSourceFactory
     end
 
     subgraph EngineExecutionLayer [Engine and Execution Layer - 引擎与执行层]
@@ -79,6 +90,7 @@ graph TD
         LivingEngine --> IEngine
         ITimeseriesRegistry --> IEngine
         IEventRegistry --> IEngine
+        IFieldRegistry --> IEngine
         IEngine --> IExchangeGateway
         IEngine --> IBroker
         IEngine --> IMonitor

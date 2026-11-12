@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using CarrotBacktesting.NET.Abstraction.Data;
-using CarrotBacktesting.NET.Data.Views;
 
 namespace CarrotBacktesting.NET.Data
 {

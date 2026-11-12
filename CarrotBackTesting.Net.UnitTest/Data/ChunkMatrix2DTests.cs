@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Abstraction.Data;
-using CarrotBacktesting.NET.Data.Views;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Data

@@ -14,7 +14,6 @@ namespace CarrotBacktesting.NET.Data
     public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesWriter, IDisposable
     {
         private readonly IMarketMetadata _metadata;
-        private readonly IFieldRegistry _registry;
         private readonly Func<string, Type, ITimeseriesCacheManager> _managerFactory;
         private readonly ConcurrentDictionary<string, ITimeseriesCacheManager> _managers = new(StringComparer.OrdinalIgnoreCase);
         private bool _disposed;
@@ -23,24 +22,21 @@ namespace CarrotBacktesting.NET.Data
         public IMarketMetadata Metadata => _metadata;
 
         /// <inheritdoc />
-        public bool HasField(string fieldName) => _registry.FieldExists(fieldName);
+        public bool HasField(string fieldName) => _metadata.FieldNames.Any(f => f.Equals(fieldName, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>
         /// 初始化 <see cref="TimeseriesRegistry"/> 实例（纯粹的工厂装配模式，彻底解耦底层存储细节）。
         /// </summary>
         /// <param name="metadata">市场元数据。</param>
-        /// <param name="registry">字段注册表。</param>
         /// <param name="managerFactory">单字段分块管理器解析工厂委托。</param>
         public TimeseriesRegistry(
             IMarketMetadata metadata,
-            IFieldRegistry registry,
             Func<string, Type, ITimeseriesCacheManager> managerFactory)
         {
             ArgumentNullException.ThrowIfNull(metadata);
             _metadata = metadata is DynamicMarketMetadata dynamicMeta 
                 ? dynamicMeta 
                 : new DynamicMarketMetadata(metadata);
-            _registry = registry ?? throw new ArgumentNullException(nameof(registry));
             _managerFactory = managerFactory ?? throw new ArgumentNullException(nameof(managerFactory));
         }
 
@@ -49,7 +45,6 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public TimeseriesRegistry(
             ITimeseriesSource source, 
-            IFieldRegistry registry, 
             string storageRoot,
             int pageSize = 4096,
             bool enableCache = false,
@@ -60,7 +55,7 @@ namespace CarrotBacktesting.NET.Data
             int maxPages = 4,
             bool prefetch = true,
             bool isLive = false)
-            : this(source, registry, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
+            : this(source, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
         {
         }
 
@@ -69,7 +64,6 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public TimeseriesRegistry(
             IMarketMetadata metadata, 
-            IFieldRegistry registry, 
             ITimeseriesSource source, 
             string storageRoot,
             int pageSize = 4096,
@@ -81,7 +75,7 @@ namespace CarrotBacktesting.NET.Data
             int maxPages = 4,
             bool prefetch = true,
             bool isLive = false)
-            : this(metadata, registry, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
+            : this(metadata, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
         {
         }
 
@@ -128,13 +122,13 @@ namespace CarrotBacktesting.NET.Data
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             // 1. 字段注册路由校验
-            if (!_registry.FieldExists(fieldName))
+            if (!HasField(fieldName))
             {
-                throw new KeyNotFoundException($"Field '{fieldName}' not registered in registry.");
+                throw new KeyNotFoundException($"Field '{fieldName}' not registered in metadata.");
             }
 
             // 2. 类型检查 (确保 requested T 与 field 实际类型一致)
-            var fieldType = _registry.GetFieldType(fieldName);
+            var fieldType = _metadata.GetFieldType(fieldName);
             if (fieldType != typeof(T))
             {
                 throw new InvalidOperationException($"Type mismatch for field '{fieldName}'. Expected {fieldType}, requested {typeof(T)}.");
@@ -155,12 +149,12 @@ namespace CarrotBacktesting.NET.Data
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            if (!_registry.FieldExists(fieldName))
+            if (!HasField(fieldName))
             {
-                throw new KeyNotFoundException($"Field '{fieldName}' not registered in registry.");
+                throw new KeyNotFoundException($"Field '{fieldName}' not registered in metadata.");
             }
 
-            var fieldType = _registry.GetFieldType(fieldName);
+            var fieldType = _metadata.GetFieldType(fieldName);
             if (fieldType != typeof(T))
             {
                 throw new InvalidOperationException($"Type mismatch for field '{fieldName}'. Expected {fieldType}, requested {typeof(T)}.");

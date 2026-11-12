@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace CarrotBacktesting.NET.Data.Views
+namespace CarrotBacktesting.NET.Abstraction.Data
 {
     /// <summary>
     /// 专用于行访问的静态视图类型，直接包装 <see cref="Span{T}"/> 以实现零开销访问。

@@ -99,16 +99,16 @@ public class DoubleMaStrategy : IStrategy
         if (market?.SkipAlpha == true) return;
 
         // 2. 获取行情矩阵与事件流
-        IReadOnlyMatrix2D<double> closeMatrix = context.Data.GetMatrix<double>("close");
-        IEventTable<AdjustmentFactor> adjTable = context.Events.GetTable<AdjustmentFactor>("adjustments");
+        IReadOnlyMatrix2D<double> closeMatrix = context.Timeseries.GetMatrix<double>("close");
+        IEventTable adjTable = context.Events.GetTable("adjustments");
 
         int currentRow = context.CurrentIndex;
         if (currentRow < 20) return; // 历史数据不足
 
         // 3. 遍历全市场股票进行指标计算与信号触发
-        for (int col = 0; col < context.Data.Metadata.SymbolCount; col++)
+        for (int col = 0; col < context.Timeseries.Metadata.Symbols.Count; col++)
         {
-            string symbol = context.Data.Metadata.Symbols[col];
+            string symbol = context.Timeseries.Metadata.Symbols[col];
             double todayClose = closeMatrix[currentRow, col];
 
             // 简单均线计算
@@ -135,7 +135,7 @@ public class DoubleMaStrategy : IStrategy
         }
     }
 
-    public void OnOrderChanged(IEngineContext context, ExecutionReport report)
+    public void OnTrade(IEngineContext context, ExecutionReport report)
     {
         // 监听物理成交回报
         Console.WriteLine($"[成交回报] 单号: {report.OrderId}, 品种: {report.Symbol}, 均价: {report.FillPrice}, 数量: {report.FillQuantity}");
@@ -160,16 +160,20 @@ EngineConfig config = EngineConfigLoader.Load("configs/strategy_ma.yaml");
 var resolver = new StorageResolver(config.Data.Root);
 
 // 3. 构造数据供给器 (ITimeseriesRegistry)
-var fieldRegistry = new SimpleFieldRegistry();
-var seriesSource = new ParquetTimeseriesSource(resolver, "ashare.kline.1d.raw.baostock", fieldRegistry);
-var timeseriesRegistry = new TimeseriesRegistry(seriesSource, fieldRegistry, config.Data.Root);
+var seriesSource = new ParquetTimeseriesSource(resolver, "ashare.kline.1d.raw.baostock");
+var timeseriesRegistry = new TimeseriesRegistry(seriesSource, config.Data.Root);
 
 // 4. 挂载事件流
 var eventRegistry = new EventRegistry();
-var adjTable = EventSourceFactory.Create<AdjustmentFactor>(resolver, "ashare.adj_factor.baostock");
+var adjTable = EventSourceFactory.Create(resolver, "ashare.adj_factor.baostock");
 eventRegistry.Register("adjustments", adjTable);
 
-// 5. 编排策略管线并运行引擎
+// 5. 挂载标的静态维表 (IFieldRegistry)
+var fieldRegistry = new FieldRegistry();
+var industryTable = FieldSourceFactory.Create(resolver, "ashare.industry.eastmoney");
+fieldRegistry.Register("industry", industryTable);
+
+// 6. 编排策略管线并运行引擎
 var strategy = new DoubleMaStrategy();
 // (后续装配 BacktestingEngine 并调用 engine.Run())
 ```
