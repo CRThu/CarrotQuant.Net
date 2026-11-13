@@ -18,15 +18,15 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 
 ## 一、配置设计规范
 
-1. **蛇形命名标准 (`snake_case`)**：配置参数采用标准蛇形命名（如 `start_date`, `initial_cash`, `table_id`）。
-2. **“三大支柱”浅嵌套结构**：
+1. **蛇形命名标准 (`snake_case`)**：配置参数采用标准蛇形命名（如 `start_date`, `initial_cash`, `table_id`；策略管线节点参数遵循驼峰或原样保留）。
+2. **“四大支柱”浅嵌套结构**：
    - **`engine:`**：运行环境与生命周期（模式、起止时间）；
    - **`broker:`**：账户资金、交易制度、成本滑点、风控与资产乘数；
-   - **`data:`**：时序数据、事件流、静态维表。
+   - **`data:`**：时序数据、事件流、静态维表；
+   - **`pipeline:`**：（可选）策略流水线拓扑编排、多 Alpha 生产与执行阶段。
    - 保持两层以内结构，避免深层缩进导致的排版与解析错误。
 3. **多态统一入口**：
-   - 统一使用 `data` 字段，不额外引入辅助配置项；
-   - `data` 节点支持两种赋值形式：直接赋字符串表示外部文件路径；直接赋字典表示内嵌配置对象。
+   - `data` 与 `pipeline` 字段均支持多态赋值：直接赋字符串表示引用外部独立 yaml 文件相对路径；直接赋映射对象表示直接内嵌配置。
 4. **单一事实来源与零隐式逻辑**：
    - 系统计算严格遵循配置给定值，绝不在底层隐式猜列或自动回退查维表；
    - 动态特化一律由用户显式挂载对应的 Hook 承载。
@@ -35,7 +35,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 
 ## 二、配置参数全量字典 (Parameter Reference)
 
-### 1. `engine` 运行环境设置 (`EngineSettings`)
+### 1. `engine` 运行环境设置 (`EngineConfig`)
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
@@ -128,7 +128,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 ### 2. 代码配置与 Hook 挂载示例
 
 ```csharp
-var config = new EngineConfig
+var config = new SessionConfig
 {
     Broker = new BrokerConfig
     {
@@ -270,15 +270,15 @@ data:
 
 ## 七、配置序列化与动态导出 (Serialization & Saving)
 
-系统不仅支持通过 `EngineConfigLoader.Load()` 反序列化加载配置，还通过 `EngineConfigSerializer` 提供了对等的序列化与落盘保存能力，形成完整的生命周期闭环：
+系统配置支持通过实例方法直接序列化与落盘保存，底层由权威唯一的 `YamlSerializer` 驱动，形成完整的生命周期闭环：
 
 ```csharp
 using CarrotBacktesting.NET.Config;
 
 // 1. 在代码中构建或修改配置对象
-var config = new EngineConfig
+var config = new SessionConfig
 {
-    Engine = new EngineSettings { Mode = "backtest" },
+    Engine = new EngineConfig { Mode = "backtest" },
     Broker = new BrokerConfig
     {
         InitialCash = 1000000.0,
@@ -297,13 +297,13 @@ var config = new EngineConfig
 };
 
 // 2. 导出为规范的标准下划线 YAML 文本
-string yaml = EngineConfigSerializer.Serialize(config);
+string yaml = config.ToYaml();
 
 // 3. 或直接落盘保存至物理文件
-EngineConfigSerializer.Save(config, "configs/strategy_auto.yaml");
+config.Save("configs/strategy_auto.yaml");
 ```
 
-针对测试环境与自动化脚本，测试工具箱提供了 Fluent 模式的 `TestYamlConfigBuilder`，支持链式组合、无硬编码地动态构建测试 YAML。
+针对测试环境与自动化脚本，推荐直接使用 C# 11 原始字符串字面量（Raw String Literals `"""..."""`）声明标准 YAML 文本，或通过标准数据结构（`Dictionary<string, object>`）由底层 `YamlSerializer` 序列化，杜绝领域模型自产自销造成的同源循环论证。
 
 ---
 
@@ -319,9 +319,9 @@ using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
 
 // 1. 直接通过 C# 对象声明完整配置
-var config = new EngineConfig
+var config = new SessionConfig
 {
-    Engine = new EngineSettings
+    Engine = new EngineConfig
     {
         Mode = "backtest",
         StartDate = new DateTime(2025, 1, 1),

@@ -21,28 +21,28 @@
 
 ## 一、配置层 (CarrotBacktesting.NET.Config)
 
-### 1. EngineConfigLoader
+### 1. SessionConfigLoader
 配置加载入口静态类，负责将 YAML 文件反序列化为强类型配置对象并完成文件路径的层级解析。
 
 ```csharp
 namespace CarrotBacktesting.NET.Config;
 
-public static class EngineConfigLoader
+public static class SessionConfigLoader
 {
     /// <summary>
     /// 从指定 YAML 配置文件加载，自动完成多态路径外链与相对路径归一化。
     /// </summary>
     /// <param name="configFilePath">YAML 配置文件物理路径。</param>
-    /// <returns>规范化后的完整 EngineConfig 实例。</returns>
+    /// <returns>规范化后的完整 SessionConfig 实例。</returns>
     /// <exception cref="ArgumentException">路径为空时抛出。</exception>
     /// <exception cref="FileNotFoundException">主文件或引用的外部数据配置文件不存在时抛出。</exception>
-    public static EngineConfig Load(string configFilePath);
+    public static SessionConfig Load(string configFilePath);
 }
 ```
 
 ### 2. 配置模型
-- **`EngineConfig`**: 顶层聚合配置三大支柱：`EngineSettings Engine`、`BrokerConfig Broker` 与 `DataConfig Data`。
-- **`EngineSettings`**: `Mode` (`backtest`/`living`)、`StartDate` (DateTime?)、`EndDate` (DateTime?)。
+- **`SessionConfig`**: 顶层聚合配置四大支柱：`EngineConfig Engine`、`BrokerConfig Broker`、`DataConfig Data` 与可选的 `PipelineConfiguration? Pipeline`。
+- **`EngineConfig`**: 引擎自身参数：`Mode` (`backtest`/`living`)、`StartDate` (DateTime?)、`EndDate` (DateTime?)。
 - **`BrokerConfig`**: `InitialCash` (double)、`SettleDays` (int: 0 即 T+0, 1 即 T+1)、`AllowShort` (bool)、`FeeRate` (double)、`MinFee` (double)、`Slippage` (double)、`VolumeLimit` (double)、`CheckLimit` (bool)、`Multiplier` (double)、`MarginRate` (double)，对称覆盖 Hook，以及内置静态市场预设（`Universal`, `AStock`, `Futures`, `Crypto`）。
 - **`DataConfig`**: `Root` (string)、`Timeseries` (`List<TimeseriesConfig>`)、`Events` (`List<EventStreamConfig>`)、`Fields` (`List<FieldTableConfig>`)。
 - **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)、`Cache` (bool)、`PageSize` (int)、`Refresh` (string)、`Compression` (string)、`CommitBatchSize` (int)、`MaxPages` (int)、`Prefetch` (bool)。
@@ -53,8 +53,8 @@ public static class EngineConfigLoader
 
 #### 调用范例
 ```csharp
-// 加载策略主配置（自动识别并合并外链的 shared/data.yaml）
-EngineConfig config = EngineConfigLoader.Load("configs/strategy_cta.yaml");
+// 加载策略主配置（自动识别并合并外链的 shared/data.yaml 与 pipeline.yaml）
+SessionConfig config = SessionConfig.Load("configs/strategy_cta.yaml");
 
 Console.WriteLine($"回测模式: {config.Engine.Mode}, 初始资金: {config.Broker.InitialCash}, 结算: T+{config.Broker.SettleDays}");
 Console.WriteLine($"数据根目录: {config.Data.Root}");
@@ -68,7 +68,13 @@ engine:
   mode: "backtest"            # backtest / living
   start_date: "2025-01-01"    # 回测起始时间
   end_date: "2025-03-31"      # 回测结束时间
+
+broker:
   initial_cash: 1000000.0     # 初始资金
+  settle_days: 1              # 结算天数 (0 即 T+0, 1 即 T+1)
+  fee_rate: 0.0003            # 手续费率
+  min_fee: 5.0                # 最低手续费
+  slippage: 0.001             # 滑点
 
 data:
   root: "./data"              # 数据存储根目录
@@ -96,7 +102,10 @@ data:
     mode: "backtest"
     start_date: "2025-01-01"
     end_date: "2025-03-31"
+
+  broker:
     initial_cash: 2000000.0
+    settle_days: 1
 
   data: "shared/data.yaml"    # 外部数据配置文件路径
   ```
@@ -572,13 +581,14 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 public interface IEngineContext
 {
-    DateTime CurrentTime { get; }       // 当前时间步
-    int CurrentIndex { get; }           // 当前交易日行索引
-    ITimeseriesRegistry Data { get; }   // 行情矩阵输入
-    IEventRegistry Events { get; }      // 异构事件流
-    IFieldRegistry Fields { get; }      // 标的静态属性与维表字典
-    IBroker Broker { get; }             // 账户持仓与报单
-    IMarketState Market { get; }        // 宏观市场决策黑板
+    DateTime CurrentTime { get; }         // 当前时间步
+    int CurrentIndex { get; }             // 当前交易日行索引
+    ITimeseriesRegistry Timeseries { get; } // 全局时序注册表与行情矩阵输入
+    IEventRegistry Events { get; }        // 异构事件流
+    IFieldRegistry Fields { get; }        // 标的静态属性与维表字典
+    IBroker Broker { get; }               // 账户持仓与报单
+    IMarketState Market { get; }          // 宏观市场决策黑板
+    T? GetExtension<T>() where T : class; // 引擎扩展组件与插件查询
 }
 ```
 

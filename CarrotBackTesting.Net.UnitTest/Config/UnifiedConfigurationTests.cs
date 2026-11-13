@@ -28,12 +28,12 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         }
 
         [TestMethod]
-        public void TestEngineConfig_FacadeMethods_RoundTrip()
+        public void TestSessionConfig_FacadeMethods_RoundTrip()
         {
             // 1. Code-First 强类型构建
-            var original = new EngineConfig
+            var original = new SessionConfig
             {
-                Engine = new EngineSettings
+                Engine = new EngineConfig
                 {
                     Mode = "backtest",
                     StartDate = new DateTime(2025, 1, 1),
@@ -61,7 +61,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             StringAssert.Contains(yaml, "initial_cash: 888888");
 
             // 3. 静态门面 FromYaml 反序列化
-            var loadedFromYaml = EngineConfig.FromYaml(yaml, _tempDir);
+            var loadedFromYaml = SessionConfig.FromYaml(yaml, _tempDir);
             Assert.AreEqual("backtest", loadedFromYaml.Engine.Mode);
             Assert.AreEqual(888888.0, loadedFromYaml.Broker.InitialCash);
             Assert.AreEqual(Path.GetFullPath(Path.Combine(_tempDir, "./my_data")), loadedFromYaml.Data.Root);
@@ -71,7 +71,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             original.Save(filePath);
             Assert.IsTrue(File.Exists(filePath));
 
-            var loadedFromFile = EngineConfig.Load(filePath);
+            var loadedFromFile = SessionConfig.Load(filePath);
             Assert.AreEqual("backtest", loadedFromFile.Engine.Mode);
             Assert.AreEqual(888888.0, loadedFromFile.Broker.InitialCash);
         }
@@ -149,7 +149,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
                     - type: "DemoStrategy"
                 """;
 
-            var config = EngineConfig.FromYaml(allInOneYaml, _tempDir);
+            var config = SessionConfig.FromYaml(allInOneYaml, _tempDir);
 
             // 验证引擎参数
             Assert.AreEqual("backtest", config.Engine.Mode);
@@ -168,23 +168,19 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestUnifiedConfig_WithExternalPipeline()
         {
-            // 1. 创建子目录并写入独立的 pipeline.yaml
+            // 1. 创建子目录并写入独立的 pipeline.yaml（使用标准 YAML 文本，解耦领域模型序列化）
             string strategiesDir = Path.Combine(_tempDir, "strategies");
             Directory.CreateDirectory(strategiesDir);
 
-            var externalPipeline = new PipelineConfiguration
-            {
-                Name = "ExternalAlpha",
-                Mode = PipelineMode.Parallel,
-                Concurrent = true,
-                Pipeline = new List<StrategyNodeConfiguration>
-                {
-                    new() { Type = "Alpha1" },
-                    new() { Type = "Alpha2" }
-                }
-            };
             string pipelinePath = Path.Combine(strategiesDir, "alpha.yaml");
-            externalPipeline.Save(pipelinePath);
+            File.WriteAllText(pipelinePath, """
+                name: "ExternalAlpha"
+                mode: "parallel"
+                concurrent: true
+                pipeline:
+                  - type: "Alpha1"
+                  - type: "Alpha2"
+                """);
 
             // 2. 创建主配置文件，通过 pipeline 多态外链引用相对路径
             string mainYaml = """
@@ -201,7 +197,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             File.WriteAllText(mainConfigPath, mainYaml);
 
             // 3. 一键加载并断言级联解析
-            var config = EngineConfig.Load(mainConfigPath);
+            var config = SessionConfig.Load(mainConfigPath);
 
             Assert.IsNotNull(config.Pipeline);
             Assert.AreEqual("ExternalAlpha", config.Pipeline.Name);
@@ -236,6 +232,35 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Assert.IsTrue(File.Exists(savePath));
             string content = File.ReadAllText(savePath);
             StringAssert.Contains(content, "root: ./shared_store");
+        }
+
+        [TestMethod]
+        public void TestYamlSerializer_DirectApi_EdgeCasesAndConventions()
+        {
+            // 1. 空白或空内容安全返回 default (null)
+            Assert.IsNull(YamlSerializer.Deserialize<SessionConfig>("   "));
+            Assert.IsNull(YamlSerializer.Deserialize<PipelineConfiguration>(""));
+
+            // 2. 文件不存在显式抛出 FileNotFoundException
+            Assert.ThrowsException<FileNotFoundException>(() =>
+            {
+                YamlSerializer.Load<SessionConfig>(Path.Combine(_tempDir, "non_existent.yaml"));
+            });
+
+            // 3. 基础泛型对象落盘与加载往返
+            string testFile = Path.Combine(_tempDir, "direct_test.yaml");
+            var sample = new Dictionary<string, object>
+            {
+                ["key"] = "value",
+                ["number"] = 42
+            };
+            YamlSerializer.Save(sample, testFile);
+            Assert.IsTrue(File.Exists(testFile));
+
+            var loadedDict = YamlSerializer.Load<Dictionary<string, object>>(testFile);
+            Assert.IsNotNull(loadedDict);
+            Assert.AreEqual("value", loadedDict["key"]);
+            Assert.AreEqual("42", loadedDict["number"].ToString());
         }
     }
 }

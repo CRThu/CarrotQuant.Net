@@ -1,31 +1,21 @@
 using System;
 using System.IO;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
 
 namespace CarrotBacktesting.NET.Config
 {
     /// <summary>
-    /// YAML 配置加载器，负责将 YAML 文件或文本反序列化为强类型 EngineConfig 并自动解析相对路径。
+    /// YAML 会话配置加载器，负责将 YAML 文件或文本反序列化为强类型 SessionConfig 并自动解析相对路径。
     /// 支持直接内嵌 data/pipeline 配置，以及通过多态指定外部独立 yaml 相对路径实现跨策略复用。
+    /// 底层反序列化由全系统唯一的 <see cref="YamlSerializer"/> 统一驱动。
     /// </summary>
-    public static class EngineConfigLoader
+    public static class SessionConfigLoader
     {
-        private static readonly IDeserializer Deserializer = new DeserializerBuilder()
-            .WithNamingConvention(UnderscoredNamingConvention.Instance)
-            .IgnoreUnmatchedProperties()
-            .Build();
-
-        private static readonly ISerializer IntermediateSerializer = new SerializerBuilder()
-            .WithNamingConvention(UnderscoredNamingConvention.Instance)
-            .Build();
-
         /// <summary>
-        /// 从指定 YAML 路径加载引擎与数据配置，自动解析相对路径。
+        /// 从指定 YAML 路径加载会话配置，自动解析相对路径与多态外链。
         /// </summary>
         /// <param name="configFilePath">YAML 配置文件物理路径。</param>
-        /// <returns>解析并完成物理路径合并的完整 EngineConfig 实例。</returns>
-        public static EngineConfig Load(string configFilePath)
+        /// <returns>解析并完成物理路径合并的完整 SessionConfig 实例。</returns>
+        public static SessionConfig Load(string configFilePath)
         {
             if (string.IsNullOrWhiteSpace(configFilePath))
             {
@@ -45,12 +35,12 @@ namespace CarrotBacktesting.NET.Config
         }
 
         /// <summary>
-        /// 从 YAML 格式文本字符串反序列化引擎配置模型，支持指定相对路径基准目录。
+        /// 从 YAML 格式文本字符串反序列化会话配置模型，支持指定相对路径基准目录。
         /// </summary>
         /// <param name="yamlContent">YAML 文本内容。</param>
         /// <param name="baseDirectory">相对路径解析基准目录（若为空则默认为当前工作目录）。</param>
-        /// <returns>解析并完成物理路径合并的完整 EngineConfig 实例。</returns>
-        public static EngineConfig FromYaml(string yamlContent, string? baseDirectory = null)
+        /// <returns>解析并完成物理路径合并的完整 SessionConfig 实例。</returns>
+        public static SessionConfig FromYaml(string yamlContent, string? baseDirectory = null)
         {
             if (string.IsNullOrWhiteSpace(yamlContent))
             {
@@ -62,11 +52,11 @@ namespace CarrotBacktesting.NET.Config
                 : Path.GetFullPath(baseDirectory);
 
             // 首先探测各节点是外部文件路径（标量字符串）还是内嵌配置（映射对象）
-            var rawConfig = Deserializer.Deserialize<RawEngineConfig>(yamlContent) ?? new RawEngineConfig();
+            var rawConfig = YamlSerializer.Deserialize<RawSessionConfig>(yamlContent) ?? new RawSessionConfig();
 
-            var config = new EngineConfig
+            var config = new SessionConfig
             {
-                Engine = rawConfig.Engine ?? new EngineSettings(),
+                Engine = rawConfig.Engine ?? new EngineConfig(),
                 Broker = rawConfig.Broker ?? new BrokerConfig()
             };
 
@@ -88,7 +78,7 @@ namespace CarrotBacktesting.NET.Config
                 DataConfig? externalData = null;
                 try
                 {
-                    externalData = Deserializer.Deserialize<DataConfig>(dataYamlContent);
+                    externalData = YamlSerializer.Deserialize<DataConfig>(dataYamlContent);
                 }
                 catch
                 {
@@ -97,10 +87,17 @@ namespace CarrotBacktesting.NET.Config
 
                 if (externalData == null || string.IsNullOrWhiteSpace(externalData.Root))
                 {
-                    var wrapper = Deserializer.Deserialize<DataWrapper>(dataYamlContent);
-                    if (wrapper?.Data != null)
+                    try
                     {
-                        externalData = wrapper.Data;
+                        var wrapper = YamlSerializer.Deserialize<DataWrapper>(dataYamlContent);
+                        if (wrapper?.Data != null)
+                        {
+                            externalData = wrapper.Data;
+                        }
+                    }
+                    catch
+                    {
+                        // ignored
                     }
                 }
 
@@ -119,8 +116,8 @@ namespace CarrotBacktesting.NET.Config
             else if (rawConfig.Data != null)
             {
                 // 内嵌 data 配置
-                string intermediateYaml = IntermediateSerializer.Serialize(rawConfig.Data);
-                config.Data = Deserializer.Deserialize<DataConfig>(intermediateYaml) ?? new DataConfig();
+                string intermediateYaml = YamlSerializer.Serialize(rawConfig.Data);
+                config.Data = YamlSerializer.Deserialize<DataConfig>(intermediateYaml) ?? new DataConfig();
 
                 if (!string.IsNullOrWhiteSpace(config.Data.Root))
                 {
@@ -147,16 +144,16 @@ namespace CarrotBacktesting.NET.Config
             else if (rawConfig.Pipeline != null)
             {
                 // 内嵌 pipeline 配置
-                string intermediateYaml = IntermediateSerializer.Serialize(rawConfig.Pipeline);
+                string intermediateYaml = YamlSerializer.Serialize(rawConfig.Pipeline);
                 config.Pipeline = PipelineConfigLoader.FromYaml(intermediateYaml);
             }
 
             return config;
         }
 
-        private class RawEngineConfig
+        private class RawSessionConfig
         {
-            public EngineSettings? Engine { get; set; }
+            public EngineConfig? Engine { get; set; }
             public BrokerConfig? Broker { get; set; }
             public object? Data { get; set; }
             public object? Pipeline { get; set; }

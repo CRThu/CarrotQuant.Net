@@ -3,7 +3,6 @@ using System.IO;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
-using CarrotBackTesting.Net.UnitTest.Helper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Data
@@ -105,21 +104,31 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
 
-            // 使用 TestYamlConfigBuilder 动态构造规范的测试 YAML 配置文件
-            string yamlPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest", start: new DateTime(2025, 1, 1), end: new DateTime(2025, 12, 31))
-                .WithRoot(csvRoot)
-                .AddTimeseries(tableId: "ashare.kline.1d.raw.baostock", cache: false, pageSize: 4096, maxPages: 4, prefetch: false)
-                .Save(_tempDir, "strategy_ts.yaml");
+            // 输入为标准 YAML 文本，避免通过领域模型自转产生的循环依赖
+            string yamlPath = Path.Combine(_tempDir, "strategy_ts.yaml");
+            File.WriteAllText(yamlPath, $"""
+                engine:
+                  mode: backtest
+                  start_date: "2025-01-01 00:00:00"
+                  end_date: "2025-12-31 00:00:00"
+                data:
+                  root: "{csvRoot.Replace('\\', '/')}"
+                  timeseries:
+                    - table_id: ashare.kline.1d.raw.baostock
+                      cache: false
+                      page_size: 4096
+                      max_pages: 4
+                      prefetch: false
+                """);
 
-            // 1. 通过 EngineConfigLoader 解析生成的 YAML 配置文件
-            var engineConfig = EngineConfigLoader.Load(yamlPath);
-            Assert.IsNotNull(engineConfig.Data);
-            Assert.AreEqual(1, engineConfig.Data.Timeseries.Count);
+            // 1. 通过 SessionConfig.Load 解析生成的 YAML 配置文件
+            var sessionConfig = SessionConfig.Load(yamlPath);
+            Assert.IsNotNull(sessionConfig.Data);
+            Assert.AreEqual(1, sessionConfig.Data.Timeseries.Count);
 
             // 2. 根据解析出的配置模型装配 TimeseriesRegistry
-            var resolver = new StorageResolver(engineConfig.Data.Root);
-            using var registry = (IDisposable)TimeseriesRegistryFactory.Create(resolver, engineConfig.Data.Timeseries[0]);
+            var resolver = new StorageResolver(sessionConfig.Data.Root);
+            using var registry = (IDisposable)TimeseriesRegistryFactory.Create(resolver, sessionConfig.Data.Timeseries[0]);
             var tsRegistry = (ITimeseriesRegistry)registry;
 
             // 3. 验证数据读取

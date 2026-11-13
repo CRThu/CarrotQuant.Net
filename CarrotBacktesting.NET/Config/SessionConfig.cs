@@ -4,15 +4,19 @@ using System.Collections.Generic;
 namespace CarrotBacktesting.NET.Config
 {
     /// <summary>
-    /// 引擎与数据顶层配置模型，对应 YAML 配置文件。
-    /// data 属性采用多态统一入口：既支持直接内嵌配置对象，也支持赋值为外部共享配置文件的相对路径（如 "shared/data.yaml"）。
+    /// 全局会话配置根（SessionConfig Root）。
+    /// 作为全任务总配置（All-in-one Configuration）的一体化管理契约，统筹四大正交子系统：
+    /// 1. <see cref="Engine"/>: 引擎运行模式与起止时间 (<see cref="EngineConfig"/>)
+    /// 2. <see cref="Broker"/>: 虚拟经纪商资金、费率与风控 (<see cref="BrokerConfig"/>)
+    /// 3. <see cref="Data"/>: 数据层物理存储与时序/事件/维表挂载 (<see cref="DataConfig"/>)
+    /// 4. <see cref="Pipeline"/>: 策略流水线拓扑编排 (<see cref="PipelineConfiguration"/>)
     /// </summary>
-    public class EngineConfig
+    public class SessionConfig
     {
         /// <summary>
         /// 引擎运行参数设置（模式、起止时间）。
         /// </summary>
-        public EngineSettings Engine { get; set; } = new();
+        public EngineConfig Engine { get; set; } = new();
 
         /// <summary>
         /// 虚拟经纪商设置（资金账户、结算天数、成本滑点、风控与资产乘数）。
@@ -26,45 +30,44 @@ namespace CarrotBacktesting.NET.Config
 
         /// <summary>
         /// 策略流水线配置（可选）。支持直接内嵌配置对象，也支持赋值为外部共享配置文件的相对路径（如 "shared/pipeline.yaml"）。
-        /// 赋予 EngineConfig 作为全任务总配置（All-in-one Configuration）的一体化管理能力。
         /// </summary>
         public PipelineConfiguration? Pipeline { get; set; }
 
         #region 统一门面方法 (Unified Facade APIs)
 
         /// <summary>
-        /// 从指定 YAML 配置文件物理路径加载引擎配置，自动解析相对路径与多态外链配置。
+        /// 从指定 YAML 配置文件物理路径加载会话配置，自动解析相对路径与多态外链配置。
         /// </summary>
         /// <param name="configFilePath">YAML 配置文件物理路径。</param>
-        /// <returns>解析并完成物理路径合并的完整 EngineConfig 实例。</returns>
-        public static EngineConfig Load(string configFilePath) => EngineConfigLoader.Load(configFilePath);
+        /// <returns>解析并完成物理路径合并的完整 SessionConfig 实例。</returns>
+        public static SessionConfig Load(string configFilePath) => SessionConfigLoader.Load(configFilePath);
 
         /// <summary>
-        /// 从 YAML 格式文本字符串反序列化引擎配置模型，支持传入可选的基础目录解析相对路径。
+        /// 从 YAML 格式文本字符串反序列化会话配置模型，支持传入可选的基础目录解析相对路径。
         /// </summary>
         /// <param name="yamlContent">YAML 文本内容。</param>
         /// <param name="baseDirectory">相对路径解析基准目录（若为 null 则缺省为当前运行目录）。</param>
-        /// <returns>反序列化并完成路径归一化的 EngineConfig 实例。</returns>
-        public static EngineConfig FromYaml(string yamlContent, string? baseDirectory = null) => EngineConfigLoader.FromYaml(yamlContent, baseDirectory);
+        /// <returns>反序列化并完成路径归一化的 SessionConfig 实例。</returns>
+        public static SessionConfig FromYaml(string yamlContent, string? baseDirectory = null) => SessionConfigLoader.FromYaml(yamlContent, baseDirectory);
 
         /// <summary>
-        /// 将当前引擎配置实例序列化为标准下划线命名规范的 YAML 文本内容。
+        /// 将当前会话配置实例序列化为标准下划线命名规范的 YAML 文本内容。
         /// </summary>
-        public string ToYaml() => EngineConfigSerializer.Serialize(this);
+        public string ToYaml() => YamlSerializer.Serialize(this);
 
         /// <summary>
-        /// 将当前引擎配置实例序列化并保存至指定物理文件。
+        /// 将当前会话配置实例序列化并保存至指定物理文件。
         /// </summary>
         /// <param name="filePath">输出文件物理路径。</param>
-        public void Save(string filePath) => EngineConfigSerializer.Save(this, filePath);
+        public void Save(string filePath) => YamlSerializer.Save(this, filePath);
 
         #endregion
     }
 
     /// <summary>
-    /// 引擎运行参数设置。
+    /// 引擎运行参数设置（纯引擎自身配置）。
     /// </summary>
-    public class EngineSettings
+    public class EngineConfig
     {
         public string Mode { get; set; } = "backtest";
         public DateTime? StartDate { get; set; }
@@ -99,13 +102,13 @@ namespace CarrotBacktesting.NET.Config
         /// <summary>
         /// 将当前独立数据配置序列化为标准下划线命名规范的 YAML 文本内容。
         /// </summary>
-        public string ToYaml() => EngineConfigSerializer.Serialize(this);
+        public string ToYaml() => YamlSerializer.Serialize(this);
 
         /// <summary>
         /// 将当前独立数据配置序列化并保存至指定物理文件。
         /// </summary>
         /// <param name="filePath">输出文件物理路径。</param>
-        public void Save(string filePath) => EngineConfigSerializer.Save(this, filePath);
+        public void Save(string filePath) => YamlSerializer.Save(this, filePath);
     }
 
     /// <summary>

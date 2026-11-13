@@ -35,7 +35,7 @@ namespace CarrotBacktesting.NET.Data
         /// 自动根据表 ID 解析底层物理格式（CSV/Parquet）自适应构建数据源。
         /// </summary>
         /// <param name="resolver">物理存储寻址解析器。</param>
-        /// <param name="config">时序配置（来自 EngineConfig.Data.Timeseries）。</param>
+        /// <param name="config">时序配置（来自 SessionConfig.Data.Timeseries）。</param>
         /// <param name="startDate">可选回测起始日期（用于物理年份分区剪枝）。</param>
         /// <param name="endDate">可选回测结束日期（用于物理年份分区剪枝）。</param>
         /// <param name="isLive">是否为实盘环境（实盘下一票否决关闭预读）。</param>

@@ -15,7 +15,7 @@ namespace CarrotBacktesting.NET.Data
         /// 根据存储寻址解析器与配置清单批量加载事件表并构建 IEventRegistry。
         /// </summary>
         /// <param name="resolver">物理存储寻址解析器。</param>
-        /// <param name="configs">事件流配置列表（来自 EngineConfig.Data.Events）。若为 null 或空，返回空注册中心。</param>
+        /// <param name="configs">事件流配置列表（来自 SessionConfig.Data.Events）。若为 null 或空，返回空注册中心。</param>
         /// <param name="startDate">可选回测起始日期（用于物理年份分区剪枝）。</param>
         /// <param name="endDate">可选回测结束日期（用于物理年份分区剪枝）。</param>
         /// <returns>已装配完成的 IEventRegistry 实例。</returns>

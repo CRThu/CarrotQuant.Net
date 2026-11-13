@@ -343,7 +343,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ### 3. Broker 交易规则与对称 Hook 架构
 
-系统采用配置模型（`EngineConfig`, `BrokerConfig`, `StorageConfig`）结合对称 Hook 拦截机制：
+系统采用配置模型（`SessionConfig`, `EngineConfig`, `BrokerConfig`, `DataConfig`）结合对称 Hook 拦截机制：
 1. **多资产数学状态转移统一**：
    - 占用资金 / 保证金：$|\text{Volume}| \times \text{Price} \times \text{Multiplier} \times \text{MarginRate}$
    - 浮动盈亏：$\text{Direction} \times (\text{CurrentPrice} - \text{OpenPrice}) \times \text{Volume} \times \text{Multiplier}$
@@ -466,12 +466,16 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 ## 六、YAML 配置规范 (`CarrotBacktesting.NET.Config`)
 
 系统采用蛇形命名（`snake_case`）YAML 文件驱动引擎与数据层；相对路径均以当前配置文件所在物理目录为基准自动合并为绝对路径。
+顶层聚合为 `SessionConfig` 全局会话配置根，统筹四大正交支柱：
 
-- `engine`: 运行模式 (`mode: backtest/living`)、起止时间 (`start_date`, `end_date`)、初始资金 (`initial_cash`)。
+- `engine`: 运行模式 (`mode: backtest/living`)、起止时间 (`start_date`, `end_date`)。
+- `broker`: 账户初始资金 (`initial_cash`)、结算制度 (`settle_days`)、做空许可 (`allow_short`)、费率滑点 (`fee_rate`, `min_fee`, `slippage`)、流动性风控与合约保证金 (`volume_limit`, `check_limit`, `multiplier`, `margin_rate`)。
 - `data`: 数据层统一多态入口（单一事实来源）：
   - **外链独立配置**: 赋外部文件相对路径字符串（如 `data: "shared/data.yaml"`），支持多策略复用；
   - **直接内嵌配置**: 内嵌数据层映射对象，包含 `root`、`timeseries`（含 `table_id` 与可选 `fields`）、`events`（含 `name` 与 `table_id`）、`fields`（含 `name`、`table_id`、可选 `key_column` 与 `value_columns`）。
-- **配置模板与完整 YAML 范例**: 详见 [docs/API.md](docs/API.md#3-yaml-配置范例)。
+- `pipeline`: （可选）策略管线拓扑多态入口：支持外链相对路径字符串（如 `pipeline: "shared/pipeline.yaml"`）或直接内嵌流水线节点映射。
+- **统一门面 API**: `SessionConfig.Load(path)`、`SessionConfig.FromYaml(yaml, baseDir)`、`config.ToYaml()`、`config.Save(path)`，底层由权威唯一的 `YamlSerializer` 单点驱动。
+- **配置模板与完整 YAML 范例**: 详见 [docs/API.md](docs/API.md#3-yaml-配置范例) 与 [docs/configuration.md](docs/configuration.md)。
 
 ---
 

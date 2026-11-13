@@ -62,6 +62,8 @@ engine:
   mode: "backtest"
   start_date: "2025-01-01"
   end_date: "2025-03-31"
+
+broker:
   initial_cash: 1000000.0
 
 # 外部数据配置文件路径
@@ -148,8 +150,8 @@ public class DoubleMaStrategy : IStrategy
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
 
-// 1. 加载 YAML 配置（自动处理相对路径归一化）
-EngineConfig config = EngineConfigLoader.Load("configs/strategy_ma.yaml");
+// 1. 加载 YAML 会话配置（自动处理相对路径归一化）
+SessionConfig config = SessionConfig.Load("configs/strategy_ma.yaml");
 
 // 2. 初始化物理存储调度器
 var resolver = new StorageResolver(config.Data.Root);

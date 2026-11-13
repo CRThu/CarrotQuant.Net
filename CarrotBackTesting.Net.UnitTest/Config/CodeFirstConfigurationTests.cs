@@ -25,15 +25,15 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         public record IndustryItem(string BoardCode, string BoardName, string Symbol, string StockName);
 
         [TestMethod]
-        public void CodeConfig_FullEngineConfig_Assembly_ShouldSucceed()
+        public void CodeConfig_FullSessionConfig_Assembly_ShouldSucceed()
         {
-            // 【用法一：强类型顶层对象配置法】
+            // 【用法一：强类型顶层会话对象配置法】
             // 直接通过 C# 对象声明完整回测与数据配置，不创建任何物理文件
             string storageRoot = GetTestDataRoot();
 
-            var config = new EngineConfig
+            var config = new SessionConfig
             {
-                Engine = new EngineSettings
+                Engine = new EngineConfig
                 {
                     Mode = "backtest",
                     StartDate = new DateTime(2025, 1, 1),

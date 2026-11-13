@@ -14,7 +14,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
     public record EastmoneyIndustry(string BoardName, string BoardCode, string StockName);
 
     [TestClass]
-    public class SimpleFieldRegistryTests
+    public class FieldRegistryTests
     {
         private static string GetTestDataRoot()
         {

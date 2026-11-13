@@ -5,7 +5,6 @@ using System.Linq;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
-using CarrotBackTesting.Net.UnitTest.Helper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Data
@@ -106,21 +105,26 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
 
-            // 使用 TestYamlConfigBuilder 动态构造规范的测试 YAML 配置文件
-            string yamlPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithRoot(csvRoot)
-                .AddEvent(name: "adjustments", tableId: "ashare.adj_factor.baostock")
-                .Save(_tempDir, "strategy_events.yaml");
+            // 输入为标准 YAML 文本，避免通过领域模型自转产生的循环依赖
+            string yamlPath = Path.Combine(_tempDir, "strategy_events.yaml");
+            File.WriteAllText(yamlPath, $"""
+                engine:
+                  mode: backtest
+                data:
+                  root: "{csvRoot.Replace('\\', '/')}"
+                  events:
+                    - name: adjustments
+                      table_id: ashare.adj_factor.baostock
+                """);
 
-            // 1. 通过 EngineConfigLoader 解析 YAML 配置文件
-            var engineConfig = EngineConfigLoader.Load(yamlPath);
-            Assert.IsNotNull(engineConfig.Data);
-            Assert.AreEqual(1, engineConfig.Data.Events.Count);
+            // 1. 通过 SessionConfig.Load 解析 YAML 配置文件
+            var sessionConfig = SessionConfig.Load(yamlPath);
+            Assert.IsNotNull(sessionConfig.Data);
+            Assert.AreEqual(1, sessionConfig.Data.Events.Count);
 
             // 2. 根据解析出的配置模型装配 EventRegistry
-            var resolver = new StorageResolver(engineConfig.Data.Root);
-            var registry = EventRegistryFactory.Create(resolver, engineConfig.Data.Events);
+            var resolver = new StorageResolver(sessionConfig.Data.Root);
+            var registry = EventRegistryFactory.Create(resolver, sessionConfig.Data.Events);
 
             // 3. 验证数据读取
             Assert.IsTrue(registry.HasTable("adjustments"));

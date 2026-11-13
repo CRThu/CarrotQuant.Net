@@ -47,11 +47,6 @@ public sealed class PipelineConfiguration
     /// </summary>
     public List<StrategyNodeConfiguration> Pipeline { get; set; } = new();
 
-    private static readonly ISerializer YamlSerializer = new SerializerBuilder()
-        .WithNamingConvention(CamelCaseNamingConvention.Instance)
-        .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
-        .Build();
-
     /// <summary>
     /// 从指定物理路径加载并反序列化策略管线 YAML 配置文件。
     /// </summary>
@@ -70,16 +65,7 @@ public sealed class PipelineConfiguration
     /// <summary>
     /// 将当前管线配置实例序列化并保存至指定物理文件。
     /// </summary>
-    public void Save(string filePath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-        string? dir = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
-        File.WriteAllText(filePath, ToYaml());
-    }
+    public void Save(string filePath) => YamlSerializer.Save(this, filePath);
 }
 
 /// <summary>

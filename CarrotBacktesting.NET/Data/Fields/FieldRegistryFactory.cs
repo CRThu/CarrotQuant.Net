@@ -15,7 +15,7 @@ namespace CarrotBacktesting.NET.Data
         /// 根据存储寻址解析器与配置清单批量加载维表并构建 IFieldRegistry。
         /// </summary>
         /// <param name="resolver">物理存储寻址解析器。</param>
-        /// <param name="configs">维表配置列表（来自 EngineConfig.Data.Fields）。若为 null 或空，返回空注册中心。</param>
+        /// <param name="configs">维表配置列表（来自 SessionConfig.Data.Fields）。若为 null 或空，返回空注册中心。</param>
         /// <returns>已装配完成的 IFieldRegistry 实例。</returns>
         public static IFieldRegistry Create(
             IStorageResolver resolver,

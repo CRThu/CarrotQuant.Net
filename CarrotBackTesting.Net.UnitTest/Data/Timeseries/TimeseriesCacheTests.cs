@@ -53,7 +53,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int width = 20;
 
             var store = new TimeseriesCache(_tempDir, tableId, pageSize);
-            Assert.IsFalse(store.HasCache(fieldName));
+            Assert.IsFalse(store.HasField(fieldName));
 
             // 1. 准备原始测试数据与 Buffer
             var symbols = new List<string>();
@@ -74,9 +74,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 2. 写入缓存
             store.WriteMatrix(fieldName, buffer, symbols, tradeDates);
-            Assert.IsTrue(store.HasCache(fieldName));
+            Assert.IsTrue(store.HasField(fieldName));
 
-            string fieldDir = store.GetFieldCacheDir(fieldName);
+            string fieldDir = store.GetFieldStoreDir(fieldName);
             Assert.IsTrue(File.Exists(Path.Combine(fieldDir, "chunk_0.bin")));
             Assert.IsTrue(File.Exists(Path.Combine(fieldDir, "chunk_1.bin")));
             Assert.IsTrue(File.Exists(Path.Combine(fieldDir, "chunk_2.bin")));
@@ -253,7 +253,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             store.WriteMatrix(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new DateTime[10]);
 
             // 篡改文件大小模拟损坏
-            string chunkPath = Path.Combine(store.GetFieldCacheDir(fieldName), "chunk_0.bin");
+            string chunkPath = Path.Combine(store.GetFieldStoreDir(fieldName), "chunk_0.bin");
             File.WriteAllBytes(chunkPath, new byte[10]); // 故意截断为 10 字节
 
             Assert.ThrowsException<InvalidDataException>(() => store.LoadMatrix<double>(fieldName));
@@ -269,15 +269,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             store.WriteMatrix("close", buffer, new[] { "s1", "s2" }, new DateTime[5]);
             store.WriteMatrix("open", buffer, new[] { "s1", "s2" }, new DateTime[5]);
 
-            Assert.IsTrue(store.HasCache("close"));
-            Assert.IsTrue(store.HasCache("open"));
+            Assert.IsTrue(store.HasField("close"));
+            Assert.IsTrue(store.HasField("open"));
 
             store.Clear("close");
-            Assert.IsFalse(store.HasCache("close"));
-            Assert.IsTrue(store.HasCache("open"));
+            Assert.IsFalse(store.HasField("close"));
+            Assert.IsTrue(store.HasField("open"));
 
             store.ClearTable();
-            Assert.IsFalse(store.HasCache("open"));
+            Assert.IsFalse(store.HasField("open"));
         }
 
         [TestMethod]
@@ -311,7 +311,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 1. 验证磁盘压缩效果（LZ4 应将 819KB 至少压缩 50% 以上）
-            string chunkFile = Path.Combine(store.GetFieldCacheDir(fieldName), "chunk_0.bin");
+            string chunkFile = Path.Combine(store.GetFieldStoreDir(fieldName), "chunk_0.bin");
             var fi = new FileInfo(chunkFile);
             Assert.IsTrue(fi.Length < rawByteCount / 2, $"LZ4 压缩效果未达标: 原始 {rawByteCount} 字节, 压缩后 {fi.Length} 字节");
 
@@ -360,7 +360,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 无压缩模式下，文件大小必须完全等于 raw 字节
-            string chunkFile = Path.Combine(store.GetFieldCacheDir(fieldName), "chunk_0.bin");
+            string chunkFile = Path.Combine(store.GetFieldStoreDir(fieldName), "chunk_0.bin");
             var fi = new FileInfo(chunkFile);
             Assert.AreEqual(expectedBytes, fi.Length, "无压缩模式下 chunk 文件大小必须精确等于 raw 字节");
 
@@ -635,7 +635,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestIsCacheCompatible_EdgeCases_ReturnsFalse()
+        public void TestIsCompatible_EdgeCases_ReturnsFalse()
         {
             const string tableId = "compat_test_table";
             const string fieldName = "close";
@@ -651,22 +651,22 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 1. 类型不匹配
-            Assert.IsFalse(store.IsCacheCompatible(fieldName, symbols, typeof(int), out _));
+            Assert.IsFalse(store.IsCompatible(fieldName, symbols, typeof(int), out _));
 
             // 2. PageSize 不匹配 (用 pageSize=2048 的 store 检查)
             var store2048 = new TimeseriesCache(_tempDir, tableId, 2048);
-            Assert.IsFalse(store2048.IsCacheCompatible(fieldName, symbols, typeof(double), out _));
+            Assert.IsFalse(store2048.IsCompatible(fieldName, symbols, typeof(double), out _));
 
             // 3. 股票代码集合缩减
             var reducedSymbols = new List<string> { "sh.600000" };
-            Assert.IsFalse(store.IsCacheCompatible(fieldName, reducedSymbols, typeof(double), out _));
+            Assert.IsFalse(store.IsCompatible(fieldName, reducedSymbols, typeof(double), out _));
 
             // 4. 股票代码前缀不守恒 (顺序或内容不一致)
             var alteredSymbols = new List<string> { "sh.600001", "sh.600000" };
-            Assert.IsFalse(store.IsCacheCompatible(fieldName, alteredSymbols, typeof(double), out _));
+            Assert.IsFalse(store.IsCompatible(fieldName, alteredSymbols, typeof(double), out _));
 
             // 5. 不存在的字段
-            Assert.IsFalse(store.IsCacheCompatible("non_existent", symbols, typeof(double), out _));
+            Assert.IsFalse(store.IsCompatible("non_existent", symbols, typeof(double), out _));
         }
 
         [TestMethod]

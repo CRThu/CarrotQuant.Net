@@ -2,13 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CarrotBacktesting.NET.Config;
-using CarrotBackTesting.Net.UnitTest.Helper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Config
 {
     [TestClass]
-    public class EngineConfigLoaderTests
+    public class SessionConfigLoaderTests
     {
         private string _tempDir = "";
 
@@ -31,15 +30,29 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestLoadInlineDataConfig_WithRoot()
         {
-            string configPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest", start: new DateTime(2025, 1, 1), end: new DateTime(2025, 3, 31))
-                .WithBrokerSettings(initialCash: 500000.0)
-                .WithRoot("./my_data")
-                .AddTimeseries("ashare.kline.1m.raw.custom", fields: ["open", "close", "volume"])
-                .AddEvent("adjustments", "ashare.adj_factor.baostock")
-                .Save(_tempDir, "config.yaml");
+            string configPath = Path.Combine(_tempDir, "config.yaml");
+            // 输入为标准规范的 YAML 文本，彻底解耦待测类自身反向生成的循环依赖
+            File.WriteAllText(configPath, """
+                engine:
+                  mode: backtest
+                  start_date: "2025-01-01 00:00:00"
+                  end_date: "2025-03-31 00:00:00"
+                broker:
+                  initial_cash: 500000.0
+                data:
+                  root: "./my_data"
+                  timeseries:
+                    - table_id: ashare.kline.1m.raw.custom
+                      fields:
+                        - open
+                        - close
+                        - volume
+                  events:
+                    - name: adjustments
+                      table_id: ashare.adj_factor.baostock
+                """);
 
-            var config = EngineConfigLoader.Load(configPath);
+            var config = SessionConfigLoader.Load(configPath);
 
             Assert.IsNotNull(config.Engine);
             Assert.AreEqual("backtest", config.Engine.Mode);
@@ -69,22 +82,28 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             string sharedDir = Path.Combine(_tempDir, "shared");
             Directory.CreateDirectory(sharedDir);
 
-            // 1. 使用 TestDataConfigBuilder 流式生成共享 data.yaml
-            string dataYamlPath = new TestDataConfigBuilder()
-                .WithRoot("../data_store")
-                .AddTimeseries("ashare.kline.1d.raw.baostock")
-                .AddEvent("dragons", "ashare.dragon_tiger.eastmoney")
-                .Save(sharedDir, "data.yaml");
+            string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
+            File.WriteAllText(dataYamlPath, """
+                root: "../data_store"
+                timeseries:
+                  - table_id: ashare.kline.1d.raw.baostock
+                events:
+                  - name: dragons
+                    table_id: ashare.dragon_tiger.eastmoney
+                """);
 
             // 2. 创建通过多态 data 字段直接引用外部路径的主配置文件
-            string mainConfigPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "living")
-                .WithBrokerSettings(initialCash: 2000000.0)
-                .WithExternalData("shared/data.yaml")
-                .Save(_tempDir, "strategy.yaml");
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, """
+                engine:
+                  mode: living
+                broker:
+                  initial_cash: 2000000.0
+                data: "shared/data.yaml"
+                """);
 
             // 3. 加载并断言
-            var config = EngineConfigLoader.Load(mainConfigPath);
+            var config = SessionConfigLoader.Load(mainConfigPath);
 
             Assert.AreEqual("living", config.Engine.Mode);
             Assert.AreEqual(2000000.0, config.Broker.InitialCash);
@@ -107,18 +126,22 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             string sharedDir = Path.Combine(_tempDir, "shared");
             Directory.CreateDirectory(sharedDir);
 
-            string dataYamlPath = new TestDataConfigBuilder()
-                .WrappedInDataNode(true)
-                .WithRoot("../data_store")
-                .AddTimeseries("ashare.kline.1d.raw.baostock")
-                .Save(sharedDir, "data_wrapped.yaml");
+            string dataYamlPath = Path.Combine(sharedDir, "data_wrapped.yaml");
+            File.WriteAllText(dataYamlPath, """
+                data:
+                  root: "../data_store"
+                  timeseries:
+                    - table_id: "ashare.kline.1d.raw.baostock"
+                """);
 
-            string mainConfigPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithExternalData("shared/data_wrapped.yaml")
-                .Save(_tempDir, "strategy.yaml");
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, """
+                engine:
+                  mode: backtest
+                data: "shared/data_wrapped.yaml"
+                """);
 
-            var config = EngineConfigLoader.Load(mainConfigPath);
+            var config = SessionConfigLoader.Load(mainConfigPath);
 
             Assert.IsNotNull(config.Data);
             string expectedRoot = Path.GetFullPath(Path.Combine(sharedDir, "../data_store"));
@@ -130,27 +153,29 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [ExpectedException(typeof(FileNotFoundException))]
         public void TestMissingConfigFileThrows()
         {
-            EngineConfigLoader.Load(Path.Combine(_tempDir, "non_existent.yaml"));
+            SessionConfigLoader.Load(Path.Combine(_tempDir, "non_existent.yaml"));
         }
 
         [TestMethod]
         [ExpectedException(typeof(FileNotFoundException))]
         public void TestMissingExternalDataConfigThrows()
         {
-            string mainConfigPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithExternalData("missing/data.yaml")
-                .Save(_tempDir, "strategy.yaml");
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, """
+                engine:
+                  mode: backtest
+                data: "missing/data.yaml"
+                """);
 
-            EngineConfigLoader.Load(mainConfigPath);
+            SessionConfigLoader.Load(mainConfigPath);
         }
 
         [TestMethod]
         public void TestLoad_NullOrEmptyPath_ThrowsArgumentException()
         {
-            Assert.ThrowsException<ArgumentException>(() => EngineConfigLoader.Load(""));
-            Assert.ThrowsException<ArgumentException>(() => EngineConfigLoader.Load("   "));
-            Assert.ThrowsException<ArgumentException>(() => EngineConfigLoader.Load(null!));
+            Assert.ThrowsException<ArgumentException>(() => SessionConfigLoader.Load(""));
+            Assert.ThrowsException<ArgumentException>(() => SessionConfigLoader.Load("   "));
+            Assert.ThrowsException<ArgumentException>(() => SessionConfigLoader.Load(null!));
         }
 
         [TestMethod]
@@ -159,20 +184,22 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             string sharedDir = Path.Combine(_tempDir, "shared");
             Directory.CreateDirectory(sharedDir);
 
-            string dataYamlPath = new TestDataConfigBuilder()
-                .WithRoot("../data_store")
-                .AddTimeseries("ashare.kline.1d.raw.baostock")
-                .Save(sharedDir, "data.yaml");
+            string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
+            File.WriteAllText(dataYamlPath, """
+                root: "../data_store"
+                timeseries:
+                  - table_id: ashare.kline.1d.raw.baostock
+                """);
 
-            // 使用正斜杠格式的绝对路径
             string absDataYamlPath = Path.GetFullPath(dataYamlPath).Replace('\\', '/');
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, $"""
+                engine:
+                  mode: backtest
+                data: "{absDataYamlPath}"
+                """);
 
-            string mainConfigPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithExternalData(absDataYamlPath)
-                .Save(_tempDir, "strategy.yaml");
-
-            var config = EngineConfigLoader.Load(mainConfigPath);
+            var config = SessionConfigLoader.Load(mainConfigPath);
 
             Assert.IsNotNull(config.Data);
             string expectedRoot = Path.GetFullPath(Path.Combine(sharedDir, "../data_store"));
@@ -187,18 +214,21 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Directory.CreateDirectory(sharedDir);
 
             string absRoot = Path.Combine(_tempDir, "absolute_root").Replace('\\', '/');
+            string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
+            File.WriteAllText(dataYamlPath, $"""
+                root: "{absRoot}"
+                timeseries:
+                  - table_id: ashare.kline.1d.raw.baostock
+                """);
 
-            string dataYamlPath = new TestDataConfigBuilder()
-                .WithRoot(absRoot)
-                .AddTimeseries("ashare.kline.1d.raw.baostock")
-                .Save(sharedDir, "data.yaml");
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, """
+                engine:
+                  mode: backtest
+                data: "shared/data.yaml"
+                """);
 
-            string mainConfigPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithExternalData("shared/data.yaml")
-                .Save(_tempDir, "strategy.yaml");
-
-            var config = EngineConfigLoader.Load(mainConfigPath);
+            var config = SessionConfigLoader.Load(mainConfigPath);
 
             Assert.IsNotNull(config.Data);
             Assert.AreEqual(Path.GetFullPath(absRoot), config.Data.Root);
@@ -207,12 +237,15 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestLoadConfig_WithOmittedDataSection()
         {
-            string mainConfigPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithBrokerSettings(initialCash: 800000.0)
-                .Save(_tempDir, "strategy.yaml");
+            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
+            File.WriteAllText(mainConfigPath, """
+                engine:
+                  mode: backtest
+                broker:
+                  initial_cash: 800000.0
+                """);
 
-            var config = EngineConfigLoader.Load(mainConfigPath);
+            var config = SessionConfigLoader.Load(mainConfigPath);
 
             Assert.IsNotNull(config.Engine);
             Assert.AreEqual("backtest", config.Engine.Mode);
@@ -230,7 +263,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             string mainConfigPath = Path.Combine(_tempDir, "empty.yaml");
             File.WriteAllText(mainConfigPath, mainYaml);
 
-            var config = EngineConfigLoader.Load(mainConfigPath);
+            var config = SessionConfigLoader.Load(mainConfigPath);
 
             Assert.IsNotNull(config);
             Assert.IsNotNull(config.Engine);
@@ -241,13 +274,17 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestLoadConfig_TimeseriesCacheOptions_DefaultValues()
         {
-            string configPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithRoot("./data")
-                .AddTimeseries("ashare.kline.1d.raw.baostock")
-                .Save(_tempDir, "default_cache.yaml");
+            string configPath = Path.Combine(_tempDir, "default_cache.yaml");
+            File.WriteAllText(configPath, """
+                engine:
+                  mode: backtest
+                data:
+                  root: "./data"
+                  timeseries:
+                    - table_id: ashare.kline.1d.raw.baostock
+                """);
 
-            var config = EngineConfigLoader.Load(configPath);
+            var config = SessionConfigLoader.Load(configPath);
 
             Assert.AreEqual(1, config.Data.Timeseries.Count);
             var ts = config.Data.Timeseries[0];
@@ -261,14 +298,26 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestLoadConfig_TimeseriesCacheOptions_CustomConfigurations()
         {
-            string configPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithRoot("./data")
-                .AddTimeseries("ashare.kline.1m.raw.custom", cache: false, pageSize: 1024, refresh: "auto", compression: "none")
-                .AddTimeseries("ashare.kline.1d.raw.baostock", cache: true, pageSize: 8192, refresh: "force", compression: "lz4")
-                .Save(_tempDir, "custom_cache.yaml");
+            string configPath = Path.Combine(_tempDir, "custom_cache.yaml");
+            File.WriteAllText(configPath, """
+                engine:
+                  mode: backtest
+                data:
+                  root: "./data"
+                  timeseries:
+                    - table_id: ashare.kline.1m.raw.custom
+                      cache: false
+                      page_size: 1024
+                      refresh: auto
+                      compression: none
+                    - table_id: ashare.kline.1d.raw.baostock
+                      cache: true
+                      page_size: 8192
+                      refresh: force
+                      compression: lz4
+                """);
 
-            var config = EngineConfigLoader.Load(configPath);
+            var config = SessionConfigLoader.Load(configPath);
 
             Assert.AreEqual(2, config.Data.Timeseries.Count);
             
@@ -290,14 +339,26 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestLoadConfig_WithFieldsSection_InlineConfiguration()
         {
-            string configPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithRoot("./data")
-                .AddField("industry", "ashare.industry.eastmoney", "symbol", new List<string> { "board_name" })
-                .AddField("concept", "ashare.concept.eastmoney", "symbol", new List<string> { "board_name" })
-                .Save(_tempDir, "fields_test.yaml");
+            string configPath = Path.Combine(_tempDir, "fields_test.yaml");
+            File.WriteAllText(configPath, """
+                engine:
+                  mode: backtest
+                data:
+                  root: "./data"
+                  fields:
+                    - name: industry
+                      table_id: ashare.industry.eastmoney
+                      key_column: symbol
+                      value_columns:
+                        - board_name
+                    - name: concept
+                      table_id: ashare.concept.eastmoney
+                      key_column: symbol
+                      value_columns:
+                        - board_name
+                """);
 
-            var config = EngineConfigLoader.Load(configPath);
+            var config = SessionConfigLoader.Load(configPath);
 
             Assert.IsNotNull(config.Data);
             Assert.IsNotNull(config.Data.Fields);
@@ -316,15 +377,16 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Assert.AreEqual("ashare.concept.eastmoney", f1.TableId);
             Assert.AreEqual("symbol", f1.KeyColumn);
             Assert.IsNotNull(f1.ValueColumns);
+            Assert.AreEqual(1, f1.ValueColumns.Count);
             Assert.AreEqual("board_name", f1.ValueColumns[0]);
         }
 
         [TestMethod]
-        public void TestEngineConfigSerializer_Roundtrip()
+        public void TestSessionConfig_SaveAndLoad_Roundtrip()
         {
-            var original = new EngineConfig
+            var original = new SessionConfig
             {
-                Engine = new EngineSettings
+                Engine = new EngineConfig
                 {
                     Mode = "backtest",
                     StartDate = new DateTime(2025, 1, 1),
@@ -337,25 +399,25 @@ namespace CarrotBackTesting.Net.UnitTest.Config
                 Data = new DataConfig
                 {
                     Root = _tempDir,
-                    Timeseries = new System.Collections.Generic.List<TimeseriesConfig>
-                    {
+                    Timeseries =
+                    [
                         new() { TableId = "ashare.kline.1d.raw.baostock", Cache = true, PageSize = 4096, Compression = "lz4" }
-                    },
-                    Events = new System.Collections.Generic.List<EventStreamConfig>
-                    {
+                    ],
+                    Events =
+                    [
                         new() { Name = "adjustments", TableId = "ashare.adj_factor.baostock" }
-                    },
-                    Fields = new System.Collections.Generic.List<FieldTableConfig>
-                    {
+                    ],
+                    Fields =
+                    [
                         new() { Name = "industry", TableId = "ashare.industry.eastmoney", KeyColumn = "symbol" }
-                    }
+                    ]
                 }
             };
 
             string filePath = Path.Combine(_tempDir, "roundtrip.yaml");
-            EngineConfigSerializer.Save(original, filePath);
+            original.Save(filePath);
 
-            var loaded = EngineConfigLoader.Load(filePath);
+            var loaded = SessionConfigLoader.Load(filePath);
 
             Assert.AreEqual(original.Engine.Mode, loaded.Engine.Mode);
             Assert.AreEqual(original.Engine.StartDate, loaded.Engine.StartDate);
@@ -374,31 +436,30 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         }
 
         [TestMethod]
-        public void TestDataConfigSerializer_SharedDataYaml_Roundtrip()
+        public void TestLoadConfig_WithExternalDataYaml_GeneratedFromStandardDataTypes()
         {
-            var dataConfig = new DataConfig
+            // 使用标准 C# 数据结构（Dictionary/List）构造测试数据，杜绝领域模型自转 YAML 造成的同源循环论证
+            var standardDataDict = new Dictionary<string, object>
             {
-                Root = "./shared_data",
-                Timeseries = new System.Collections.Generic.List<TimeseriesConfig>
+                ["root"] = "./shared_data",
+                ["timeseries"] = new List<object>
                 {
-                    new() { TableId = "kline_1d" }
+                    new Dictionary<string, object> { ["table_id"] = "kline_1d" }
                 }
             };
 
             string sharedPath = Path.Combine(_tempDir, "shared_data.yaml");
-            EngineConfigSerializer.Save(dataConfig, sharedPath);
+            YamlSerializer.Save(standardDataDict, sharedPath);
 
             // 主配置引用该共享文件
-            var mainConfig = new EngineConfig
-            {
-                Engine = new EngineSettings { Mode = "living" }
-            };
-            string mainPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "living")
-                .WithExternalData(sharedPath)
-                .Save(_tempDir, "main.yaml");
+            string mainPath = Path.Combine(_tempDir, "main.yaml");
+            File.WriteAllText(mainPath, $"""
+                engine:
+                  mode: living
+                data: "{sharedPath.Replace('\\', '/')}"
+                """);
 
-            var loaded = EngineConfigLoader.Load(mainPath);
+            var loaded = SessionConfigLoader.Load(mainPath);
             Assert.AreEqual("living", loaded.Engine.Mode);
             Assert.AreEqual(1, loaded.Data.Timeseries.Count);
             Assert.AreEqual("kline_1d", loaded.Data.Timeseries[0].TableId);
@@ -407,35 +468,44 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void Test_ExhaustiveAllParameters_YamlAndCode_Coverage()
         {
-            // 穷举全量参数：使用 TestYamlConfigBuilder 流式构建真实完整的 YAML 测试配置文件
-            string fullYamlPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(
-                    mode: "living",
-                    start: new DateTime(2025, 2, 1, 9, 30, 0),
-                    end: new DateTime(2025, 11, 30, 15, 0, 0))
-                .WithBrokerSettings(
-                    initialCash: 3000000.5)
-                .WithRoot(_tempDir)
-                .AddTimeseries(
-                    tableId: "ashare.kline.1d.raw.baostock",
-                    cache: true,
-                    pageSize: 2048,
-                    refresh: "auto",
-                    compression: "none",
-                    commitBatchSize: 32,
-                    maxPages: 8,
-                    prefetch: true,
-                    fields: new List<string> { "open", "high", "low", "close", "volume" })
-                .AddEvent(
-                    name: "adj",
-                    tableId: "ashare.adj_factor.baostock",
-                    fields: new List<string> { "back_adj_factor" })
-                .AddField(
-                    name: "ind",
-                    tableId: "ashare.industry.eastmoney",
-                    keyColumn: "symbol",
-                    valueColumns: new List<string> { "board_name", "stock_name" })
-                .Save(_tempDir, "exhaustive.yaml");
+            string fullYamlPath = Path.Combine(_tempDir, "exhaustive.yaml");
+            File.WriteAllText(fullYamlPath, $"""
+                engine:
+                  mode: living
+                  start_date: "2025-02-01 09:30:00"
+                  end_date: "2025-11-30 15:00:00"
+                broker:
+                  initial_cash: 3000000.5
+                data:
+                  root: "{Path.GetFullPath(_tempDir).Replace('\\', '/')}"
+                  timeseries:
+                    - table_id: ashare.kline.1d.raw.baostock
+                      cache: true
+                      page_size: 2048
+                      refresh: auto
+                      compression: none
+                      commit_batch_size: 32
+                      max_pages: 8
+                      prefetch: true
+                      fields:
+                        - open
+                        - high
+                        - low
+                        - close
+                        - volume
+                  events:
+                    - name: adj
+                      table_id: ashare.adj_factor.baostock
+                      fields:
+                        - back_adj_factor
+                  fields:
+                    - name: ind
+                      table_id: ashare.industry.eastmoney
+                      key_column: symbol
+                      value_columns:
+                        - board_name
+                        - stock_name
+                """);
 
             string yamlText = File.ReadAllText(fullYamlPath);
 
@@ -454,10 +524,10 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             StringAssert.Contains(yamlText, "table_id: ashare.adj_factor.baostock");
             StringAssert.Contains(yamlText, "key_column: symbol");
 
-            // 3. 通过 EngineConfigLoader 反序列化并逐个字段严格断言
-            var loaded = EngineConfigLoader.Load(fullYamlPath);
+            // 3. 通过 SessionConfigLoader 反序列化并逐个字段严格断言
+            var loaded = SessionConfigLoader.Load(fullYamlPath);
 
-            // EngineSettings 参数 (3/3)
+            // EngineConfig 参数 (3/3)
             Assert.AreEqual("living", loaded.Engine.Mode);
             Assert.AreEqual(new DateTime(2025, 2, 1, 9, 30, 0), loaded.Engine.StartDate);
             Assert.AreEqual(new DateTime(2025, 11, 30, 15, 0, 0), loaded.Engine.EndDate);
@@ -501,23 +571,28 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestLoadBrokerConfig_FullParameters()
         {
-            string configPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest", start: new DateTime(2025, 1, 1), end: new DateTime(2025, 12, 31))
-                .WithBrokerSettings(
-                    initialCash: 5000000.0,
-                    settleDays: 0,
-                    allowShort: true,
-                    feeRate: 0.0001,
-                    minFee: 0.0,
-                    slippage: 0.0005,
-                    volumeLimit: 0.15,
-                    checkLimit: true,
-                    multiplier: 10.0,
-                    marginRate: 0.1)
-                .WithRoot("./test_data")
-                .Save(_tempDir, "broker_full.yaml");
+            string configPath = Path.Combine(_tempDir, "broker_full.yaml");
+            File.WriteAllText(configPath, """
+                engine:
+                  mode: backtest
+                  start_date: "2025-01-01 00:00:00"
+                  end_date: "2025-12-31 00:00:00"
+                broker:
+                  initial_cash: 5000000.0
+                  settle_days: 0
+                  allow_short: true
+                  fee_rate: 0.0001
+                  min_fee: 0.0
+                  slippage: 0.0005
+                  volume_limit: 0.15
+                  check_limit: true
+                  multiplier: 10.0
+                  margin_rate: 0.1
+                data:
+                  root: "./test_data"
+                """);
 
-            var config = EngineConfigLoader.Load(configPath);
+            var config = SessionConfigLoader.Load(configPath);
 
             Assert.IsNotNull(config.Broker);
             Assert.AreEqual(5000000.0, config.Broker.InitialCash, 1e-4);
@@ -535,9 +610,9 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestBrokerConfig_SerializationAndHookIgnored()
         {
-            var config = new EngineConfig
+            var config = new SessionConfig
             {
-                Engine = new EngineSettings { Mode = "backtest" },
+                Engine = new EngineConfig { Mode = "backtest" },
                 Broker = new BrokerConfig
                 {
                     InitialCash = 2000000.0,
@@ -564,7 +639,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             };
 
             // 序列化为 YAML 文本
-            string yaml = EngineConfigSerializer.Serialize(config);
+            string yaml = config.ToYaml();
 
             // 验证生成的 YAML 包含 broker 的纯数值属性，且由于 [YamlIgnore] 绝对不包含委托或报错
             StringAssert.Contains(yaml, "broker:");
@@ -580,8 +655,8 @@ namespace CarrotBackTesting.Net.UnitTest.Config
 
             // 保存后重新加载，断言数据完整闭环
             string savedPath = Path.Combine(_tempDir, "saved_broker.yaml");
-            EngineConfigSerializer.Save(config, savedPath);
-            var reloaded = EngineConfigLoader.Load(savedPath);
+            config.Save(savedPath);
+            var reloaded = SessionConfigLoader.Load(savedPath);
 
             Assert.AreEqual(2000000.0, reloaded.Broker.InitialCash, 1e-4);
             Assert.AreEqual(1, reloaded.Broker.SettleDays);

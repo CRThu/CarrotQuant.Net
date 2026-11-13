@@ -29,11 +29,6 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public string StoreRoot => _storeRoot;
 
-        /// <summary>
-        /// 兼容属性：物理根目录路径。
-        /// </summary>
-        public string CacheRoot => _storeRoot;
-
         /// <inheritdoc />
         public string TableId => _tableId;
 
@@ -81,11 +76,6 @@ namespace CarrotBacktesting.NET.Data
             return Path.Combine(_storeRoot, _tableId, fieldName);
         }
 
-        /// <summary>
-        /// 兼容方法：获取指定字段的物理文件存储目录路径。
-        /// </summary>
-        public string GetFieldCacheDir(string fieldName) => GetFieldStoreDir(fieldName);
-
         /// <inheritdoc />
         public bool HasField(string fieldName)
         {
@@ -93,11 +83,6 @@ namespace CarrotBacktesting.NET.Data
             string metaPath = Path.Combine(dir, MetaFileName);
             return File.Exists(metaPath);
         }
-
-        /// <summary>
-        /// 检查指定字段的持久化数据是否存在且元数据有效。
-        /// </summary>
-        public bool HasCache(string fieldName) => HasField(fieldName);
 
         /// <inheritdoc />
         public bool IsCompatible(
@@ -139,15 +124,6 @@ namespace CarrotBacktesting.NET.Data
 
             return true;
         }
-
-        /// <summary>
-        /// 兼容方法：深度校验指定字段的持久化数据是否与当前运行环境严格兼容。
-        /// </summary>
-        public bool IsCacheCompatible(
-            string fieldName, 
-            IReadOnlyList<string> expectedSymbols, 
-            Type expectedType, 
-            out TimeseriesMetadata? metadata) => IsCompatible(fieldName, expectedSymbols, expectedType, out metadata);
 
         /// <inheritdoc />
         public void RewriteChunk<T>(

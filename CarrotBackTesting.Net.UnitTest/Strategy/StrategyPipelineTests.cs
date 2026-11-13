@@ -530,4 +530,33 @@ public class StrategyPipelineTests
         Assert.AreEqual(10.0, market.GetState<AlphaSignals>("A1")!.Score);
         Assert.AreEqual(20.0, market.GetState<AlphaSignals>("A2")!.Score);
     }
+
+    private class DisposableStrategy : IStrategy, IDisposable
+    {
+        public string Name => "Disposable";
+        public bool IsDisposed { get; private set; }
+        public void OnUpdate(IEngineContext context) { }
+        public void Dispose() => IsDisposed = true;
+    }
+
+    [TestMethod]
+    public void Pipeline_Dispose_ShouldRecursivelyDisposeChildStrategiesAndClearReferences()
+    {
+        var master = StrategyPipeline.Sequential();
+        var subPipeline = StrategyPipeline.Parallel();
+        var disposableLeaf = new DisposableStrategy();
+
+        subPipeline.Add(disposableLeaf);
+        master.Add(subPipeline);
+        master.Compile();
+
+        Assert.IsFalse(disposableLeaf.IsDisposed);
+
+        master.Dispose();
+
+        // 验证递归释放了嵌套管线内的 IDisposable 子策略
+        Assert.IsTrue(disposableLeaf.IsDisposed);
+        // 验证清空了内部策略引用
+        Assert.AreEqual(0, new List<IStrategy>(master.GetStrategies()).Count);
+    }
 }

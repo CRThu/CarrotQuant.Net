@@ -419,7 +419,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 兼容旧签名的重载（若调用方未传时间戳，按元数据已有时间或当前时间步顺延）。
+        /// 便捷追加截面数据（自动依据元数据交易日历按当前行步长顺延时间戳）。
         /// </summary>
         public void AppendRow(ReadOnlySpan<T> rowValues)
         {

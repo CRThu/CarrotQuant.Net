@@ -5,7 +5,6 @@ using System.Linq;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
-using CarrotBackTesting.Net.UnitTest.Helper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Data
@@ -110,21 +109,27 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
 
-            // 使用 TestYamlConfigBuilder 动态构造规范的测试 YAML 配置文件
-            string yamlPath = new TestYamlConfigBuilder()
-                .WithEngineSettings(mode: "backtest")
-                .WithRoot(csvRoot)
-                .AddField(name: "industry", tableId: "ashare.industry.eastmoney", keyColumn: "symbol")
-                .Save(_tempDir, "strategy_fields.yaml");
+            // 输入为标准 YAML 文本，避免通过领域模型自转产生的循环依赖
+            string yamlPath = Path.Combine(_tempDir, "strategy_fields.yaml");
+            File.WriteAllText(yamlPath, $"""
+                engine:
+                  mode: backtest
+                data:
+                  root: "{csvRoot.Replace('\\', '/')}"
+                  fields:
+                    - name: industry
+                      table_id: ashare.industry.eastmoney
+                      key_column: symbol
+                """);
 
-            // 1. 通过 EngineConfigLoader 解析 YAML 配置文件
-            var engineConfig = EngineConfigLoader.Load(yamlPath);
-            Assert.IsNotNull(engineConfig.Data);
-            Assert.AreEqual(1, engineConfig.Data.Fields.Count);
+            // 1. 通过 SessionConfig.Load 解析 YAML 配置文件
+            var sessionConfig = SessionConfig.Load(yamlPath);
+            Assert.IsNotNull(sessionConfig.Data);
+            Assert.AreEqual(1, sessionConfig.Data.Fields.Count);
 
             // 2. 根据解析出的配置模型装配 FieldRegistry
-            var resolver = new StorageResolver(engineConfig.Data.Root);
-            var registry = FieldRegistryFactory.Create(resolver, engineConfig.Data.Fields);
+            var resolver = new StorageResolver(sessionConfig.Data.Root);
+            var registry = FieldRegistryFactory.Create(resolver, sessionConfig.Data.Fields);
 
             // 3. 验证数据读取
             Assert.IsTrue(registry.HasTable("industry"));
