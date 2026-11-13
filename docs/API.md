@@ -12,9 +12,10 @@
 - [二、存储调度与数据物理层 (Abstraction.Data & Data)](#二存储调度与数据物理层-abstractiondata--data)
 - [三、内存数据供给层 (ITimeseriesRegistry & ChunkMatrix2D)](#三内存数据供给层-idataprovider--chunkmatrix2d)
 - [四、异构事件流系统 (Event Stream System)](#四异构事件流系统-event-stream-system)
-- [五、引擎与黑板上下文 (Engine & Execution Context)](#五引擎与黑板上下文-engine--execution-context)
-- [六、策略与管线开发 (Strategy & Pipeline)](#六策略与管线开发-strategy--pipeline)
-- [七、流水记录与分析层 (Analysis & Recorder)](#七流水记录与分析层-analysis--recorder)
+- [五、标的静态属性与维表系统 (Fields System)](#五标的静态属性与维表系统-fields-system)
+- [六、引擎与黑板上下文 (Engine & Execution Context)](#六引擎与黑板上下文-engine--execution-context)
+- [七、策略与管线开发 (Strategy & Pipeline)](#七策略与管线开发-strategy--pipeline)
+- [八、流水记录与分析层 (Analysis & Recorder)](#八流水记录与分析层-analysis--recorder)
 
 ---
 
@@ -581,11 +582,13 @@ public interface IEngineContext
 }
 ```
 
-### 2. IMarketState 与 MarketBias (宏观状态传递)
-支持宏观层向微观个股层传递状态，实现条件过滤与剪枝：
-- **`MarketBias`**: `Up`（看多）, `Neutral`（中性）, `Down`（看空）。
-- **`MarketContext.SkipAlpha`**: 若置为 `true`，引擎跳过当日个股信号运算。
-- **`Market.GetState<T>()`**: 读取宏观策略写入的自定义强类型指标对象。
+### 2. IMarketState (通用强类型黑板)
+策略间正交解耦与异步数据交换的通用强类型容器，底层基于 `ConcurrentDictionary<string, object>` 保障多核并发下的绝对线程安全：
+- **`GetState<T>(string? key = null) where T : class`**: 获取强类型状态/信号。缺省 key 时以类型全名作为权威单例索引；指定 key 时从对应命名槽位读取。
+- **`SetState<T>(T state, string? key = null) where T : class`**: 发布强类型状态/信号。
+- **`HasState<T>(string? key = null) where T : class`**: 探测黑板中是否存在指定类型（与可选 Key）的状态。
+- **`Clear()`**: 清理黑板中所有状态数据。
+- **协作约定**: 缺省 key 时为类型全局单例（如统一发布的宏观指标或目标持仓）；显式指定 key 时代表独立命名通道/槽位，支持同类型多实例隔离（如多因子并发打分）与跨策略协同消费。
 
 ### 3. IBroker 与订单交互
 ```csharp
@@ -612,10 +615,10 @@ public interface IBroker
 
 ---
 
-## 六、策略与管线开发 (Strategy & Pipeline)
+## 七、策略与管线开发 (Strategy & Pipeline)
 
 ### 1. IStrategy 契约
-所有策略的基础契约，定义策略在引擎推进过程中的生命周期流转：
+所有策略的基础契约，定义策略在引擎推进过程中的统一驱动入口与生命周期：
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Strategy;
@@ -623,39 +626,79 @@ namespace CarrotBacktesting.NET.Abstraction.Strategy;
 public interface IStrategy
 {
     string Name { get; }
-    IEnumerable<string> GetRequiredColumns() => Array.Empty<string>();
-    int Lookback => 200;                                                // 历史最大回溯深度（行数，供常驻分块容量自动推导）
-    
-    void OnInitial(IEngineContext context) { }
+    int Lookback => 200; // 历史最大回溯深度（行数，供常驻非托管分块容量自动推导）
+
     void OnStart(IEngineContext context) { }
-    void OnUpdate(IEngineContext context);                              // 核心时步计算
+    void OnUpdate(IEngineContext context); // 核心时步计算与决策入口
+    void OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events) { } // 外部离散事件批量推送
     void OnStop(IEngineContext context) { }
     void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status) { } // 订单状态变更回报
-    void OnTrade(IEngineContext context, ExecutionReport e) { }         // 成交执行回报
+    void OnTrade(IEngineContext context, ExecutionReport e) { } // 成交执行回报
     void OnPositionChanged(IEngineContext context, PositionEvent e) { } // 持仓状态变更
 }
 ```
 
-### 2. 典型策略编写范例
+### 2. 核心派生契约与模板基类
+- **`ISignalStrategy`**: 纯信号语义标记契约，面向特征分析与信号生产，通过黑板（`context.Market.SetState<T>`）发布打分或状态，解耦交易执行。
+- **`RuleStrategyBase`**: 规则交易便利模板基类，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
+
+### 3. 组合策略管线 (StrategyPipeline)
+采用组合模式（Composite Pattern）将特征分析、多信号生产、仓位规划与风控报单统一编排为单一标准的 `IStrategy`：
+- `StrategyPipeline`: 抽象基类，管理子策略列表、Lookback 递归汇总、不可变数组密封固化与 Roslyn 动态编译上下文回收。
+- `SequentialPipeline`: 串行管线，严格按序执行各阶段。
+- `ParallelPipeline`: 并行管线，默认采用确定性单线程顺序执行（`Concurrent = false`）；显式开启 `Concurrent = true` 且子策略数大于 1 时，通过 `System.Threading.Tasks.Parallel.For` 零 GC 委托复用多核并发执行 `OnUpdate` 与 `OnEvent`。
+- 便捷工厂方法：`StrategyPipeline.Sequential()` 与 `StrategyPipeline.Parallel()`。
+- `StrategyPipelineFactory`: 支持基于强类型配置 `PipelineConfiguration` 或 YAML 文件物理路径（`Create`）装配管线并自动反射注入参数，底层配置解析由 `PipelineConfigLoader` 权威负责，严格校验未知参数并支持数组/集合/TimeSpan 转换。
+
+#### YAML 管线配置范例 (`strategy.yaml`):
+```yaml
+name: ProductionPipeline
+mode: sequential
+pipeline:
+  # 阶段 1：多因子多信号并发生产 (开启多核并发加速)
+  - name: SignalStage
+    mode: parallel
+    concurrent: true
+    pipeline:
+      - source: "strategies/MomentumAlpha.cs"
+        params:
+          Period: 14
+      - type: "MyProject.Strategies.MeanReversionAlpha"
+        params:
+          Window: 60
+  # 阶段 2：仓位规划与执行风控 (串行执行)
+  - type: "MyProject.Strategies.PortfolioExecutionStrategy"
+    params:
+      Lookback: 200
+```
+
+### 4. 典型策略编写范例
 ```csharp
 public class MovingAverageCrossStrategy : IStrategy
 {
     public string Name => "MA_Cross_Demo";
-
-    public IEnumerable<string> GetRequiredColumns() => new[] { "close" };
+    public int Lookback => 60;
 
     public void OnUpdate(IEngineContext context)
     {
-        // 1. 检查宏观过滤标记
-        var marketState = context.Market.GetState<MarketContext>();
-        if (marketState?.SkipAlpha == true) return;
+        // 1. 纳秒级变更感知（仅在日线更新的 Bar 才触发低频计算）
+        if (context.Timeseries.IsUpdated("kline.1d"))
+        {
+            // 更新宏观或日线低频指标
+        }
 
-        // 2. 获取行情只读矩阵
+        // 2. 外部离散事件到达探测
+        if (context.Events.HasNewEvents(context.CurrentTime, "suspension"))
+        {
+            // 停牌事件处理
+        }
+
+        // 3. 获取行情只读矩阵
         var closeMatrix = context.Timeseries.GetMatrix<double>("close");
         int row = context.CurrentIndex;
         if (row < 20) return; // 历史数据不足
 
-        // 3. 个股遍历与信号计算
+        // 4. 个股遍历与信号计算
         for (int col = 0; col < context.Timeseries.Metadata.Symbols.Count; col++)
         {
             string symbol = context.Timeseries.Metadata.Symbols[col];
@@ -664,7 +707,7 @@ public class MovingAverageCrossStrategy : IStrategy
             for (int k = 0; k < 20; k++) ma20 += closeMatrix[row - k, col];
             ma20 /= 20.0;
 
-            // 4. 交易执行
+            // 5. 交易执行
             decimal position = context.Broker.GetPosition(symbol);
             if (todayClose > ma20 && position == 0)
             {
@@ -683,7 +726,7 @@ public class MovingAverageCrossStrategy : IStrategy
 
 ---
 
-## 七、流水记录与分析层 (Analysis & Recorder)
+## 八、流水记录与分析层 (Analysis & Recorder)
 
 ### 1. IRecorder
 回测与实盘过程的流水采集器。

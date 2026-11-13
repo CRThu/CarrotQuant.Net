@@ -16,6 +16,10 @@ namespace CarrotBacktesting.NET.Data
         private readonly IMarketMetadata _metadata;
         private readonly Func<string, Type, ITimeseriesCacheManager> _managerFactory;
         private readonly ConcurrentDictionary<string, ITimeseriesCacheManager> _managers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, int> _tableIndices = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<string> _tableNames = new();
+        private readonly object _tableLock = new();
+        private ulong _updatedMask = ulong.MaxValue;
         private bool _disposed;
 
         /// <inheritdoc />
@@ -57,6 +61,7 @@ namespace CarrotBacktesting.NET.Data
             bool isLive = false)
             : this(source, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
         {
+            if (!string.IsNullOrWhiteSpace(tableId)) RegisterTable(tableId);
         }
 
         /// <summary>
@@ -77,6 +82,7 @@ namespace CarrotBacktesting.NET.Data
             bool isLive = false)
             : this(metadata, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
         {
+            if (!string.IsNullOrWhiteSpace(tableId)) RegisterTable(tableId);
         }
 
         private static Func<string, Type, ITimeseriesCacheManager> CreateDefaultFactory(
@@ -208,6 +214,114 @@ namespace CarrotBacktesting.NET.Data
             {
                 manager.Commit();
             }
+        }
+
+        /// <summary>
+        /// 注册并分配时序表在当前注册中心内的整型位序号（0 ~ 63）。
+        /// 若表名已存在则直接返回已有序号；若超过 64 张表则抛出强类型异常防御。
+        /// </summary>
+        /// <param name="tableName">时序表名称。</param>
+        /// <returns>分配的序号（0 ~ 63）。</returns>
+        public int RegisterTable(string tableName)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+            if (_tableIndices.TryGetValue(tableName, out var existingIndex))
+            {
+                return existingIndex;
+            }
+
+            lock (_tableLock)
+            {
+                if (_tableIndices.TryGetValue(tableName, out var index))
+                {
+                    return index;
+                }
+
+                if (_tableNames.Count >= 64)
+                {
+                    throw new NotSupportedException($"时序表数量超过上限（最大支持 64 张表），当前无法注册 '{tableName}'。");
+                }
+
+                index = _tableNames.Count;
+                _tableNames.Add(tableName);
+                _tableIndices[tableName] = index;
+                return index;
+            }
+        }
+
+        /// <inheritdoc />
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public bool IsUpdated(int tableIndex)
+        {
+            if ((uint)tableIndex >= 64) return false;
+            return (System.Threading.Volatile.Read(ref _updatedMask) & (1UL << tableIndex)) != 0;
+        }
+
+        /// <inheritdoc />
+        public bool IsUpdated(string tableName)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+            if (!_tableIndices.TryGetValue(tableName, out var index))
+            {
+                throw new KeyNotFoundException($"时序表 '{tableName}' 未注册。请确认表名拼写或预先注册该表。");
+            }
+            return IsUpdated(index);
+        }
+
+        /// <inheritdoc />
+        public int GetTableIndex(string tableName)
+        {
+            if (string.IsNullOrWhiteSpace(tableName)) return -1;
+            return _tableIndices.TryGetValue(tableName, out var index) ? index : -1;
+        }
+
+        /// <summary>
+        /// 设置当前时间步的时序变更位掩码。由引擎在每步推进时统一刷新。
+        /// </summary>
+        /// <param name="mask">64 位变更掩码。</param>
+        public void SetUpdatedMask(ulong mask)
+        {
+            lock (_tableLock)
+            {
+                System.Threading.Volatile.Write(ref _updatedMask, mask);
+            }
+        }
+
+        /// <summary>
+        /// 设置指定序号时序表在当前时间步的更新状态。
+        /// </summary>
+        /// <param name="tableIndex">表序号（0 ~ 63）。</param>
+        /// <param name="isUpdated">是否更新。</param>
+        public void SetUpdated(int tableIndex, bool isUpdated)
+        {
+            if ((uint)tableIndex >= 64)
+            {
+                throw new ArgumentOutOfRangeException(nameof(tableIndex), "tableIndex 必须在 0 到 63 之间。");
+            }
+
+            lock (_tableLock)
+            {
+                var mask = System.Threading.Volatile.Read(ref _updatedMask);
+                if (isUpdated)
+                {
+                    mask |= (1UL << tableIndex);
+                }
+                else
+                {
+                    mask &= ~(1UL << tableIndex);
+                }
+                System.Threading.Volatile.Write(ref _updatedMask, mask);
+            }
+        }
+
+        /// <summary>
+        /// 设置指定名称时序表在当前时间步的更新状态。若表尚未分配序号则自动注册。
+        /// </summary>
+        public void SetUpdated(string tableName, bool isUpdated)
+        {
+            var idx = GetTableIndex(tableName);
+            if (idx < 0) idx = RegisterTable(tableName);
+            SetUpdated(idx, isUpdated);
         }
 
         /// <inheritdoc />

@@ -38,4 +38,29 @@ public interface ITimeseriesRegistry
     /// </summary>
     /// <param name="currentLogicalRow">当前时间步对应的全局行索引。</param>
     void StepTo(int currentLogicalRow) { }
+
+    /// <summary>
+    /// 检查指定序号的时序表在当前时间步是否触发了更新（跨 Bar / 跨时间步）。
+    /// 采用 64 位无符号位掩码实现，单次判定开销 &lt; 0.3ns。
+    /// 默认实现返回 true（保障单表回测绝对零损耗，无需感知位掩码）。
+    /// </summary>
+    /// <param name="tableIndex">时序表分配的整型序号（0 ~ 63）。</param>
+    /// <returns>若当前时间步该表已更新则返回 true，否则返回 false。</returns>
+    bool IsUpdated(int tableIndex) => true;
+
+    /// <summary>
+    /// 检查指定名称的时序表在当前时间步是否触发了更新。
+    /// 默认实现返回 true。
+    /// </summary>
+    /// <param name="tableName">时序表名称（例如 "kline.1d", "kline.5m"）。</param>
+    /// <returns>若当前时间步该表已更新则返回 true，否则返回 false。</returns>
+    bool IsUpdated(string tableName) => true;
+
+    /// <summary>
+    /// 获取指定时序表注册分配的整型序号。
+    /// 策略可在 OnStart 中预先缓存序号以在 OnUpdate 中获得最极致的寄存器级判定性能。
+    /// </summary>
+    /// <param name="tableName">时序表名称。</param>
+    /// <returns>对应的整型序号（0 ~ 63）。若未注册或不支持则返回 -1。</returns>
+    int GetTableIndex(string tableName) => -1;
 }

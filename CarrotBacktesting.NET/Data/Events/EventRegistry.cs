@@ -40,5 +40,23 @@ namespace CarrotBacktesting.NET.Data
         {
             return _tables.Keys.OrderBy(n => n).ToList();
         }
+
+        /// <inheritdoc />
+        public bool HasNewEvents(DateTime time, string? tableName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(tableName))
+            {
+                return _tables.TryGetValue(tableName, out var table) && table.ContainsDate(time.Date);
+            }
+
+            foreach (var table in _tables.Values)
+            {
+                if (table.ContainsDate(time.Date))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }

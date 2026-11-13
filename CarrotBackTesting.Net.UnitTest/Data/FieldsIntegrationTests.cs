@@ -110,11 +110,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
 
-            // 使用 TestYamlConfigBuilder 动态生成配置，杜绝字符串模板硬编码
+            // 使用 TestYamlConfigBuilder 动态构造规范的测试 YAML 配置文件
             string yamlPath = new TestYamlConfigBuilder()
                 .WithEngineSettings(mode: "backtest")
                 .WithRoot(csvRoot)
-                .AddField("industry", "ashare.industry.eastmoney", keyColumn: "symbol")
+                .AddField(name: "industry", tableId: "ashare.industry.eastmoney", keyColumn: "symbol")
                 .Save(_tempDir, "strategy_fields.yaml");
 
             // 1. 通过 EngineConfigLoader 解析 YAML 配置文件

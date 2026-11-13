@@ -32,5 +32,15 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         /// 获取所有已加载的事件表名称列表。
         /// </summary>
         IReadOnlyList<string> GetTableNames();
+
+        /// <summary>
+        /// 检查指定时间戳（日期或逻辑时间点）在所有已注册事件表中（或指定事件表中）是否存在待处理的新事件。
+        /// 供策略在 OnUpdate 中按需轻量探测，规避无事件时的无效遍历与开销。
+        /// 默认实现返回 false。
+        /// </summary>
+        /// <param name="time">要检查的逻辑时间戳。</param>
+        /// <param name="tableName">可选的事件表名。缺省为空时探测所有已注册的事件表。</param>
+        /// <returns>若存在事件则返回 true，否则返回 false。</returns>
+        bool HasNewEvents(DateTime time, string? tableName = null) => false;
     }
 }

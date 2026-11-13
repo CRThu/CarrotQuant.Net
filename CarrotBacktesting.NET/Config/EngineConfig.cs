@@ -23,6 +23,42 @@ namespace CarrotBacktesting.NET.Config
         /// 数据层配置。
         /// </summary>
         public DataConfig Data { get; set; } = new();
+
+        /// <summary>
+        /// 策略流水线配置（可选）。支持直接内嵌配置对象，也支持赋值为外部共享配置文件的相对路径（如 "shared/pipeline.yaml"）。
+        /// 赋予 EngineConfig 作为全任务总配置（All-in-one Configuration）的一体化管理能力。
+        /// </summary>
+        public PipelineConfiguration? Pipeline { get; set; }
+
+        #region 统一门面方法 (Unified Facade APIs)
+
+        /// <summary>
+        /// 从指定 YAML 配置文件物理路径加载引擎配置，自动解析相对路径与多态外链配置。
+        /// </summary>
+        /// <param name="configFilePath">YAML 配置文件物理路径。</param>
+        /// <returns>解析并完成物理路径合并的完整 EngineConfig 实例。</returns>
+        public static EngineConfig Load(string configFilePath) => EngineConfigLoader.Load(configFilePath);
+
+        /// <summary>
+        /// 从 YAML 格式文本字符串反序列化引擎配置模型，支持传入可选的基础目录解析相对路径。
+        /// </summary>
+        /// <param name="yamlContent">YAML 文本内容。</param>
+        /// <param name="baseDirectory">相对路径解析基准目录（若为 null 则缺省为当前运行目录）。</param>
+        /// <returns>反序列化并完成路径归一化的 EngineConfig 实例。</returns>
+        public static EngineConfig FromYaml(string yamlContent, string? baseDirectory = null) => EngineConfigLoader.FromYaml(yamlContent, baseDirectory);
+
+        /// <summary>
+        /// 将当前引擎配置实例序列化为标准下划线命名规范的 YAML 文本内容。
+        /// </summary>
+        public string ToYaml() => EngineConfigSerializer.Serialize(this);
+
+        /// <summary>
+        /// 将当前引擎配置实例序列化并保存至指定物理文件。
+        /// </summary>
+        /// <param name="filePath">输出文件物理路径。</param>
+        public void Save(string filePath) => EngineConfigSerializer.Save(this, filePath);
+
+        #endregion
     }
 
     /// <summary>
@@ -59,6 +95,17 @@ namespace CarrotBacktesting.NET.Config
         /// 需要挂载的静态字段与多维属性字典表列表（如行业、概念、标的静态资料）。
         /// </summary>
         public List<FieldTableConfig> Fields { get; set; } = new();
+
+        /// <summary>
+        /// 将当前独立数据配置序列化为标准下划线命名规范的 YAML 文本内容。
+        /// </summary>
+        public string ToYaml() => EngineConfigSerializer.Serialize(this);
+
+        /// <summary>
+        /// 将当前独立数据配置序列化并保存至指定物理文件。
+        /// </summary>
+        /// <param name="filePath">输出文件物理路径。</param>
+        public void Save(string filePath) => EngineConfigSerializer.Save(this, filePath);
     }
 
     /// <summary>

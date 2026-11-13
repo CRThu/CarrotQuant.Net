@@ -89,16 +89,11 @@ using CarrotBacktesting.NET.Abstraction.Strategy;
 public class DoubleMaStrategy : IStrategy
 {
     public string Name => "Double_MA_Strategy";
-
-    public IEnumerable<string> GetRequiredColumns() => new[] { "close" };
+    public int Lookback => 20;
 
     public void OnUpdate(IEngineContext context)
     {
-        // 1. 宏观状态检查：若标记跳过计算则直接返回
-        var market = context.Market.GetState<MarketContext>();
-        if (market?.SkipAlpha == true) return;
-
-        // 2. 获取行情矩阵与事件流
+        // 1. 获取行情矩阵与事件流
         IReadOnlyMatrix2D<double> closeMatrix = context.Timeseries.GetMatrix<double>("close");
         IEventTable adjTable = context.Events.GetTable("adjustments");
 

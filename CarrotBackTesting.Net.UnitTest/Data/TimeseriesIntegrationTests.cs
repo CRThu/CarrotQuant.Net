@@ -105,11 +105,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
 
-            // 使用 TestYamlConfigBuilder 动态类型安全组装 YAML 配置文件，杜绝硬编码
+            // 使用 TestYamlConfigBuilder 动态构造规范的测试 YAML 配置文件
             string yamlPath = new TestYamlConfigBuilder()
                 .WithEngineSettings(mode: "backtest", start: new DateTime(2025, 1, 1), end: new DateTime(2025, 12, 31))
                 .WithRoot(csvRoot)
-                .AddTimeseries("ashare.kline.1d.raw.baostock", cache: false, pageSize: 4096, maxPages: 4, prefetch: false)
+                .AddTimeseries(tableId: "ashare.kline.1d.raw.baostock", cache: false, pageSize: 4096, maxPages: 4, prefetch: false)
                 .Save(_tempDir, "strategy_ts.yaml");
 
             // 1. 通过 EngineConfigLoader 解析生成的 YAML 配置文件

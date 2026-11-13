@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using CarrotBacktesting.NET.Config;
+using CarrotBackTesting.Net.UnitTest.Helper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Config
@@ -29,26 +31,13 @@ namespace CarrotBackTesting.Net.UnitTest.Config
         [TestMethod]
         public void TestLoadInlineDataConfig_WithRoot()
         {
-            string yaml = @"
-engine:
-  mode: ""backtest""
-  start_date: ""2025-01-01""
-  end_date: ""2025-03-31""
-
-broker:
-  initial_cash: 500000.0
-
-data:
-  root: ""./my_data""
-  timeseries:
-    - table_id: ""ashare.kline.1m.raw.custom""
-      fields: [""open"", ""close"", ""volume""]
-  events:
-    - name: ""adjustments""
-      table_id: ""ashare.adj_factor.baostock""
-";
-            string configPath = Path.Combine(_tempDir, "config.yaml");
-            File.WriteAllText(configPath, yaml);
+            string configPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest", start: new DateTime(2025, 1, 1), end: new DateTime(2025, 3, 31))
+                .WithBrokerSettings(initialCash: 500000.0)
+                .WithRoot("./my_data")
+                .AddTimeseries("ashare.kline.1m.raw.custom", fields: ["open", "close", "volume"])
+                .AddEvent("adjustments", "ashare.adj_factor.baostock")
+                .Save(_tempDir, "config.yaml");
 
             var config = EngineConfigLoader.Load(configPath);
 
@@ -80,29 +69,19 @@ data:
             string sharedDir = Path.Combine(_tempDir, "shared");
             Directory.CreateDirectory(sharedDir);
 
-            string dataYaml = @"
-root: ""../data_store""
-timeseries:
-  - table_id: ""ashare.kline.1d.raw.baostock""
-events:
-  - name: ""dragons""
-    table_id: ""ashare.dragon_tiger.eastmoney""
-";
-            string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
-            File.WriteAllText(dataYamlPath, dataYaml);
+            // 1. 使用 TestDataConfigBuilder 流式生成共享 data.yaml
+            string dataYamlPath = new TestDataConfigBuilder()
+                .WithRoot("../data_store")
+                .AddTimeseries("ashare.kline.1d.raw.baostock")
+                .AddEvent("dragons", "ashare.dragon_tiger.eastmoney")
+                .Save(sharedDir, "data.yaml");
 
             // 2. 创建通过多态 data 字段直接引用外部路径的主配置文件
-            string mainYaml = @"
-engine:
-  mode: ""living""
-
-broker:
-  initial_cash: 2000000.0
-
-data: ""shared/data.yaml""
-";
-            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
-            File.WriteAllText(mainConfigPath, mainYaml);
+            string mainConfigPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "living")
+                .WithBrokerSettings(initialCash: 2000000.0)
+                .WithExternalData("shared/data.yaml")
+                .Save(_tempDir, "strategy.yaml");
 
             // 3. 加载并断言
             var config = EngineConfigLoader.Load(mainConfigPath);
@@ -128,22 +107,16 @@ data: ""shared/data.yaml""
             string sharedDir = Path.Combine(_tempDir, "shared");
             Directory.CreateDirectory(sharedDir);
 
-            string dataYaml = @"
-data:
-  root: ""../data_store""
-  timeseries:
-    - table_id: ""ashare.kline.1d.raw.baostock""
-";
-            string dataYamlPath = Path.Combine(sharedDir, "data_wrapped.yaml");
-            File.WriteAllText(dataYamlPath, dataYaml);
+            string dataYamlPath = new TestDataConfigBuilder()
+                .WrappedInDataNode(true)
+                .WithRoot("../data_store")
+                .AddTimeseries("ashare.kline.1d.raw.baostock")
+                .Save(sharedDir, "data_wrapped.yaml");
 
-            string mainYaml = @"
-engine:
-  mode: ""backtest""
-data: ""shared/data_wrapped.yaml""
-";
-            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
-            File.WriteAllText(mainConfigPath, mainYaml);
+            string mainConfigPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest")
+                .WithExternalData("shared/data_wrapped.yaml")
+                .Save(_tempDir, "strategy.yaml");
 
             var config = EngineConfigLoader.Load(mainConfigPath);
 
@@ -164,13 +137,10 @@ data: ""shared/data_wrapped.yaml""
         [ExpectedException(typeof(FileNotFoundException))]
         public void TestMissingExternalDataConfigThrows()
         {
-            string mainYaml = @"
-engine:
-  mode: ""backtest""
-data: ""missing/data.yaml""
-";
-            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
-            File.WriteAllText(mainConfigPath, mainYaml);
+            string mainConfigPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest")
+                .WithExternalData("missing/data.yaml")
+                .Save(_tempDir, "strategy.yaml");
 
             EngineConfigLoader.Load(mainConfigPath);
         }
@@ -189,24 +159,18 @@ data: ""missing/data.yaml""
             string sharedDir = Path.Combine(_tempDir, "shared");
             Directory.CreateDirectory(sharedDir);
 
-            string dataYaml = @"
-root: ""../data_store""
-timeseries:
-  - table_id: ""ashare.kline.1d.raw.baostock""
-";
-            string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
-            File.WriteAllText(dataYamlPath, dataYaml);
+            string dataYamlPath = new TestDataConfigBuilder()
+                .WithRoot("../data_store")
+                .AddTimeseries("ashare.kline.1d.raw.baostock")
+                .Save(sharedDir, "data.yaml");
 
             // 使用正斜杠格式的绝对路径
             string absDataYamlPath = Path.GetFullPath(dataYamlPath).Replace('\\', '/');
 
-            string mainYaml = $@"
-engine:
-  mode: ""backtest""
-data: ""{absDataYamlPath}""
-";
-            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
-            File.WriteAllText(mainConfigPath, mainYaml);
+            string mainConfigPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest")
+                .WithExternalData(absDataYamlPath)
+                .Save(_tempDir, "strategy.yaml");
 
             var config = EngineConfigLoader.Load(mainConfigPath);
 
@@ -224,21 +188,15 @@ data: ""{absDataYamlPath}""
 
             string absRoot = Path.Combine(_tempDir, "absolute_root").Replace('\\', '/');
 
-            string dataYaml = $@"
-root: ""{absRoot}""
-timeseries:
-  - table_id: ""ashare.kline.1d.raw.baostock""
-";
-            string dataYamlPath = Path.Combine(sharedDir, "data.yaml");
-            File.WriteAllText(dataYamlPath, dataYaml);
+            string dataYamlPath = new TestDataConfigBuilder()
+                .WithRoot(absRoot)
+                .AddTimeseries("ashare.kline.1d.raw.baostock")
+                .Save(sharedDir, "data.yaml");
 
-            string mainYaml = @"
-engine:
-  mode: ""backtest""
-data: ""shared/data.yaml""
-";
-            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
-            File.WriteAllText(mainConfigPath, mainYaml);
+            string mainConfigPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest")
+                .WithExternalData("shared/data.yaml")
+                .Save(_tempDir, "strategy.yaml");
 
             var config = EngineConfigLoader.Load(mainConfigPath);
 
@@ -249,15 +207,10 @@ data: ""shared/data.yaml""
         [TestMethod]
         public void TestLoadConfig_WithOmittedDataSection()
         {
-            string mainYaml = @"
-engine:
-  mode: ""backtest""
-
-broker:
-  initial_cash: 800000.0
-";
-            string mainConfigPath = Path.Combine(_tempDir, "strategy.yaml");
-            File.WriteAllText(mainConfigPath, mainYaml);
+            string mainConfigPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest")
+                .WithBrokerSettings(initialCash: 800000.0)
+                .Save(_tempDir, "strategy.yaml");
 
             var config = EngineConfigLoader.Load(mainConfigPath);
 
@@ -288,16 +241,11 @@ broker:
         [TestMethod]
         public void TestLoadConfig_TimeseriesCacheOptions_DefaultValues()
         {
-            string yaml = @"
-engine:
-  mode: ""backtest""
-data:
-  root: ""./data""
-  timeseries:
-    - table_id: ""ashare.kline.1d.raw.baostock""
-";
-            string configPath = Path.Combine(_tempDir, "default_cache.yaml");
-            File.WriteAllText(configPath, yaml);
+            string configPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest")
+                .WithRoot("./data")
+                .AddTimeseries("ashare.kline.1d.raw.baostock")
+                .Save(_tempDir, "default_cache.yaml");
 
             var config = EngineConfigLoader.Load(configPath);
 
@@ -313,24 +261,12 @@ data:
         [TestMethod]
         public void TestLoadConfig_TimeseriesCacheOptions_CustomConfigurations()
         {
-            string yaml = @"
-engine:
-  mode: ""backtest""
-data:
-  root: ""./data""
-  timeseries:
-    - table_id: ""ashare.kline.1m.raw.custom""
-      cache: false
-      page_size: 1024
-      refresh: ""auto""
-      compression: ""none""
-    - table_id: ""ashare.kline.1d.raw.baostock""
-      cache: true
-      page_size: 8192
-      refresh: ""force""
-";
-            string configPath = Path.Combine(_tempDir, "custom_cache.yaml");
-            File.WriteAllText(configPath, yaml);
+            string configPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest")
+                .WithRoot("./data")
+                .AddTimeseries("ashare.kline.1m.raw.custom", cache: false, pageSize: 1024, refresh: "auto", compression: "none")
+                .AddTimeseries("ashare.kline.1d.raw.baostock", cache: true, pageSize: 8192, refresh: "force", compression: "lz4")
+                .Save(_tempDir, "custom_cache.yaml");
 
             var config = EngineConfigLoader.Load(configPath);
 
@@ -354,25 +290,12 @@ data:
         [TestMethod]
         public void TestLoadConfig_WithFieldsSection_InlineConfiguration()
         {
-            string yaml = @"
-engine:
-  mode: ""backtest""
-data:
-  root: ""./data""
-  fields:
-    - name: ""industry""
-      table_id: ""ashare.industry.eastmoney""
-      key_column: ""symbol""
-      value_columns:
-        - ""board_name""
-    - name: ""concept""
-      table_id: ""ashare.concept.eastmoney""
-      key_column: ""symbol""
-      value_columns:
-        - ""board_name""
-";
-            string configPath = Path.Combine(_tempDir, "fields_test.yaml");
-            File.WriteAllText(configPath, yaml);
+            string configPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest")
+                .WithRoot("./data")
+                .AddField("industry", "ashare.industry.eastmoney", "symbol", new List<string> { "board_name" })
+                .AddField("concept", "ashare.concept.eastmoney", "symbol", new List<string> { "board_name" })
+                .Save(_tempDir, "fields_test.yaml");
 
             var config = EngineConfigLoader.Load(configPath);
 
@@ -470,13 +393,10 @@ data:
             {
                 Engine = new EngineSettings { Mode = "living" }
             };
-            string mainYaml = $@"
-engine:
-  mode: ""living""
-data: ""{sharedPath.Replace("\\", "/")}""
-";
-            string mainPath = Path.Combine(_tempDir, "main.yaml");
-            File.WriteAllText(mainPath, mainYaml);
+            string mainPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "living")
+                .WithExternalData(sharedPath)
+                .Save(_tempDir, "main.yaml");
 
             var loaded = EngineConfigLoader.Load(mainPath);
             Assert.AreEqual("living", loaded.Engine.Mode);
@@ -487,8 +407,8 @@ data: ""{sharedPath.Replace("\\", "/")}""
         [TestMethod]
         public void Test_ExhaustiveAllParameters_YamlAndCode_Coverage()
         {
-            // 穷举全量参数：包含 24 个参数的非默认显式定义
-            var builder = new Helper.TestYamlConfigBuilder()
+            // 穷举全量参数：使用 TestYamlConfigBuilder 流式构建真实完整的 YAML 测试配置文件
+            string fullYamlPath = new TestYamlConfigBuilder()
                 .WithEngineSettings(
                     mode: "living",
                     start: new DateTime(2025, 2, 1, 9, 30, 0),
@@ -505,19 +425,18 @@ data: ""{sharedPath.Replace("\\", "/")}""
                     commitBatchSize: 32,
                     maxPages: 8,
                     prefetch: true,
-                    fields: new System.Collections.Generic.List<string> { "open", "high", "low", "close", "volume" })
+                    fields: new List<string> { "open", "high", "low", "close", "volume" })
                 .AddEvent(
                     name: "adj",
                     tableId: "ashare.adj_factor.baostock",
-                    fields: new System.Collections.Generic.List<string> { "back_adj_factor" })
+                    fields: new List<string> { "back_adj_factor" })
                 .AddField(
                     name: "ind",
                     tableId: "ashare.industry.eastmoney",
                     keyColumn: "symbol",
-                    valueColumns: new System.Collections.Generic.List<string> { "board_name", "stock_name" });
+                    valueColumns: new List<string> { "board_name", "stock_name" })
+                .Save(_tempDir, "exhaustive.yaml");
 
-            // 1. 保存为物理 YAML 文件
-            string fullYamlPath = builder.Save(_tempDir, "exhaustive.yaml");
             string yamlText = File.ReadAllText(fullYamlPath);
 
             // 2. 校验生成的 YAML 文本中是否包含了所有符合规范的蛇形命名字段
@@ -582,29 +501,21 @@ data: ""{sharedPath.Replace("\\", "/")}""
         [TestMethod]
         public void TestLoadBrokerConfig_FullParameters()
         {
-            string yaml = @"
-engine:
-  mode: ""backtest""
-  start_date: ""2025-01-01""
-  end_date: ""2025-12-31""
-
-broker:
-  initial_cash: 5000000.0
-  settle_days: 0
-  allow_short: true
-  fee_rate: 0.0001
-  min_fee: 0.0
-  slippage: 0.0005
-  volume_limit: 0.15
-  check_limit: true
-  multiplier: 10.0
-  margin_rate: 0.1
-
-data:
-  root: ""./test_data""
-";
-            string configPath = Path.Combine(_tempDir, "broker_full.yaml");
-            File.WriteAllText(configPath, yaml);
+            string configPath = new TestYamlConfigBuilder()
+                .WithEngineSettings(mode: "backtest", start: new DateTime(2025, 1, 1), end: new DateTime(2025, 12, 31))
+                .WithBrokerSettings(
+                    initialCash: 5000000.0,
+                    settleDays: 0,
+                    allowShort: true,
+                    feeRate: 0.0001,
+                    minFee: 0.0,
+                    slippage: 0.0005,
+                    volumeLimit: 0.15,
+                    checkLimit: true,
+                    multiplier: 10.0,
+                    marginRate: 0.1)
+                .WithRoot("./test_data")
+                .Save(_tempDir, "broker_full.yaml");
 
             var config = EngineConfigLoader.Load(configPath);
 

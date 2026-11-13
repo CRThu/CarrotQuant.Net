@@ -2,16 +2,24 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CarrotBacktesting.NET.Config;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace CarrotBackTesting.Net.UnitTest.Helper
 {
     /// <summary>
-    /// 测试专用的 YAML 配置文件流式构建器。
-    /// 允许单元测试以强类型方式自由排列组合配置项，一键生成符合规范的 YAML 文本或物理文件，
-    /// 彻底告别多行字符串模板与魔法字符串硬编码。
+    /// 测试专用的引擎配置构建器。
+    /// 以流式 Fluent 方式直接组装强类型 EngineConfig 模型并通过标准序列化器生成规范的 YAML 文本或物理文件，
+    /// 遵循单一事实来源（SSOT），杜绝手工拼接缩进字符串的维护陷阱。
     /// </summary>
     public class TestYamlConfigBuilder
     {
+        private string? _externalDataPath;
+        private static readonly ISerializer Serializer = new SerializerBuilder()
+            .WithNamingConvention(UnderscoredNamingConvention.Instance)
+            .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
+            .Build();
+
         private readonly EngineConfig _config = new()
         {
             Engine = new EngineSettings
@@ -22,7 +30,16 @@ namespace CarrotBackTesting.Net.UnitTest.Helper
             },
             Broker = new BrokerConfig
             {
-                InitialCash = 1000000.0
+                InitialCash = 1000000.0,
+                SettleDays = 1,
+                AllowShort = false,
+                FeeRate = 0.0003,
+                MinFee = 5.0,
+                Slippage = 0.001,
+                VolumeLimit = 0.0,
+                CheckLimit = false,
+                Multiplier = 1.0,
+                MarginRate = 1.0
             },
             Data = new DataConfig()
         };
@@ -66,29 +83,37 @@ namespace CarrotBackTesting.Net.UnitTest.Helper
             return this;
         }
 
+        public TestYamlConfigBuilder WithExternalData(string relativeOrAbsolutePath)
+        {
+            _externalDataPath = relativeOrAbsolutePath;
+            return this;
+        }
+
         public TestYamlConfigBuilder AddTimeseries(
             string tableId,
-            bool cache = false,
-            int pageSize = 4096,
-            string refresh = "lazy",
-            string compression = "lz4",
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = false,
+            bool? cache = null,
+            int? pageSize = null,
+            string? refresh = null,
+            string? compression = null,
+            int? commitBatchSize = null,
+            int? maxPages = null,
+            bool? prefetch = null,
             List<string>? fields = null)
         {
-            _config.Data.Timeseries.Add(new TimeseriesConfig
+            var ts = new TimeseriesConfig
             {
                 TableId = tableId,
-                Cache = cache,
-                PageSize = pageSize,
-                Refresh = refresh,
-                Compression = compression,
-                CommitBatchSize = commitBatchSize,
-                MaxPages = maxPages,
-                Prefetch = prefetch,
                 Fields = fields
-            });
+            };
+            if (cache.HasValue) ts.Cache = cache.Value;
+            if (pageSize.HasValue) ts.PageSize = pageSize.Value;
+            if (refresh != null) ts.Refresh = refresh;
+            if (compression != null) ts.Compression = compression;
+            if (commitBatchSize.HasValue) ts.CommitBatchSize = commitBatchSize.Value;
+            if (maxPages.HasValue) ts.MaxPages = maxPages.Value;
+            if (prefetch.HasValue) ts.Prefetch = prefetch.Value;
+
+            _config.Data.Timeseries.Add(ts);
             return this;
         }
 
@@ -116,23 +141,43 @@ namespace CarrotBackTesting.Net.UnitTest.Helper
         }
 
         /// <summary>
-        /// 获取生成的强类型配置模型。
+        /// 基于强类型模型与生产序列化器直接生成符合规范的 YAML 文本内容。
         /// </summary>
-        public EngineConfig BuildModel() => _config;
+        public string BuildYaml()
+        {
+            if (!string.IsNullOrWhiteSpace(_externalDataPath))
+            {
+                var dict = new Dictionary<string, object?>
+                {
+                    ["engine"] = _config.Engine,
+                    ["broker"] = _config.Broker,
+                    ["data"] = _externalDataPath.Replace("\\", "/")
+                };
+                return Serializer.Serialize(dict);
+            }
+
+            return _config.ToYaml();
+        }
 
         /// <summary>
-        /// 序列化为规范的 YAML 文本。
-        /// </summary>
-        public string BuildYaml() => EngineConfigSerializer.Serialize(_config);
-
-        /// <summary>
-        /// 将组合好的配置保存至指定目录下的 YAML 物理文件，返回该文件的完整绝对路径。
+        /// 将构造出的 YAML 文本直接保存至指定物理文件，返回绝对路径。
         /// </summary>
         public string Save(string directory, string fileName = "config.yaml")
         {
             string fullPath = Path.Combine(directory, fileName);
-            EngineConfigSerializer.Save(_config, fullPath);
+            string? dir = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            File.WriteAllText(fullPath, BuildYaml());
             return fullPath;
         }
+
+        /// <summary>
+        /// 获取内部构造的强类型 EngineConfig 模型实例。
+        /// </summary>
+        public EngineConfig ToConfig() => _config;
     }
 }
