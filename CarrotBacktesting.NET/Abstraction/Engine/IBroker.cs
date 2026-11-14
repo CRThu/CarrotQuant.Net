@@ -3,7 +3,7 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 /// <summary>
 /// 定义经纪商（Broker）接口。
 /// 面向策略层暴露，负责执行风控校验、订单路由、资金管理以及维护持仓状态。
-/// 支持回测模拟（SimulatedBroker）与实盘网关（LivingBroker）无缝切换。
+/// 统一单一内核，支持回测模拟网关（SimulatedExchangeGateway）与实盘网关（CtpGateway）无缝切换。
 /// </summary>
 public interface IBroker
 {

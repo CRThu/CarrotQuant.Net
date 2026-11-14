@@ -5,6 +5,7 @@ using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Engine;
 using CarrotBacktesting.NET.Engine.Broker;
+using CarrotBacktesting.NET.Engine.Exchange;
 using CarrotBacktesting.NET.Config;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -42,7 +43,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Constructor_NullRequiredParams_ThrowsException()
         {
             var ts = CreateMockRegistry();
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
 
             Assert.ThrowsException<ArgumentNullException>(() => new EngineContext(null!, broker));
             Assert.ThrowsException<ArgumentNullException>(() => new EngineContext(ts, null!));
@@ -52,7 +53,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Constructor_DefaultOptionalParameters_ShouldInitializeNonNull()
         {
             var ts = CreateMockRegistry();
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
 
             var ctx = new EngineContext(ts, broker);
 
@@ -69,7 +70,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void State_IndexAndTime_CanBeUpdated()
         {
             var ts = CreateMockRegistry();
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
             var ctx = new EngineContext(ts, broker);
 
             var now = DateTime.UtcNow;
@@ -88,7 +89,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Extensions_SetAndGet_WorksProperly()
         {
             var ts = CreateMockRegistry();
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
             var ctx = new EngineContext(ts, broker);
 
             Assert.IsNull(ctx.GetExtension<SamplePlugin>());

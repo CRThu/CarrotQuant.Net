@@ -5,6 +5,7 @@ using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Engine.Broker;
+using CarrotBacktesting.NET.Engine.Exchange;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Engine
@@ -12,6 +13,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
     [TestClass]
     public class SimulatedBrokerTests
     {
+        private static Broker CreateBroker(BrokerConfig config, IFieldRegistry? fields = null)
+        {
+            var gateway = new SimulatedExchangeGateway(config, fields);
+            return new Broker(gateway, config, fields);
+        }
         private static IDataRow CreateBar(double open, double high, double low, double close, double volume, double? limitUp = null)
         {
             var cols = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
@@ -56,7 +62,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 MarginRate = 1.0
             };
 
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 1. 买入 10,000 股 @ 10.0 元 (基准价 10.0，买入滑点千一 -> 10.01)
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 10000m);
@@ -99,7 +105,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 AllowShort = false
             };
 
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 当天买入
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m);
@@ -122,7 +128,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 AllowShort = false
             };
 
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 无持仓直接卖空，直接被拒绝
             var sellOrder = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 10.0, 500m);
@@ -140,7 +146,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 InitialCash = 1_000.0 // 只有 1,000 元
             };
 
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 尝试买入价值 10,000 元的股票
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m);
@@ -160,7 +166,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 VolumeLimit = 0.1 // 单笔不能超过成交量 10%
             };
 
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 1. 停牌场景 (Volume = 0)
             var suspendedBar = CreateBar(10.0, 10.0, 10.0, 10.0, volume: 0.0);
@@ -198,7 +204,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 }
             };
 
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 涨停 Bar: close = 11.0, limit_up = 11.0
             var limitUpBar = CreateBar(10.0, 11.0, 10.0, 11.0, volume: 100000.0, limitUp: 11.0);
@@ -225,7 +231,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 MarginRate = 0.1
             };
 
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 1. 多头开仓：买入 10 手螺纹钢 @ 3,500 元/吨
             // 名义金额 = 10手 * 3500 * 10 = 350,000 元
@@ -300,7 +306,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 OnCalculateSlippage = (order, basePrice, bar) => order.IsBuy ? basePrice + 0.05 : basePrice - 0.05
             };
 
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             var bar = CreateBar(10.0, 10.5, 9.8, 10.0, 50000.0);
 
             // 买入 1000 股 @ 10.0 元 -> 成交价 10.05 元
@@ -327,7 +333,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void SyncState_ShouldAtomicallyUpdateCashAndPositions()
         {
             var config = new BrokerConfig { InitialCash = 100_000.0 };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             var externalPositions = new Dictionary<string, decimal>
             {
@@ -351,7 +357,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void CancelOrder_AndInvalidInputGuards_ShouldWork()
         {
             var config = new BrokerConfig { InitialCash = 100_000.0 };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 1. 测试非法参数保护
             var invalidOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 0.0, 0m);
@@ -381,13 +387,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Multiplier = 1.0,
                 MarginRate = 1.0
             };
-            var spotBroker = new SimulatedBroker(spotConfig);
+            var spotBroker = CreateBroker(spotConfig);
             spotBroker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 10000m));
             // 买入花费 100,000，剩余现金 900,000，持仓市值 100,000，总权益应严格等于 1,000,000
             Assert.AreEqual(1_000_000.0, spotBroker.GetTotalEquity(), 1e-4);
 
             // 2. 渐进多批次 T+1 跨日解锁 (remainingLots 分支)
-            var multiLotBroker = new SimulatedBroker(spotConfig);
+            var multiLotBroker = CreateBroker(spotConfig);
             DateTime day0 = new DateTime(2024, 12, 31);
             DateTime day1 = new DateTime(2025, 1, 1);
             DateTime day2 = new DateTime(2025, 1, 2);
@@ -418,7 +424,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 InitialCash = 100_000.0,
                 OnCheckVolume = (order, bar) => order.Quantity <= 500m
             };
-            var volBroker = new SimulatedBroker(volHookConfig);
+            var volBroker = CreateBroker(volHookConfig);
             var bar = CreateBar(10.0, 10.5, 9.8, 10.0, 10000.0);
 
             string rejectId = volBroker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 600m), 10.0, bar);
@@ -443,7 +449,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 构造带 fields 的 Broker 注入测试
             var dummyFields = new CarrotBacktesting.NET.Data.FieldRegistry();
-            var dynBroker = new SimulatedBroker(dynamicConfig, dummyFields);
+            var dynBroker = CreateBroker(dynamicConfig, dummyFields);
             var passBar = CreateBar(100.0, 105.0, 98.0, 100.0, 100000.0);
             string dynOrderId = dynBroker.ExecuteOrder(new OrderRequest("custom_item", OrderDirection.Buy, OrderType.Market, 100.0, 10m), 100.0, passBar);
             Assert.AreEqual(OrderStatus.Filled, dynBroker.GetOrderStatus(dynOrderId));
@@ -463,7 +469,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 SettleDays = 0, // T+0
                 AllowShort = false
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 买入并立即全额卖出 50 只不同的标的
             for (int i = 0; i < 50; i++)
@@ -491,7 +497,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 InitialCash = 1_000_000.0,
                 SettleDays = 0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m));
 
@@ -520,7 +526,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 MinFee = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
@@ -576,7 +582,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 }
             };
 
-            var broker = new SimulatedBroker(config, fields: fields);
+            var broker = CreateBroker(config, fields: fields);
             var bar = CreateBar(10.0, 10.0, 10.0, 10.0, 1000.0);
             broker.ExecuteOrder(new OrderRequest("test", OrderDirection.Buy, OrderType.Market, 10.0, 10m), 10.0, bar);
 
@@ -600,7 +606,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 SettleDays = 1,
                 TimeZoneId = "Asia/Shanghai"
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 传入 Unspecified 时间戳（模拟真实 CSV 数据源不带 Kind 标签）：UTC 2025-01-02 06:00:00 (北京时间 14:00) 买入
             var utcTradeTime = new DateTime(2025, 1, 2, 6, 0, 0, DateTimeKind.Unspecified);
@@ -619,7 +625,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         [TestMethod]
         public void MinuteLevel_TPlusOne_ShouldUnlockSharesOnNextDayMorning()
         {
-            var broker = new SimulatedBroker(new BrokerConfig
+            var broker = CreateBroker(new BrokerConfig
             {
                 SettleDays = 1,
                 AllowShort = false,
@@ -640,7 +646,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Defense_NaNAndInfinityBasePrice_ShouldBeStrictlyRejected()
         {
             var config = new BrokerConfig { InitialCash = 1_000_000.0 };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 1. 测试 NaN 价格
             var nanOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, double.NaN, 100m);
@@ -671,7 +677,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 MinFee = 5.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 买入 100 股 @ 2.0 元，成交额 200 元；万三佣金仅 0.06 元，必须触发 5.0 元最低手续费
             var order = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 2.0, 100m);
@@ -695,7 +701,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 1. 做空 5 手 @ 100.0 元
             // turnover = 5 * 100 * 10 = 5000. 保证金占用 = 500
@@ -729,7 +735,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 1. 空头 5 手 @ 100.0 (占用保证金 50)
             broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 100.0, 5m), 100.0, null);
@@ -762,7 +768,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 初始持有多头 5 手 (假设通过 SyncState 注入，避免开仓扣现金)
             broker.SyncState(10.0, new Dictionary<string, decimal> { ["rb2505"] = 5m });
@@ -779,7 +785,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void SubmitOrder_MarketOrder_UsesMarketPrice()
         {
             var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 预先更新市场价格
             broker.UpdateMarketPrice("sh.600000", 15.0);
@@ -807,7 +813,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 OnGetMarginRate = (symbol, _) => symbol.StartsWith("IF") ? 0.1 : 1.0,
                 OnGetSettleDays = symbol => symbol.StartsWith("sh") ? 1 : 0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             DateTime day1_morning = new DateTime(2025, 1, 6, 9, 30, 0);
             broker.Step(day1_morning);
@@ -866,7 +872,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 AllowShort = true,
                 OnGetSettleDays = symbol => symbol.StartsWith("sh") ? 1 : 0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             DateTime day1 = new DateTime(2025, 1, 6, 9, 30, 0);
             broker.Step(day1);
@@ -903,7 +909,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 MinFee = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             broker.UpdateMarketPrice("sh.600000", 10.0); // 当前市价 10.0 元
 
             // 1. 提交买入限价单 9.0 元 (低于市价 10.0，进入未成交挂单队列)
@@ -939,7 +945,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Slippage = 0.0,
                 FeeRate = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             // 初始通过 SyncState 注入 1,000 股现货
             broker.SyncState(100_000.0, new Dictionary<string, decimal> { ["sh.600000"] = 1000m });
             broker.UpdateMarketPrice("sh.600000", 10.0);
@@ -978,7 +984,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0003,
                 MinFee = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             broker.UpdateMarketPrice("sh.600000", 10.0);
 
             bool tradeEventFired = false;
@@ -1017,7 +1023,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             broker.UpdateMarketPrice("IF2501", 3900.0);
 
             // 1. 挂单 4,000 点做空 1 手 (高于当前市价 3900，未成交)
@@ -1046,7 +1052,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0003,
                 MinFee = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             broker.SyncState(100_000.0, new Dictionary<string, decimal> { ["sh.600000"] = 1000m });
             broker.UpdateMarketPrice("sh.600000", 10.0);
 
@@ -1081,7 +1087,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             // 初始持有多头 5 手 @ 100.0 (占用保证金 50 元)
             broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 100.0, 5m), 100.0, null);
             Assert.AreEqual(5m, broker.GetPosition("rb2505"));
@@ -1118,7 +1124,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Slippage = 0.0,
                 FeeRate = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             broker.UpdateMarketPrice("sh.600000", 10.0);
 
             // 阶梯挂两笔买单：
@@ -1155,7 +1161,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var brokerNoLimit = new SimulatedBroker(noLimitConfig);
+            var brokerNoLimit = CreateBroker(noLimitConfig);
             // Bar 成交量仅 100 股
             var barSmall = CreateBar(10.0, 10.5, 9.8, 10.0, 100.0);
             var hugeOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 10_000m);
@@ -1169,7 +1175,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var brokerLimited = new SimulatedBroker(limitedConfig);
+            var brokerLimited = CreateBroker(limitedConfig);
             string id2 = brokerLimited.ExecuteOrder(hugeOrder, 10.0, barSmall);
             Assert.AreEqual(OrderStatus.Rejected, brokerLimited.GetOrderStatus(id2), "超过 10% Bar Volume 的订单必须被 Reject");
         }
@@ -1196,7 +1202,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 美东时间 2025-01-05 15:30:00 (盘中买入，T+1 到期日应为美东当地 2025-01-06)
             DateTime nyTimeBuy = new DateTime(2025, 1, 5, 15, 30, 0);
@@ -1232,7 +1238,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 AllowShort = true
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
 
             // 1. 买入限价单：基准市价 99.0，委托限价 100.0。
             // 正常 5% 滑点计算价格 = 99.0 * 1.05 = 103.95 (高于委托限价 100.0)。
@@ -1271,7 +1277,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Slippage = 0.0,
                 FeeRate = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             broker.UpdateMarketPrice("sh.600000", 10.0);
 
             var tradeOrderIds = new List<string>();
@@ -1314,7 +1320,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Slippage = 0.0,
                 FeeRate = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             broker.UpdateMarketPrice("sh.600000", 10.0);
 
             // 挂单 9.0 元买 1000 股（冻结 9000 元）
@@ -1355,7 +1361,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Slippage = 0.0,
                 FeeRate = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             // 市场当前行情价为 10.0 元
             broker.UpdateMarketPrice("sh.600000", 10.0);
 
@@ -1387,7 +1393,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var broker = new SimulatedBroker(config);
+            var broker = CreateBroker(config);
             broker.UpdateMarketPrice("rb2505", 100.0);
 
             // 1. 建立空头持仓 5 手 @ 100.0 元 (占用保证金 50 元)
@@ -1423,7 +1429,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 FeeRate = 0.0,
                 Slippage = 0.0
             };
-            var brokerPoor = new SimulatedBroker(configPoor);
+            var brokerPoor = CreateBroker(configPoor);
             brokerPoor.UpdateMarketPrice("rb2505", 100.0);
             // 建立 5 手空头 (消耗 50 元保证金，剩余 10 元)
             brokerPoor.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Market, 100.0, 5m), 100.0, null);
@@ -1432,6 +1438,33 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 挂单 2：试图再次双花平仓 5 手。因为额度用完必须开多，开多需 45 元保证金，但可用资金仅 10 元，必须被拒！
             string idReject = brokerPoor.SubmitOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m));
             Assert.AreEqual(OrderStatus.Rejected, brokerPoor.GetOrderStatus(idReject), "无平仓额度且资金不足以开多时，必须严格拒单");
+        }
+    }
+
+    internal static class BrokerTestExtensions
+    {
+        public static void UpdateMarketPrice(this Broker broker, string symbol, double price, IDataRow? bar = null)
+        {
+            if (broker.Gateway is ISimulatedExchange sim)
+            {
+                sim.UpdateMarketPrice(symbol, price, bar);
+            }
+        }
+
+        public static string ExecuteOrder(this Broker broker, OrderRequest request, double basePrice, IDataRow? bar = null)
+        {
+            if (broker.Gateway is ISimulatedExchange sim)
+            {
+                if (basePrice > 0.0 && !double.IsNaN(basePrice) && !double.IsInfinity(basePrice))
+                {
+                    sim.UpdateMarketPrice(request.Symbol, basePrice, bar);
+                }
+                else if (double.IsNaN(basePrice) || double.IsInfinity(basePrice))
+                {
+                    return broker.SubmitOrder(request with { Price = basePrice });
+                }
+            }
+            return broker.SubmitOrder(request);
         }
     }
 }

@@ -10,6 +10,7 @@ using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Engine;
 using CarrotBacktesting.NET.Engine.Broker;
+using CarrotBacktesting.NET.Engine.Exchange;
 using CarrotBacktesting.NET.Strategy;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -142,11 +143,18 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
         #endregion
 
+        private static Broker CreateBroker(BrokerConfig? config = null, IFieldRegistry? fields = null)
+        {
+            var cfg = config ?? new BrokerConfig();
+            var gateway = new SimulatedExchangeGateway(cfg, fields);
+            return new Broker(gateway, cfg, fields);
+        }
+
         [TestMethod]
         public void Constructor_NullRequiredParams_ThrowsException()
         {
             var (ts, _) = CreateTestTimeseries(5);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var pipeline = StrategyPipeline.Sequential();
 
             Assert.ThrowsException<ArgumentNullException>(() => new BacktestingEngine(null!, broker, pipeline));
@@ -159,7 +167,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         {
             int days = 10;
             var (ts, dates) = CreateTestTimeseries(days);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new CountingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -184,7 +192,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         {
             int totalBars = 20_000;
             var (ts, _) = CreateTestTimeseries(totalBars);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new CountingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -206,7 +214,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_DateFiltering_ShouldRespectStartAndEndDate()
         {
             var (ts, dates) = CreateTestTimeseries(10, new DateTime(2025, 1, 1));
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new CountingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -230,7 +238,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_DateFiltering_OutOfRange_ShouldCompleteGracefully()
         {
             var (ts, _) = CreateTestTimeseries(5, new DateTime(2025, 1, 1));
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new CountingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -296,7 +304,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             var meta = new DynamicMarketMetadata(new[] { "sh.600000" }, dates);
             var ts = new MockTimeseriesRegistry(meta);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new CountingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -409,7 +417,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         {
             var (ts, _) = CreateTestTimeseries(3, new DateTime(2025, 1, 1));
             // 采用 T+1 现货配置
-            var broker = new SimulatedBroker(new BrokerConfig { SettleDays = 1, AllowShort = false });
+            var broker = CreateBroker(new BrokerConfig { SettleDays = 1, AllowShort = false });
             var strategy = new TPlusOneTradeStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -426,7 +434,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_Events_ShouldDetectAndDispatchToPipeline()
         {
             var (ts, dates) = CreateTestTimeseries(5, new DateTime(2025, 1, 1));
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
 
             // 构造事件流并在 Day 1 (2025-01-02) 注入事件
             var eventDate = dates[1];
@@ -462,7 +470,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_BrokerEvents_ShouldBridgeToStrategyCallbacks()
         {
             var (ts, _) = CreateTestTimeseries(2);
-            var broker = new SimulatedBroker(new BrokerConfig { SettleDays = 0 });
+            var broker = CreateBroker(new BrokerConfig { SettleDays = 0 });
             var strategy = new BrokerCallbackTrackingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -482,7 +490,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void PauseAndResume_ShouldControlExecution()
         {
             var (ts, _) = CreateTestTimeseries(50);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new SynchronizedStrategy();
             strategy.StepGate.Reset(); // 步进阻塞，防止空循环瞬间跑完全部时间步
             var pipeline = StrategyPipeline.Sequential();
@@ -519,7 +527,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Stop_ShouldTerminateGracefully()
         {
             var (ts, _) = CreateTestTimeseries(500);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new SynchronizedStrategy();
             strategy.StepGate.Reset(); // 步进阻塞，让测试完全控制
             var pipeline = StrategyPipeline.Sequential();
@@ -544,7 +552,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void RunAsync_WithCancellationToken_ShouldCancelGracefully()
         {
             var (ts, _) = CreateTestTimeseries(500);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new SynchronizedStrategy();
             strategy.StepGate.Reset(); // 步进阻塞
             var pipeline = StrategyPipeline.Sequential();
@@ -569,7 +577,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void SaveAndRestoreCheckpoint_ShouldValidateAndResumeExecution()
         {
             var (ts, dates) = CreateTestTimeseries(10);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new CountingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -680,7 +688,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var fieldRegistry = new FieldRegistry();
             fieldRegistry.Register("industry", industryTable);
 
-            var broker = new SimulatedBroker(new BrokerConfig { InitialCash = 1000000.0, SettleDays = 0 });
+            var broker = CreateBroker(new BrokerConfig { InitialCash = 1000000.0, SettleDays = 0 });
             var strategy = new RealDataMaStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -724,7 +732,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void PauseThenStop_ShouldExitImmediatelyWithoutStealingExtraStep()
         {
             var (ts, _) = CreateTestTimeseries(100);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new SynchronizedStrategy();
             strategy.StepGate.Reset(); // 步进阻塞
             var pipeline = StrategyPipeline.Sequential();
@@ -757,7 +765,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_WhenNotIdle_ThrowsInvalidOperationException()
         {
             var (ts, _) = CreateTestTimeseries(5);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var pipeline = StrategyPipeline.Sequential();
 
             using var engine = new BacktestingEngine(ts, broker, pipeline);
@@ -771,7 +779,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_AfterDisposed_ThrowsObjectDisposedException()
         {
             var (ts, _) = CreateTestTimeseries(5);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var pipeline = StrategyPipeline.Sequential();
 
             var engine = new BacktestingEngine(ts, broker, pipeline);
@@ -784,7 +792,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void RestoreCheckpoint_WhenRunning_ThrowsInvalidOperationException()
         {
             var (ts, _) = CreateTestTimeseries(50);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new SynchronizedStrategy();
             strategy.StepGate.Reset();
             var pipeline = StrategyPipeline.Sequential();
@@ -828,7 +836,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 SettleDays = 1,
                 TimeZoneId = "America/New_York"
             };
-            var broker = new SimulatedBroker(brokerConfig);
+            var broker = CreateBroker(brokerConfig);
 
             var strategy = new UsMarketTPlusOneStrategy();
             var pipeline = StrategyPipeline.Sequential();
@@ -853,7 +861,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             };
             var meta = new DynamicMarketMetadata(new[] { "sh.600000" }, dates);
             var ts = new MockTimeseriesRegistry(meta);
-            var broker = new SimulatedBroker(new BrokerConfig { SettleDays = 0 });
+            var broker = CreateBroker(new BrokerConfig { SettleDays = 0 });
 
             var trackingStrategy = new MinuteExecutionReportTrackingStrategy();
             var pipeline = StrategyPipeline.Sequential();
@@ -924,7 +932,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_StrategyThrowsException_EngineTransitionsToFaultedAndUnsubscribes()
         {
             var (ts, _) = CreateTestTimeseries(5);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(new ThrowingStrategy());
 
@@ -938,7 +946,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_EndDateBeforeStartDate_ShouldCompleteWithZeroUpdates()
         {
             var (ts, _) = CreateTestTimeseries(10, new DateTime(2025, 1, 1));
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new CountingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -997,7 +1005,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 构造 0 个交易日的空时序元数据
             var metadata = new DynamicMarketMetadata(new[] { "sh.600000" }, Array.Empty<DateTime>(), new Dictionary<string, Type> { { "close", typeof(double) } });
             using var emptyTs = new TimeseriesRegistry(metadata, (sym, f) => null!);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var pipeline = StrategyPipeline.Sequential();
 
             using var engine = new BacktestingEngine(emptyTs, broker, pipeline);
@@ -1010,7 +1018,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void RestoreCheckpoint_InvalidVersion_ThrowsInvalidDataException()
         {
             var (ts, _) = CreateTestTimeseries(5);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var pipeline = StrategyPipeline.Sequential();
             using var engine = new BacktestingEngine(ts, broker, pipeline);
 
@@ -1031,7 +1039,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void RestoreCheckpoint_PastEndIndex_CompletesImmediately()
         {
             var (ts, _) = CreateTestTimeseries(5);
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
             var strategy = new CountingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -1058,7 +1066,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void DispatchEvents_GlobalEvents_ShouldDispatchToPipeline()
         {
             var (ts, dates) = CreateTestTimeseries(3, new DateTime(2025, 1, 1));
-            var broker = new SimulatedBroker(new BrokerConfig());
+            var broker = CreateBroker(new BrokerConfig());
 
             // 构造全局广播事件（无标的代码，全市场广播）
             var eventDate = dates[1];

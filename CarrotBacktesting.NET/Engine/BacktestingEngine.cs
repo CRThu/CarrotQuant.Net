@@ -8,6 +8,7 @@ using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Engine.Broker;
+using CarrotBacktesting.NET.Engine.Exchange;
 using CarrotBacktesting.NET.Strategy;
 
 namespace CarrotBacktesting.NET.Engine
@@ -21,6 +22,7 @@ namespace CarrotBacktesting.NET.Engine
     {
         private readonly ITimeseriesRegistry _timeseries;
         private readonly IBroker _broker;
+        private readonly ISimulatedExchange? _simExchange;
         private readonly IStrategyPipeline _pipeline;
         private readonly IEventRegistry _events;
         private readonly IFieldRegistry _fields;
@@ -72,6 +74,7 @@ namespace CarrotBacktesting.NET.Engine
         /// <param name="market">市场黑板（可选）。</param>
         /// <param name="config">引擎运行配置（可选）。</param>
         /// <param name="monitor">监控与日志记录器（可选，缺省为 NullMonitor）。</param>
+        /// <param name="simExchange">仿真交易所（可选，若未指定则自动自 broker.Gateway 感知）。</param>
         public BacktestingEngine(
             ITimeseriesRegistry timeseries,
             IBroker broker,
@@ -80,10 +83,12 @@ namespace CarrotBacktesting.NET.Engine
             IFieldRegistry? fields = null,
             IMarketState? market = null,
             EngineConfig? config = null,
-            IMonitor? monitor = null)
+            IMonitor? monitor = null,
+            ISimulatedExchange? simExchange = null)
         {
             _timeseries = timeseries ?? throw new ArgumentNullException(nameof(timeseries));
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _simExchange = simExchange ?? ((broker as Broker.Broker)?.Gateway as ISimulatedExchange);
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
             _config = config ?? new EngineConfig();
             _monitor = monitor ?? NullMonitor.Instance;
@@ -121,7 +126,8 @@ namespace CarrotBacktesting.NET.Engine
             ArgumentNullException.ThrowIfNull(sessionConfig);
             ArgumentNullException.ThrowIfNull(timeseries);
 
-            var broker = new SimulatedBroker(sessionConfig.Broker, fields);
+            var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker, fields);
+            var broker = new Broker.Broker(simGateway, sessionConfig.Broker, fields);
 
             IStrategyPipeline activePipeline;
             if (pipeline != null)
@@ -145,7 +151,8 @@ namespace CarrotBacktesting.NET.Engine
                 fields,
                 market,
                 sessionConfig.Engine,
-                monitor);
+                monitor,
+                simExchange: simGateway);
         }
 
         /// <inheritdoc />
@@ -267,7 +274,10 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.2 时序滑动窗口与预读驱动
                     _timeseries.StepTo(i);
 
-                    // 5.3 推进经纪商时钟与交易所本地跨日结算（单指令 CPU 比较，零 GC）
+                    // 5.3 驱动仿真交易所批量撮合在途限价单与开盘挂单
+                    _simExchange?.Step(currentTime, _timeseries, i);
+
+                    // 5.4 推进经纪商时钟与交易所本地跨日结算（T+N 在途持仓解锁）
                     _broker.Step(currentTime);
 
                     // 5.4 离散事件常数时间轻量探测与派发
