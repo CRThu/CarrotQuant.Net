@@ -45,9 +45,9 @@ public static class SessionConfigLoader
 - **`EngineConfig`**: 引擎自身参数：`Mode` (`backtest`/`living`)、`StartDate` (DateTime?)、`EndDate` (DateTime?)。
 - **`BrokerConfig`**: `InitialCash` (double)、`SettleDays` (int: 0 即 T+0, 1 即 T+1)、`AllowShort` (bool)、`FeeRate` (double)、`MinFee` (double)、`Slippage` (double)、`VolumeLimit` (double)、`CheckLimit` (bool)、`Multiplier` (double)、`MarginRate` (double)，对称覆盖 Hook，以及内置静态市场预设（`Universal`, `AStock`, `Futures`, `Crypto`）。
 - **`DataConfig`**: `Root` (string)、`Timeseries` (`List<TimeseriesConfig>`)、`Events` (`List<EventStreamConfig>`)、`Fields` (`List<FieldTableConfig>`)。
-- **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)、`Cache` (bool)、`PageSize` (int)、`Refresh` (string)、`Compression` (string)、`CommitBatchSize` (int)、`MaxPages` (int)、`Prefetch` (bool)。
-- **`EventStreamConfig`**: `Name` (string)、`TableId` (string)。
-- **`FieldTableConfig`**: `Name` (string)、`TableId` (string)、`KeyColumn` (string?)、`ValueColumns` (`List<string>?`)。
+- **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)、`TimeZone` (string?)、`Cache` (bool)、`PageSize` (int)、`Refresh` (string)、`Compression` (string)、`CommitBatchSize` (int)、`MaxPages` (int)、`Prefetch` (bool)、`NullableFields` (`List<string>?`)。
+- **`EventStreamConfig`**: `Name` (string)、`TableId` (string)、`Fields` (`List<string>?`)、`TimeZone` (string?)、`NullableFields` (`List<string>?`)。
+- **`FieldTableConfig`**: `Name` (string)、`TableId` (string)、`KeyColumn` (string?)、`ValueColumns` (`List<string>?`)、`NullableFields` (`List<string>?`)。
 
 > 详细参数字典、类型、默认值与必填约束详见 [配置参数全量字典 (configuration.md)](configuration.md#二配置参数全量字典-parameter-reference)。
 
@@ -146,6 +146,7 @@ public interface IStorageResolver
     StorageLayout GetLayout(string tableId);           // Hive 或 Flat
     string GetCategory(string tableId);               // "timeseries" 或 "events"
     string GetPartition(string tableId);              // "symbol", "date" 或 "none"
+    IReadOnlySet<string> GetNullableFields(string tableId); // 允许为空字段白名单
     IReadOnlyList<string> GetFieldNames(string tableId);
     Type GetFieldType(string tableId, string fieldName);
     

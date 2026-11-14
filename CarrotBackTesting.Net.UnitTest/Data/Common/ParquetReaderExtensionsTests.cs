@@ -254,19 +254,85 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 int rowCount = (int)groupReader.RowCount;
 
                 var dblField = reader.Schema.FindDataFieldIgnoreCase("NullableDouble")!;
-                var dblStrs = groupReader.ReadStringColumn(dblField, rowCount);
+                var intField = reader.Schema.FindDataFieldIgnoreCase("NullableInt")!;
+                var strField = reader.Schema.FindDataFieldIgnoreCase("NullableStr")!;
+
+                // 1. 未配置白名单时，任何含有 null 的列必须直接抛出方案 C 诊断异常
+                var ex1 = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    groupReader.ReadStringColumn(dblField, rowCount);
+                });
+                Assert.IsTrue(ex1.Message.Contains("NullableDouble") && ex1.Message.Contains("共 1/2 行无效") && ex1.Message.Contains("[0]"));
+
+                var ex2 = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    groupReader.ReadStringColumn(intField, rowCount);
+                });
+                Assert.IsTrue(ex2.Message.Contains("NullableInt") && ex2.Message.Contains("共 1/2 行无效") && ex2.Message.Contains("[0]"));
+
+                var ex3 = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    groupReader.ReadStringColumn(strField, rowCount);
+                });
+                Assert.IsTrue(ex3.Message.Contains("NullableStr") && ex3.Message.Contains("共 1/2 行无效") && ex3.Message.Contains("[0]"));
+
+                // 2. 显式配置白名单后，允许 null 并正确回退为空字符串
+                var allowList = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "NullableDouble", "NullableInt", "NullableStr" };
+                var dblStrs = groupReader.ReadStringColumn(dblField, rowCount, allowList);
                 Assert.AreEqual("", dblStrs[0]);
                 Assert.AreEqual("42.5", dblStrs[1]);
 
-                var intField = reader.Schema.FindDataFieldIgnoreCase("NullableInt")!;
-                var intStrs = groupReader.ReadStringColumn(intField, rowCount);
+                var intStrs = groupReader.ReadStringColumn(intField, rowCount, allowList);
                 Assert.AreEqual("", intStrs[0]);
                 Assert.AreEqual("100", intStrs[1]);
 
-                var strField = reader.Schema.FindDataFieldIgnoreCase("NullableStr")!;
-                var strStrs = groupReader.ReadStringColumn(strField, rowCount);
+                var strStrs = groupReader.ReadStringColumn(strField, rowCount, allowList);
                 Assert.AreEqual("", strStrs[0]);
                 Assert.AreEqual("hello", strStrs[1]);
+            }
+            finally
+            {
+                reader.DisposeSync();
+            }
+        }
+
+        public class NullableDateSample
+        {
+            public DateTime? NullableDt { get; set; }
+        }
+
+        [TestMethod]
+        public async Task ReadDateColumn_WithNull_ThrowsWhenNotAllowed_AndSucceedsWhenAllowed()
+        {
+            var data = new List<NullableDateSample>
+            {
+                new() { NullableDt = null },
+                new() { NullableDt = new DateTime(2025, 1, 2) }
+            };
+
+            using var ms = new MemoryStream();
+            await ParquetSerializer.SerializeAsync(data, ms);
+            ms.Position = 0;
+
+            var reader = ParquetReaderExtensions.OpenParquetReaderSync(ms);
+            try
+            {
+                using var groupReader = reader.OpenRowGroupReader(0);
+                int rowCount = (int)groupReader.RowCount;
+                var dtField = reader.Schema.FindDataFieldIgnoreCase("NullableDt")!;
+
+                // 1. 未声明白名单：抛出方案 C 诊断异常
+                var ex = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    groupReader.ReadDateColumn(dtField, rowCount);
+                });
+                Assert.IsTrue(ex.Message.Contains("NullableDt") && ex.Message.Contains("共 1/2 行无效") && ex.Message.Contains("[0]"));
+
+                // 2. 显式声明白名单：允许并通过并填 MinValue
+                var allow = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "NullableDt" };
+                var dates = groupReader.ReadDateColumn(dtField, rowCount, allow);
+                Assert.AreEqual(DateTime.MinValue, dates[0]);
+                Assert.AreEqual(new DateTime(2025, 1, 2), dates[1]);
             }
             finally
             {

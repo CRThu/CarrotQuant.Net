@@ -19,21 +19,37 @@ namespace CarrotBacktesting.NET.Data
     public class ParquetTimeseriesSource : TimeseriesSourceBase
     {
         private readonly Dictionary<string, YearCache> _cachePool = new(StringComparer.OrdinalIgnoreCase);
+        private readonly IReadOnlySet<string> _nullableFields;
 
         /// <summary>
         /// 便捷构造函数。
         /// </summary>
-        public ParquetTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
-            : this(new StorageResolver(storageRoot), tableId, startDate, endDate, timeZone)
+        public ParquetTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null, IReadOnlySet<string>? nullableFields = null)
+            : this(new StorageResolver(storageRoot), tableId, startDate, endDate, timeZone, nullableFields)
         {
         }
 
         /// <summary>
         /// 核心构造函数，接收外部依赖注入的路径解析器。
         /// </summary>
-        public ParquetTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
+        public ParquetTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null, IReadOnlySet<string>? nullableFields = null)
             : base(resolver, tableId, startDate, endDate, timeZone)
         {
+            var resolverFields = resolver.GetNullableFields(tableId);
+            if (nullableFields == null || nullableFields.Count == 0)
+            {
+                _nullableFields = resolverFields;
+            }
+            else if (resolverFields == null || resolverFields.Count == 0)
+            {
+                _nullableFields = nullableFields;
+            }
+            else
+            {
+                var merged = new HashSet<string>(resolverFields, StringComparer.OrdinalIgnoreCase);
+                foreach (var f in nullableFields) merged.Add(f);
+                _nullableFields = merged;
+            }
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var dateSet = new HashSet<DateTime>();
 
@@ -53,7 +69,7 @@ namespace CarrotBacktesting.NET.Data
                         for (int i = 0; i < reader.RowGroupCount; i++)
                         {
                             using var groupReader = reader.OpenRowGroupReader(i);
-                            var symCol = ReadColumnFromGroup(groupReader, symField);
+                            var symCol = ReadColumnFromGroup(groupReader, symField, _nullableFields);
                             if (symCol is ReadOnlyMemory<char>[] romArr)
                             {
                                 foreach (var m in romArr)
@@ -70,7 +86,7 @@ namespace CarrotBacktesting.NET.Data
                         for (int i = 0; i < reader.RowGroupCount; i++)
                         {
                             using var groupReader = reader.OpenRowGroupReader(i);
-                            var dtCol = ReadColumnFromGroup(groupReader, dtField);
+                            var dtCol = ReadColumnFromGroup(groupReader, dtField, _nullableFields);
                             var dates = ConvertToDateTimes(dtCol, _sourceTimeZone);
                             foreach (var d in dates)
                             {
@@ -107,7 +123,7 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (File.Exists(filePath))
                     {
-                        cache = new YearCache(filePath, _sourceTimeZone);
+                        cache = new YearCache(filePath, _sourceTimeZone, _nullableFields);
                         _cachePool[filePath] = cache;
                     }
                     else
@@ -154,11 +170,12 @@ namespace CarrotBacktesting.NET.Data
 
         #region Parquet Low-Level Helpers
 
-        private static Array ReadColumnFromGroup(ParquetRowGroupReader groupReader, DataField dataField)
+        private static Array ReadColumnFromGroup(ParquetRowGroupReader groupReader, DataField dataField, IReadOnlySet<string>? nullableFields = null)
         {
             int rowCount = (int)groupReader.RowCount;
             Type readType = dataField.ClrType;
             Array buffer = Array.CreateInstance(readType, rowCount);
+            bool isAllowedNull = nullableFields?.Contains(dataField.Name) ?? false;
 
             if (readType == typeof(ReadOnlyMemory<char>))
             {
@@ -173,20 +190,40 @@ namespace CarrotBacktesting.NET.Data
                     var packed = new ReadOnlyMemory<char>[rowCount];
                     groupReader.ReadRawSync(dataField, packed, defLevels);
                     int valIdx = 0;
+                    int nullCount = 0;
+                    List<int>? badIndices = null;
                     for (int i = 0; i < rowCount; i++)
                     {
-                        memBuf[i] = defLevels[i] > 0 ? packed[valIdx++] : ReadOnlyMemory<char>.Empty;
+                        if (defLevels[i] > 0)
+                        {
+                            memBuf[i] = packed[valIdx++];
+                        }
+                        else
+                        {
+                            nullCount++;
+                            if (badIndices == null) badIndices = new List<int>(5);
+                            if (badIndices.Count < 5) badIndices.Add(i);
+                            memBuf[i] = ReadOnlyMemory<char>.Empty;
+                        }
+                    }
+
+                    if (nullCount > 0 && !isAllowedNull)
+                    {
+                        string sampleStr = string.Join(", ", badIndices!);
+                        string moreSuffix = nullCount > badIndices!.Count ? " ..." : "";
+                        throw new InvalidDataException(
+                            $"Parquet 列 '{dataField.Name}' 检测到缺失值 (NULL)：共 {nullCount}/{rowCount} 行无效 (占比 {(double)nullCount / rowCount:P2})。损坏样本行号: [{sampleStr}{moreSuffix}]。该字段未显式配置允许空值，严禁缺失。");
                     }
                 }
             }
             else
             {
                 int[] defLevels = new int[rowCount];
-                if (readType == typeof(double)) ReadColumnRawTyped<double>(groupReader, dataField, (double[])buffer, defLevels, double.NaN);
-                else if (readType == typeof(float)) ReadColumnRawTyped<float>(groupReader, dataField, (float[])buffer, defLevels, float.NaN);
-                else if (readType == typeof(long)) ReadColumnRawTyped<long>(groupReader, dataField, (long[])buffer, defLevels, 0);
-                else if (readType == typeof(int)) ReadColumnRawTyped<int>(groupReader, dataField, (int[])buffer, defLevels, 0);
-                else if (readType == typeof(bool)) ReadColumnRawTyped<bool>(groupReader, dataField, (bool[])buffer, defLevels, false);
+                if (readType == typeof(double)) ReadColumnRawTyped<double>(groupReader, dataField, (double[])buffer, defLevels, double.NaN, isAllowedNull);
+                else if (readType == typeof(float)) ReadColumnRawTyped<float>(groupReader, dataField, (float[])buffer, defLevels, float.NaN, isAllowedNull);
+                else if (readType == typeof(long)) ReadColumnRawTyped<long>(groupReader, dataField, (long[])buffer, defLevels, 0, isAllowedNull);
+                else if (readType == typeof(int)) ReadColumnRawTyped<int>(groupReader, dataField, (int[])buffer, defLevels, 0, isAllowedNull);
+                else if (readType == typeof(bool)) ReadColumnRawTyped<bool>(groupReader, dataField, (bool[])buffer, defLevels, false, isAllowedNull);
                 else if (readType == typeof(DateTime))
                 {
                     var dtBuf = (DateTime[])buffer;
@@ -199,9 +236,29 @@ namespace CarrotBacktesting.NET.Data
                         var packed = new DateTime[rowCount];
                         groupReader.ReadRawSync(dataField, packed, defLevels);
                         int valIdx = 0;
+                        int nullCount = 0;
+                        List<int>? badIndices = null;
                         for (int i = 0; i < rowCount; i++)
                         {
-                            dtBuf[i] = defLevels[i] > 0 ? packed[valIdx++] : DateTime.MinValue;
+                            if (defLevels[i] > 0)
+                            {
+                                dtBuf[i] = packed[valIdx++];
+                            }
+                            else
+                            {
+                                nullCount++;
+                                if (badIndices == null) badIndices = new List<int>(5);
+                                if (badIndices.Count < 5) badIndices.Add(i);
+                                dtBuf[i] = DateTime.MinValue;
+                            }
+                        }
+
+                        if (nullCount > 0 && !isAllowedNull)
+                        {
+                            string sampleStr = string.Join(", ", badIndices!);
+                            string moreSuffix = nullCount > badIndices!.Count ? " ..." : "";
+                            throw new InvalidDataException(
+                                $"Parquet 列 '{dataField.Name}' 检测到缺失值 (NULL)：共 {nullCount}/{rowCount} 行无效 (占比 {(double)nullCount / rowCount:P2})。损坏样本行号: [{sampleStr}{moreSuffix}]。该字段未显式配置允许空值，严禁缺失。");
                         }
                     }
                 }
@@ -217,9 +274,29 @@ namespace CarrotBacktesting.NET.Data
                         var packed = new DateTimeOffset[rowCount];
                         groupReader.ReadRawSync(dataField, packed, defLevels);
                         int valIdx = 0;
+                        int nullCount = 0;
+                        List<int>? badIndices = null;
                         for (int i = 0; i < rowCount; i++)
                         {
-                            dtoBuf[i] = defLevels[i] > 0 ? packed[valIdx++] : DateTimeOffset.MinValue;
+                            if (defLevels[i] > 0)
+                            {
+                                dtoBuf[i] = packed[valIdx++];
+                            }
+                            else
+                            {
+                                nullCount++;
+                                if (badIndices == null) badIndices = new List<int>(5);
+                                if (badIndices.Count < 5) badIndices.Add(i);
+                                dtoBuf[i] = DateTimeOffset.MinValue;
+                            }
+                        }
+
+                        if (nullCount > 0 && !isAllowedNull)
+                        {
+                            string sampleStr = string.Join(", ", badIndices!);
+                            string moreSuffix = nullCount > badIndices!.Count ? " ..." : "";
+                            throw new InvalidDataException(
+                                $"Parquet 列 '{dataField.Name}' 检测到缺失值 (NULL)：共 {nullCount}/{rowCount} 行无效 (占比 {(double)nullCount / rowCount:P2})。损坏样本行号: [{sampleStr}{moreSuffix}]。该字段未显式配置允许空值，严禁缺失。");
                         }
                     }
                 }
@@ -232,7 +309,13 @@ namespace CarrotBacktesting.NET.Data
             return buffer;
         }
 
-        private static void ReadColumnRawTyped<T>(ParquetRowGroupReader groupReader, DataField field, T[] buffer, int[] defLevels, T defaultValue)
+        private static void ReadColumnRawTyped<T>(
+            ParquetRowGroupReader groupReader,
+            DataField field,
+            T[] buffer,
+            int[] defLevels,
+            T defaultValue,
+            bool isAllowedNull)
             where T : unmanaged
         {
             if (!field.IsNullable)
@@ -246,9 +329,29 @@ namespace CarrotBacktesting.NET.Data
             {
                 groupReader.ReadRawSync(field, packed, defLevels);
                 int valIdx = 0;
+                int nullCount = 0;
+                List<int>? badIndices = null;
                 for (int i = 0; i < buffer.Length; i++)
                 {
-                    buffer[i] = defLevels[i] > 0 ? packed[valIdx++] : defaultValue;
+                    if (defLevels[i] > 0)
+                    {
+                        buffer[i] = packed[valIdx++];
+                    }
+                    else
+                    {
+                        nullCount++;
+                        if (badIndices == null) badIndices = new List<int>(5);
+                        if (badIndices.Count < 5) badIndices.Add(i);
+                        buffer[i] = defaultValue;
+                    }
+                }
+
+                if (nullCount > 0 && !isAllowedNull)
+                {
+                    string sampleStr = string.Join(", ", badIndices!);
+                    string moreSuffix = nullCount > badIndices!.Count ? " ..." : "";
+                    throw new InvalidDataException(
+                        $"Parquet 列 '{field.Name}' 检测到缺失值 (NULL)：共 {nullCount}/{buffer.Length} 行无效 (占比 {(double)nullCount / buffer.Length:P2})。损坏样本行号: [{sampleStr}{moreSuffix}]。该字段未显式配置允许空值，严禁缺失。");
                 }
             }
             finally
@@ -375,11 +478,13 @@ namespace CarrotBacktesting.NET.Data
             private readonly FileStream _fs;
             private readonly DataField[] _dataFields;
             private readonly TimeZoneInfo? _sourceTimeZone;
+            private readonly IReadOnlySet<string>? _nullableFields;
 
-            public YearCache(string filePath, TimeZoneInfo? sourceTimeZone = null)
+            public YearCache(string filePath, TimeZoneInfo? sourceTimeZone = null, IReadOnlySet<string>? nullableFields = null)
             {
                 FilePath = filePath;
                 _sourceTimeZone = sourceTimeZone;
+                _nullableFields = nullableFields;
                 _fs = File.OpenRead(filePath);
                 _parquetReader = ParquetReaderExtensions.OpenParquetReaderSync(_fs);
                 _dataFields = _parquetReader.Schema.GetDataFields();
@@ -401,7 +506,7 @@ namespace CarrotBacktesting.NET.Data
                 for (int i = 0; i < _parquetReader.RowGroupCount; i++)
                 {
                     using var groupReader = _parquetReader.OpenRowGroupReader(i);
-                    var symData = ReadColumnFromGroup(groupReader, symField);
+                    var symData = ReadColumnFromGroup(groupReader, symField, _nullableFields);
                     if (symData is ReadOnlyMemory<char>[] romArr)
                     {
                         foreach (var m in romArr)
@@ -410,7 +515,7 @@ namespace CarrotBacktesting.NET.Data
                         }
                     }
 
-                    var dtData = ReadColumnFromGroup(groupReader, dtField);
+                    var dtData = ReadColumnFromGroup(groupReader, dtField, _nullableFields);
                     dateList.AddRange(ConvertToDateTimes(dtData, _sourceTimeZone));
                 }
 
@@ -454,7 +559,7 @@ namespace CarrotBacktesting.NET.Data
                 for (int i = 0; i < _parquetReader.RowGroupCount; i++)
                 {
                     using var groupReader = _parquetReader.OpenRowGroupReader(i);
-                    Array chunkData = ReadColumnFromGroup(groupReader, targetField);
+                    Array chunkData = ReadColumnFromGroup(groupReader, targetField, _nullableFields);
 
                     Array.Copy(chunkData, 0, mergedArray, currentOffset, chunkData.Length);
                     currentOffset += chunkData.Length;

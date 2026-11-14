@@ -67,13 +67,42 @@ namespace CarrotBacktesting.NET.Data
 
         /// <summary>
         /// 批量读取 RowGroup 中的指定列并归一化转换为字符串数组。
-        /// 支持 ReadOnlyMemory&lt;char&gt;、数值型、布尔型及时间戳/日期类型，空值安全回退为空字符串。
+        /// <summary>
+        /// 批量读取 RowGroup 中的指定列并转换为字符串数组。
+        /// 支持 ReadOnlyMemory&lt;char&gt;、数值型、布尔型及时间戳/日期类型。
+        /// 默认严禁 NULL 值；除非字段显式在 nullableFields 集合中声明，否则一旦检测到 NULL 立即抛出详细诊断异常。
         /// </summary>
-        public static string[] ReadStringColumn(this ParquetRowGroupReader groupReader, DataField field, int rowCount)
+        public static string[] ReadStringColumn(
+            this ParquetRowGroupReader groupReader,
+            DataField field,
+            int rowCount,
+            IReadOnlySet<string>? nullableFields = null)
         {
             var arr = new string[rowCount];
             var clrType = field.ClrType;
             bool isNullable = field.IsNullable;
+            bool isAllowedNull = nullableFields?.Contains(field.Name) ?? false;
+
+            int nullCount = 0;
+            List<int>? badIndices = null;
+
+            void CheckNull(int i)
+            {
+                nullCount++;
+                if (badIndices == null) badIndices = new List<int>(5);
+                if (badIndices.Count < 5) badIndices.Add(i);
+            }
+
+            void ThrowIfInvalid()
+            {
+                if (nullCount > 0 && !isAllowedNull)
+                {
+                    string sampleStr = string.Join(", ", badIndices!);
+                    string moreSuffix = nullCount > badIndices!.Count ? " ..." : "";
+                    throw new InvalidDataException(
+                        $"Parquet 列 '{field.Name}' 检测到缺失值 (NULL)：共 {nullCount}/{rowCount} 行无效 (占比 {(double)nullCount / rowCount:P2})。损坏样本行号: [{sampleStr}{moreSuffix}]。该字段未显式配置允许空值，严禁缺失。");
+                }
+            }
 
             if (clrType == typeof(ReadOnlyMemory<char>))
             {
@@ -83,8 +112,17 @@ namespace CarrotBacktesting.NET.Data
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
                 {
-                    arr[i] = (!isNullable || def[i] > 0) ? memArr[valIdx++].ToString() : "";
+                    if (!isNullable || def[i] > 0)
+                    {
+                        arr[i] = memArr[valIdx++].ToString();
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        arr[i] = "";
+                    }
                 }
+                ThrowIfInvalid();
                 return arr;
             }
 
@@ -95,7 +133,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, numArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    arr[i] = (!isNullable || def[i] > 0) ? numArr[valIdx++].ToString(CultureInfo.InvariantCulture) : "";
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        arr[i] = numArr[valIdx++].ToString(CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        arr[i] = "";
+                    }
+                }
+                ThrowIfInvalid();
                 return arr;
             }
             if (clrType == typeof(float))
@@ -105,7 +154,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, numArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    arr[i] = (!isNullable || def[i] > 0) ? numArr[valIdx++].ToString(CultureInfo.InvariantCulture) : "";
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        arr[i] = numArr[valIdx++].ToString(CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        arr[i] = "";
+                    }
+                }
+                ThrowIfInvalid();
                 return arr;
             }
             if (clrType == typeof(long))
@@ -115,7 +175,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, numArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    arr[i] = (!isNullable || def[i] > 0) ? numArr[valIdx++].ToString(CultureInfo.InvariantCulture) : "";
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        arr[i] = numArr[valIdx++].ToString(CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        arr[i] = "";
+                    }
+                }
+                ThrowIfInvalid();
                 return arr;
             }
             if (clrType == typeof(int))
@@ -125,7 +196,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, numArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    arr[i] = (!isNullable || def[i] > 0) ? numArr[valIdx++].ToString(CultureInfo.InvariantCulture) : "";
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        arr[i] = numArr[valIdx++].ToString(CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        arr[i] = "";
+                    }
+                }
+                ThrowIfInvalid();
                 return arr;
             }
             if (clrType == typeof(bool))
@@ -135,7 +217,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, boolArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    arr[i] = (!isNullable || def[i] > 0) ? (boolArr[valIdx++] ? "true" : "false") : "";
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        arr[i] = (boolArr[valIdx++] ? "true" : "false");
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        arr[i] = "";
+                    }
+                }
+                ThrowIfInvalid();
                 return arr;
             }
             if (clrType == typeof(DateTime))
@@ -145,7 +238,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, dtArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    arr[i] = (!isNullable || def[i] > 0) ? dtArr[valIdx++].ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : "";
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        arr[i] = dtArr[valIdx++].ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        arr[i] = "";
+                    }
+                }
+                ThrowIfInvalid();
                 return arr;
             }
             if (clrType == typeof(DateTimeOffset))
@@ -155,7 +259,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, dtoArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    arr[i] = (!isNullable || def[i] > 0) ? dtoArr[valIdx++].DateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : "";
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        arr[i] = dtoArr[valIdx++].DateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        arr[i] = "";
+                    }
+                }
+                ThrowIfInvalid();
                 return arr;
             }
 
@@ -165,12 +280,39 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 批量读取 RowGroup 中的日期列并转换为统一的 DateTime 数组（截断至 Date 精度）。
         /// 自动适配 DateTime、DateTimeOffset、long（毫秒时间戳）以及文本日期。
+        /// 默认严禁 NULL 值；除非字段显式在 nullableFields 集合中声明，否则一旦检测到 NULL 立即抛出详细诊断异常。
         /// </summary>
-        public static DateTime[] ReadDateColumn(this ParquetRowGroupReader groupReader, DataField field, int rowCount)
+        public static DateTime[] ReadDateColumn(
+            this ParquetRowGroupReader groupReader,
+            DataField field,
+            int rowCount,
+            IReadOnlySet<string>? nullableFields = null)
         {
             var dates = new DateTime[rowCount];
             var clrType = field.ClrType;
             bool isNullable = field.IsNullable;
+            bool isAllowedNull = nullableFields?.Contains(field.Name) ?? false;
+
+            int nullCount = 0;
+            List<int>? badIndices = null;
+
+            void CheckNull(int i)
+            {
+                nullCount++;
+                if (badIndices == null) badIndices = new List<int>(5);
+                if (badIndices.Count < 5) badIndices.Add(i);
+            }
+
+            void ThrowIfInvalid()
+            {
+                if (nullCount > 0 && !isAllowedNull)
+                {
+                    string sampleStr = string.Join(", ", badIndices!);
+                    string moreSuffix = nullCount > badIndices!.Count ? " ..." : "";
+                    throw new InvalidDataException(
+                        $"Parquet 列 '{field.Name}' 检测到缺失值 (NULL)：共 {nullCount}/{rowCount} 行无效 (占比 {(double)nullCount / rowCount:P2})。损坏样本行号: [{sampleStr}{moreSuffix}]。该字段未显式配置允许空值，严禁缺失。");
+                }
+            }
 
             if (clrType == typeof(DateTime))
             {
@@ -179,7 +321,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, dtArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    dates[i] = (!isNullable || def[i] > 0) ? dtArr[valIdx++].Date : DateTime.MinValue;
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        dates[i] = dtArr[valIdx++].Date;
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        dates[i] = DateTime.MinValue;
+                    }
+                }
+                ThrowIfInvalid();
                 return dates;
             }
 
@@ -190,7 +343,18 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, dtoArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    dates[i] = (!isNullable || def[i] > 0) ? dtoArr[valIdx++].DateTime.Date : DateTime.MinValue;
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        dates[i] = dtoArr[valIdx++].DateTime.Date;
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        dates[i] = DateTime.MinValue;
+                    }
+                }
+                ThrowIfInvalid();
                 return dates;
             }
 
@@ -201,13 +365,24 @@ namespace CarrotBacktesting.NET.Data
                 groupReader.ReadRawSync(field, tsArr, def);
                 int valIdx = 0;
                 for (int i = 0; i < rowCount; i++)
-                    dates[i] = (!isNullable || def[i] > 0) ? DateTimeOffset.FromUnixTimeMilliseconds(tsArr[valIdx++]).DateTime.Date : DateTime.MinValue;
+                {
+                    if (!isNullable || def[i] > 0)
+                    {
+                        dates[i] = DateTimeOffset.FromUnixTimeMilliseconds(tsArr[valIdx++]).DateTime.Date;
+                    }
+                    else
+                    {
+                        CheckNull(i);
+                        dates[i] = DateTime.MinValue;
+                    }
+                }
+                ThrowIfInvalid();
                 return dates;
             }
 
             if (clrType == typeof(ReadOnlyMemory<char>))
             {
-                var strArr = groupReader.ReadStringColumn(field, rowCount);
+                var strArr = groupReader.ReadStringColumn(field, rowCount, nullableFields);
                 for (int i = 0; i < rowCount; i++)
                 {
                     if (!string.IsNullOrEmpty(strArr[i]) && DateTime.TryParse(strArr[i], CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))

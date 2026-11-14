@@ -168,6 +168,13 @@ namespace CarrotBacktesting.NET.Config
         /// 仅在回测模式下生效；在实盘（Living）模式下自动物理禁用。
         /// </summary>
         public bool Prefetch { get; set; } = true;
+
+        /// <summary>
+        /// 允许包含空值（NULL）的字段名列表（白名单）。
+        /// 默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。
+        /// 若 metadata.json 中也定义了 nullable_fields，此处将与元数据配置合并生效。
+        /// </summary>
+        public List<string>? NullableFields { get; set; }
     }
 
     /// <summary>
@@ -184,6 +191,13 @@ namespace CarrotBacktesting.NET.Config
         /// 若为 null 或空字符串，则假定事件数据源时间戳本身已为 UTC 时间。
         /// </summary>
         public string? TimeZone { get; set; }
+
+        /// <summary>
+        /// 允许包含空值（NULL）的字段名列表（白名单）。
+        /// 默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。
+        /// 若 metadata.json 中也定义了 nullable_fields，此处将与元数据配置合并生效。
+        /// </summary>
+        public List<string>? NullableFields { get; set; }
     }
 
     /// <summary>
@@ -195,5 +209,12 @@ namespace CarrotBacktesting.NET.Config
         public string TableId { get; set; } = "";
         public string? KeyColumn { get; set; }
         public List<string>? ValueColumns { get; set; }
+
+        /// <summary>
+        /// 允许包含空值（NULL）的字段名列表（白名单）。
+        /// 默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。
+        /// 若 metadata.json 中也定义了 nullable_fields，此处将与元数据配置合并生效。
+        /// </summary>
+        public List<string>? NullableFields { get; set; }
     }
 }

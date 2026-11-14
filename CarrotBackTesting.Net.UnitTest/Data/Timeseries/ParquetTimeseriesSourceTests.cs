@@ -276,11 +276,18 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             public double? Close { get; set; }
         }
 
-        [TestMethod]
-        public async Task ParquetTimeseriesSource_NullableColumnsWithNulls_ShouldHandleNullsAsNaN()
+        public class NullableDateKlineSample
         {
-            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_nullable_" + Guid.NewGuid().ToString("N"));
-            string tableDir = Path.Combine(tempDir, "test_table_nullable");
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime? Date { get; set; }
+            public double Close { get; set; } = 10.0;
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_NullableColumnsWithoutAllowlist_ThrowsInvalidDataException()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_no_allow_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "test_table_no_allow");
             Directory.CreateDirectory(tableDir);
 
             try
@@ -297,7 +304,45 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                     await ParquetSerializer.SerializeAsync(samples, fs);
                 }
 
-                using var source = new ParquetTimeseriesSource(tempDir, "test_table_nullable");
+                // 未显式配置允许空值，读取时必须抛出方案 C 诊断异常
+                using var source = new ParquetTimeseriesSource(tempDir, "test_table_no_allow");
+                double[] closes = new double[2];
+                var ex = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes);
+                });
+                Assert.IsTrue(ex.Message.Contains("Close") && ex.Message.Contains("共 1/2 行无效") && ex.Message.Contains("[0]"));
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_NullableColumnsWithAllowlistParam_ShouldHandleNullsAsNaN()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_allow_param_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "test_table_allow_param");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<NullableKlineSample>
+                {
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 2), Close = null },
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 3), Close = 25.5 }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                // 通过构造参数传入允许空值的字段集合
+                var allowList = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Close" };
+                using var source = new ParquetTimeseriesSource(tempDir, "test_table_allow_param", nullableFields: allowList);
                 Assert.AreEqual(2, source.TradeDates.Count);
 
                 double[] closes = new double[2];
@@ -307,10 +352,96 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
             finally
             {
-                if (Directory.Exists(tempDir))
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_NullableColumnsWithMetadataJson_ShouldHandleNullsAsNaN()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_allow_meta_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "test_table_allow_meta");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<NullableKlineSample>
                 {
-                    Directory.Delete(tempDir, true);
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 2), Close = null },
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 3), Close = 25.5 }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
                 }
+
+                // 写入包含 nullable_fields 的 metadata.json
+                string metadataPath = Path.Combine(tableDir, "metadata.json");
+                string metaJson = """
+                {
+                    "table_id": "test_table_allow_meta",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "Close": "double"
+                    },
+                    "nullable_fields": ["Close"]
+                }
+                """;
+                File.WriteAllText(metadataPath, metaJson);
+
+                // 自动由 StorageResolver 读取 metadata.json 并注入白名单
+                using var source = new ParquetTimeseriesSource(tempDir, "test_table_allow_meta");
+                Assert.AreEqual(2, source.TradeDates.Count);
+
+                double[] closes = new double[2];
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes);
+                Assert.IsTrue(double.IsNaN(closes[0]), "Null row should be NaN");
+                Assert.AreEqual(25.5, closes[1], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_NullInDateColumn_WithoutAllowlist_ThrowsInvalidDataException()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_null_date_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "test_table_null_date");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<NullableDateKlineSample>
+                {
+                    new() { Symbol = "sh.600000", Date = null, Close = 10.0 },
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 3), Close = 25.5 }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                // 主时间戳列如果含有 null 且未显式配置允许空值，在初始化构建索引时立即抛出方案 C 诊断异常
+                var ex = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    using var source = new ParquetTimeseriesSource(tempDir, "test_table_null_date");
+                });
+                Assert.IsTrue(ex.Message.Contains("Date") && ex.Message.Contains("共 1/2 行无效") && ex.Message.Contains("[0]"));
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
             }
         }
     }

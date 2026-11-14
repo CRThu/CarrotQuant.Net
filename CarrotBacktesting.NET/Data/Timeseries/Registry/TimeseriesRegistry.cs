@@ -19,6 +19,7 @@ namespace CarrotBacktesting.NET.Data
         private readonly ConcurrentDictionary<string, int> _tableIndices = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<string> _tableNames = new();
         private readonly object _tableLock = new();
+        private readonly IDisposable? _disposableSource;
         private ulong _updatedMask = ulong.MaxValue;
         private bool _disposed;
 
@@ -33,15 +34,18 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         /// <param name="metadata">市场元数据。</param>
         /// <param name="managerFactory">单字段分块管理器解析工厂委托。</param>
+        /// <param name="disposableSource">底层数据源释放资源句柄（可选）。</param>
         public TimeseriesRegistry(
             IMarketMetadata metadata,
-            Func<string, Type, ITimeseriesCacheManager> managerFactory)
+            Func<string, Type, ITimeseriesCacheManager> managerFactory,
+            IDisposable? disposableSource = null)
         {
             ArgumentNullException.ThrowIfNull(metadata);
             _metadata = metadata is DynamicMarketMetadata dynamicMeta 
                 ? dynamicMeta 
                 : new DynamicMarketMetadata(metadata);
             _managerFactory = managerFactory ?? throw new ArgumentNullException(nameof(managerFactory));
+            _disposableSource = disposableSource;
         }
 
         /// <summary>
@@ -58,8 +62,9 @@ namespace CarrotBacktesting.NET.Data
             int commitBatchSize = 64,
             int maxPages = 4,
             bool prefetch = true,
-            bool isLive = false)
-            : this(source, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
+            bool isLive = false,
+            bool ownsSource = false)
+            : this(source, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive), ownsSource ? source : null)
         {
             if (!string.IsNullOrWhiteSpace(tableId)) RegisterTable(tableId);
         }
@@ -79,8 +84,9 @@ namespace CarrotBacktesting.NET.Data
             int commitBatchSize = 64,
             int maxPages = 4,
             bool prefetch = true,
-            bool isLive = false)
-            : this(metadata, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive))
+            bool isLive = false,
+            bool ownsSource = false)
+            : this(metadata, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive), ownsSource ? source : null)
         {
             if (!string.IsNullOrWhiteSpace(tableId)) RegisterTable(tableId);
         }
@@ -334,6 +340,7 @@ namespace CarrotBacktesting.NET.Data
                 manager.Dispose();
             }
             _managers.Clear();
+            _disposableSource?.Dispose();
         }
     }
 }

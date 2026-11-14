@@ -141,9 +141,15 @@
     "low": "Float64",
     "close": "Float64",
     "volume": "Float64"
-  }
+  },
+  "nullable_fields": ["close", "volume"]
 }
 ```
+
+> [!IMPORTANT]
+> **零空值强契约（Zero-Tolerance NULL Policy）**：
+> - **默认行为**：系统默认严禁任何数据列包含 NULL 值。如果 Parquet 数据在解包时检测到任何未在 `nullable_fields` 白名单中的字段包含 NULL，系统将立即以**方案 C（统计损坏总数 + 打印前 5 个损坏样本行号）**抛出强类型 `InvalidDataException` 阻断加载，杜绝坏数据隐蔽穿透。
+> - **显式放行**：只有在 `metadata.json` 的 `nullable_fields` 数组或会话配置（`SessionConfig`）中显式声明的字段，才被允许包含空值，并在加载时安全映射为标准缺失哨兵（浮点转 `NaN`，文本转空字符串 `""`，日期转 `DateTime.MinValue`，整型转 `0`）。
 
 #### 支持的数据类型映射字典
 

@@ -19,7 +19,8 @@ namespace CarrotBacktesting.NET.Data
             IStorageResolver resolver,
             string tableId,
             DateTime? startDate = null,
-            DateTime? endDate = null)
+            DateTime? endDate = null,
+            IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);
             ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
@@ -32,7 +33,7 @@ namespace CarrotBacktesting.NET.Data
                 _ => throw new NotSupportedException($"Unsupported event storage format: '{format}' for table '{tableId}'.")
             };
 
-            return source.LoadTable(resolver, tableId, startDate, endDate);
+            return source.LoadTable(resolver, tableId, startDate, endDate, nullableFields);
         }
 
         /// <summary>
@@ -42,9 +43,10 @@ namespace CarrotBacktesting.NET.Data
             string storageRoot,
             string tableId,
             DateTime? startDate = null,
-            DateTime? endDate = null)
+            DateTime? endDate = null,
+            IReadOnlySet<string>? nullableFields = null)
         {
-            return Create(new StorageResolver(storageRoot), tableId, startDate, endDate);
+            return Create(new StorageResolver(storageRoot), tableId, startDate, endDate, nullableFields);
         }
     }
 }

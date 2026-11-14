@@ -75,5 +75,68 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsNotNull(registry2);
             ((System.IDisposable)registry2).Dispose();
         }
+
+        public class FactoryNullableKlineSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime Date { get; set; }
+            public double? Close { get; set; }
+        }
+
+        [TestMethod]
+        public async Task TimeseriesRegistryFactory_WithNullableFieldsInConfig_AllowsNullInParquet()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_factory_nullable_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "test_table");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<FactoryNullableKlineSample>
+                {
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 2), Close = null },
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 3), Close = 30.0 }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await Parquet.Serialization.ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                // 1. 未配置 NullableFields 时，读取时必须抛出方案 C 诊断异常
+                var strictConfig = new TimeseriesConfig
+                {
+                    TableId = "test_table",
+                    Cache = false
+                };
+                var strictRegistry = TimeseriesRegistryFactory.Create(tempDir, strictConfig);
+                var ex = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    strictRegistry.GetMatrix<double>("Close");
+                });
+                Assert.IsTrue(ex.Message.Contains("Close") && ex.Message.Contains("共 1/2 行无效"));
+                ((System.IDisposable)strictRegistry).Dispose();
+
+                // 2. 在 TimeseriesConfig 中声明 NullableFields 白名单，允许并映射为 NaN
+                var allowConfig = new TimeseriesConfig
+                {
+                    TableId = "test_table",
+                    Cache = false,
+                    NullableFields = new List<string> { "Close" }
+                };
+                var allowRegistry = TimeseriesRegistryFactory.Create(tempDir, allowConfig);
+                var matrix = allowRegistry.GetMatrix<double>("Close");
+                Assert.IsNotNull(matrix);
+                Assert.AreEqual(2, matrix.RowCount);
+                Assert.IsTrue(double.IsNaN(matrix[0, 0]));
+                Assert.AreEqual(30.0, matrix[1, 0], 1e-4);
+                ((System.IDisposable)allowRegistry).Dispose();
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
     }
 }

@@ -2,14 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Parquet.Serialization;
 
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
     public record IndustryModel(string BoardCode, string BoardName, string Symbol, string StockName);
+
+    public class NullableFieldSample
+    {
+        public string Symbol { get; set; } = "sh.600000";
+        public string? Concept { get; set; }
+    }
 
     /// <summary>
     /// 标的维表子系统（Fields）集成测试。
@@ -137,6 +145,137 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(industryTable.Count > 0);
             var stocks = industryTable.GetKeys("钼");
             Assert.IsTrue(stocks.Count > 0);
+        }
+
+        [TestMethod]
+        public async Task Fields_ParquetWithNulls_WithoutAllowlist_ThrowsInvalidDataException()
+        {
+            string tableDir = Path.Combine(_tempDir, "field_test_no_allow");
+            Directory.CreateDirectory(tableDir);
+
+            var samples = new List<NullableFieldSample>
+            {
+                new() { Symbol = "sh.600000", Concept = null },
+                new() { Symbol = "sh.600001", Concept = "Bank" }
+            };
+
+            string parquetPath = Path.Combine(tableDir, "data.parquet");
+            using (var fs = File.Create(parquetPath))
+            {
+                await ParquetSerializer.SerializeAsync(samples, fs);
+            }
+
+            var resolver = new StorageResolver(_tempDir);
+            var ex = Assert.ThrowsException<InvalidDataException>(() =>
+            {
+                FieldSourceFactory.Create(resolver, "field_test_no_allow");
+            });
+
+            Assert.IsTrue(ex.Message.Contains("Concept") && ex.Message.Contains("共 1/2 行无效") && ex.Message.Contains("[0]"));
+        }
+
+        [TestMethod]
+        public async Task Fields_ParquetWithNulls_WithAllowlistParam_ShouldSucceed()
+        {
+            string tableDir = Path.Combine(_tempDir, "field_test_allow_param");
+            Directory.CreateDirectory(tableDir);
+
+            var samples = new List<NullableFieldSample>
+            {
+                new() { Symbol = "sh.600000", Concept = null },
+                new() { Symbol = "sh.600001", Concept = "Bank" }
+            };
+
+            string parquetPath = Path.Combine(tableDir, "data.parquet");
+            using (var fs = File.Create(parquetPath))
+            {
+                await ParquetSerializer.SerializeAsync(samples, fs);
+            }
+
+            var resolver = new StorageResolver(_tempDir);
+            var allowList = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Concept" };
+            var table = FieldSourceFactory.Create(resolver, "field_test_allow_param", nullableFields: allowList);
+
+            Assert.IsNotNull(table);
+            Assert.AreEqual(2, table.Count);
+            Assert.AreEqual("", table["sh.600000"]["Concept"]); // 空值安全映射为空字符串
+            Assert.AreEqual("Bank", table["sh.600001"]["Concept"]);
+        }
+
+        [TestMethod]
+        public async Task Fields_ParquetWithNulls_WithMetadataJson_ShouldSucceed()
+        {
+            string tableDir = Path.Combine(_tempDir, "field_test_metadata");
+            Directory.CreateDirectory(tableDir);
+
+            var samples = new List<NullableFieldSample>
+            {
+                new() { Symbol = "sh.600000", Concept = null }
+            };
+
+            string parquetPath = Path.Combine(tableDir, "data.parquet");
+            using (var fs = File.Create(parquetPath))
+            {
+                await ParquetSerializer.SerializeAsync(samples, fs);
+            }
+
+            string metaPath = Path.Combine(tableDir, "metadata.json");
+            File.WriteAllText(metaPath, """
+                {
+                  "table_id": "field_test_metadata",
+                  "category": "fields",
+                  "format": "parquet",
+                  "nullable_fields": ["Concept"]
+                }
+                """);
+
+            var resolver = new StorageResolver(_tempDir);
+            var table = FieldSourceFactory.Create(resolver, "field_test_metadata");
+
+            Assert.IsNotNull(table);
+            Assert.AreEqual(1, table.Count);
+            Assert.AreEqual("", table["sh.600000"]["Concept"]);
+        }
+
+        [TestMethod]
+        public async Task Fields_ParquetWithNulls_WithYamlConfig_ShouldSucceed()
+        {
+            string tableDir = Path.Combine(_tempDir, "field_test_yaml");
+            Directory.CreateDirectory(tableDir);
+
+            var samples = new List<NullableFieldSample>
+            {
+                new() { Symbol = "sh.600000", Concept = null }
+            };
+
+            string parquetPath = Path.Combine(tableDir, "data.parquet");
+            using (var fs = File.Create(parquetPath))
+            {
+                await ParquetSerializer.SerializeAsync(samples, fs);
+            }
+
+            string yamlPath = Path.Combine(_tempDir, "fields_config.yaml");
+            File.WriteAllText(yamlPath, $"""
+                engine:
+                  mode: backtest
+                data:
+                  root: "{_tempDir.Replace('\\', '/')}"
+                  fields:
+                    - name: concepts
+                      table_id: field_test_yaml
+                      key_column: symbol
+                      nullable_fields:
+                        - concept
+                """);
+
+            var sessionConfig = SessionConfig.Load(yamlPath);
+            var resolver = new StorageResolver(sessionConfig.Data.Root);
+            var registry = FieldRegistryFactory.Create(resolver, sessionConfig.Data.Fields);
+
+            Assert.IsTrue(registry.HasTable("concepts"));
+            var table = registry["concepts"];
+            Assert.AreEqual(1, table.Count);
+            Assert.AreEqual("", table["sh.600000"]["Concept"]);
         }
     }
 }

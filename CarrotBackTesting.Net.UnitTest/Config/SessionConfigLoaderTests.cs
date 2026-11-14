@@ -666,5 +666,52 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Assert.AreEqual(0.1, reloaded.Broker.VolumeLimit, 1e-4);
             Assert.IsTrue(reloaded.Broker.CheckLimit);
         }
+
+        [TestMethod]
+        public void TestNullableFields_YamlDeserializationAndRoundtrip()
+        {
+            string yaml = """
+                data:
+                  root: "./my_data"
+                  timeseries:
+                    - table_id: ashare.kline.1d.raw.baostock
+                      nullable_fields:
+                        - close
+                        - volume
+                  events:
+                    - name: dividends
+                      table_id: ashare.events.dividend
+                      nullable_fields:
+                        - symbol
+                  fields:
+                    - name: industry
+                      table_id: ashare.industry.eastmoney
+                      nullable_fields:
+                        - board_name
+                """;
+
+            var config = SessionConfig.FromYaml(yaml, _tempDir);
+            Assert.IsNotNull(config.Data);
+            Assert.AreEqual(1, config.Data.Timeseries.Count);
+            Assert.IsNotNull(config.Data.Timeseries[0].NullableFields);
+            CollectionAssert.AreEqual(new[] { "close", "volume" }, config.Data.Timeseries[0].NullableFields);
+
+            Assert.AreEqual(1, config.Data.Events.Count);
+            Assert.IsNotNull(config.Data.Events[0].NullableFields);
+            CollectionAssert.AreEqual(new[] { "symbol" }, config.Data.Events[0].NullableFields);
+
+            Assert.AreEqual(1, config.Data.Fields.Count);
+            Assert.IsNotNull(config.Data.Fields[0].NullableFields);
+            CollectionAssert.AreEqual(new[] { "board_name" }, config.Data.Fields[0].NullableFields);
+
+            // 往返序列化
+            string serializedYaml = config.ToYaml();
+            Assert.IsTrue(serializedYaml.Contains("nullable_fields"));
+
+            var reloaded = SessionConfig.FromYaml(serializedYaml, _tempDir);
+            CollectionAssert.AreEqual(new[] { "close", "volume" }, reloaded.Data.Timeseries[0].NullableFields);
+            CollectionAssert.AreEqual(new[] { "symbol" }, reloaded.Data.Events[0].NullableFields);
+            CollectionAssert.AreEqual(new[] { "board_name" }, reloaded.Data.Fields[0].NullableFields);
+        }
     }
 }

@@ -83,6 +83,8 @@ namespace CarrotBacktesting.NET.Data
 
         public string GetPartition(string tableId) => GetOrCreateCache(tableId).Partition;
 
+        public IReadOnlySet<string> GetNullableFields(string tableId) => GetOrCreateCache(tableId).NullableFields;
+
         /// <summary>
         /// 解析表数据的物理文件路径，支持根据起止日期进行时间分区剪枝与按代码路由。
         /// </summary>
@@ -189,11 +191,20 @@ namespace CarrotBacktesting.NET.Data
             }
 
             string metadataPath = Path.Combine(tableDir, MetadataFileName);
+            MetadataModel? metadata = null;
             if (File.Exists(metadataPath))
             {
-                // 1. 优先反序列化已有 metadata.json
-                string metaJson = File.ReadAllText(metadataPath);
-                var metadata = JsonSerializer.Deserialize<MetadataModel>(metaJson);
+                try
+                {
+                    // 1. 优先反序列化已有 metadata.json
+                    string metaJson = File.ReadAllText(metadataPath);
+                    metadata = JsonSerializer.Deserialize<MetadataModel>(metaJson);
+                }
+                catch
+                {
+                    // 容错忽略反序列化错误，回退到推断
+                }
+
                 if (metadata != null && metadata.schema != null)
                 {
                     string format = (metadata.format ?? string.Empty).ToLowerInvariant();
@@ -213,7 +224,7 @@ namespace CarrotBacktesting.NET.Data
 
                     // 4. 解析并规范化 category (timeseries / event)
                     string category = (metadata.category ?? string.Empty).ToLowerInvariant();
-                    category = (category == "event") ? "event" : "timeseries";
+                    category = (category == "event" || category == "events") ? "event" : "timeseries";
 
                     // 5. 解析并规范化 partition (symbol / none)
                     string partition = (metadata.partition ?? string.Empty).ToLowerInvariant();
@@ -222,25 +233,43 @@ namespace CarrotBacktesting.NET.Data
                         partition = "none";
                     }
 
-                    return new TableMetadataCache(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, category, partition);
+                    var nullableFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    if (metadata.nullable_fields != null)
+                    {
+                        foreach (var f in metadata.nullable_fields)
+                        {
+                            if (!string.IsNullOrWhiteSpace(f)) nullableFields.Add(f.Trim());
+                        }
+                    }
+
+                    return new TableMetadataCache(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, category, partition, nullableFields);
                 }
             }
 
-            // 缺省自描述探测：当缺少 metadata.json 时，自动从物理数据文件和目录拓扑推断
-            return InferTableMetadata(tableId, tableDir, metadataPath);
+            // 缺省自描述探测：当缺少 metadata.json 或未提供完整 schema 时，自动从物理数据文件和目录拓扑推断 Schema，同时保留已定义的元数据配置
+            return InferTableMetadata(tableId, tableDir, metadataPath, metadata);
         }
 
         /// <summary>
         /// 缺省自描述回退：通过扫描首个样本物理文件（如 Parquet Footer 或 CSV 表头）与目录拓扑推断元数据。
         /// </summary>
-        private TableMetadataCache InferTableMetadata(string tableId, string tableDir, string metadataPath)
+        private TableMetadataCache InferTableMetadata(string tableId, string tableDir, string metadataPath, MetadataModel? metadata = null)
         {
-            // 1. 布局模式判断：存在 year=* 目录即为 Hive 分区
-            bool isHive = Directory.EnumerateDirectories(tableDir, "year=*").Any();
-            StorageLayout layout = isHive ? StorageLayout.Hive : StorageLayout.Flat;
+            // 1. 布局模式判断：存在 year=* 目录即为 Hive 分区，或由 metadata 指定
+            StorageLayout layout;
+            if (metadata != null && !string.IsNullOrWhiteSpace(metadata.layout))
+            {
+                layout = metadata.layout.Equals("hive", StringComparison.OrdinalIgnoreCase) ? StorageLayout.Hive : StorageLayout.Flat;
+            }
+            else
+            {
+                bool isHive = Directory.EnumerateDirectories(tableDir, "year=*").Any();
+                layout = isHive ? StorageLayout.Hive : StorageLayout.Flat;
+            }
 
             // 2. 寻找首个样本物理文件（支持 Parquet 与 CSV）
-            string? sampleFile = isHive
+            bool isHiveDir = layout == StorageLayout.Hive || Directory.EnumerateDirectories(tableDir, "year=*").Any();
+            string? sampleFile = isHiveDir
                 ? Directory.EnumerateFiles(tableDir, "*.*", SearchOption.AllDirectories)
                     .FirstOrDefault(f => f.EndsWith(".parquet", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
                 : Directory.EnumerateFiles(tableDir, "*.*", SearchOption.TopDirectoryOnly)
@@ -251,11 +280,23 @@ namespace CarrotBacktesting.NET.Data
                 throw new FileNotFoundException($"No metadata.json or supported data files (*.parquet, *.csv) found in: {tableDir}");
             }
 
-            string format = Path.GetExtension(sampleFile).TrimStart('.').ToLowerInvariant();
+            string format = !string.IsNullOrWhiteSpace(metadata?.format)
+                ? metadata.format.ToLowerInvariant()
+                : Path.GetExtension(sampleFile).TrimStart('.').ToLowerInvariant();
+
             string fileNameWithoutExt = Path.GetFileNameWithoutExtension(sampleFile);
 
             // 3. 分区模式推断：如果物理文件名为 data 则为整表无分区，若为股票代码命名则为 symbol 分区
-            string partition = fileNameWithoutExt.Equals("data", StringComparison.OrdinalIgnoreCase) ? "none" : "symbol";
+            string partition;
+            if (metadata != null && !string.IsNullOrWhiteSpace(metadata.partition))
+            {
+                partition = metadata.partition.ToLowerInvariant();
+                if (partition != "symbol" && partition != "none") partition = "none";
+            }
+            else
+            {
+                partition = fileNameWithoutExt.Equals("data", StringComparison.OrdinalIgnoreCase) ? "none" : "symbol";
+            }
 
             // 4. 解析 Schema
             var fieldNames = new List<string>();
@@ -303,10 +344,29 @@ namespace CarrotBacktesting.NET.Data
                 }
             }
 
-            // 5. 默认归属类别为 timeseries
-            string category = "timeseries";
+            // 5. 类别判定
+            string category;
+            if (metadata != null && !string.IsNullOrWhiteSpace(metadata.category))
+            {
+                category = metadata.category.ToLowerInvariant();
+                category = (category == "event" || category == "events") ? "event" : category;
+            }
+            else
+            {
+                category = "timeseries";
+            }
 
-            return new TableMetadataCache(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, category, partition);
+            // 6. 空值白名单
+            var nullableFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (metadata?.nullable_fields != null)
+            {
+                foreach (var f in metadata.nullable_fields)
+                {
+                    if (!string.IsNullOrWhiteSpace(f)) nullableFields.Add(f.Trim());
+                }
+            }
+
+            return new TableMetadataCache(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, category, partition, nullableFields);
         }
 
         private Type MapSchemaType(string schemaTypeStr)
@@ -340,11 +400,12 @@ namespace CarrotBacktesting.NET.Data
             public Dictionary<string, Type> FieldTypes { get; }
             public string Category { get; }
             public string Partition { get; }
+            public IReadOnlySet<string> NullableFields { get; }
             public IReadOnlyList<YearPartitionInfo> HivePartitions { get; }
 
             public TableMetadataCache(string tableId, string tableDir, string metadataPath, string format, StorageLayout layout,
                                       IReadOnlyList<string> fieldNames, Dictionary<string, Type> fieldTypes,
-                                      string category, string partition)
+                                      string category, string partition, IReadOnlySet<string>? nullableFields = null)
             {
                 TableId = tableId;
                 TableDir = tableDir;
@@ -355,6 +416,7 @@ namespace CarrotBacktesting.NET.Data
                 FieldTypes = fieldTypes;
                 Category = category;
                 Partition = partition;
+                NullableFields = nullableFields ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 HivePartitions = layout == StorageLayout.Hive ? ScanHivePartitions(tableDir) : Array.Empty<YearPartitionInfo>();
             }
 
@@ -434,6 +496,7 @@ namespace CarrotBacktesting.NET.Data
             public string? layout { get; set; } = "";
             public string? partition { get; set; } = "";
             public Dictionary<string, string>? schema { get; set; }
+            public List<string>? nullable_fields { get; set; }
         }
     }
 }

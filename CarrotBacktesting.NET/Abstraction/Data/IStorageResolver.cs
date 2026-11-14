@@ -88,6 +88,13 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         string GetPartition(string tableId);
 
         /// <summary>
+        /// 获取指定表允许为空值的字段集合（白名单）。未在白名单中的字段默认严禁为 NULL。
+        /// </summary>
+        /// <param name="tableId">数据表 ID</param>
+        /// <returns>允许为空值的字段名集合（不区分大小写，若未配置则返回空集合）</returns>
+        IReadOnlySet<string> GetNullableFields(string tableId);
+
+        /// <summary>
         /// 解析表数据的物理文件路径，支持按起止日期进行时间分区剪枝与按代码路由。
         /// 若 symbol 为 null 则返回全部分区文件；对上层屏蔽目录探测与路径拼接细节。
         /// </summary>

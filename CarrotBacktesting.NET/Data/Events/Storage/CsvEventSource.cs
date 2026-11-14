@@ -17,7 +17,8 @@ namespace CarrotBacktesting.NET.Data
             IStorageResolver resolver,
             string tableId,
             DateTime? startDate = null,
-            DateTime? endDate = null)
+            DateTime? endDate = null,
+            IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);
             ArgumentException.ThrowIfNullOrWhiteSpace(tableId);

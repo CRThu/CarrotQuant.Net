@@ -83,9 +83,12 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `commit_batch_size` | `CommitBatchSize` | `int` | 否 | `64` | 内存增量行定量落盘批次大小，默认 64 行。实盘单行追加达到该行数阈值时自动触发批量 Commit 增量落盘；若设为 0 或负数则禁用定量落盘，仅在引擎停止或 Dispose 时触发保底 Commit。 |
 | `max_pages` | `MaxPages` | `int` | 否 | `4` | 最大常驻内存页数，默认为 4（必须为 2 的整数幂，如 2, 4, 8, 16 等）。底层以环形槽位管理内存分页，最老冷数据自动淘汰释放，确保超长高频回测与实盘常驻内存严格守恒；设为 0 或负数则禁用环形淘汰（全量常驻内存）。 |
 | `prefetch` | `Prefetch` | `bool` | 否 | `true` | 是否启用后台异步双缓冲预读。仅在回测模式下生效；在实盘（Living）模式下自动物理短路熔断禁用。 |
+| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常（含缺失行数、占比与样本行号）。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
 
 > [!NOTE]
-> **缺失值口径**：时序宽表中的缺失单元格（停牌、未上市、已退市等）遵循第一性原理统一严格置 `NaN`（非浮点回退 `default`），零业务状态臆测，零额外配置负担。
+> **零空值契约与缺失值口径**：
+> 1. **默认严禁 NULL（Zero-Tolerance）**：Parquet 文件中所有列（含时间戳、标的代码、价格、指标等）默认 100% 严禁出现 NULL。一旦出现非法缺失，立即抛出强类型 `InvalidDataException`（给出列名、缺失总行数、占比以及前 5 个损坏样本行号）。
+> 2. **显式白名单放行**：仅当字段名配置在 `nullable_fields` 白名单中时才跳过检查。放行后，浮点类型严格置 IEEE 754 硬件 `NaN`，文本置空字符串 `""`，日期置 `DateTime.MinValue`，整型置 `0`。
 
 ### 4. `events` 事件项配置 (`EventStreamConfig`)
 
@@ -93,6 +96,8 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | :--- | :--- | :--- | :---: | :--- | :--- |
 | `name` | `Name` | `string` | 是 | - | 事件流在引擎上下文事件注册表 (`IEventRegistry`) 中的别名，策略通过 `context.Events.GetTable(name)` 或 `context.Events[name]` 依据此名称获取。 |
 | `table_id` | `TableId` | `string` | 是 | - | 事件流物理存储表的唯一标识符（如 `"ashare.adj_factor.baostock"`）。 |
+| `time_zone` | `TimeZone` | `string?` | 否 | `null` | 事件数据源时间戳时区标识符（遵循 IANA 标准如 `"Asia/Shanghai"`、`"UTC"`）。 |
+| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
 
 ### 5. `fields` 标的静态维表配置 (`FieldTableConfig`)
 
@@ -101,6 +106,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `name` | `Name` | `string` | 是 | - | 维表在引擎上下文维表注册表 (`IFieldRegistry`) 中的别名，策略通过 `context.Fields[name]` 或 `context.Fields.GetTable(name)` 访问。 |
 | `table_id` | `TableId` | `string` | 是 | - | 维表物理存储表的唯一标识符（如 `"ashare.industry.eastmoney"`）。 |
 | `key_column` | `KeyColumn` | `string?` | 否 | `null` | 主键列名。缺省时优先自动推断 `symbol` 列；若无 `symbol` 则采用首列。 |
+| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
 
 ---
 

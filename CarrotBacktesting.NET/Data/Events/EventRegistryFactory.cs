@@ -38,7 +38,10 @@ namespace CarrotBacktesting.NET.Data
                 }
 
                 string tableName = !string.IsNullOrWhiteSpace(cfg.Name) ? cfg.Name : cfg.TableId;
-                var table = EventSourceFactory.Create(resolver, cfg.TableId, startDate, endDate);
+                var nullableFields = cfg.NullableFields != null
+                    ? new HashSet<string>(cfg.NullableFields, StringComparer.OrdinalIgnoreCase)
+                    : null;
+                var table = EventSourceFactory.Create(resolver, cfg.TableId, startDate, endDate, nullableFields);
                 registry.Register(tableName, table);
             }
 

@@ -51,7 +51,10 @@ namespace CarrotBacktesting.NET.Data
             ArgumentNullException.ThrowIfNull(config);
             ArgumentException.ThrowIfNullOrWhiteSpace(config.TableId);
 
-            var source = TimeseriesSourceFactory.Create(resolver, config.TableId, startDate, endDate, config.TimeZone);
+            var nullableFields = config.NullableFields != null
+                ? new HashSet<string>(config.NullableFields, StringComparer.OrdinalIgnoreCase)
+                : null;
+            var source = TimeseriesSourceFactory.Create(resolver, config.TableId, startDate, endDate, config.TimeZone, nullableFields);
             return new TimeseriesRegistry(
                 source,
                 resolver.StorageRoot,
@@ -63,7 +66,8 @@ namespace CarrotBacktesting.NET.Data
                 commitBatchSize: config.CommitBatchSize,
                 maxPages: config.MaxPages,
                 prefetch: config.Prefetch,
-                isLive: isLive);
+                isLive: isLive,
+                ownsSource: true);
         }
 
         /// <summary>

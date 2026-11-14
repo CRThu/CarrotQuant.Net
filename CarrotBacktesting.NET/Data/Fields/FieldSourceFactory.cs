@@ -17,7 +17,11 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 加载并构建静态维表。
         /// </summary>
-        public static IFieldTable Create(IStorageResolver resolver, string tableId, string? keyColumn = null)
+        public static IFieldTable Create(
+            IStorageResolver resolver,
+            string tableId,
+            string? keyColumn = null,
+            IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);
             ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
@@ -26,6 +30,23 @@ namespace CarrotBacktesting.NET.Data
             var files = resolver.ResolvePhysicalFiles(tableId);
             var fieldNames = resolver.GetFieldNames(tableId);
             string effectiveKeyCol = ResolveKeyColumn(fieldNames, keyColumn);
+
+            var resolverFields = resolver.GetNullableFields(tableId);
+            IReadOnlySet<string> effectiveNullableFields;
+            if (nullableFields == null || nullableFields.Count == 0)
+            {
+                effectiveNullableFields = resolverFields;
+            }
+            else if (resolverFields == null || resolverFields.Count == 0)
+            {
+                effectiveNullableFields = nullableFields;
+            }
+            else
+            {
+                var merged = new HashSet<string>(resolverFields, StringComparer.OrdinalIgnoreCase);
+                foreach (var f in nullableFields) merged.Add(f);
+                effectiveNullableFields = merged;
+            }
 
             var data = new Dictionary<string, List<DataRow>>(StringComparer.OrdinalIgnoreCase);
             var ordinals = fieldNames.Select((f, idx) => (f, idx))
@@ -37,7 +58,7 @@ namespace CarrotBacktesting.NET.Data
             }
             else if (format.Equals("parquet", StringComparison.OrdinalIgnoreCase))
             {
-                LoadParquet(files, effectiveKeyCol, fieldNames, ordinals, data);
+                LoadParquet(files, effectiveKeyCol, fieldNames, ordinals, data, effectiveNullableFields);
             }
             else
             {
@@ -50,9 +71,13 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 基于存储根目录快速构建静态维表。
         /// </summary>
-        public static IFieldTable Create(string storageRoot, string tableId, string? keyColumn = null)
+        public static IFieldTable Create(
+            string storageRoot,
+            string tableId,
+            string? keyColumn = null,
+            IReadOnlySet<string>? nullableFields = null)
         {
-            return Create(new StorageResolver(storageRoot), tableId, keyColumn);
+            return Create(new StorageResolver(storageRoot), tableId, keyColumn, nullableFields);
         }
 
         private static string ResolveKeyColumn(IReadOnlyList<string> fields, string? specified)
@@ -118,7 +143,8 @@ namespace CarrotBacktesting.NET.Data
             string keyCol,
             IReadOnlyList<string> fieldNames,
             Dictionary<string, int> ordinals,
-            Dictionary<string, List<DataRow>> data)
+            Dictionary<string, List<DataRow>> data,
+            IReadOnlySet<string>? nullableFields = null)
         {
             foreach (var filePath in files)
             {
@@ -144,13 +170,13 @@ namespace CarrotBacktesting.NET.Data
                     {
                         using var groupReader = reader.OpenRowGroupReader(g);
                         int rowCount = (int)groupReader.RowCount;
-                        string[] keys = groupReader.ReadStringColumn(keyField, rowCount);
+                        string[] keys = groupReader.ReadStringColumn(keyField, rowCount, nullableFields);
 
                         string?[]?[] valueArrays = new string?[fieldNames.Count][];
                         for (int v = 0; v < fieldNames.Count; v++)
                         {
                             var vf = valueFields[v];
-                            valueArrays[v] = vf != null ? groupReader.ReadStringColumn(vf, rowCount) : null;
+                            valueArrays[v] = vf != null ? groupReader.ReadStringColumn(vf, rowCount, nullableFields) : null;
                         }
 
                         for (int r = 0; r < rowCount; r++)

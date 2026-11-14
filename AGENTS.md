@@ -186,7 +186,7 @@ graph TD
 - `TimeseriesSourceFactory`: 时序数据源工厂，根据 `StorageResolver.GetFormat(tableId)` 自动派发构建 `CsvTimeseriesSource` 或 `ParquetTimeseriesSource`，调用端零物理格式耦合。
 - `ReadSymbolSeries<T>(symbol, fieldName, startIndex, length, destination)`: 直接写入调用方提供的内存块，严格零拷贝；`T : unmanaged` 约束兼容 MMF/连续内存布局。
 - `CsvTimeseriesSource`: 支持 Hive 分区 `{root}/{table_id}/year={yyyy}/{symbol}.csv` 与 Flat 结构；基于 Sylvan.Data.Csv 流式解析，泛型分发 `ValueConverter<T>` 零装箱转换。
-- `ParquetTimeseriesSource`: 支持按年/月分区 `{root}/{table_id}/year={yyyy}/[month={mm}/]data.parquet` 或单文件；基于 `YearCache` 按需列缓存解压，通过 `Unsafe.As` 零拷贝转换。
+- `ParquetTimeseriesSource`: 支持按年/月分区 `{root}/{table_id}/year={yyyy}/[month={mm}/]data.parquet` 或单文件；基于 `YearCache` 按需列缓存解压，通过 `Unsafe.As` 零拷贝转换。**实行全局严格零空值（Zero-Tolerance NULL）契约**：默认全表全列严禁 NULL，一旦在解包中检测到未在白名单中的字段存在 NULL，立即以方案 C（统计损坏总数 + 占比 + 打印前 5 个损坏样本行号）抛出强类型 `InvalidDataException` 阻断加载；仅对在 `metadata.json` 或 `TimeseriesConfig.NullableFields` 白名单中显式声明的字段放行并安全映射为 NaN/默认哨兵。
 - **统一稠密矩阵载体**：系统统一采用 `ChunkMatrix2D<T>`（`IReadOnlyMatrix2D<T>`）作为全市场稠密数据载体。横向截面快照统一由行切片（`ReadOnlyRowView<T>`）提供，纵向时序统一由列切片（`ReadOnlyColumnView<T>`）提供，回测与实盘统一由 Matrix 供给。
 
 ### 2. 内存层接口与 Matrix 访问
@@ -253,13 +253,13 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
   - 1:N 便捷多值提取：`table.GetValues("sh.600000", "board_name")`；
   - 1:N 多行安全获取：`table.GetRows("sh.600000")`。
 - **FieldRegistry**: 标的维表注册中心，支持 `Fields["table"]` 索引器获取维表。
-- **FieldSourceFactory**: 物理维表加载工厂，支持 CSV 与 Parquet 平铺表直接映射为单一内核动态维表（`FieldTable`）。
+- **FieldSourceFactory**: 物理维表加载工厂，支持 CSV 与 Parquet 平铺表直接映射为单一内核动态维表（`FieldTable`），严格遵循零空值契约并支持通过 `nullableFields` 白名单放行空值。
 
 ### 6. 存储调度与批量加载 (StorageResolver & Bulk Loader)
 
 - **IStorageResolver** (`Abstraction/Data/IStorageResolver.cs`): 基于 `tableId` 统一调度物理文件：
   - **元数据缓存**: 内部采用 `ConcurrentDictionary<string, TableMetadataCache>` 避免重复 I/O。
-  - **决策机制**: 优先读取表目录下 `metadata.json`；缺失时自动由 Parquet Footer 或 CSV 表头回退推断。
+  - **决策机制**: 优先读取表目录下 `metadata.json`（支持解析 `nullable_fields` 空值白名单契约）；缺失时自动由 Parquet Footer 或 CSV 表头回退推断（默认空值白名单为空集合，全表严禁 NULL）。
   - **布局模式**:
     - `Hive`: `{root}/{table_id}/year={yyyy}/[month={mm}/]`，传入 `startDate` 与 `endDate` 执行年份/月份动态剪枝。
     - `Flat`: `{root}/{table_id}/` 平铺存储，支持直接按 symbol 精确匹配或全量枚举。

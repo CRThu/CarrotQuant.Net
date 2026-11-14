@@ -16,12 +16,30 @@ namespace CarrotBacktesting.NET.Data
             IStorageResolver resolver,
             string tableId,
             DateTime? startDate = null,
-            DateTime? endDate = null)
+            DateTime? endDate = null,
+            IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);
             ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
 
             var fieldNames = resolver.GetFieldNames(tableId);
+            var resolverFields = resolver.GetNullableFields(tableId);
+            IReadOnlySet<string> effectiveNullableFields;
+            if (nullableFields == null || nullableFields.Count == 0)
+            {
+                effectiveNullableFields = resolverFields;
+            }
+            else if (resolverFields == null || resolverFields.Count == 0)
+            {
+                effectiveNullableFields = nullableFields;
+            }
+            else
+            {
+                var merged = new HashSet<string>(resolverFields, StringComparer.OrdinalIgnoreCase);
+                foreach (var f in nullableFields) merged.Add(f);
+                effectiveNullableFields = merged;
+            }
+
             var valueColumns = fieldNames.Where(f => !EntityMapper.ReservedEventKeys.Contains(f)).ToList();
             var ordinals = valueColumns.Select((f, idx) => (f, idx))
                 .ToDictionary(x => x.f, x => x.idx, StringComparer.OrdinalIgnoreCase);
@@ -49,13 +67,13 @@ namespace CarrotBacktesting.NET.Data
                     {
                         using var groupReader = reader.OpenRowGroupReader(g);
                         int rowCount = (int)groupReader.RowCount;
-                        string[] symbols = symField != null ? groupReader.ReadStringColumn(symField, rowCount) : new string[rowCount];
-                        DateTime[] dates = dtField != null ? groupReader.ReadDateColumn(dtField, rowCount) : new DateTime[rowCount];
+                        string[] symbols = symField != null ? groupReader.ReadStringColumn(symField, rowCount, effectiveNullableFields) : new string[rowCount];
+                        DateTime[] dates = dtField != null ? groupReader.ReadDateColumn(dtField, rowCount, effectiveNullableFields) : new DateTime[rowCount];
                         string?[]?[] valueArrays = new string?[valueColumns.Count][];
                         for (int v = 0; v < valueColumns.Count; v++)
                         {
                             var vf = valueFields[v];
-                            valueArrays[v] = vf != null ? groupReader.ReadStringColumn(vf, rowCount) : null;
+                            valueArrays[v] = vf != null ? groupReader.ReadStringColumn(vf, rowCount, effectiveNullableFields) : null;
                         }
 
                         for (int r = 0; r < rowCount; r++)
