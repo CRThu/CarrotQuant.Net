@@ -623,6 +623,35 @@ public interface IBroker
 - **`PositionEvent`**: `(string Symbol, decimal NewQuantity, double AveragePrice, DateTime Time)`
 - **`OrderStatus`**: `Pending`, `Submitted`, `PartialFilled`, `Filled`, `Canceled`, `Rejected`
 
+### 4. IEngine 与 BacktestingEngine (回测驱动核心)
+
+统一统领回测生命周期、时间网格推进、T+N 跨日结算与策略管线执行。
+
+```csharp
+namespace CarrotBacktesting.NET.Abstraction.Engine;
+
+public interface IEngine
+{
+    EngineStatus Status { get; }
+    double Progress { get; }
+    DateTime CurrentTime { get; }
+
+    void Run();
+    Task RunAsync(CancellationToken cancellationToken = default);
+    void Pause();
+    void Resume();
+    void Stop();
+    byte[] SaveState();
+    void RestoreState(byte[] state);
+}
+```
+
+- **`BacktestingEngine` 单一权威内核**：
+  - **二分区间裁剪**：依据 `StartDate` 与 `EndDate` 通过二分查找精准裁剪 `TradeDates` 索引；
+  - **主时钟极速推进**：按时间步严格执行（`UpdateStep` → `Timeseries.StepTo` → 跨日检测 `Broker.RollDate` → 离散事件探测派发 `pipeline.OnEvent` → 策略主决策 `pipeline.OnUpdate`）；
+  - **热路径零堆分配 (零 GC)**：上下文单例常驻、复用事件内存缓冲区，单步纳秒级执行；
+  - **完备状态机与线程安全**：`Idle` → `Running` → `Paused` / `Completed` / `Faulted`，支持无悬挂优雅取消与暂停等待。
+
 ---
 
 ## 七、策略与管线开发 (Strategy & Pipeline)

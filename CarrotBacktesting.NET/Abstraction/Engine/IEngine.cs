@@ -52,6 +52,18 @@ public interface IEngine
     DateTime CurrentTime { get; }
 
     /// <summary>
+    /// 同步阻塞驱动引擎运行，直至任务完成或终止。
+    /// </summary>
+    void Run();
+
+    /// <summary>
+    /// 异步驱动引擎运行，支持外部协作式取消。
+    /// </summary>
+    /// <param name="cancellationToken">用于通知取消操作的令牌。</param>
+    /// <returns>表示异步运行操作的任务。</returns>
+    Task RunAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 暂停引擎的运行。
     /// </summary>
     void Pause();

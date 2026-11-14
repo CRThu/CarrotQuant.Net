@@ -312,17 +312,20 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ## 四、引擎、策略与执行层契约
 
-### 1. 引擎层核心契约 (`CarrotBacktesting.NET.Abstraction.Engine`)
+### 1. 引擎层核心契约与实现 (`CarrotBacktesting.NET.Engine`)
 
 | 契约 / 类型 | 文件 | 职责说明 |
 | :--- | :--- | :--- |
-| `IEngine` | `Abstraction/Engine/IEngine.cs` | 核心驱动接口，支持 `Run` / `Pause` / `Stop` 与状态快照 (`SaveState` / `RestoreState`) |
+| `IEngine` | `Abstraction/Engine/IEngine.cs` | 核心驱动接口，支持 `Run` / `RunAsync` / `Pause` / `Resume` / `Stop` 与状态快照 (`SaveState` / `RestoreState`) |
+| `BacktestingEngine` | `Engine/BacktestingEngine.cs` | 高性能回测驱动单一权威内核，统筹时间步切片裁剪、缓存滑动、跨日结算驱动、事件派发与策略生命周期 |
 | `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry` |
-| `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与持仓管理，提供订单提交与 `OnTrade` 成交回报事件 |
-| `IExchangeGateway`| `Abstraction/Engine/IExchangeGateway.cs` | 交易所物理网关抽象（屏蔽回测撮合器与实盘交易所 API） |
-| `IMatchingEngine` | `Abstraction/Engine/IMatchingEngine.cs` | 回测撮合引擎，按时间步驱动撮合逻辑 |
+| `EngineContext` | `Engine/EngineContext.cs` | 策略运行上下文权威实现，单例常驻，热路径零堆分配（零 GC），支持类型化插件与扩展组件注入 |
+| `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与持仓管理，提供订单提交、T+N 跨日结算 `RollDate` 与 `OnTrade` 成交回报事件 |
+| `SimulatedBroker` | `Engine/Broker/SimulatedBroker.cs` | 统一虚拟经纪商单一内核，统领现货/期货保证金/多空状态机与对称 Hook 拦截 |
 | `IMarketState` | `Abstraction/Engine/IMarketState.cs` | 市场黑板上下文，支持策略间跨层异步状态共享 |
+| `MarketState` | `Engine/MarketState.cs` | 通用强类型黑板实现，基于 ConcurrentDictionary 保证并发安全与类型单例索引 |
 | `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 统一监控抽象，管理日志输出、指标采集与告警 |
+| `NullMonitor` | `Engine/NullMonitor.cs` | 零开销默认空监控实现（Null Object Pattern） |
 | **数据模型** | `Abstraction/Engine/OrderTypes.cs` | `OrderRequest` (下单意图), `ExecutionReport` (成交明细), `OrderStatus` (生命周期), `PositionEvent` |
 
 ### 2. 策略与分析层契约

@@ -171,8 +171,19 @@ var industryTable = FieldSourceFactory.Create(resolver, "ashare.industry.eastmon
 fieldRegistry.Register("industry", industryTable);
 
 // 6. 编排策略管线并运行引擎
-var strategy = new DoubleMaStrategy();
-// (后续装配 BacktestingEngine 并调用 engine.Run())
+var pipeline = StrategyPipeline.Sequential();
+pipeline.Add(new DoubleMaStrategy());
+
+// 7. 装配回测引擎并启动
+using var engine = BacktestingEngine.Create(
+    config, 
+    timeseriesRegistry, 
+    pipeline, 
+    events: eventRegistry, 
+    fields: fieldRegistry);
+
+engine.Run();
+Console.WriteLine($"回测完成，最终状态: {engine.Status}, 进度: {engine.Progress:P0}");
 ```
 
 ---

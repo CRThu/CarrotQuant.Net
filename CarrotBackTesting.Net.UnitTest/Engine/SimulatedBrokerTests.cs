@@ -428,15 +428,17 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(OrderStatus.Filled, volBroker.GetOrderStatus(fillId));
 
             // 4. OnGetMultiplier、OnGetMarginRate 与 OnGetSettleDays Hook 在执行中的实际调用 (传入 dummy 上下文触发分支)
+            bool multiplierCalled = false;
+            bool marginRateCalled = false;
             var dynamicConfig = new BrokerConfig
             {
                 InitialCash = 1_000_000.0,
                 SettleDays = 1,
                 CheckLimit = true,
-                OnCheckLimit = (order, bar) => true, // 覆盖 OnCheckLimit 放行分支
+                OnCheckLimit = (order, bar) => true,
                 OnGetSettleDays = s => 0, // 动态覆盖为 T+0
-                OnGetMultiplier = (s, ctx) => 20.0, // 动态覆盖乘数为 20
-                OnGetMarginRate = (s, ctx) => 0.05 // 动态覆盖保证金率为 5%
+                OnGetMultiplier = (s, ctx) => { multiplierCalled = true; return 20.0; }, // 动态覆盖乘数为 20
+                OnGetMarginRate = (s, ctx) => { marginRateCalled = true; return 0.05; } // 动态覆盖保证金率为 5%
             };
 
             // 构造带简单 dummy 上下文的 Broker 触发 _context != null 分支
@@ -447,6 +449,9 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(OrderStatus.Filled, dynBroker.GetOrderStatus(dynOrderId));
             // 校验 T+0 立即释放可用持仓
             Assert.AreEqual(10m, dynBroker.GetAvailablePosition("custom_item"));
+            // 严谨断言：Hook 必须被真实调用
+            Assert.IsTrue(multiplierCalled, "OnGetMultiplier Hook 必须被真实执行");
+            Assert.IsTrue(marginRateCalled, "OnGetMarginRate Hook 必须被真实执行");
         }
 
         [TestMethod]
@@ -580,6 +585,53 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.IsTrue(crypto.AllowShort);
             Assert.AreEqual(0.0005, crypto.FeeRate);
             Assert.AreEqual(0.0, crypto.MinFee);
+        }
+
+        [TestMethod]
+        public void Hook_WithoutContext_ShouldThrowInvalidOperationException()
+        {
+            var config = new BrokerConfig
+            {
+                OnGetMultiplier = (s, ctx) => 10.0
+            };
+            var broker = new SimulatedBroker(config); // 未注入 context
+            var bar = CreateBar(10.0, 10.0, 10.0, 10.0, 1000.0);
+
+            // 发生交易计算乘数时必须显式抛出异常，绝不隐式兜底
+            Assert.ThrowsException<InvalidOperationException>(() =>
+                broker.ExecuteOrder(new OrderRequest("test", OrderDirection.Buy, OrderType.Market, 10.0, 10m), 10.0, bar));
+        }
+
+        [TestMethod]
+        public void AttachContext_ShouldEnableHooksExecution()
+        {
+            bool hookExecuted = false;
+            var config = new BrokerConfig
+            {
+                OnGetMultiplier = (s, ctx) => { hookExecuted = true; return 10.0; }
+            };
+            var broker = new SimulatedBroker(config);
+            broker.AttachContext(new DummyEngineContext());
+
+            var bar = CreateBar(10.0, 10.0, 10.0, 10.0, 1000.0);
+            broker.ExecuteOrder(new OrderRequest("test", OrderDirection.Buy, OrderType.Market, 10.0, 10m), 10.0, bar);
+
+            Assert.IsTrue(hookExecuted, "AttachContext 后 Hook 应该成功执行");
+        }
+
+        [TestMethod]
+        public void MinuteLevel_TPlusOne_ShouldUnlockSharesOnNextDayMorning()
+        {
+            var broker = new SimulatedBroker(BrokerConfig.AStock);
+            // Day 1 14:55:00 买入 100 股
+            broker.RollDate(new DateTime(2025, 1, 2, 14, 55, 0));
+            broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "买入当日可用仓位必须为 0");
+
+            // Day 2 09:31:00 早盘推进第一根 Bar
+            broker.RollDate(new DateTime(2025, 1, 3, 9, 31, 0));
+            var avail = broker.GetAvailablePosition("sh.600000");
+            Assert.AreEqual(100m, avail, "次日早盘首根 Bar 必须成功解锁前一日全天任何时间买入的份额，绝不能退化为 T+2");
         }
 
         private class DummyEngineContext : IEngineContext

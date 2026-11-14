@@ -16,7 +16,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
     public class SimulatedBroker : IBroker
     {
         private readonly BrokerConfig _config;
-        private readonly IEngineContext? _context;
+        private IEngineContext? _context;
         private readonly object _syncLock = new();
 
         private double _cash;
@@ -41,6 +41,16 @@ namespace CarrotBacktesting.NET.Engine.Broker
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _context = context;
             _cash = config.InitialCash;
+        }
+
+        /// <summary>
+        /// 挂载引擎运行时上下文（由 EngineContext 构造时自动双向绑定，彻底解决初始化循环依赖）。
+        /// </summary>
+        /// <param name="context">策略运行时上下文。</param>
+        internal void AttachContext(IEngineContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            _context = context;
         }
 
         /// <inheritdoc />
@@ -335,7 +345,9 @@ namespace CarrotBacktesting.NET.Engine.Broker
                 }
 
                 // 9. 状态跃迁：扣款与更新持仓
-                DateTime tradeTime = _currentDate != DateTime.MinValue ? _currentDate : DateTime.UtcNow;
+                DateTime tradeTime = _currentDate != DateTime.MinValue 
+                    ? _currentDate 
+                    : (_context != null && _context.CurrentTime != DateTime.MinValue ? _context.CurrentTime : DateTime.UtcNow);
 
                 if (isSpotStock)
                 {
@@ -354,7 +366,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
                         }
                         else
                         {
-                            pos.PendingLots.Add(new PendingLot(request.Quantity, tradeTime.AddDays(settleDays)));
+                            pos.PendingLots.Add(new PendingLot(request.Quantity, tradeTime.Date.AddDays(settleDays)));
                         }
                     }
                     else
@@ -487,8 +499,12 @@ namespace CarrotBacktesting.NET.Engine.Broker
 
         private double GetMultiplier(string symbol)
         {
-            if (_config.OnGetMultiplier != null && _context != null)
+            if (_config.OnGetMultiplier != null)
             {
+                if (_context == null)
+                {
+                    throw new InvalidOperationException($"品种 '{symbol}' 配置了 OnGetMultiplier Hook，但 SimulatedBroker 尚未挂载 IEngineContext，无法访问维表或行情。");
+                }
                 return _config.OnGetMultiplier(symbol, _context);
             }
             return _config.Multiplier;
@@ -496,8 +512,12 @@ namespace CarrotBacktesting.NET.Engine.Broker
 
         private double GetMarginRate(string symbol)
         {
-            if (_config.OnGetMarginRate != null && _context != null)
+            if (_config.OnGetMarginRate != null)
             {
+                if (_context == null)
+                {
+                    throw new InvalidOperationException($"品种 '{symbol}' 配置了 OnGetMarginRate Hook，但 SimulatedBroker 尚未挂载 IEngineContext，无法访问维表或行情。");
+                }
                 return _config.OnGetMarginRate(symbol, _context);
             }
             return _config.MarginRate;
