@@ -34,6 +34,11 @@ public sealed class Broker : IBroker
     /// </summary>
     public IExchangeGateway Gateway => _gateway;
 
+    /// <summary>
+    /// 获取经纪商当前推进的全局时间戳。
+    /// </summary>
+    public DateTime CurrentTime => _currentTime;
+
     public Broker(IExchangeGateway gateway, BrokerConfig config, IFieldRegistry? fields = null)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));

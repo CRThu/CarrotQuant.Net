@@ -157,7 +157,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Assert.AreEqual(500000.0, config.Broker.InitialCash);
             Assert.AreEqual(1, config.Data.Timeseries.Count);
 
-            // 验证一站式内嵌管线
+            // 验证内嵌复合管线配置
             Assert.IsNotNull(config.Pipeline);
             Assert.AreEqual("MyUnifiedStrategy", config.Pipeline.Name);
             Assert.AreEqual(PipelineMode.Sequential, config.Pipeline.Mode);
@@ -196,7 +196,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             string mainConfigPath = Path.Combine(_tempDir, "main.yaml");
             File.WriteAllText(mainConfigPath, mainYaml);
 
-            // 3. 一键加载并断言级联解析
+            // 3. 统一加载并断言级联解析
             var config = SessionConfig.Load(mainConfigPath);
 
             Assert.IsNotNull(config.Pipeline);

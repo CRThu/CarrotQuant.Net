@@ -3,7 +3,7 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 /// <summary>
 /// 定义通用交易所网关接口。
 /// 该接口位于路由层，负责屏蔽回测环境模拟器与实盘环境交易所柜台的物理差异。
-/// 保持极致纯净，严禁包含任何回测专有的时钟步进或行情注入方法。
+/// 保持职责单一与接口纯粹，严禁包含任何回测专有的时钟步进或行情注入方法。
 /// </summary>
 public interface IExchangeGateway
 {

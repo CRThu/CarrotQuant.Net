@@ -26,7 +26,8 @@ graph TD
     subgraph EngineLayer [Engine Layer - 引擎与执行]
         Engine[BacktestingEngine<br>主时钟循环 / 状态机]
         Context[EngineContext<br>只读上下文黑板]
-        Broker[SimulatedBroker<br>撮合 / 账户 / T+N 清算]
+        Broker[Broker<br>账户资金 / 两阶段冻结]
+        Gateway[SimulatedExchangeGateway<br>订单簿 / 撮合 / 行情驱动]
         Monitor[NullMonitor / IMonitor<br>可观测性]
     end
 
@@ -38,7 +39,9 @@ graph TD
     TR --> Engine
     ER --> Engine
     FR --> Broker
+    FR --> Gateway
     Broker --> Context
+    Gateway --> Broker
     Engine --> Context
     Monitor --> Context
     Context --> Pipeline
@@ -48,8 +51,8 @@ graph TD
 
 ### 核心分层设计原则
 1. **单一内核与纯单向依赖 (DAG)**：
-   - 依赖关系严格自顶向下：`IFieldRegistry` $\to$ `SimulatedBroker` $\to$ `EngineContext` $\to$ `BacktestingEngine`；
-   - 经纪商仅依赖标的静态维表抽象 `IFieldRegistry`，彻底消除对运行时上下文的双向循环依赖；详细清算与撮合机制见独立文档 [虚拟经纪商体系 (broker.md)](broker.md)；
+   - 依赖关系严格自顶向下：`IFieldRegistry` $\to$ `Broker` / `SimulatedExchangeGateway` $\to$ `EngineContext` $\to$ `BacktestingEngine`；
+   - 经纪商仅依赖标的静态维表抽象 `IFieldRegistry` 与网关契约 `IExchangeGateway`，彻底消除对运行时上下文的双向循环依赖；详细清算与撮合机制见独立文档 [经纪商与交易所体系 (broker.md)](broker.md)；
 2. **读写分离与零装箱**：
    - 上下文（`IEngineContext`）为策略层提供纯只读门面；
    - 策略与经纪商之间的交互严格通过强类型订单请求（`OrderRequest`）与执行回报（`ExecutionReport`）进行，杜绝策略直接改写账户内部状态。
@@ -67,7 +70,7 @@ stateDiagram-v2
     Running --> Paused: Pause()
     Paused --> Running: Resume()
     Running --> Completed: 正常跑完全部时间步 / Stop()
-    Paused --> Completed: Stop() 优雅终止
+    Paused --> Completed: Stop() 安全终止
     Running --> Faulted: 策略异常未捕获
     Completed --> [*]
     Faulted --> [*]

@@ -104,7 +104,7 @@ namespace CarrotBacktesting.NET.Engine
         }
 
         /// <summary>
-        /// 便捷静态工厂：根据整体会话配置与数据供给一键装配回测引擎。
+        /// 便捷静态工厂：根据整体会话配置与数据供给装配回测引擎。
         /// </summary>
         /// <param name="sessionConfig">会话级总配置。</param>
         /// <param name="timeseries">时序行情供给源。</param>

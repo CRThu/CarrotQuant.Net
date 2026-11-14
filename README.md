@@ -61,9 +61,9 @@ registry.Register("adjustments", table);
 // 加载静态维表
 var industryTable = FieldSourceFactory.Create(resolver, "ashare.industry.eastmoney");
 
-// 链式点查与全表倒排秒级选股
+// 链式点查与全表倒排索引选股
 string industry = industryTable["sh.601958"]["board_name"];
-var metalStocks = industryTable.GetKeys("钼"); // 无需记忆列名，全表秒级反查
+var metalStocks = industryTable.GetKeys("钼"); // 无需记忆列名，全表倒排反查
 ```
 
 ---
@@ -71,22 +71,38 @@ var metalStocks = industryTable.GetKeys("钼"); // 无需记忆列名，全表�
 ## 架构概览
 
 ```
-Data Layer          Engine Layer         Strategy Layer
-┌──────────────┐    ┌─────────────┐    ┌─────────────┐
-│ITimeseriesReg│──▶│   IEngine   │──▶│  IStrategy   │
-│IEventRegistry│    │IEngineCtx   │    │ IStrategyPipe│
-│IFieldRegistry│    └─────────────┘    └─────────────┘
-└──────────────┘
+  Data Layer               Engine Layer               Strategy Layer
+┌──────────────┐         ┌─────────────┐             ┌─────────────┐
+│ITimeseriesReg│────────▶│   IEngine   │────────────▶│  IStrategy   │
+│IEventRegistry│         │IEngineCtx   │             │ IStrategyPipe│
+│IFieldRegistry│         └──────┬──────┘             └──────┬──────┘
+└──────────────┘                │                           │
+                                ▼                           ▼
+                   ┌────────────────────────┐   context.Broker
+                   │ Broker & Exchange Layer│◀──────────────┘
+                   │ ┌────────────────────┐ │
+                   │ │ Broker / Ledger    │ │
+                   │ └─────────┬──────────┘ │
+                   │           ▼            │
+                   │ ┌────────────────────┐ │
+                   │ │ Exchange / Matching│ │
+                   │ └────────────────────┘ │
+                   └────────────────────────┘
 ```
 
 ## 文档导航 (Wiki)
 
-- **[标准研发工作流 (Workflow)](docs/workflow.md)**: 演示从数据准备、YAML 配置、策略编写到驱动引擎的标准流程。
-- **[数据存储与格式规范](docs/data_format.md)**: 物理目录组织、Table ID 规范、双时间轴契约与自描述缺省回退机制。
-- **[配置管理与环境组织](docs/configuration.md)**: 掌握多态数据外链、跨环境基准路径级联解析与组织规范。
-- **[API 契约速查字典](docs/API.md)**: 提供方法级精确签名、参数定义与异常规范（供日常查阅）。
-- **[系统架构与研发红线](AGENTS.md)**: 面向 Agent 与核心开发者，涵盖三层分离设计约束与工程研发红线。
-- **[v3 历史报表规范归档](CarrotBacktesting.NET/V3/README.md)**: 用于迁移对照历史分析器与专业 Excel 报表规范。
+- **[系统架构与研发红线 (AGENTS.md)](AGENTS.md)**: 框架总纲，涵盖分层架构设计、数字孪生模型、性能分级与研发红线。
+- **[数据层内存架构与供给体系 (docs/data.md)](docs/data.md)**: `ChunkMatrix2D` 连续内存矩阵、4096 行分块轮转缓存、`EventTable` 表达式树零装箱映射、`FieldTable` 动态倒排选股与元数据推断。
+- **[客户端经纪商与账户账本体系 (docs/broker.md)](docs/broker.md)**: `IBroker` 契约、`AccountLedger` 纯财务账本、两阶段挂单冻结状态机、零现金卖出平仓、T+N 跨日清算与实盘对账。
+- **[交易所仿真与集中撮合体系 (docs/exchange.md)](docs/exchange.md)**: `IExchangeGateway` 与 `ISimulatedExchange` 契约、标的桶化 FIFO 挂单簿、纯计算撮合引擎、响应式纯行情驱动（`OnMarketData`）。
+- **[核心引擎与执行体系 (docs/engine.md)](docs/engine.md)**: 引擎生命周期五态状态机、主时钟步进流水线、检查点持久化（`ICheckpointable`）。
+- **[策略子系统与管线开发指南 (docs/strategy.md)](docs/strategy.md)**: 统一策略抽象、组合策略管线（串行/并行多核并发）、通用强类型黑板、Roslyn 动态免编译加载。
+- **[配置管理与环境组织 (docs/configuration.md)](docs/configuration.md)**: `SessionConfig` 四大正交支柱、多态数据外链、跨环境基准路径级联解析与参数全量字典。
+- **[底层数据存储与物理格式规范 (docs/data_format.md)](docs/data_format.md)**: 物理目录组织、Table ID 规范、Hive 年月分区、双时间轴契约与自描述缺省回退。
+- **[标准研发工作流 (docs/workflow.md)](docs/workflow.md)**: 演示从数据准备、YAML 配置、策略编写到驱动引擎的标准实战流程。
+- **[API 契约速查字典 (docs/API.md)](docs/API.md)**: 提供方法级精确签名、参数定义与异常规范（供日常查阅）。
+- **[v3 历史报表规范归档 (CarrotBacktesting.NET/V3/README.md)](CarrotBacktesting.NET/V3/README.md)**: 用于迁移对照历史分析器与专业 Excel 报表规范。
 
 ---
 

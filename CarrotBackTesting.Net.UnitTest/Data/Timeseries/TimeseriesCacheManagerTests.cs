@@ -91,7 +91,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(1, manager.ActivePageRowCount);
             Assert.IsTrue(manager.IsDirty);
 
-            // 验证只读视图无缝跨页连续读取
+            // 验证只读视图跨分块连续读取
             var view = manager.AsReadOnly();
             Assert.AreEqual(5, view.RowCount);
             Assert.AreEqual(300.0, view[3, 0]);

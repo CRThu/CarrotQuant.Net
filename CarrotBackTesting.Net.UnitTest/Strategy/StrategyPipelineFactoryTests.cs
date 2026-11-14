@@ -30,7 +30,7 @@ public class TestInjectableStrategy : IStrategy
 /// <summary>
 /// 策略管线装配工厂（StrategyPipelineFactory）与配置加载端到端集成测试。
 /// 验证：串行、并行（单核/多核并发）、多层复合嵌套、Roslyn 源码与编译类型混编、各类型参数注入以及异常防御。
-/// 严格遵循“标准 YAML 文本 -> ConfigLoader 反序列化 -> Factory 装配并执行验证”的真实闭环。
+/// 严格遵循“标准 YAML 文本 -> ConfigLoader 反序列化 -> Factory 装配并执行验证”的端到端集成流程。
 /// </summary>
 [TestClass]
 public class StrategyPipelineFactoryTests

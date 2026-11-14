@@ -13,7 +13,7 @@ namespace CarrotBacktesting.NET.Data
     {
         /// <summary>
         /// 判定指定单元格 (row, col) 的数值是否为 NaN 或缺失哨兵值。
-        /// 无论底层是浮点类型（double.NaN / float.NaN）还是整型哨兵（MinValue），统一一键判定。
+        /// 无论底层是浮点类型（double.NaN / float.NaN）还是整型哨兵（MinValue），统一提供有效值判定。
         /// </summary>
         /// <typeparam name="T">非托管数值类型</typeparam>
         /// <param name="matrix">只读二维时序矩阵</param>

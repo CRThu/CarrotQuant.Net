@@ -253,4 +253,55 @@ public class OnlineTradingIntegrationTests
         Assert.IsTrue(allCompleted, "高并发压测必须在 10 秒内安全完成，绝不允许任何死锁或竞态卡死");
         Assert.IsTrue(broker.GetTotalEquity() > 0.0);
     }
+
+    [TestMethod]
+    public void OnlineTrading_PositionFlip_MultiBatchPartialFills_ExactFreezeAndAccounting()
+    {
+        // 验证多批次部分成交下的反向翻仓（多翻空）：持仓 100 股多头，卖出 300 股翻空
+        // 分三批回报：40 股（平多）、80 股（平多60+开空20）、180 股（开空180）
+        var gateway = new MockLiveExchangeGateway();
+        var config = new BrokerConfig
+        {
+            InitialCash = 100_000.0,
+            AllowShort = true,
+            Multiplier = 1.0,
+            MarginRate = 1.0,
+            FeeRate = 0.0,
+            MinFee = 0.0
+        };
+        var broker = new Broker(gateway, config);
+
+        // 初始状态：持有 100 股 @ 10 元多头
+        broker.SyncState(99_000.0, new Dictionary<string, decimal> { ["sh.600000"] = 100m });
+        Assert.AreEqual(100m, broker.GetAvailablePosition("sh.600000"));
+
+        // 提交卖出 300 股 @ 10 元（平多 100 股 + 开空 200 股，冻结现金 2000 元，冻结持仓 100 股）
+        var order = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 300m);
+        string orderId = broker.SubmitOrder(order);
+
+        Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "100 股平仓额度被 100% 冻结");
+        Assert.AreEqual(99_000.0 - 2000.0, broker.GetCash(), "新开空 200 股预冻结 2000 元保证金");
+
+        // 批次 1: 成交 40 股（纯平仓）
+        gateway.SimulateTradeFill(orderId, 10.0, 40m, 0.0);
+        Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(60m, broker.GetPosition("sh.600000"));
+        Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
+        // 纯平仓不消耗开空保证金，冻结现金仍为 2000，可用现金为 97000 + 400 (平仓回款) = 97400
+        Assert.AreEqual(97400.0, broker.GetCash());
+
+        // 批次 2: 成交 80 股（平多最后 60 股 + 开空 20 股）
+        gateway.SimulateTradeFill(orderId, 10.0, 80m, 0.0);
+        Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(-20m, broker.GetPosition("sh.600000"));
+        Assert.AreEqual(-20m, broker.GetAvailablePosition("sh.600000"));
+
+        // 批次 3: 成交剩余 180 股（全部为新开空）
+        gateway.SimulateTradeFill(orderId, 10.0, 180m, 0.0);
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(-200m, broker.GetPosition("sh.600000"));
+        Assert.AreEqual(-200m, broker.GetAvailablePosition("sh.600000"));
+        // 最终总权益保持守恒：99,000 + 100 * 10 = 100,000
+        Assert.AreEqual(100_000.0, broker.GetTotalEquity(), 1e-4);
+    }
 }

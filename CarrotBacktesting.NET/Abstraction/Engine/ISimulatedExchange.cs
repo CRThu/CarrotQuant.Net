@@ -33,10 +33,12 @@ public interface ISimulatedExchange : IExchangeGateway
     void Step(DateTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
 
     /// <summary>
-    /// 更新指定标的的最新市场基准价与行情数据行（供单步微结构测试或精确撮合使用）。
+    /// 反应式行情数据到达驱动（供单测、离散 Tick、逐笔行情回放等事件流驱动仿真撮合）。
+    /// 纯粹的行情事实输入：强制绑定物理时间戳，彻底消除无时间价格导致的穿越 Bug。
     /// </summary>
     /// <param name="symbol">交易标的代码。</param>
     /// <param name="price">最新基准价格。</param>
+    /// <param name="time">行情发生的时间戳。</param>
     /// <param name="bar">当前时间步行情数据行（可选，供流动性与涨跌停拦截校验）。</param>
-    void UpdateMarketPrice(string symbol, double price, IDataRow? bar = null);
+    void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null);
 }

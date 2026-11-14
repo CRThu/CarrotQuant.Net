@@ -47,7 +47,7 @@ flowchart TD
 
 - **阶段内高并发 (Parallel)**：相互独立的 Alpha 因子无因果依赖，通过多核 CPU 并发执行计算；
 - **阶段间强时序 (Sequential)**：特征计算 $\rightarrow$ 信号融合 $\rightarrow$ 持仓规划 $\rightarrow$ 风控报单，按严格顺序单调执行，消除状态竞态；
-- **对外纯净一致**：整个流水线对引擎呈现为单一标准的 `IStrategy`，回测与实盘无缝复用。
+- **对外契约一致**：整个流水线对引擎呈现为单一标准的 `IStrategy`，回测与实盘平滑复用。
 
 ---
 
@@ -161,7 +161,7 @@ public interface IMarketState
 ```
 
 ### 2. 协作范式：单类型默认单例与显式 Key 隔离
-- **默认单例（Singleton per Type）**：当某一类数据在当前决策时刻全局权威且唯一时（如宏观偏向、仓位计划），无需传入 `key`，框架自动使用 `typeof(T).FullName` 索引，杜绝魔法字符串拼写错误：
+- **默认单例（Singleton per Type）**：当某一类数据在当前决策时刻全局权威且唯一时（如宏观偏向、仓位计划），无需传入 `key`，框架自动使用 `typeof(T).FullName` 索引，消除硬编码字符串拼写错误：
   ```csharp
   // 生产端
   context.Market.SetState(new PortfolioTarget(targetWeights));
@@ -278,15 +278,15 @@ StrategyPipeline customPipeline = StrategyPipelineFactory.Create(config);
 
 ## 六、时序变更感知与事件到达探测
 
-在超高频多周期或异构数据回测中，避免在每个高频 Bar 中无脑重算低频指标是保障高吞吐的关键。
+在超高频多周期或异构数据回测中，避免在每个高频 Bar 中重复计算低频指标是保障高吞吐的关键。
 
-### 1. 纳秒级位掩码变更感知 (`ITimeseriesRegistry.IsUpdated`)
+### 1. 位掩码常数时间变更感知 (`ITimeseriesRegistry.IsUpdated`)
 系统底层使用 64 位无符号整型位掩码 `_updatedMask` 记录各表的跨周期更新状态：
 - **执行耗时**：单次判定 `(_updatedMask & (1UL << tableIndex)) != 0` 耗时 < 0.3ns，单 CPU 寄存器完成，零 GC 分配、零装箱；
 - **容量越界防御**：表注册序号达到 64 时立即抛出 `NotSupportedException`，防止状态位移取模穿透；
 - **调用范式**：
   ```csharp
-  // 仅在日线更新的那一根 Bar，才重算昂贵的 60 日均线
+  // 仅在日线更新的 Bar 时刻，才重新计算高开销的 60 日均线
   if (context.Timeseries.IsUpdated("kline.1d"))
   {
       _dailyMa60 = CalculateDailyMa60(context);

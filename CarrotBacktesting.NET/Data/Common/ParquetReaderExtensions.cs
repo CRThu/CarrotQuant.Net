@@ -18,7 +18,7 @@ namespace CarrotBacktesting.NET.Data
     public static class ParquetReaderExtensions
     {
         /// <summary>
-        /// 安全同步创建 ParquetReader。通过 Task.Run 强制在纯净线程池执行，
+        /// 安全同步创建 ParquetReader。通过 Task.Run 强制在独立线程池任务中执行，
         /// 彻底规避带有 SynchronizationContext（如 UI 调度器）时直接同步阻塞引发的死锁。
         /// </summary>
         public static ParquetReader OpenParquetReaderSync(Stream stream, ParquetOptions? options = null)

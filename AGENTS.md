@@ -92,13 +92,40 @@ graph TD
         StorageResolver --> FieldSourceFactory
     end
 
-    subgraph EngineExecutionLayer [Engine and Execution Layer - 引擎与执行层]
+    subgraph BrokerExchangeLayer [Broker and Exchange Layer - 经纪商与交易所层]
+        subgraph BrokerSubsystem [Broker - 客户端经纪商体系]
+            Broker[Broker]
+            AccountLedger[AccountLedger]
+            PositionData[PositionData]
+            IBroker[IBroker]
+
+            Broker --> AccountLedger
+            AccountLedger --> PositionData
+            Broker --> IBroker
+        end
+
+        subgraph ExchangeSubsystem [Exchange - 交易所撮合体系]
+            SimulatedExchangeGateway[SimulatedExchangeGateway]
+            OrderBook[OrderBook]
+            MatchingEngine[MatchingEngine]
+            ISimulatedExchange[ISimulatedExchange]
+            IExchangeGateway[IExchangeGateway]
+
+            SimulatedExchangeGateway --> OrderBook
+            SimulatedExchangeGateway --> MatchingEngine
+            SimulatedExchangeGateway --> ISimulatedExchange
+            ISimulatedExchange --> IExchangeGateway
+        end
+
+        Broker --> IExchangeGateway
+    end
+
+    subgraph EngineExecutionLayer [Engine and Execution Layer - 引擎与驱动层]
         BacktestingEngine[BacktestingEngine]
         LivingEngine[LivingEngine]
         IEngine[IEngine]
         IEngineContext[IEngineContext]
-        IExchangeGateway[IExchangeGateway]
-        IBroker[IBroker]
+        EngineContext[EngineContext]
         IMonitor[IMonitor]
 
         BacktestingEngine --> IEngine
@@ -106,10 +133,11 @@ graph TD
         ITimeseriesRegistry --> IEngine
         IEventRegistry --> IEngine
         IFieldRegistry --> IEngine
-        IEngine --> IExchangeGateway
-        IEngine --> IBroker
+        IEngine --> Broker
+        IEngine --> SimulatedExchangeGateway
         IEngine --> IMonitor
-        IEngine --> IEngineContext
+        IEngine --> EngineContext
+        EngineContext --> IEngineContext
     end
 
     subgraph StrategyLayer [Strategy Layer - 策略层]
@@ -126,10 +154,12 @@ graph TD
 | 分层 | 核心职责 | 核心组件 / 契约 |
 | :--- | :--- | :--- |
 | **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvTimeseriesSource`, `ParquetTimeseriesSource`, `TimeseriesRegistry`, `TimeseriesCacheManager<T>`, `ITimeseriesRegistry`, `IEventTable`, `IEventRegistry`, `IFieldRegistry`, `FieldRegistry`, `FieldSourceFactory`, `FieldTable` |
-| **Engine Layer (引擎层)** | 回测撮合与实盘路由、账户资产管理、上下文注入 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `IExchangeGateway`, `IBroker`, `IMonitor` |
+| **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
+| **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机、实盘增量事件循环、上下文注入、可观测性监控 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
 | **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `ISignalStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
 
-- **数据流向**: (`ITimeseriesRegistry`, `IEventRegistry`, `IFieldRegistry`) → `IEngine` → (`IExchangeGateway` / `IBroker` / `IMonitor`) → `IEngineContext` → 策略层
+- **数据与执行流向**: (`ITimeseriesRegistry`, `IEventRegistry`, `IFieldRegistry`) → `IEngine` → (`Broker` / `SimulatedExchangeGateway` / `IMonitor`) → `IEngineContext` → 策略层
+- **交易执行流向**: 策略通过 `context.Broker` 发出订单意图 → `Broker` 驱动 `AccountLedger` 完成两阶段预冻结 → 通过 `IExchangeGateway` 路由至 `SimulatedExchangeGateway`（回测）或实盘柜台（实盘）→ 撮合成交回报通过 Open Calls 无锁异步回调通知策略
 - **策略流水线典型流向**: 信号生产 (`ISignalStrategy`) → 组合持仓规划 → 交易风控执行 (`IStrategy` / `RuleStrategyBase`)
 
 ### 3. 策略协作模型概要
@@ -141,6 +171,8 @@ graph TD
 
 ## 二、策略与黑板体系 (Strategy & Blackboard Architecture)
 
+> 💡 详细组合管线拓扑、多核并发驱动、黑板解耦模式与 Roslyn 动态编译实践详见专门白皮书 [策略子系统与管线开发指南 (docs/strategy.md)](docs/strategy.md)。
+
 ### 1. 核心契约分层
 - `IStrategy`: 统一顶层抽象，单一 `OnUpdate(IEngineContext context)` 与离散事件 `OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events)` 入口，原生支持全市场截面排序、单标的时序与网格双向调仓。
 - `ISignalStrategy`: 纯信号语义契约，专注于信号生产与特征分析，通过黑板（`context.Market`）发布状态、概率分布或打分，无账户与持仓负担。
@@ -150,7 +182,7 @@ graph TD
 ### 2. 通用强类型黑板 (`IMarketState`)
 - **通用强类型状态容器**: 支持零装箱的 `GetState<T>(key)`、`SetState<T>(state, key)`、`HasState<T>(key)` 与 `Clear()`，用于策略间正交解耦与异步数据交换。
 - **单类型默认单例与显式 Tag 隔离**:
-  - 默认单例：缺省 `key` 时以 `typeof(T).FullName` 索引，杜绝魔法字符串拼写风险；
+  - 默认单例：缺省 `key` 时以 `typeof(T).FullName` 索引，消除硬编码字符串拼写风险；
   - 显式命名空间隔离：多策略实例并发产生同类型数据时，通过显式 `key`（如策略名或特征 Tag）隔离。
 - **并发线程安全**: 底层采用 `ConcurrentDictionary<string, object>` 保证多核并发管线下的线程安全。
 
@@ -162,7 +194,7 @@ graph TD
   - 便捷工厂方法：`StrategyPipeline.Sequential()` 与 `StrategyPipeline.Parallel()`。
 - **密封优化 (`Compile()`)**:
   - 递归密封优化所有嵌套子管线；
-  - 拓扑不可变数组固化（`IStrategy[]`），消除 .NET JIT 循环时的数组越界检查（BCE），提速 20%~30%；
+  - 拓扑不可变数组固化（`IStrategy[]`），消除 .NET JIT 循环时的数组边界检查（BCE）开销；
   - 锁定全局最大 `Lookback` 深度，底层环形缓冲区运行期零二次扩容；
   - 锁定拓扑结构，杜绝运行期竞态修改（子策略 `OnStart(context)` 生命周期预热由引擎在正式循环前按拓扑统一步进触发）。
 - **外部策略动态载入 (Roslyn)**:
@@ -178,6 +210,8 @@ graph TD
 ---
 
 ## 三、数据层契约 (Data Layer Contracts)
+
+> 💡 详细内存矩阵、分块轮转缓存与三大供给子系统深度设计详见专门白皮书 [数据层内存架构与供给体系 (docs/data.md)](docs/data.md)；底层物理存储与 Hive 分区规范详见 [数据存储与格式规范 (docs/data_format.md)](docs/data_format.md)。
 
 所有接口位于 `CarrotBacktesting.NET/Abstraction/Data/`，禁止上层绕过接口直接访问物理存储。
 
@@ -200,7 +234,7 @@ graph TD
 
 | 接口 / 类型 | 文件 | 职责 |
 | :--- | :--- | :--- |
-| `ITimeseriesRegistry` | `Abstraction/Data/ITimeseriesRegistry.cs` | 数据层只读输出入口，`GetMatrix<T>(fieldName)` 返回 `IReadOnlyMatrix2D<T>`，提供 `IsUpdated(tableIndex/tableName)` 纳秒级变更感知与 `GetTableIndex` |
+| `ITimeseriesRegistry` | `Abstraction/Data/ITimeseriesRegistry.cs` | 数据层只读输出入口，`GetMatrix<T>(fieldName)` 返回 `IReadOnlyMatrix2D<T>`，提供 `IsUpdated(tableIndex/tableName)` 常数时间变更感知与 `GetTableIndex` |
 | `ITimeseriesWriter` | `Abstraction/Data/ITimeseriesWriter.cs` | 实盘时序写入与一致性落盘契约（`AppendRow`, `AppendCol`, `Commit`） |
 | `IFieldTable` | `Abstraction/Data/IFieldTable.cs` | 标的静态维表契约，单一内核支持动态点查与 `.Get<T>()`/`.As<T>()` 强类型流式 LINQ |
 | `IFieldRegistry` | `Abstraction/Data/IFieldRegistry.cs` | 标的静态属性与维表对应契约，支持 1:1 单值点查、1:N 多值标签及 N:1 双向倒排索引选股 |
@@ -254,9 +288,9 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 管理板块、概念、行业及标的静态资料等无时间戳平铺维表（如东财行业对应表、东财概念对应表）：
 - **IFieldTable**: 静态维表契约，单一内核同时提供免定义动态链式索引 `Fields["industry"][symbol]["col"]`、强类型点查 `table.Get<T>(symbol)`、强类型谓词倒排选股 `table.GetKeys<T>(predicate)`、强类型流式 LINQ `table.As<T>()` 与代码键值对流 `table.AsPairs<T>()`，支持 `table.Keys` 与 `foreach` 迭代，以及双向倒排选股池圈选与多模查询：
-  - 动态全局倒排选股：`table.GetKeys("低空经济")`（省略列名，全表全列秒级检索）；
+  - 动态全局倒排选股：`table.GetKeys("低空经济")`（省略列名，全表全列倒排检索）；
   - 动态指定列倒排选股：`table.GetKeys("钼", "board_name")`；
-  - 强类型谓词选股：`table.GetKeys(x => x.BoardName == "钼")`（编译期安全保障，杜绝魔法字符串拼写错误）；
+  - 强类型谓词选股：`table.GetKeys(x => x.BoardName == "钼")`（编译期安全保障，消除硬编码字符串拼写错误）；
   - 1:N 便捷多值提取：`table.GetValues("sh.600000", "board_name")`；
   - 1:N 多行安全获取：`table.GetRows("sh.600000")`。
 - **FieldRegistry**: 标的维表注册中心，支持 `Fields["table"]` 索引器获取维表。
@@ -274,7 +308,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 - **纵向批量加载流程**:
   1. `StorageResolver.ResolvePhysicalFiles()` 按表与日期区间返回物理文件列表。
   2. `CsvTimeseriesSource` / `ParquetTimeseriesSource` 构造时扫描文件建立代码与全局交易日并集（Schema 字段由 `IMarketMetadata` 自包含权威供给，零外部耦合）。
-  3. `TimeseriesRegistry.GetMatrix<T>()` 调度 `TimeseriesCacheManager<T>`，优先检查 `ITimeseriesCache`（支持 LZ4 原生块压缩与 4096 行分块），命中时直接单块解压注入非托管连续内存返回 `ChunkMatrix2D<T>`；未命中或不兼容时从源数据加载并持久化至 `.cache/{tableId}/{fieldName}/`。内存采用定长环形页表槽位管理（`max_pages`，默认 4），通过单指令双边界检查拦截越界访问；引擎推进时通过 `StepTo` 自动滑动窗口淘汰冷块，并由后台异步预读（`prefetch`，默认 true；实盘 Living 下一票否决强行关闭）下一块。实盘单行追加由 `TimeseriesCacheManager.AppendRow` 驱动，达到 4096 行时自动执行跨页轮转（Rollover），并通过 `Commit()` 精准增量落盘活跃分块，历史分块零写放大。单标的回测（$N=1$）可通过 `provider.GetSeries<T>()` 一键获取全周期只读一维列视图。策略回溯深度通过 `IStrategy.Lookback`（默认 200）与 `IStrategyPipeline.Lookback`（子策略自动取最大值）统筹定义。
+  3. `TimeseriesRegistry.GetMatrix<T>()` 调度 `TimeseriesCacheManager<T>`，优先检查 `ITimeseriesCache`（支持 LZ4 原生块压缩与 4096 行分块），命中时直接单块解压注入非托管连续内存返回 `ChunkMatrix2D<T>`；未命中或不兼容时从源数据加载并持久化至 `.cache/{tableId}/{fieldName}/`。内存采用定长环形页表槽位管理（`max_pages`，默认 4），通过单指令双边界检查拦截越界访问；引擎推进时通过 `StepTo` 自动滑动窗口淘汰冷块，并由后台异步预读（`prefetch`，默认 true；实盘 Living 下一票否决强行关闭）下一块。实盘单行追加由 `TimeseriesCacheManager.AppendRow` 驱动，达到 4096 行时自动执行跨页轮转（Rollover），并通过 `Commit()` 精准增量落盘活跃分块，历史分块零写放大。单标的回测（$N=1$）可通过 `provider.GetSeries<T>()` 直接获取全周期只读一维列视图。策略回溯深度通过 `IStrategy.Lookback`（默认 200）与 `IStrategyPipeline.Lookback`（子策略自动取最大值）统筹定义。
 - **ReadSymbolSeries 核心机制**:
   - 方法契约：`ReadSymbolSeries(symbol, fieldName, startIndex, length, destination)`
   - CSV：定位 `{symbol}.csv` 逐行流式解析，按日期二分查找写入 `destination`，通过 `ValueConverter<T>` 零装箱转换。
@@ -322,7 +356,52 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ---
 
-## 四、引擎、策略与执行层契约
+## 四、经纪商与交易所体系 (Broker & Exchange Architecture)
+
+> 💡 客户端经纪商与账户账本深度设计详见 [客户端经纪商与账户账本体系 (docs/broker.md)](docs/broker.md)；交易所仿真、挂单簿与撮合引擎深度设计详见 [交易所仿真与集中撮合体系 (docs/exchange.md)](docs/exchange.md)；交易规则与 Hook 详细配置详见 [配置体系与 Hook 规范 (docs/configuration.md)](docs/configuration.md)。
+
+系统贯彻单一事实来源（SSOT）与职责分离原则，将交易账户管理与集中撮合交易所实施物理隔离：
+
+### 1. 架构职责划分与数字孪生解耦
+- **客户端领域 (`Engine/Broker/`)**：负责管理投资者账户的资金账本、持仓批次、两阶段预冻结资产及订单生命周期追踪，面向策略层暴露统一门面 `IBroker`。
+- **交易所领域 (`Engine/Exchange/`)**：负责维护集中撮合挂单簿深度、限价判定、摩擦成本计算（滑点与手续费）、流动性硬约束与涨跌停拦截，面向引擎暴露 `ISimulatedExchange`。
+- **网关抽象与实盘对称**：客户端 `Broker` 仅单向依赖统一网关契约 `IExchangeGateway`。回测时装配 `SimulatedExchangeGateway`，实盘时平滑替换为真实柜台网关（如 `CTPGateway` 或 `BinanceGateway`），策略层代码保持完全一致。
+
+### 2. 核心契约分层
+
+| 契约 / 类型 | 文件 | 职责说明 |
+| :--- | :--- | :--- |
+| `IBroker` | `Abstraction/Engine/IBroker.cs` | 客户端交易账户统一门面契约：资金持仓查询、订单提交与撤销、`Step` 跨日结算推进、`SyncState` 实盘对账、异步回报通知 |
+| `IExchangeGateway` | `Abstraction/Engine/IExchangeGateway.cs` | 通用物理网关契约：报单 `SendOrder`、撤单 `CancelOrder`、成交回报 `OnExecution`、订单状态流转 `OnOrderStateChanged` |
+| `ISimulatedExchange` | `Abstraction/Engine/ISimulatedExchange.cs` | 仿真交易所驱动契约：离线时间步推进 `Step`、纯行情驱动撮合 `OnMarketData`、时钟显式校准 `SetCurrentTime`、最新市价查询 `GetMarketPrice` |
+| `Broker` | `Engine/Broker/Broker.cs` | 客户端经纪商门面实现：维护订单生命周期追踪、锁外调用网关、锁外派发异步事件（Open Calls） |
+| `AccountLedger` | `Engine/Broker/AccountLedger.cs` | 纯财务账户账本（SSOT）：资金管理、两阶段挂单冻结（Phase 1 `TryFreeze` / Phase 2 `CommitFill`）、零现金平仓支持与 T+N 跨日划转 |
+| `PositionData` | `Engine/Broker/PositionData.cs` | 单标的持仓实体与批次队列：总持仓、冻结持仓、可用持仓、持仓均价、`PendingLots` 结算队列 |
+| `SimulatedExchangeGateway` | `Engine/Exchange/SimulatedExchangeGateway.cs` | 仿真交易所网关：单一撮合内核 `MatchSymbolOrders`、锁外派发回报 `DispatchReports`、纯行情驱动 `OnMarketData` |
+| `OrderBook` | `Engine/Exchange/OrderBook.cs` | 标的桶化 FIFO 限价挂单簿：时间优先排队撮合、`_ordersById` 常数时间撤单寻址、空桶物理注销杜绝内存泄漏 |
+| `MatchingEngine` | `Engine/Exchange/MatchingEngine.cs` | 纯计算撮合引擎：无状态纯函数、Maker/Taker 规则分发、动态滑点模型与限价截断保护、流动性与涨跌停拦截 |
+
+### 3. 核心机制与架构约束
+
+1. **两阶段挂单冻结与结算状态机**：
+   - **Phase 1: 预冻结 (`TryFreeze`)**：提交订单时原子拆分开平仓数量，平仓冻结持仓杜绝超卖，开仓冻结资金杜绝双花透支；纯平仓订单预冻结现金恒为 `0.0`，原生支持零现金卖出平仓。
+   - **Phase 2: 成交核销 (`CommitFill`)**：按实际成交逐段核销冻结资产，遵循资金持仓守恒结算；多次部分成交时严格按实际成交量先核销平仓、再累加开仓。
+   - **解冻回滚 (`Unfreeze`)**：遇拒单或撤单全额解冻，退出保持零脏状态。
+2. **纯计算撮合与纯行情驱动**：
+   - 撮合引擎为无状态纯函数，离线时间步（`Step`）与增量行情（`OnMarketData`）统一收敛至私有单一内核 `MatchSymbolOrders` 撮合，不依赖离散业务事件。
+   - 标的挂单队列遵循严格 FIFO 时间优先，空桶即时注销防止内存泄漏。
+3. **并发线程安全与开放调用 (Open Calls)**：
+   - 客户端 `Broker` 严禁持有内部 `_syncLock` 调用网关（`SendOrder`/`CancelOrder`）或派发外部事件（`OnTrade` 等），所有对外交互严格在释放锁后（锁外开放调用）执行，从架构层面杜绝死锁。
+   - 对 128 位 `decimal` 关键状态读取施加锁保护，防止多寄存器数值撕裂读。
+4. **对称 Hook 矩阵与实盘对账**：
+   - 遵循“静态配置覆盖常规场景，对称 Hook 动态接管定制逻辑”原则，支持流动性、手续费、滑点、涨跌停、结算天数与合约乘数的自定义注入（详见 [docs/configuration.md](docs/configuration.md)）。
+   - 实盘支持通过 `broker.SyncState(liveCash, livePositions)` 进行盘前或断线重连后的原子对账重置。
+
+---
+
+## 五、引擎与驱动层契约 (Engine & Execution Layer Contracts)
+
+> 💡 详细生命周期五态有限状态机、时间步推进流水线与检查点持久化详见专门白皮书 [核心引擎与执行体系 (docs/engine.md)](docs/engine.md)。
 
 ### 1. 引擎层核心契约与实现 (`CarrotBacktesting.NET.Engine`)
 
@@ -331,53 +410,15 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | `IEngine` | `Abstraction/Engine/IEngine.cs` | 核心驱动瘦接口，支持 `Run` / `RunAsync` / `Pause` / `Resume` / `Stop` 与只读 `Context` 暴露 |
 | `ICheckpointable` | `Abstraction/Engine/ICheckpointable.cs` | 检查点持久化能力正交契约，支持 `SaveCheckpoint` / `RestoreCheckpoint` 与断点续跑 |
 | `BacktestingEngine` | `Engine/BacktestingEngine.cs` | 回测驱动单一权威内核，实现 `IEngine` 与 `ICheckpointable`，统筹时间步切片裁剪、缓存滑动、跨日结算驱动、事件派发与策略生命周期 |
+| `LivingEngine` | `Engine/LivingEngine.cs` | 实盘事件驱动执行引擎，支持异步行情监听、实时 Bar 追加与实时风险监控 |
 | `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry` |
 | `EngineContext` | `Engine/EngineContext.cs` | 策略运行上下文权威实现，单例常驻，热路径零堆分配（零 GC），支持类型化插件与扩展组件注入 |
-| `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与持仓管理，提供订单提交、`Step` 物理推进、T+N 跨日结算与 `OnTrade` 成交回报事件 |
-| `SimulatedBroker` | `Engine/Broker/SimulatedBroker.cs` | 统一虚拟经纪商单一内核，统领现货/期货保证金/多空状态机与对称 Hook 拦截，仅单向依赖 `IFieldRegistry`，支持 IANA 多时区清算 |
 | `IMarketState` | `Abstraction/Engine/IMarketState.cs` | 市场黑板上下文，支持策略间跨层异步状态共享 |
 | `MarketState` | `Engine/MarketState.cs` | 通用强类型黑板实现，基于 ConcurrentDictionary 保证并发安全与类型单例索引 |
 | `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 统一监控抽象，管理日志输出、指标采集与告警 |
 | `NullMonitor` | `Engine/NullMonitor.cs` | 零开销默认空监控实现（Null Object Pattern） |
-| **数据模型** | `Abstraction/Engine/OrderTypes.cs` | `OrderRequest` (下单意图), `ExecutionReport` (成交明细), `OrderStatus` (生命周期), `PositionEvent` |
 
-### 2. 策略与分析层契约
-
-| 契约 / 类型 | 命名空间 | 职责说明 |
-| :--- | :--- | :--- |
-| `IStrategy` | `Abstraction.Strategy` | 策略通用基础契约，定义名称、`Lookback` 回溯深度、生命周期、主时钟 `OnUpdate` 与离散事件 `OnEvent` 入口 |
-| `ISignalStrategy` | `Abstraction.Strategy` | 纯信号语义标记契约，面向学术打点、胜率与因子表现，通过黑板发布信号 |
-| `RuleStrategyBase` | `Strategy` | 规则与交易模拟便利模板基类，内部遍历标的并分发 `CheckEntry` 与 `CheckExit` |
-| `IStrategyPipeline` | `Abstraction.Strategy` | 策略管线契约，支持组合模式编排、不可变数组密封固化与 `Compile()` 预热优化 |
-| `StrategyPipeline` | `Strategy` | 组合策略管线抽象基类，提供 `Sequential()` 与 `Parallel()` 静态工厂，管理生命周期与数组密封 |
-| `SequentialPipeline` | `Strategy` | 串行组合策略管线实现，严格按序执行各阶段 `OnUpdate` 与 `OnEvent` |
-| `ParallelPipeline` | `Strategy` | 并行组合策略管线实现，默认单线程顺序执行，开启 `Concurrent` 后通过多核并发驱动独立信号与特征计算 |
-| `StrategyPipelineFactory`| `Strategy` | 策略管线装配工厂，支持 YAML 配置文件驱动、嵌套管线与属性反射注入 |
-| `RoslynStrategyCompiler`| `Scripting` | 内置 Roslyn 动态 C# 源码内存编译器，基于可回收程序集加载上下文（ALC）与零文件锁 |
-| `ICheckpointable<T>`| `Abstraction.Strategy` | 强类型状态快照扩展，实现断点续传 |
-| `IRecorder` | `Abstraction.Analysis` | 全过程流水采集（订单、成交、净值快照），通过 `GetReport()` 输出 `BacktestReport` |
-
-### 3. Broker 交易规则与对称 Hook 架构
-
-系统采用配置模型（`SessionConfig`, `EngineConfig`, `BrokerConfig`, `DataConfig`）结合对称 Hook 拦截机制：
-1. **多资产数学状态转移统一**：
-   - 占用资金 / 保证金：$|\text{Volume}| \times \text{Price} \times \text{Multiplier} \times \text{MarginRate}$
-   - 浮动盈亏：$\text{Direction} \times (\text{CurrentPrice} - \text{OpenPrice}) \times \text{Volume} \times \text{Multiplier}$
-   - 股票、期货、ETF、美股通用同一套数学状态机，仅依靠标的物理属性（乘数、杠杆率、T+N、做空开关）区分，底层零冗余分叉。
-2. **纯数值配置与对称 Hook 矩阵 (零隐式逻辑)**：
-   - 系统计算严格遵循配置给定值，严禁在底层隐式猜列或自作聪明回退查维表；
-   - 每一个核心配置项对称挂接一个覆盖 Hook，用户需要特化时显式挂载 Lambda：
-     - `VolumeLimit` 对应 `OnCheckVolume`（成交量流动性硬约束与分批撮合）；
-     - `SettleDays` 对应 `OnGetSettleDays`（0 即 T+0，1 即 T+1）；
-     - `CheckLimit` 对应 `OnCheckLimit`（涨跌停封板与停牌拦截，由用户代码判定）；
-     - `FeeRate` + `MinFee` 对应 `OnCalculateFee`（自定义单向印花税或阶梯佣金）；
-     - `Slippage` 对应 `OnCalculateSlippage`（动态冲击成本模型）；
-     - `Multiplier` 对应 `OnGetMultiplier`（用户显式从 `Fields` 维表查期货合约规格）；
-     - `MarginRate` 对应 `OnGetMarginRate`（用户显式从 `Fields` 维表查保证金率）。
-3. **通用量化基准默认值 (Universal Default Baseline)**：
-   - 默认基线（`new BrokerConfig()`）：`InitialCash=1000000.0`, `SettleDays=0 (T+0)`, `AllowShort=false`, `FeeRate=0.001`, `MinFee=0.0`, `Slippage=0.001`, `VolumeLimit=0.05 (5%流动性硬约束)`, `CheckLimit=false`, `Multiplier=1.0`, `MarginRate=1.0`, `TimeZoneId="UTC"`。按需通过 YAML 或属性覆盖定制。
-
-### 4. 实盘与回测双轨运行模型 (Living & Backtesting Dual-Engine Alignment)
+### 2. 实盘与回测双轨运行模型 (Living & Backtesting Dual-Engine Alignment)
 
 策略体系遵循“单一内核”与“物理对称”原则，策略业务逻辑不感知运行环境差异：
 1. **统一上下文驱动 (`IEngineContext`)**:
@@ -385,14 +426,14 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
    - 报单、撤单与持仓查询均统一调用 `context.Broker`，实盘直接路由至真实交易所网关。
 2. **行情矩阵供给对齐 (`AppendRow` 机制)**:
    - 实盘引擎收到交易所推送的新 1 分钟 Bar 时，调用底层 `TimeseriesCacheManager.AppendRow(...)` 增量写入非托管连续内存末尾，并将 `CurrentIndex` 指针自增 1，然后触发 `pipeline.OnUpdate(context)`；
-   - 策略读取到的依然是紧凑的 `ReadOnlyRowView<T>`，所有指标计算函数与回测完全无缝兼容。
+   - 策略读取到的依然是紧凑的 `ReadOnlyRowView<T>`，所有指标计算函数与回测保持完全兼容。
 3. **实盘历史数据自动预热 (History Warmup)**:
    - 实盘进程启动时，在执行 `Compile()` 后直接读取 `pipeline.Lookback`（全管线最大回溯依赖）；
    - 在触发 `OnStart(context)` 之前，引擎自动从外部行情源预先拉取前 $N$ 根历史 Bar 填充矩阵槽位。
 4. **免停机热重载 (Live Hot-Reload)**:
    - 基于 `CollectibleAssemblyLoadContext`，实盘运行期若需要更新 Alpha 因子源码，可动态重新编译新 `.cs` 脚本，热插拔替换管线中的子节点，卸载的程序集元数据由 GC 回收。
 
-### 5. 吞吐性能分级与横向基准 (Throughput Benchmarks)
+### 3. 吞吐性能分级与横向基准 (Throughput Benchmarks)
 
 #### (1) 数据体量物理锚点 (全市场 1 分钟线)
 - **A 股市场规模**: 约 5,000 只标的；
@@ -417,26 +458,10 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | **NautilusTrader** | Rust / Cython | ~2,500,000 (250 万) | ~800,000 ~ 1,500,000 | 约 3~6 分钟 | 原生零 GC 架构，Tick 级事件仿真严谨，单事件逐一路由面对全市场矩阵吞吐存在上限。 |
 | **VectorBT** | Python / Numba | 2,000 万 ~ 5,000 万 | 1,000 万 ~ 3,000 万 | 约 10~30 秒 | 纯矩阵向量化广播速度快，但无法处理真实订单状态机、T+1、流动性拦截与路径依赖。 |
 | **CarrotQuant .NET** | **现代 C# (.NET 10)** | **2,000 万 ~ 5,000 万** | **200 万 ~ 800 万** | **约 35~120 秒** | **兼具矩阵高吞吐与订单撮合保真度**。非托管连续内存 + AsOf 时间片 + 对称 Hook 拦截。 |
-1. **多资产数学状态转移统一**：
-   - 占用资金 / 保证金：$|\text{Volume}| \times \text{Price} \times \text{Multiplier} \times \text{MarginRate}$
-   - 浮动盈亏：$\text{Direction} \times (\text{CurrentPrice} - \text{OpenPrice}) \times \text{Volume} \times \text{Multiplier}$
-   - 股票、期货、ETF、美股通用同一套数学状态机，仅依靠标的物理属性（乘数、杠杆率、T+N、做空开关）区分，底层零冗余分叉。
-2. **纯数值配置与对称 Hook 矩阵 (零隐式逻辑)**：
-   - 系统计算严格遵循配置给定值，严禁在底层隐式猜列或自作聪明回退查维表；
-   - 每一个核心配置项对称挂接一个覆盖 Hook，用户需要特化时显式挂载 Lambda：
-     - `VolumeLimit` 对应 `OnCheckVolume`（成交量流动性硬约束与分批撮合）；
-     - `SettleDays` 对应 `OnGetSettleDays`（0 即 T+0，1 即 T+1）；
-     - `CheckLimit` 对应 `OnCheckLimit`（涨跌停封板与停牌拦截，由用户代码判定）；
-     - `FeeRate` + `MinFee` 对应 `OnCalculateFee`（自定义单向印花税或阶梯佣金）；
-     - `Slippage` 对应 `OnCalculateSlippage`（动态冲击成本模型）；
-     - `Multiplier` 对应 `OnGetMultiplier`（用户显式从 `Fields` 维表查期货合约规格）；
-     - `MarginRate` 对应 `OnGetMarginRate`（用户显式从 `Fields` 维表查保证金率）。
-3. **通用量化基准默认值 (Universal Default Baseline)**：
-   - 默认基线（`new BrokerConfig()`）：`InitialCash=1000000.0`, `SettleDays=0 (T+0)`, `AllowShort=false`, `FeeRate=0.001`, `MinFee=0.0`, `Slippage=0.001`, `VolumeLimit=0.05 (5%流动性硬约束)`, `CheckLimit=false`, `Multiplier=1.0`, `MarginRate=1.0`, `TimeZoneId="UTC"`。按需通过 YAML 或属性覆盖定制。
 
 ---
 
-## 五、数据存储与元数据规范 (CarrotQuant.Data)
+## 六、数据存储与元数据规范 (CarrotQuant.Data)
 
 ### 1. 核心存储标准
 - **存储格式**: 统一使用 `CSV` 或 `Parquet`。
@@ -469,7 +494,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ---
 
-## 六、YAML 配置规范 (`CarrotBacktesting.NET.Config`)
+## 七、YAML 配置规范 (`CarrotBacktesting.NET.Config`)
 
 系统采用蛇形命名（`snake_case`）YAML 文件驱动引擎与数据层；相对路径均以当前配置文件所在物理目录为基准自动合并为绝对路径。
 顶层聚合为 `SessionConfig` 全局会话配置根，统筹四大正交支柱：
@@ -485,9 +510,9 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ---
 
-## 七、历史版本架构与专业报表速查索引 (v3 Reference)
+## 八、历史版本架构与专业报表速查索引 (v3 Reference)
 
-> 💡 源码归档于 `CarrotBacktesting.NET/V3/`，完整指南见 [V3/README.md](file:///d:/Quant/CarrotQuant.NET/CarrotBacktesting.NET/V3/README.md)，供分析器迁移与 Excel 报表生成时速查。
+> 💡 源码归档于 `CarrotBacktesting.NET/V3/`，完整指南见 [V3/README.md](CarrotBacktesting.NET/V3/README.md)，供分析器迁移与 Excel 报表生成时速查。
 
 - **AnalysisContext 数据载体**:
   - `SetArtifact<T>(obj)`: 注册结构化统计结果（`SignalAnalysisResult`, `TradeAnalysisResult`）；
@@ -506,7 +531,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ---
 
-## 八、工程研发与文档维护规范
+## 九、工程研发与文档维护规范
 
 1. **单一事实来源 (SSOT & DRY)**: 核心契约与数据结构单点权威定义，严禁冗余拷贝或散落多处定义。
 2. **显式优于隐式 (Explicit > Implicit)**: 优先读取 `metadata.json` 显式类型，配置与参数清晰透明，严禁未经对齐的隐式推断与静默容错。

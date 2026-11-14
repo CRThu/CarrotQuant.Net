@@ -164,56 +164,12 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
                     continue;
                 }
 
-                var pendingList = _orderBook.GetPendingOrders(symbol);
-                if (pendingList == null || pendingList.Count == 0)
-                {
-                    continue;
-                }
-
-                // 复制一份快照避免遍历时从 OrderBook 移除发生集合修改冲突
-                var ordersToMatch = new List<SimulatedOrder>(pendingList);
-                for (int i = 0; i < ordersToMatch.Count; i++)
-                {
-                    var order = ordersToMatch[i];
-                    var matchResult = _matcher.EvaluatePendingLimitOrder(order, marketPrice, null, currentTime);
-
-                    if (matchResult.IsFilled)
-                    {
-                        _orderBook.Remove(order.OrderId, out _);
-                        fillReports ??= new List<ExecutionReport>();
-                        fillReports.Add(new ExecutionReport(
-                            order.OrderId,
-                            order.Request.Symbol,
-                            matchResult.FillPrice,
-                            matchResult.FillQuantity,
-                            matchResult.Commission,
-                            currentTime));
-                    }
-                    else if (matchResult.IsRejected)
-                    {
-                        _orderBook.Remove(order.OrderId, out _);
-                        rejectedOrders ??= new List<string>();
-                        rejectedOrders.Add(order.OrderId);
-                    }
-                }
+                MatchSymbolOrders(symbol, marketPrice, null, currentTime, ref fillReports, ref rejectedOrders);
             }
         }
 
         // 锁外派发成交回报与拒绝事件
-        if (fillReports != null)
-        {
-            for (int i = 0; i < fillReports.Count; i++)
-            {
-                OnExecution?.Invoke(fillReports[i]);
-            }
-        }
-        if (rejectedOrders != null)
-        {
-            for (int i = 0; i < rejectedOrders.Count; i++)
-            {
-                OnOrderStateChanged?.Invoke(rejectedOrders[i], OrderStatus.Rejected);
-            }
-        }
+        DispatchReports(fillReports, rejectedOrders);
     }
 
     /// <inheritdoc />
@@ -236,7 +192,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
     }
 
     /// <inheritdoc />
-    public void UpdateMarketPrice(string symbol, double price, IDataRow? bar = null)
+    public void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null)
     {
         if (string.IsNullOrWhiteSpace(symbol) || price <= 0.0 || double.IsNaN(price) || double.IsInfinity(price))
         {
@@ -244,11 +200,16 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
         }
 
         List<ExecutionReport>? fillReports = null;
-        DateTime tradeTime;
+        List<string>? rejectedOrders = null;
 
         lock (_syncLock)
         {
             _marketPrices[symbol] = price;
+            DateTime tradeTime = time != DateTime.MinValue
+                ? time
+                : (_currentTime != DateTime.MinValue ? _currentTime : DateTime.UtcNow);
+            _currentTime = tradeTime;
+
             if (bar != null)
             {
                 _currentBars[symbol] = bar;
@@ -258,38 +219,69 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
                 _currentBars.Remove(symbol);
             }
 
-            tradeTime = _currentTime != DateTime.MinValue ? _currentTime : DateTime.UtcNow;
-
-            var pendingList = _orderBook.GetPendingOrders(symbol);
-            if (pendingList != null && pendingList.Count > 0)
-            {
-                var ordersToMatch = new List<SimulatedOrder>(pendingList);
-                for (int i = 0; i < ordersToMatch.Count; i++)
-                {
-                    var order = ordersToMatch[i];
-                    var matchResult = _matcher.EvaluatePendingLimitOrder(order, price, bar, tradeTime);
-
-                    if (matchResult.IsFilled)
-                    {
-                        _orderBook.Remove(order.OrderId, out _);
-                        fillReports ??= new List<ExecutionReport>();
-                        fillReports.Add(new ExecutionReport(
-                            order.OrderId,
-                            order.Request.Symbol,
-                            matchResult.FillPrice,
-                            matchResult.FillQuantity,
-                            matchResult.Commission,
-                            tradeTime));
-                    }
-                }
-            }
+            MatchSymbolOrders(symbol, price, bar, tradeTime, ref fillReports, ref rejectedOrders);
         }
 
+        // 锁外派发成交回报与拒绝事件
+        DispatchReports(fillReports, rejectedOrders);
+    }
+
+    private void MatchSymbolOrders(
+        string symbol,
+        double marketPrice,
+        IDataRow? bar,
+        DateTime tradeTime,
+        ref List<ExecutionReport>? fillReports,
+        ref List<string>? rejectedOrders)
+    {
+        var pendingList = _orderBook.GetPendingOrders(symbol);
+        if (pendingList == null || pendingList.Count == 0)
+        {
+            return;
+        }
+
+        // 复制一份快照避免遍历时从 OrderBook 移除发生集合修改冲突
+        var ordersToMatch = new List<SimulatedOrder>(pendingList);
+        for (int i = 0; i < ordersToMatch.Count; i++)
+        {
+            var order = ordersToMatch[i];
+            var matchResult = _matcher.EvaluatePendingLimitOrder(order, marketPrice, bar, tradeTime);
+
+            if (matchResult.IsFilled)
+            {
+                _orderBook.Remove(order.OrderId, out _);
+                fillReports ??= new List<ExecutionReport>();
+                fillReports.Add(new ExecutionReport(
+                    order.OrderId,
+                    order.Request.Symbol,
+                    matchResult.FillPrice,
+                    matchResult.FillQuantity,
+                    matchResult.Commission,
+                    tradeTime));
+            }
+            else if (matchResult.IsRejected)
+            {
+                _orderBook.Remove(order.OrderId, out _);
+                rejectedOrders ??= new List<string>();
+                rejectedOrders.Add(order.OrderId);
+            }
+        }
+    }
+
+    private void DispatchReports(List<ExecutionReport>? fillReports, List<string>? rejectedOrders)
+    {
         if (fillReports != null)
         {
             for (int i = 0; i < fillReports.Count; i++)
             {
                 OnExecution?.Invoke(fillReports[i]);
+            }
+        }
+        if (rejectedOrders != null)
+        {
+            for (int i = 0; i < rejectedOrders.Count; i++)
+            {
+                OnOrderStateChanged?.Invoke(rejectedOrders[i], OrderStatus.Rejected);
             }
         }
     }

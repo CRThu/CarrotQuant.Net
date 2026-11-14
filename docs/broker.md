@@ -1,24 +1,67 @@
-# 虚拟经纪商与撮合执行体系 (SimulatedBroker & Execution System)
+# 客户端经纪商与账户账本体系 (Client Broker & Account Ledger System)
 
-本文档面向量化交易架构师与策略开发者，系统介绍 CarrotQuant.NET 中虚拟经纪商（`SimulatedBroker`）的核心契约（`IBroker`）、资产持仓状态机、多时区自然日清算与撮合规则模型。
+本文档面向系统架构师与策略开发者，深入介绍 CarrotQuant.NET 中**客户端经纪商子系统**（`CarrotBacktesting.NET/Engine/Broker/`）的核心契约（`IBroker`）、账户财务账本（`AccountLedger`）、持仓实体（`PositionData`）、两阶段挂单冻结状态机、零现金卖出平仓支持、多时区自然日清算、以及在线实盘交易对接规范。
+
+> [!NOTE]
+> 关于交易所撮合机制、订单簿挂单排队、滑点与流动性模型，请参阅专门文档 [交易所仿真与集中撮合体系 (exchange.md)](exchange.md)。
 
 ---
 
 ## 目录
-- [一、核心契约与职责定义 (IBroker)](#一核心契约与职责定义-ibroker)
-- [二、账户模式与持仓状态机](#二账户模式与持仓状态机)
-- [三、两阶段挂单冻结账本与撮合体系 (Two-Phase Order Lifecycle)](#三两阶段挂单冻结账本与撮合体系-two-phase-order-lifecycle)
-- [四、撮合规则与摩擦成本模型](#四撮合规则与摩擦成本模型)
-- [五、多时区与本地自然日清算 (TimeZone & Settlement)](#五多时区与本地自然日清算-timezone--settlement)
-- [六、并发线程安全与开放调用 (Thread Safety & Open Calls)](#六并发线程安全与开放调用-thread-safety--open-calls)
-- [七、规则 Hook 与依赖倒置](#七规则-hook-与依赖倒置)
-- [八、配置规范与使用示例](#八配置规范与使用示例)
+- [一、经纪商体系总览与架构设计](#一经纪商体系总览与架构设计)
+- [二、核心契约分层 (IBroker)](#二核心契约分层-ibroker)
+- [三、财务账本与单一事实来源 (AccountLedger)](#三财务账本与单一事实来源-accountledger)
+- [四、两阶段挂单冻结与结算状态机 (Two-Phase Order Lifecycle)](#四两阶段挂单冻结与结算状态机-two-phase-order-lifecycle)
+  - [1. Phase 1: 预冻结 (TryFreeze) 与开平仓精准拆分](#1-phase-1-预冻结-tryfreeze-与开平仓精准拆分)
+  - [2. Phase 2: 成交核销 (CommitFill) 与守恒结算](#2-phase-2-成交核销-commitfill-与守恒结算)
+  - [3. 零现金卖出平仓无损支持 (Zero-Cash Sell)](#3-零现金卖出平仓无损支持-zero-cash-sell)
+  - [4. 部分成交分段精准核销 (Partial Fills)](#4-部分成交分段精准核销-partial-fills)
+  - [5. 异常拒单与撤单全额解冻 (Unfreeze)](#5-异常拒单与撤单全额解冻-unfreeze)
+- [五、多资产数学状态转移统一 (现货全额 vs 期货保证金)](#五多资产数学状态转移统一-现货全额-vs-期货保证金)
+- [六、多时区自然日清算与 T+N 可用持仓划转 (ProcessDayRollover)](#六多时区自然日清算与-tn-可用持仓划转-processdayrollover)
+- [七、动态盯市估值 (GetTotalEquity)](#七动态盯市估值-gettotalequity)
+- [八、并发线程安全与开放调用 (Open Calls)](#八并发线程安全与开放调用-open-calls)
+- [九、在线实盘交易集成与状态对账 (Online Trading & SyncState)](#九在线实盘交易集成与状态对账-online-trading--syncstate)
 
 ---
 
-## 一、核心契约与职责定义 (IBroker)
+## 一、经纪商体系总览与架构设计
 
-在 CarrotQuant.NET 中，`IBroker` 是执行层与策略层交互的权威门面，统一抽象模拟回测环境（`SimulatedBroker`）与实盘网关（`LivingBroker`）：
+在 CarrotQuant.NET 的架构中，客户端经纪商体系负责**管理投资者自身的钱与持仓**。它在物理上与撮合交易所完全解耦：
+
+```mermaid
+graph TD
+    subgraph StrategyLayer [策略层]
+        Strategy[用户策略 / 组合管线]
+    end
+
+    subgraph BrokerSubsystem [客户端经纪商子系统 (Engine/Broker/)]
+        Broker[Broker 门面<br>订单跟踪 / 锁外网关交互]
+        AccountLedger[AccountLedger<br>纯财务账本 SSOT / 两阶段冻结 / 守恒结算]
+        PositionData[PositionData<br>标的持仓实体 / T+N 批次队列]
+
+        Broker --> AccountLedger
+        AccountLedger --> PositionData
+    end
+
+    subgraph ExchangeGateway [物理网关契约 (解耦边界)]
+        IExchangeGateway[IExchangeGateway 契约]
+    end
+
+    Strategy -->|调用 IBroker 契约| Broker
+    Broker -->|SendOrder / CancelOrder| IExchangeGateway
+    IExchangeGateway -->|OnExecution / OnOrderStateChanged| Broker
+```
+
+- **单一职责原则 (SRP)**：经纪商只管账户财务账本、在途预冻结、订单跟踪与 T+N 跨日划转，绝不承担交易所的撮合与滑点计算职责；
+- **单一事实来源 (SSOT)**：`AccountLedger` 是账户资金与持仓的权威单点，所有涉及金额与头寸的变动必须收敛于此；
+- **数字孪生一致性**：无论底层挂接的是回测模拟网关（`SimulatedExchangeGateway`）还是实盘柜台（CTP / 币安），经纪商与策略层代码 100% 保持一致。
+
+---
+
+## 二、核心契约分层 (IBroker)
+
+`CarrotBacktesting.NET/Abstraction/Engine/IBroker.cs` 是策略层访问账户资金与持仓的权威门面契约：
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Engine;
@@ -37,7 +80,7 @@ public interface IBroker
     void CancelOrder(string orderId);
     OrderStatus GetOrderStatus(string orderId);
 
-    // 物理时钟单向推进
+    // 物理时钟单向推进与跨日结算
     void Step(DateTime currentTime);
 
     // 实盘状态对账同步
@@ -50,229 +93,155 @@ public interface IBroker
 }
 ```
 
-### 单一物理入口原则 (Step Only)
-外部引擎无需关心具体经纪商何时日切，仅需通过单一入口 `Step(DateTime currentTime)` 推动世界物理时间流逝。经纪商自治检测是否跨越交易所本地换日点并执行 T+N 持仓划转，彻底消除了冗余的外部 `RollDate` 调用。
+---
+
+## 三、财务账本与单一事实来源 (AccountLedger)
+
+`AccountLedger` 是纯财务模型，内部维护：
+1. **现金池**：
+   - `Cash`: 当前实际持有现金；
+   - `FrozenCash`: 报单挂牌预冻结资金（包含开仓保证金与预估手续费）；
+   - `AvailableCash`: 当前可用现金，恒等于 `Cash - FrozenCash`。
+2. **持仓池 (`PositionData`)**：
+   - `TotalQuantity`: 总持仓数量（正数为多头，负数为空头）；
+   - `FrozenQuantity`: 挂单预冻结持仓（平仓委托占用的锁定份额）；
+   - `AvailableQuantity`: 当前可平仓数量，恒等于 `TotalQuantity - FrozenQuantity`；
+   - `AveragePrice`: 加权成本持仓均价；
+   - `PendingLots`: T+N 冻结批次队列，记录每一笔买入成交的锁定份额与解锁到期日。
 
 ---
 
-## 二、账户模式与持仓状态机
+## 四、两阶段挂单冻结与结算状态机 (Two-Phase Order Lifecycle)
 
-`SimulatedBroker` 采用单一内核自适应支持现货与保证金两套经典业务范式：
+为了杜绝多策略并发报单时的“资金双花（Double Spending）”与“持仓超卖（Over-selling）”，系统采用两阶段提交生命周期：
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Submitted: SubmitOrder()
-    Submitted --> Rejected: 资金不足 / 卖空受限 / 流动性限制 / 涨跌停
-    Submitted --> Filled: 撮合通过
-    Filled --> [*]
+sequenceDiagram
+    autonumber
+    participant Strategy as 策略 / 用户
+    participant Broker as Broker 门面
+    participant Ledger as AccountLedger 账本
+    participant Gateway as IExchangeGateway 网关
+
+    Strategy->>Broker: SubmitOrder(request)
+    Broker->>Ledger: TryFreeze(request, price, multiplier, marginRate, ...)
+    alt 预冻结失败 (资金不足 / 超卖)
+        Ledger-->>Broker: false, rejectReason
+        Broker-->>Strategy: 触发 OnOrderStatusChanged(Rejected)
+    else 预冻结成功 (Phase 1: Prepare)
+        Ledger-->>Broker: true, closeQty, openQty, frozenCash, frozenPos
+        Broker->>Gateway: SendOrder(orderId, request) [锁外开放调用]
+    end
+
+    Note over Gateway: 交易所撮合 (详见 exchange.md)
+    Gateway->>Broker: OnExecution(report)
+    Broker->>Ledger: CommitFill(report, isBuy, closeQty, openQty, ...) [Phase 2: Commit]
+    Ledger-->>Broker: 释放冻结，核销结算资金与持仓
+    Broker-->>Strategy: 触发 OnTrade / OnPositionChanged [锁外开放派发]
 ```
 
-### 1. 现货全额模式 (`Multiplier == 1.0 && MarginRate == 1.0 && !AllowShort`)
-适用于 A 股普通股票、ETF 等标的：
-- **买入扣款**：全额冻结并扣除成交金额与手续费：
-  $$\text{Cash}_{\text{new}} = \text{Cash}_{\text{old}} - (\text{成交金额} + \text{手续费})$$
-- **T+N 持仓锁定**：买入后总持仓 `TotalQuantity` 立即增加，但可用持仓 `AvailableQuantity` 根据结算天数 `SettleDays`（如 A 股 $N=1$）进入冻结队列 `PendingLots`，当日无法卖出；
-- **卖出回款**：校验 `Quantity <= AvailableQuantity` 后扣减持仓并全额释放可用资金：
-  $$\text{Cash}_{\text{new}} = \text{Cash}_{\text{old}} + (\text{成交金额} - \text{手续费})$$
+### 1. Phase 1: 预冻结 (TryFreeze) 与开平仓精准拆分
+当用户调用 `SubmitOrder` 时：
+1. **开平仓拆分**：依据当前标的的多空头寸，原子拆分为平仓部分 `closeQty` 与开仓部分 `openQty`（支持单笔大单原子完成多空双向反手翻仓）；
+2. **持仓预冻结**：平仓部分直接从 `AvailableQuantity` 扣减并计入 `FrozenQuantity`，杜绝超卖；
+3. **资金预冻结**：开仓部分按预估价格、乘数与保证金率计算保证金需求，并附加预估手续费，计入 `FrozenCash`，杜绝多单同时提交导致的资金双花透支。
 
-### 2. 期货 / 衍生品保证金模式 (`MarginRate < 1.0 || Multiplier != 1.0 || AllowShort`)
-适用于股指期货、商品期货、期权及外盘双向合约：
-- **双向持仓**：多头持仓记为正数，空头持仓记为负数；
-- **开仓占用保证金**：
-  $$\text{MarginOccupied} = |\text{Quantity}| \times \text{Price} \times \text{Multiplier} \times \text{MarginRate}$$
-  扣减账户可用现金：$\text{Cash}_{\text{new}} = \text{Cash}_{\text{old}} - (\text{MarginOccupied} + \text{手续费})$；
-- **平仓盈亏释放**：
-  $$\text{RealizedPnL} = (\text{FillPrice} - \text{AverageCost}) \times \text{CloseQuantity} \times \text{Multiplier} \quad (\text{多头平仓})$$
-  $$\text{RealizedPnL} = (\text{AverageCost} - \text{FillPrice}) \times \text{CloseQuantity} \times \text{Multiplier} \quad (\text{空头平仓})$$
-  释放保证金并计入已实现盈亏：$\text{Cash}_{\text{new}} = \text{Cash}_{\text{old}} + (\text{MarginReleased} + \text{RealizedPnL})$。
+### 2. Phase 2: 成交核销 (CommitFill) 与守恒结算
+当网关推送成交回报 `OnExecution` 时：
+1. 精确解冻对应的 `frozenCash` 与 `frozenPos`；
+2. 现金与持仓精确守恒结算：
+   - **现货买入**：扣减成交货款与佣金，新增 T+N 冻结批次进入 `PendingLots`，总持仓增加；
+   - **现货卖出**：扣减持仓，增加成交回款扣减佣金后的净资金；
+   - **期货开仓**：扣减开仓保证金与手续费，头寸按方向累加；
+   - **期货平仓**：按开仓均价释放保证金，并计算已实现盈亏（Realized PnL）划入现金。
 
----
+### 3. 零现金卖出平仓无损支持 (Zero-Cash Sell)
+在全额现货交易中，投资者持有股票但现金账户余额为 0 时卖出平仓是合法的核心业务。历史版本中由于盲目校验预估手续费导致现金为 0 时卖出被误判资金不足拒单。
+`AccountLedger.TryFreeze` 严格贯彻第一性原理：**纯平仓订单所需预冻结现金恒为 `0.0`**，手续费直接从卖出成交回款中扣除，100% 根除零现金平仓被拒的缺陷。
 
-## 三、两阶段挂单冻结账本与撮合体系 (Two-Phase Order Lifecycle)
+### 4. 部分成交分段精准核销 (Partial Fills)
+在实盘或流动性受限撮合下，订单常分多次部分成交（如 100 股分 30 股与 70 股两次成交）。
+`Broker` 维护 `RemainingCloseQuantity` 与 `RemainingOpenQuantity`：
+- 首笔成交优先核销平仓配额并释放平仓冻结；
+- 超出平仓配额的部分核销开仓配额并释放资金冻结；
+- 彻底杜绝部分成交时因重复扣减或错误全量开仓导致的持仓虚增。
 
-为了支持真实的限价挂单、防双花（Double Spending）与防超卖（Over-selling），`SimulatedBroker` 内置了两阶段提交（Prepare-Commit-Abort）挂单账本：
-
-```mermaid
-stateDiagram-v2
-    [*] --> Submitted: SubmitOrder() (限价未触及市价)
-    Submitted --> Canceled: CancelOrder() / SyncState() (释放冻结资金与持仓)
-    Submitted --> Filled: 行情触及限价 (自动撮合结算)
-    Filled --> [*]
-    Canceled --> [*]
-```
-
-### 1. 两阶段冻结账本 (Prepare Phase)
-当限价买单价格低于市价，或限价卖单价格高于市价时，订单作为未成交挂单排队：
-- **资金预冻结 (`_frozenCash`)**：按委托限价 $P_{\text{limit}}$ 精确计算所需开仓保证金与佣金预先扣除，可用现金 `GetCash()` 即时扣减 $\text{FrozenCash}$，杜绝多单同时提交导致的资金双花透支；
-- **持仓预冻结 (`pos.FrozenQuantity`)**：卖单所需平仓数量直接从 `AvailableQuantity` 扣减并划入 `FrozenQuantity`，杜绝同一批持仓被多个挂单重复锁定的超卖隐患；
-- **反手挂单复合冻结**：若当前持有多头且挂出更大数量的卖单（反手），系统原子化同时冻结多头可用持仓与反手开空所需保证金。
-
-### 2. 撤单全额解冻 (Abort Phase)
-调用 `CancelOrder(orderId)` 或在实盘对账 `SyncState` 时：
-- `_frozenCash` 全额反转释放，资金原路归还可用现金；
-- `pos.FrozenQuantity` 全额复位至 `pos.AvailableQuantity`；
-- 订单状态流转为 `OrderStatus.Canceled` 并触发通知。
-
-### 3. FIFO 时间优先撮合 (Commit Phase)
-- **标的挂单桶化 (`_pendingOrdersBySymbol`)**：挂单按标的精准桶化索引，寻址复杂度由 $O(N)$ 降至 $O(1)$，空桶自动即时销毁；
-- **正序时间优先 (FIFO)**：新行情推送或 `Step` 推进时，正序遍历挂单队列，严格遵循交易所时间优先原则；
-- **Maker 限价保护契约**：挂单被动成交时，成交价格严格受委托限价保护（买单成交价 $\le P_{\text{limit}}$，卖单成交价 $\ge P_{\text{limit}}$），绝不突破限价劣质成交。
+### 5. 异常拒单与撤单全额解冻 (Unfreeze)
+若报单被网关拒单（`Rejected`）或由用户撤单（`Canceled`），`Broker` 调用 `ledger.Unfreeze(symbol, frozenCash, frozenPos)`，冻结资金全额归还可用现金，冻结持仓全额归还可用持仓，退出零脏状态。
 
 ---
 
-## 四、撮合规则与摩擦成本模型
+## 五、多资产数学状态转移统一 (现货全额 vs 期货保证金)
 
-### 1. 成交价滑点模型 (Slippage) 与 Taker 保护
-默认采用固定比例滑点，买入抬价，卖出折价：
-$$\text{FillPrice}_{\text{Buy}} = \text{BasePrice} \times (1 + \text{Slippage})$$
-$$\text{FillPrice}_{\text{Sell}} = \text{BasePrice} \times (1 - \text{Slippage})$$
+系统依靠纯数值标的属性统合现货与衍生品，底层零冗余分叉：
 
-> [!IMPORTANT]
-> **Taker 激进限价单限价截断保护**：若提交的是限价单且基准市价穿透限价立即成交，即便由于滑点计算导致理论价格劣于限价，系统强制施加限价截断防御（买入成交价 $\le P_{\text{limit}}$，卖出成交价 $\ge P_{\text{limit}}$），绝不允许金融违规穿透。
+| 资产类型 | 乘数 (`Multiplier`) | 保证金率 (`MarginRate`) | 允许卖空 (`AllowShort`) | 结算天数 (`SettleDays`) |
+| :--- | :---: | :---: | :---: | :---: |
+| **A 股现货** | 1.0 | 1.0 | `false` | 1 (T+1) |
+| **美股现货** | 1.0 | 1.0 | `false` | 0 (T+0) 或 1 (T+1) |
+| **股指/商品期货** | 真实合约乘数 (如 300) | 合约保证金率 (如 0.12) | `true` | 0 (T+0) |
+| **双向外汇/加密合约** | 1.0 | 杠杆倒数 (如 0.05) | `true` | 0 (T+0) |
 
-### 2. 交易手续费模型 (Fee & MinFee)
-手续费支持百分比费率与单笔最低消费门槛（如 A 股 5 元低吸保障）：
-$$\text{Commission} = \max(\text{Turnover} \times \text{FeeRate}, \text{MinFee})$$
-
-### 3. 流动性硬约束 (VolumeLimit)
-为杜绝小盘股撮合成交量超过真实市场容量的作弊行为，配置项 `VolumeLimit` 严格限制单笔委托不得超过当前 Bar 物理成交量的指定比例（如 5%）：
-$$\text{MaxAllowedQuantity} = \text{BarVolume} \times \text{VolumeLimit}$$
-超出比例的订单直接被拒单（Rejected）。若 `VolumeLimit == 0.0` 则代表完全禁用流动性约束（无限制放行）。
-
-### 4. 涨跌停封板拦截 (CheckLimit)
-开启 `CheckLimit` 时，若挂载了 `OnCheckLimit` 委托，在触及涨跌停板时拦截不可成交的反向或顺向订单。
+- **资金占用 / 保证金**：$|\text{Volume}| \times \text{Price} \times \text{Multiplier} \times \text{MarginRate}$
+- **浮动盈亏**：$\text{Direction} \times (\text{CurrentPrice} - \text{OpenPrice}) \times \text{Volume} \times \text{Multiplier}$
 
 ---
 
-## 五、多时区与本地自然日清算 (TimeZone & Settlement)
-
-CarrotQuant.NET 原生支持多时区数据与跨市场多标的回测，采用“数据源端一次性归一化至 UTC、经纪商端在本地时区日切”的设计：
+## 六、多时区自然日清算与 T+N 可用持仓划转 (ProcessDayRollover)
 
 ```mermaid
 flowchart LR
-    subgraph DataLayer ["1. 数据加载期 (Cold Path)"]
-        RawCSV["原始数据文件<br>(如 CST / EST 本地时间)"] -->|配置 TimeZone 映射| UTCGrid["全局 UTC 时间轴<br>(TradeDates)"]
+    subgraph HotLoop ["回测/实盘主时钟推进 (Hot Path)"]
+        UTCGrid["全局时间戳<br>(UTC DateTime)"] -->|单向单调推进| BrokerStep["Broker.Step(currentTimeUtc)"]
     end
 
-    subgraph HotLoop ["2. 回测主时钟推进 (Hot Path)"]
-        UTCGrid -->|单调时间戳推进| BrokerStep["Broker.Step(currentTimeUtc)"]
-    end
-
-    subgraph SettleLogic ["3. 交易所本地清算 (Zero GC)"]
+    subgraph SettleLogic ["交易所本地清算 (Zero GC)"]
         BrokerStep --> Check{"currentTimeUtc >= _nextRollTimeUtc?"}
-        Check -->|Yes| DoRoll["本地 00:00:00 换日结算<br>T+N 可用持仓划转<br>预计算下一换日点"]
+        Check -->|Yes| DoRoll["本地 00:00:00 换日结算<br>AccountLedger.ProcessDayRollover<br>T+N 可用持仓划转<br>预计算下一换日阈值"]
         Check -->|No| FastPass["直接放行 (常数时间比对)"]
     end
 ```
 
-### 1. 规范约定
-- **时区命名标准**：统一采用标准 **IANA 时区标识**（如 `"Asia/Shanghai"`、`"America/New_York"`、`"UTC"`），跨平台自适应解析；
-- **日切时间点 (Cutoff Time)**：统一采用交易所所在地的**本地自然日 `00:00:00`** 换日；
-- **时态安全性**：输入时间戳若为 `DateTimeKind.Unspecified`，防御性视为 UTC 基准时间，杜绝系统本地时区隐式污染。
-
-### 2. 预计算换日阈值机制 (NextRollTimeUtc)
-为了避免在主时钟循环（热路径）中高频调用开销昂贵的时区转换 API（如 `ConvertTime`）：
-1. 在初始化或每次日切完成时，Broker 预先计算出交易所本地次日 `00:00:00` 对应的 UTC 绝对时刻：
-   $$\text{NextRollTimeUtc} = \text{ConvertTimeToUtc}(\text{ExchangeDate} + 1\text{天 } 00:00:00, \text{ExchangeTimeZone})$$
-2. 在 `Step(currentTime)` 中，仅执行一次时间戳数值比对：
-   $$\text{currentTime} \ge \text{NextRollTimeUtc}$$
-   若未达到，直接放行，零额外开销；达到则触发本地清算并更新下一个阈值。
-
-### 3. T+N 可用持仓解锁 (UnlockPendingLots)
-清算触发时，倒序遍历持仓冻结队列 `PendingLots`：
-$$\text{ExchangeDate} \ge \text{lot.AvailableDate} \implies \text{AvailableQuantity} += \text{lot.Quantity}$$
-移除已到期的冻结份额，使次日首根 Bar 交易即可使用解锁持仓。
+1. **统一 IANA 时区标准**：支持 `"Asia/Shanghai"`、`"America/New_York"`、`"UTC"` 等标准跨平台时区标识；
+2. **预计算换日阈值 (`NextRollTimeUtc`)**：初始化及每次换日完成时，预先计算交易所本地次日 `00:00:00` 对应的 UTC 绝对时间戳，热路径仅需一次整数时间戳比对即可判定是否日切，零高频 API 调用开销；
+3. **T+N 持仓解锁**：跨日清算触发时，`AccountLedger.ProcessDayRollover` 遍历各标的的 `PendingLots`，将到达结算日期的持仓批次划入 `AvailableQuantity`，次日首根 Bar 即可用于平仓交易。
 
 ---
 
-## 六、并发线程安全与开放调用 (Thread Safety & Open Calls)
+## 七、动态盯市估值 (GetTotalEquity)
 
-量化回测与实盘网关面对多策略并行计算、异步行情推送与事件监听，`SimulatedBroker` 在并发架构上贯彻两大核心保障：
-
-### 1. 128 位 `decimal` 撕裂读防御 (Torn Read Prevention)
-在 64 位 CPU 架构中，128 位的 `decimal` 持仓数据需跨多个 CPU 寄存器读写。`SimulatedBroker` 对 `GetPosition`、`GetAvailablePosition`、`GetOrderStatus` 等所有外部读取契约统一施加内部锁保护，杜绝多线程并发读写时读取到被写一半的脏数值。
-
-### 2. 锁外零 GC 开放调用 (Open Calls)
-持有对象锁时调用外部用户订阅的委托（如 `OnOrderStatusChanged`、`OnTrade`、`OnPositionChanged`）属于典型的死锁反模式（监听者可能在回调内重入调用 `broker.GetCash()` 或持有外部业务锁）。
-- **锁内权威转移**：所有账户状态机跃迁、挂单冻结账本维护均在锁内原子完成；
-- **锁外开放派发**：单笔订单利用栈上值类型变量暂存事件，批量撮合借用 `ArrayPool<FillDispatch>` 缓冲池，在彻底退出锁后进行安全开放派发，既消除了死锁与重入风险，又实现了 **100% 零 GC 堆内存分配**。
+`AccountLedger.GetTotalEquity(priceResolver)` 原生支持通过注入当前最新行情委托动态盯市：
+$$\text{TotalEquity} = \text{Cash} + \sum (\text{Position} \times \text{CurrentPrice} \times \text{Multiplier}) + \text{UnrealizedPnL}$$
+当未提供行情委托时，平滑降级采用持仓开仓均价（`AveragePrice`）计算成本资产，兼顾离线测算与在线实时盯市。
 
 ---
 
-## 七、规则 Hook 与依赖倒置
+## 八、并发线程安全与开放调用 (Open Calls)
 
-为满足复杂的实盘定制需求（如动态保证金率、浮动阶梯手续费、期货品种不同乘数），`BrokerConfig` 提供了基于强类型委托的拦截器：
+量化交易系统在多策略并发、多线程行情推送与跨组件回调时极易因锁竞争或锁重入发生死锁。CarrotQuant.NET 遵循严格的并发架构红线：
 
+1. **锁内极简状态跃迁，锁外开放调用 (Open Calls)**：
+   - 客户端 `Broker` 在向 `_gateway.SendOrder` 或 `_gateway.CancelOrder` 发起物理调用时，**严格在释放内部 `_syncLock` 之后执行**；
+   - 所有的外部事件派发（`OnTrade`、`OnOrderStatusChanged`、`OnPositionChanged`）全部暂存至栈变量或预分配列表，在彻底退出锁后在锁外进行派发。绝不持有内部锁调用未知外部代码，从物理架构层面根绝死锁。
+2. **128 位 `decimal` 撕裂读防御 (Torn Read Prevention)**：
+   - 对 `GetPosition`、`GetAvailablePosition`、`GetOrderStatus` 等所有外部读取契约统一施加内部锁保护，杜绝 64 位 CPU 跨多寄存器读取 `decimal` 时发生数值撕裂。
+3. **高并发压测保证**：经全套 20 线程并发高压测试验证，零死锁、零竞态脏读。
+
+---
+
+## 九、在线实盘交易集成与状态对账 (Online Trading & SyncState)
+
+### 1. 状态对账同步 (`SyncState`)
+在实盘交易中，因网络断线重连、盘前初始化或日切对账，需要将经纪商本地账本与真实柜台权威数据对齐：
 ```csharp
-public class BrokerConfig
-{
-    // 动态合约乘数 Hook (仅依赖标的维表 IFieldRegistry)
-    public Func<string, IFieldRegistry?, double>? OnGetMultiplier { get; set; }
-
-    // 动态保证金率 Hook (仅依赖标的维表 IFieldRegistry)
-    public Func<string, IFieldRegistry?, double>? OnGetMarginRate { get; set; }
-
-    // 动态结算天数 Hook
-    public Func<string, int>? OnGetSettleDays { get; set; }
-
-    // 动态自定义手续费计算 Hook
-    public Func<OrderRequest, double, double>? OnCalculateFee { get; set; }
-
-    // 动态自定义滑点计算 Hook
-    public Func<OrderRequest, double, IDataRow, double>? OnCalculateSlippage { get; set; }
-
-    // 动态流动性成交量约束 Hook
-    public Func<OrderRequest, IDataRow, bool>? OnCheckVolume { get; set; }
-
-    // 动态涨跌停拦截 Hook
-    public Func<OrderRequest, IDataRow, bool>? OnCheckLimit { get; set; }
-}
+broker.SyncState(liveCash, livePositionsDictionary);
 ```
+`AccountLedger.SyncState` 将原子重置现金池与可用持仓，并将已有在途冻结清空，确保本地状态与实盘柜台 100% 精确一致。
 
-> [!NOTE]
-> 规则 Hook 仅向外暴露标的维表抽象 `IFieldRegistry`，坚决不反向引入全局上下文 `IEngineContext`，保持严格的单向依赖拓扑。
-
----
-
-## 八、配置规范与使用示例
-
-### 1. Code-First 构造配置
-```csharp
-// A 股现货回测配置：T+1 结算、千一滑点、万三佣金（5元门槛）、不允许卖空、北京时区
-var aStockBroker = new SimulatedBroker(new BrokerConfig
-{
-    InitialCash = 1_000_000.0,
-    SettleDays = 1,
-    AllowShort = false,
-    FeeRate = 0.0003,
-    MinFee = 5.0,
-    Slippage = 0.001,
-    TimeZoneId = "Asia/Shanghai"
-});
-
-// 期货保证金回测配置：T+0 结算、万一手续费、允许双向开平仓
-var futureBroker = new SimulatedBroker(new BrokerConfig
-{
-    InitialCash = 1_000_000.0,
-    SettleDays = 0,
-    AllowShort = true,
-    FeeRate = 0.0001,
-    MinFee = 0.0,
-    MarginRate = 0.1,
-    Multiplier = 10.0
-});
-```
-
-### 2. YAML 声明式配置
-```yaml
-broker:
-  initial_cash: 1000000.0
-  settle_days: 1
-  allow_short: false
-  fee_rate: 0.0003
-  min_fee: 5.0
-  slippage: 0.001
-  volume_limit: 0.05
-  check_limit: true
-  time_zone_id: "Asia/Shanghai"
-```
+### 2. 在线交易集成测试验证
+工程内置了全套在线交易集成测试套件（`OnlineTradingIntegrationTests.cs`）：
+- 验证基于 `MockLiveExchangeGateway` 的多线程异步报单与成交回报；
+- 验证部分成交（30% -> 70%）在现金与持仓上的分段核销；
+- 验证柜台拒单后的预冻结资金与持仓原路全额回滚；
+- 验证网络重连后 `SyncState` 对账；
+- 验证多空双向反手大单跨 3 批次异步成交时的原子翻仓。

@@ -802,7 +802,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         [TestMethod]
         public void MultiAsset_SpotLongAndFuturesShortHedge_ShouldCoexistSeamlessly()
         {
-            // 多资产大类混合配置：同一个账户内无缝运行 A 股现货多头 + 股指期货空头对冲
+            // 多资产大类混合配置：同一个账户内同时运行 A 股现货多头 + 股指期货空头对冲
             var config = new BrokerConfig
             {
                 InitialCash = 1_000_000.0,
@@ -1443,11 +1443,20 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
     internal static class BrokerTestExtensions
     {
+        public static void OnMarketData(this Broker broker, string symbol, double price, DateTime time, IDataRow? bar = null)
+        {
+            if (broker.Gateway is ISimulatedExchange sim)
+            {
+                sim.OnMarketData(symbol, price, time, bar);
+            }
+        }
+
         public static void UpdateMarketPrice(this Broker broker, string symbol, double price, IDataRow? bar = null)
         {
             if (broker.Gateway is ISimulatedExchange sim)
             {
-                sim.UpdateMarketPrice(symbol, price, bar);
+                DateTime effectiveTime = broker.CurrentTime != DateTime.MinValue ? broker.CurrentTime : DateTime.UtcNow;
+                sim.OnMarketData(symbol, price, effectiveTime, bar);
             }
         }
 
@@ -1457,7 +1466,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             {
                 if (basePrice > 0.0 && !double.IsNaN(basePrice) && !double.IsInfinity(basePrice))
                 {
-                    sim.UpdateMarketPrice(request.Symbol, basePrice, bar);
+                    DateTime effectiveTime = broker.CurrentTime != DateTime.MinValue ? broker.CurrentTime : DateTime.UtcNow;
+                    sim.OnMarketData(request.Symbol, basePrice, effectiveTime, bar);
                 }
                 else if (double.IsNaN(basePrice) || double.IsInfinity(basePrice))
                 {

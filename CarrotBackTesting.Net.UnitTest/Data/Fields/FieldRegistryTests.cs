@@ -48,7 +48,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             CollectionAssert.Contains((System.Collections.ICollection)poolWithCol, "sh.601958");
             CollectionAssert.Contains((System.Collections.ICollection)poolWithCol, "sz.001257");
 
-            // 4. 动态倒排选股: table.GetKeys(value) - 全表全列无列名秒级反查
+            // 4. 动态倒排选股: table.GetKeys(value) - 全表全列无列名倒排反查
             var poolNoCol = table.GetKeys("钼");
             Assert.IsTrue(poolNoCol.Count >= 2);
             CollectionAssert.Contains((System.Collections.ICollection)poolNoCol, "sh.601958");
@@ -136,7 +136,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
         #endregion
 
-        #region 2. 强类型即时点查与流式 LINQ 测试 (单一内核赋能)
+        #region 2. 强类型即时点查与流式 LINQ 测试 (单一内核实现)
 
         [TestMethod]
         public void TestTypedFieldTable_InstantProjection_AndStreamingLinq()

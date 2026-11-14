@@ -585,7 +585,7 @@ var resolver = new StorageResolver("D:/QuantData");
 var conceptTable = FieldSourceFactory.Create(resolver, "ashare.concept.eastmoney");
 string name = conceptTable["sh.600000"]["board_name"];            // 链式索引器
 var allConcepts = conceptTable.GetValues("sh.600000", "board_name"); // 1:N 多值便捷提取
-var pool1 = conceptTable.GetKeys("低空经济");                     // 全局倒排秒级圈选 (无需记忆列名)
+var pool1 = conceptTable.GetKeys("低空经济");                     // 全局倒排快速圈选 (无需记忆列名)
 var pool2 = conceptTable.GetKeys("低空经济", "board_name");       // 精确指定列倒排
 
 // 遍历标的池
@@ -642,7 +642,7 @@ public interface IEngineContext
 
 ### 3. IBroker 与订单交互
 
-> 详细撮合模型、现货与保证金状态机、多时区自然日清算及完整契约详见 [虚拟经纪商体系 (broker.md)](broker.md)。
+> 详细资产持仓账本、两阶段挂单冻结状态机、多时区自然日清算及实盘对账规范详见 [客户端经纪商与账户账本体系 (broker.md)](broker.md)；撮合机制与挂单簿详见 [交易所仿真与集中撮合体系 (exchange.md)](exchange.md)。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Engine;
@@ -672,7 +672,38 @@ public interface IBroker
 - **`PositionEvent`**: `(string Symbol, decimal NewQuantity, double AveragePrice, DateTime Time)`
 - **`OrderStatus`**: `Pending`, `Submitted`, `PartialFilled`, `Filled`, `Canceled`, `Rejected`
 
-### 4. IEngine 与 BacktestingEngine (回测驱动核心)
+### 4. 交易所网关契约 (IExchangeGateway 与 ISimulatedExchange)
+
+定义客户端与集中撮合交易所/实盘柜台之间的通信协议，实现回测仿真与实盘交易的一致性切换。详细撮合引擎与挂单簿规范详见 [交易所仿真与集中撮合体系 (exchange.md)](exchange.md)。
+
+```csharp
+namespace CarrotBacktesting.NET.Abstraction.Engine;
+
+/// <summary>
+/// 通用交易所/柜台网关通信契约。
+/// </summary>
+public interface IExchangeGateway
+{
+    void SendOrder(string orderId, OrderRequest request);
+    void CancelOrder(string orderId);
+
+    event Action<ExecutionReport> OnExecution;
+    event Action<string, OrderStatus> OnOrderStateChanged;
+}
+
+/// <summary>
+/// 回测环境仿真交易所驱动契约。
+/// </summary>
+public interface ISimulatedExchange : IExchangeGateway
+{
+    void Step(DateTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
+    void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null);
+    void SetCurrentTime(DateTime currentTime);
+    double GetMarketPrice(string symbol);
+}
+```
+
+### 5. IEngine 与 BacktestingEngine (回测驱动核心)
 
 统一统领回测生命周期、时间网格推进、T+N 跨日结算与策略管线执行。详细生命周期状态机与步进流水线详见 [核心回测引擎体系 (engine.md)](engine.md)。
 
@@ -704,7 +735,7 @@ public interface ICheckpointable
   - **二分区间裁剪**：依据 `StartDate` 与 `EndDate` 通过二分查找确定起止 `TradeDates` 索引；
   - **主时钟步进推进**：按时间步严格执行（`UpdateStep` → `Timeseries.StepTo` → 推进经纪商时钟与交易所本地清算 `Broker.Step` → 离散事件探测派发 `pipeline.OnEvent` → 策略主决策 `pipeline.OnUpdate`）；
   - **热路径零堆分配 (零 GC)**：上下文单例常驻、复用事件内存缓冲区，单步执行零额外分配；
-  - **状态机生命周期控制**：`Idle` → `Running` → `Paused` / `Completed` / `Faulted`，支持优雅取消与暂停等待。
+  - **状态机生命周期控制**：`Idle` → `Running` → `Paused` / `Completed` / `Faulted`，支持安全取消与暂停等待。
 
 ---
 
@@ -774,7 +805,7 @@ public class MovingAverageCrossStrategy : IStrategy
 
     public void OnUpdate(IEngineContext context)
     {
-        // 1. 纳秒级变更感知（仅在日线更新的 Bar 才触发低频计算）
+        // 1. 常数时间变更感知（仅在日线更新的 Bar 才触发低频计算）
         if (context.Timeseries.IsUpdated("kline.1d"))
         {
             // 更新宏观或日线低频指标

@@ -112,7 +112,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 
 ## 三、Broker 交易规则与对称 Hook 体系
 
-系统遵循**“静态数值配置驱动 95% 场景，对称 Hook 动态接管 5% 特化”**的设计哲学。系统计算严格使用配置值，绝不在底层隐式查询任何外部数据；仅当用户显式挂载 Hook 时，才由 Hook 覆盖对应环节的默认行为。
+系统遵循**“静态数值配置覆盖常规场景，对称 Hook 动态接管定制逻辑”**的架构设计原则。系统计算严格使用配置值，绝不在底层隐式查询任何外部数据；仅当用户显式挂载 Hook 时，才由 Hook 覆盖对应环节的默认行为。
 
 ### 1. 配置参数与 Hook 对称映射矩阵
 
@@ -313,7 +313,7 @@ config.Save("configs/strategy_auto.yaml");
 除了基于 YAML 文件的驱动方式，系统完全支持**纯代码驱动（Code-First）**。无需创建任何物理文件，直接通过 C# 强类型对象进行装配，适合量化研发、实验脚本、单元测试与动态组合策略。
 
 ### 1. 强类型对象声明法（POCO / Object Initializer）
-最结构化的配置方式，配置对象可跨模块传递，并支持后续随时一键序列化为 YAML：
+最结构化的配置方式，配置对象可跨模块传递，并支持后续随时直接序列化为 YAML：
 
 ```csharp
 using CarrotBacktesting.NET.Config;
@@ -363,7 +363,7 @@ var config = new SessionConfig
     }
 };
 
-// 2. 通过统一路径解析器与装配工厂一键构建
+// 2. 通过统一路径解析器与装配工厂直接构建
 var resolver = new StorageResolver(config.Data.Root);
 var timeseries = TimeseriesRegistryFactory.Create(resolver, config.Data.Timeseries[0]);
 var events = EventRegistryFactory.Create(resolver, config.Data.Events);

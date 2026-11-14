@@ -154,9 +154,9 @@ internal sealed class AccountLedger
         closeQty = isOpposite ? Math.Min(request.Quantity, closableCapacity) : 0m;
         openQty = request.Quantity - closeQty;
 
-        // 3. 资金可用性校验：纯平仓所需现金为 0（手续费在成交回款中扣除）；新开仓部分需冻结保证金
+        // 3. 资金可用性校验：纯平仓所需现金为 0（手续费在成交回款中扣除）；新开仓部分需冻结保证金与预估手续费
         double requiredMargin = (double)openQty * estimatedPrice * multiplier * marginRate;
-        double estimatedFee = estimatedPrice > 0.0
+        double estimatedFee = openQty > 0m && estimatedPrice > 0.0
             ? Math.Max(_config.MinFee, (double)openQty * estimatedPrice * multiplier * _config.FeeRate)
             : 0.0;
         double requiredCash = requiredMargin + estimatedFee;

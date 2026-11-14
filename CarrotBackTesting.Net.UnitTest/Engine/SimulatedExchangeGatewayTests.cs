@@ -37,7 +37,8 @@ public class SimulatedExchangeGatewayTests
     {
         var config = new BrokerConfig();
         var gateway = new SimulatedExchangeGateway(config);
-        gateway.UpdateMarketPrice("sh.600000", 10.0);
+        var now = DateTime.UtcNow;
+        gateway.OnMarketData("sh.600000", 10.0, now);
 
         string? stateOrderId = null;
         OrderStatus? stateStatus = null;
@@ -60,11 +61,12 @@ public class SimulatedExchangeGatewayTests
     }
 
     [TestMethod]
-    public void UpdateMarketPrice_ShouldMatchPendingLimitOrders()
+    public void OnMarketData_ShouldMatchPendingLimitOrders()
     {
         var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
         var gateway = new SimulatedExchangeGateway(config);
-        gateway.UpdateMarketPrice("sh.600000", 10.0);
+        var time1 = new DateTime(2025, 1, 6, 9, 30, 0);
+        gateway.OnMarketData("sh.600000", 10.0, time1);
 
         // 提交限价 9.5 买单
         gateway.SendOrder("limit-1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m));
@@ -73,12 +75,14 @@ public class SimulatedExchangeGatewayTests
         gateway.OnExecution += r => report = r;
 
         // 行情下探到 9.4 -> 触发撮合
-        gateway.UpdateMarketPrice("sh.600000", 9.4);
+        var time2 = new DateTime(2025, 1, 6, 9, 35, 0);
+        gateway.OnMarketData("sh.600000", 9.4, time2);
 
         Assert.IsNotNull(report);
         Assert.AreEqual("limit-1", report.OrderId);
         Assert.AreEqual(9.5, report.FillPrice, "Maker 买单成交在委托限价 9.5");
         Assert.AreEqual(1000m, report.FillQuantity);
+        Assert.AreEqual(time2, report.Time, "成交时间戳必须与行情时间戳精确一致");
     }
 
     [TestMethod]
@@ -130,7 +134,7 @@ public class SimulatedExchangeGatewayTests
     {
         var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
         var gateway = new SimulatedExchangeGateway(config);
-        gateway.UpdateMarketPrice("sh.600000", 10.0);
+        gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 1));
 
         // 挂单 9.5 买入
         gateway.SendOrder("step-1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
@@ -152,6 +156,109 @@ public class SimulatedExchangeGatewayTests
         Assert.AreEqual("step-1", report.OrderId);
         Assert.AreEqual(9.5, report.FillPrice);
         Assert.AreEqual(100m, report.FillQuantity);
+    }
+
+    [TestMethod]
+    public void OnMarketData_WithBar_TriggeringLimitCheck_ShouldRejectPendingOrder()
+    {
+        var config = new BrokerConfig
+        {
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            CheckLimit = true,
+            OnCheckLimit = (req, bar) => false // 模拟触发跌停拦截
+        };
+        var gateway = new SimulatedExchangeGateway(config);
+        var time1 = new DateTime(2025, 1, 6, 9, 30, 0);
+        gateway.OnMarketData("sh.600000", 10.0, time1);
+
+        gateway.SendOrder("limit-reject", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
+
+        OrderStatus? finalStatus = null;
+        gateway.OnOrderStateChanged += (id, s) =>
+        {
+            if (id == "limit-reject") finalStatus = s;
+        };
+        bool executed = false;
+        gateway.OnExecution += _ => executed = true;
+
+        var bar = CreateBar(10.0, 10.2, 9.0, 9.2, 5000.0);
+        var time2 = new DateTime(2025, 1, 6, 9, 31, 0);
+        gateway.OnMarketData("sh.600000", 9.2, time2, bar);
+
+        Assert.AreEqual(OrderStatus.Rejected, finalStatus);
+        Assert.IsFalse(executed, "被涨跌停拦截的挂单绝不能产生成交回报");
+    }
+
+    [TestMethod]
+    public void OnMarketData_WithBar_VolumeLimitExceeded_ShouldRejectPendingOrder()
+    {
+        var config = new BrokerConfig
+        {
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            VolumeLimit = 0.1 // 单笔不能超过 Bar 成交量的 10%
+        };
+        var gateway = new SimulatedExchangeGateway(config);
+        gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 6, 9, 30, 0));
+
+        // 委托 200 股
+        gateway.SendOrder("limit-vol-exceeded", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 200m));
+
+        OrderStatus? finalStatus = null;
+        gateway.OnOrderStateChanged += (id, s) =>
+        {
+            if (id == "limit-vol-exceeded") finalStatus = s;
+        };
+
+        // 当前 Bar 成交量 1000 股，10% 上限为 100 股 < 200 股
+        var bar = CreateBar(10.0, 10.0, 9.4, 9.4, 1000.0);
+        gateway.OnMarketData("sh.600000", 9.4, new DateTime(2025, 1, 6, 9, 35, 0), bar);
+
+        Assert.AreEqual(OrderStatus.Rejected, finalStatus, "超过流动性上限必须拒单");
+    }
+
+    [TestMethod]
+    public void OnMarketData_InvalidInputs_ShouldBeSafelyIgnored()
+    {
+        var gateway = new SimulatedExchangeGateway(new BrokerConfig());
+        gateway.OnMarketData("sh.600000", 10.0, DateTime.UtcNow);
+
+        // 非法价格不应更新
+        gateway.OnMarketData("sh.600000", -5.0, DateTime.UtcNow);
+        Assert.AreEqual(10.0, gateway.GetMarketPrice("sh.600000"));
+
+        gateway.OnMarketData("sh.600000", double.NaN, DateTime.UtcNow);
+        Assert.AreEqual(10.0, gateway.GetMarketPrice("sh.600000"));
+
+        gateway.OnMarketData("sh.600000", double.PositiveInfinity, DateTime.UtcNow);
+        Assert.AreEqual(10.0, gateway.GetMarketPrice("sh.600000"));
+
+        gateway.OnMarketData("   ", 20.0, DateTime.UtcNow);
+        Assert.AreEqual(0.0, gateway.GetMarketPrice("   "));
+    }
+
+    private static IDataRow CreateBar(double open, double high, double low, double close, double volume)
+    {
+        var cols = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["open"] = 0,
+            ["high"] = 1,
+            ["low"] = 2,
+            ["close"] = 3,
+            ["volume"] = 4
+        };
+
+        var values = new[]
+        {
+            open.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            high.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            low.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            close.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            volume.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+
+        return new DataRow(values, cols);
     }
 
     private class DummyTimeseriesRegistry : ITimeseriesRegistry

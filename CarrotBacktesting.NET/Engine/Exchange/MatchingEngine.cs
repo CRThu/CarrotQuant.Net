@@ -8,7 +8,7 @@ namespace CarrotBacktesting.NET.Engine.Exchange;
 /// <summary>
 /// 纯计算撮合与市场摩擦内核。
 /// 专职负责限价触碰判定、价格改善、滑点冲击模型重估、交易费计算与涨跌停/流动性风控合规拦截。
-/// 纯函数设计，不持有状态，100% 具备极速可测性。
+/// 纯函数设计，不持有状态，具备确定性与高可测性。
 /// </summary>
 internal sealed class MatchingEngine
 {
