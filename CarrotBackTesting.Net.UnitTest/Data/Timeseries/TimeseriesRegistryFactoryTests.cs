@@ -15,7 +15,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var storageRoot = Path.Combine(AppContext.BaseDirectory, "TestData", "test_data_root", "csv");
             var tableId = "ashare.kline.1d.raw.baostock";
             
-            using var source = new CsvTimeseriesSource(storageRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(storageRoot, tableId);
 
             var provider = TimeseriesRegistryFactory.Create(storageRoot, source);
             

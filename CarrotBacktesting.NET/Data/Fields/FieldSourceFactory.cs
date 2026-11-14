@@ -15,23 +15,22 @@ namespace CarrotBacktesting.NET.Data
     public static class FieldSourceFactory
     {
         /// <summary>
-        /// 加载并构建静态维表。
+        /// 基于不可变元数据与统一调度器构建静态维表。
         /// </summary>
         public static IFieldTable Create(
+            TableMetadata metadata,
             IStorageResolver resolver,
-            string tableId,
             string? keyColumn = null,
             IReadOnlySet<string>? nullableFields = null)
         {
+            ArgumentNullException.ThrowIfNull(metadata);
             ArgumentNullException.ThrowIfNull(resolver);
-            ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
 
-            string format = resolver.GetFormat(tableId);
-            var files = resolver.ResolvePhysicalFiles(tableId);
-            var fieldNames = resolver.GetFieldNames(tableId);
+            var files = resolver.ResolvePhysicalFiles(metadata);
+            var fieldNames = metadata.FieldNames;
             string effectiveKeyCol = ResolveKeyColumn(fieldNames, keyColumn);
 
-            var resolverFields = resolver.GetNullableFields(tableId);
+            var resolverFields = metadata.NullableFields;
             IReadOnlySet<string> effectiveNullableFields;
             if (nullableFields == null || nullableFields.Count == 0)
             {
@@ -52,20 +51,36 @@ namespace CarrotBacktesting.NET.Data
             var ordinals = fieldNames.Select((f, idx) => (f, idx))
                 .ToDictionary(x => x.f, x => x.idx, StringComparer.OrdinalIgnoreCase);
 
-            if (format.Equals("csv", StringComparison.OrdinalIgnoreCase))
+            if (metadata.Format == StorageFormat.Csv)
             {
                 LoadCsv(files, effectiveKeyCol, fieldNames, ordinals, data);
             }
-            else if (format.Equals("parquet", StringComparison.OrdinalIgnoreCase))
+            else if (metadata.Format == StorageFormat.Parquet)
             {
                 LoadParquet(files, effectiveKeyCol, fieldNames, ordinals, data, effectiveNullableFields);
             }
             else
             {
-                throw new NotSupportedException($"Unsupported field table storage format: '{format}' for table '{tableId}'.");
+                throw new NotSupportedException($"Unsupported field table storage format: '{metadata.Format}' for table '{metadata.TableId}'.");
             }
 
-            return new FieldTable(tableId, fieldNames, data);
+            return new FieldTable(metadata.TableId, fieldNames, data);
+        }
+
+        /// <summary>
+        /// 基于存储调度门面加载并构建静态维表（工厂层自动解构依赖）。
+        /// </summary>
+        public static IFieldTable Create(
+            IStorageResolver resolver,
+            string tableId,
+            string? keyColumn = null,
+            IReadOnlySet<string>? nullableFields = null)
+        {
+            ArgumentNullException.ThrowIfNull(resolver);
+            ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
+
+            var metadata = resolver.GetMetadata(tableId);
+            return Create(metadata, resolver, keyColumn, nullableFields);
         }
 
         /// <summary>

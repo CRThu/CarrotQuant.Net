@@ -166,25 +166,25 @@
 
 ### 2. 缺省自描述回退模式 (Fallback Inference)
 
-当表目录下**未提供 `metadata.json`** 时，`StorageResolver` 自动扫描目录拓扑并采样首个物理数据文件进行自描述推断：
+当表目录下**未提供 `metadata.json`** 时，`StorageResolver` 自动委托内部无状态纯函数推断器（`TableMetadataInferer`）流式扫描目录拓扑并采样首个物理数据文件进行自描述推断，生成不可变 `TableMetadata` 实体：
 
-1. **存储布局推断 (`layout`)**：
-   - 若表目录下存在 `year=*` 子目录，自动推断为 `Hive` 分区布局；
-   - 否则推断为 `Flat` 平铺布局。
-2. **文件格式推断 (`format`)**：
-   - 自动获取目录下首个数据文件的扩展名，推断为 `parquet` 或 `csv`。
-3. **代码分区推断 (`partition`)**：
-   - 若物理文件名以 `data.` 开头（如 `data.parquet` 或 `data.csv`），推断为 `none`（整表无分区）；
-   - 若物理文件以股票代码命名（如 `{symbol}.csv`），推断为 `symbol` 代码拆分模式。
+1. **存储布局推断 (`StorageLayout`)**：
+   - 若表目录下存在 `year=*` 子目录，自动推断为 `StorageLayout.Hive` 分区布局；
+   - 否则推断为 `StorageLayout.Flat` 平铺布局。
+2. **文件格式推断 (`StorageFormat`)**：
+   - 自动获取目录下首个数据文件的扩展名，推断为 `StorageFormat.Parquet` 或 `StorageFormat.Csv`。
+3. **代码分区推断 (`PartitionMode`)**：
+   - 若物理文件名以 `data.` 开头（如 `data.parquet` 或 `data.csv`），推断为 `PartitionMode.None`（整表无分区）；
+   - 若物理文件以股票代码命名（如 `{symbol}.csv`），推断为 `PartitionMode.Symbol` 代码拆分模式。
 4. **字段与类型推断 (`schema`)**：
-   - **Parquet**：自动读取首个 Parquet 文件的 Footer Schema，直接提取所有字段名及其对应的 CLR 物理类型（`Int64` -> `long`，`Double` -> `double` 等）；
+   - **Parquet**：自动流式读取首个 Parquet 文件的 Footer Schema，直接提取所有字段名及其对应的 CLR 物理类型（`Int64` -> `long`，`Double` -> `double` 等）；
    - **CSV**：自动读取首行表头获取字段名列表；字段类型按列名规则自动推断：
-     - `symbol` -> `typeof(string)`
-     - `datetime` / `date` -> `typeof(DateTime)`
-     - `timestamp` -> `typeof(long)`
+     - `symbol` 候选列 -> `typeof(string)`
+     - `datetime` / `date` 候选列 -> `typeof(DateTime)`
+     - `timestamp` 候选列 -> `typeof(long)`
      - 其余数值字段默认推断为 `typeof(double)`。
-5. **数据类别推断 (`category`)**：
-   - 默认推断为 `timeseries`（时序宽表）。
+5. **数据类别推断 (`TableCategory`)**：
+   - 默认推断为 `TableCategory.Timeseries`（时序宽表）。
 
 ---
 

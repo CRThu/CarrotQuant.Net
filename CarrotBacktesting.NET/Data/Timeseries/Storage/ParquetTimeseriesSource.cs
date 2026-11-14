@@ -22,20 +22,12 @@ namespace CarrotBacktesting.NET.Data
         private readonly IReadOnlySet<string> _nullableFields;
 
         /// <summary>
-        /// 便捷构造函数。
+        /// 核心构造函数，接收不可变表元数据与统一调度器。
         /// </summary>
-        public ParquetTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null, IReadOnlySet<string>? nullableFields = null)
-            : this(new StorageResolver(storageRoot), tableId, startDate, endDate, timeZone, nullableFields)
+        public ParquetTimeseriesSource(TableMetadata metadata, IStorageResolver resolver, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null, IReadOnlySet<string>? nullableFields = null)
+            : base(metadata, resolver, startDate, endDate, timeZone)
         {
-        }
-
-        /// <summary>
-        /// 核心构造函数，接收外部依赖注入的路径解析器。
-        /// </summary>
-        public ParquetTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null, IReadOnlySet<string>? nullableFields = null)
-            : base(resolver, tableId, startDate, endDate, timeZone)
-        {
-            var resolverFields = resolver.GetNullableFields(tableId);
+            var resolverFields = metadata.NullableFields;
             if (nullableFields == null || nullableFields.Count == 0)
             {
                 _nullableFields = resolverFields;
@@ -53,8 +45,8 @@ namespace CarrotBacktesting.NET.Data
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var dateSet = new HashSet<DateTime>();
 
-            // 使用 resolver 解析出的所有物理文件列表（已支持年份剪枝）
-            var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, null, _startDate, _endDate);
+            // 使用直通重载解析出的所有物理文件列表（已支持年份剪枝）
+            var parquetFiles = _resolver.ResolvePhysicalFiles(_metadata, null, _startDate, _endDate);
             foreach (var file in parquetFiles)
             {
                 using var fs = File.OpenRead(file);
@@ -114,7 +106,7 @@ namespace CarrotBacktesting.NET.Data
             ref DateTime[] rawDates,
             ref T[] rawValues)
         {
-            var parquetFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, minDate, maxDate);
+            var parquetFiles = _resolver.ResolvePhysicalFiles(_metadata, symbol, minDate, maxDate);
             int count = 0;
 
             foreach (var filePath in parquetFiles)

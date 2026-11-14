@@ -14,22 +14,14 @@ namespace CarrotBacktesting.NET.Data
     public class CsvTimeseriesSource : TimeseriesSourceBase
     {
         /// <summary>
-        /// 便捷构造函数。
+        /// 核心构造函数，接收不可变表元数据与统一调度器。
         /// </summary>
-        public CsvTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
-            : this(new StorageResolver(storageRoot), tableId, startDate, endDate, timeZone)
+        public CsvTimeseriesSource(TableMetadata metadata, IStorageResolver resolver, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
+            : base(metadata, resolver, startDate, endDate, timeZone)
         {
-        }
-
-        /// <summary>
-        /// 核心构造函数，接收外部依赖注入的路径解析器。
-        /// </summary>
-        public CsvTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
-            : base(resolver, tableId, startDate, endDate, timeZone)
-        {
-            // 1. 扫描可用股票代码，委托给路径调度器解析符合时间区间的物理文件
+            // 1. 扫描可用股票代码，直通委托给调度器解析符合时间区间的物理文件
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, null, _startDate, _endDate);
+            var csvFiles = _resolver.ResolvePhysicalFiles(_metadata, null, _startDate, _endDate);
             foreach (var file in csvFiles)
             {
                 string sym = Path.GetFileNameWithoutExtension(file);
@@ -96,7 +88,7 @@ namespace CarrotBacktesting.NET.Data
             ref DateTime[] rawDates,
             ref T[] rawValues)
         {
-            var csvFiles = _resolver.ResolvePhysicalFiles(_tableId, symbol, minDate, maxDate);
+            var csvFiles = _resolver.ResolvePhysicalFiles(_metadata, symbol, minDate, maxDate);
             int count = 0;
 
             foreach (var filePath in csvFiles)

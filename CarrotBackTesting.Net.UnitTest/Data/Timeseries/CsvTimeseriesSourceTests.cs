@@ -68,7 +68,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(physicalData.Count > 0, "Physical data should contain rows.");
 
             // 2. 通过 CsvTimeseriesSource 载入序列
-            using var source = new CsvTimeseriesSource(csvRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
             // 测试元数据接口
             int symbolIdx = source.GetSymbolIndex(testSymbol);
@@ -107,7 +107,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 string csvContent = "symbol,datetime,open,high,low,close,volume\n\"sh.600000\",\"2025-01-02\",\"10.50\",\" 11.20 \",\"9.80\",\"10.95\",\"100000\"\n";
                 File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
 
-                using var source = new CsvTimeseriesSource(tempDir, tableId);
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
 
                 Assert.AreEqual(1, source.Symbols.Count);
                 Assert.AreEqual(1, source.TradeDates.Count);
@@ -142,7 +142,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 string csvContent = $"symbol,timestamp,open,close,volume\nsh.600000,{ts1},12.5,13.0,1000\nsh.600000,{ts2},10.0,11.5,500\n";
                 File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
 
-                using var source = new CsvTimeseriesSource(tempDir, tableId);
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
 
                 Assert.AreEqual(1, source.Symbols.Count);
                 Assert.AreEqual(2, source.TradeDates.Count);
@@ -217,7 +217,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 sw.Flush();
                 sw.Close();
 
-                using var source = new CsvTimeseriesSource(tempDir, tableId);
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
 
                 // 请求只取 5 天，但底层文件扫描时读入 35 行触发扩容
                 double[] dest = new double[5];
@@ -249,7 +249,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                                     "sz.000001,2025-01-03,21.0\n";
                 File.WriteAllText(Path.Combine(tableDir, "data.csv"), csvContent);
 
-                using var source = new CsvTimeseriesSource(tempDir, tableId);
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
 
                 // 验证两只标的均被正确提取，且没有空集合
                 Assert.AreEqual(2, source.Symbols.Count);
@@ -292,7 +292,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
 
                 // 1. 指定 Asia/Shanghai (+8) 时区加载
-                using var sourceAsia = new CsvTimeseriesSource(tempDir, tableId, timeZone: "Asia/Shanghai");
+                using var sourceAsia = (TimeseriesSourceBase)TimeseriesSourceFactory.Create(tempDir, tableId, timeZone: "Asia/Shanghai");
                 Assert.IsNotNull(sourceAsia.SourceTimeZone);
                 Assert.AreEqual(2, sourceAsia.TradeDates.Count);
 

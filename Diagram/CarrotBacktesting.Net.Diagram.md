@@ -1,8 +1,15 @@
 ```mermaid
 graph TD
     subgraph DataLayer [Data Layer - 数据层]
-        subgraph Common [Common - 基础寻址]
+        subgraph Common [Common - 基础调度与元数据]
+            IStorageResolver[IStorageResolver]
+            TableMetadata[TableMetadata]
+            TableMetadataInferer[TableMetadataInferer]
             StorageResolver[StorageResolver]
+
+            StorageResolver --> IStorageResolver
+            StorageResolver --> TableMetadata
+            StorageResolver --> TableMetadataInferer
         end
 
         subgraph FieldsSubsystem [Fields - 标的属性与维表子系统]

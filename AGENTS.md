@@ -9,8 +9,15 @@ CarrotQuant.NET 采用 **三层分离架构**，各层之间通过接口契约�
 ```mermaid
 graph TD
     subgraph DataLayer [Data Layer - 数据层]
-        subgraph Common [Common - 基础寻址]
+        subgraph Common [Common - 基础调度与元数据]
+            IStorageResolver[IStorageResolver]
+            TableMetadata[TableMetadata]
+            TableMetadataInferer[TableMetadataInferer]
             StorageResolver[StorageResolver]
+
+            StorageResolver --> IStorageResolver
+            StorageResolver --> TableMetadata
+            StorageResolver --> TableMetadataInferer
         end
 
         subgraph FieldsSubsystem [Fields - 标的属性与维表子系统]
@@ -255,14 +262,15 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 - **FieldRegistry**: 标的维表注册中心，支持 `Fields["table"]` 索引器获取维表。
 - **FieldSourceFactory**: 物理维表加载工厂，支持 CSV 与 Parquet 平铺表直接映射为单一内核动态维表（`FieldTable`），严格遵循零空值契约并支持通过 `nullableFields` 白名单放行空值。
 
-### 6. 存储调度与批量加载 (StorageResolver & Bulk Loader)
+### 6. 存储调度与元数据注册 (StorageResolver & TableMetadata)
 
-- **IStorageResolver** (`Abstraction/Data/IStorageResolver.cs`): 基于 `tableId` 统一调度物理文件：
-  - **元数据缓存**: 内部采用 `ConcurrentDictionary<string, TableMetadataCache>` 避免重复 I/O。
-  - **决策机制**: 优先读取表目录下 `metadata.json`（支持解析 `nullable_fields` 空值白名单契约）；缺失时自动由 Parquet Footer 或 CSV 表头回退推断（默认空值白名单为空集合，全表严禁 NULL）。
-  - **布局模式**:
-    - `Hive`: `{root}/{table_id}/year={yyyy}/[month={mm}/]`，传入 `startDate` 与 `endDate` 执行年份/月份动态剪枝。
-    - `Flat`: `{root}/{table_id}/` 平铺存储，支持直接按 symbol 精确匹配或全量枚举。
+- **单一内核实例与正交职责**:
+  - **`IStorageResolver` / `StorageResolver`**：数据区单一权威调度实例内核，内部管理指定 `StorageRoot` 的不可变元数据缓存（`_metadataCache`）与 Hive 目录拓扑缓存（`_topologyCache`），天然环境隔离，随作用域 GC 回收，退出零脏状态。
+  - **`TableMetadata`**：不可变元数据聚合模型（单一事实来源 SSOT），强类型统筹 `StorageFormat`、`StorageLayout`、`TableCategory`、`PartitionMode`、Schema 字段与空值白名单（`NullableFields`）。
+  - **`TableMetadataInferer`**：内部无状态静态纯函数，仅在表目录缺少 `metadata.json` 时流式嗅探样本文件推断 Schema，用完即走，零实例状态。
+- **直通优化与工厂解耦**:
+  - 工厂层（`TimeseriesSourceFactory`, `EventSourceFactory`, `FieldSourceFactory`）负责将调度器解构出 `TableMetadata` 并精准注入给底层驱动；
+  - 时序数据源驱动（`TimeseriesSourceBase`, `ParquetTimeseriesSource`, `CsvTimeseriesSource`）直接持有不可变 `TableMetadata`，在冷块加载寻址时直通调用 `resolver.ResolvePhysicalFiles(_metadata, ...)`，完全跳过字典哈希查询与冗余计算，寻址复杂度降为 $O(1)$；离散驱动（Events & Fields）彻底不持有 Resolver 引用。
 - **纵向批量加载流程**:
   1. `StorageResolver.ResolvePhysicalFiles()` 按表与日期区间返回物理文件列表。
   2. `CsvTimeseriesSource` / `ParquetTimeseriesSource` 构造时扫描文件建立代码与全局交易日并集（Schema 字段由 `IMarketMetadata` 自包含权威供给，零外部耦合）。
@@ -291,7 +299,11 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
   - `FieldRegistryFactory`: 标的维表注册中心装配工厂（支持从配置清单批量装配）。
   - `FieldSourceFactory`: 静态维表加载驱动（支持 CSV/Parquet 平铺表直接映射为维表）。
 - `Common/`: 跨模态共享底层基础设施。
-  - `StorageResolver`: 统一物理存储寻址（Hive/Flat 格式调度，TS/EV/Fields 共享）。
+  - `StorageResolver`: 数据区统一物理存储调度与元数据注册中心单一内核实例。
+  - `IStorageResolver`: 存储调度与元数据瘦契约。
+  - `TableMetadata`: 数据表权威不可变元数据聚合模型（SSOT）。
+  - `TableMetadataInferer`: 内部无状态自描述推断工具（纯函数）。
+  - `StorageFormat`, `StorageLayout`, `TableCategory`, `PartitionMode`: 存储层强类型领域枚举。
   - `DefaultDataColumns`: 默认标的与双时间轴基础列名契约（收敛 symbol/datetime/timestamp/date 保留字段与候选列表）。
   - `DataRow`: 轻量动态行数据结构（实现 `IDataRow`）。
   - `EntityMapper`: 通用表达式树预编译构造器（原生 IL 速度映射，零装箱，带字段上下文强类型异常防御）。

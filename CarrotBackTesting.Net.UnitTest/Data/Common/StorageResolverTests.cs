@@ -41,6 +41,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         [DataRow("timeseries", "hive", "symbol", "csv")]
         [DataRow("event", "flat", "none", "parquet")]
+        [DataRow("field", "flat", "none", "parquet")]
+        [DataRow("fields", "flat", "none", "csv")]
         [DataRow("timeseries", "flat", "symbol", "parquet")]
         [DataRow("event", "hive", "none", "csv")]
         public void MetadataParsing_ShouldMapCorrectly(string cat, string lay, string part, string fmt)
@@ -49,11 +51,19 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             CreateTable(tableId, new { category = cat, layout = lay, partition = part, format = fmt, schema = new { id = "int64" } });
 
             var resolver = new StorageResolver(_tempRoot);
+            var meta = resolver.GetMetadata(tableId);
+
+            TableCategory expectedCategory = cat switch
+            {
+                "field" or "fields" => TableCategory.Field,
+                "event" or "events" => TableCategory.Event,
+                _ => TableCategory.Timeseries
+            };
             
-            Assert.AreEqual(cat, resolver.GetCategory(tableId));
-            Assert.AreEqual(lay == "hive" ? StorageLayout.Hive : StorageLayout.Flat, resolver.GetLayout(tableId));
-            Assert.AreEqual(part, resolver.GetPartition(tableId));
-            Assert.AreEqual(fmt, resolver.GetFormat(tableId));
+            Assert.AreEqual(expectedCategory, meta.Category);
+            Assert.AreEqual(lay == "hive" ? StorageLayout.Hive : StorageLayout.Flat, meta.Layout);
+            Assert.AreEqual(part == "symbol" ? PartitionMode.Symbol : PartitionMode.None, meta.Partition);
+            Assert.AreEqual(fmt == "parquet" ? StorageFormat.Parquet : StorageFormat.Csv, meta.Format);
         }
 
         #endregion
@@ -99,7 +109,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             var resolver = new StorageResolver(_tempRoot);
             
-            Assert.AreEqual("event", resolver.GetCategory(tableId));
+            Assert.AreEqual(TableCategory.Event, resolver.GetMetadata(tableId).Category);
             var files = resolver.ResolvePhysicalFiles(tableId, "sh.600000");
             Assert.AreEqual(1, files.Count);
             Assert.IsTrue(files[0].EndsWith("sh.600000.csv"));
@@ -236,16 +246,17 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var resolver = new StorageResolver(_tempRoot);
 
             Assert.IsTrue(resolver.HasTable(tableId));
-            Assert.AreEqual("parquet", resolver.GetFormat(tableId));
-            Assert.AreEqual(StorageLayout.Hive, resolver.GetLayout(tableId));
-            Assert.AreEqual("none", resolver.GetPartition(tableId));
-            Assert.AreEqual("timeseries", resolver.GetCategory(tableId));
+            var meta = resolver.GetMetadata(tableId);
+            Assert.AreEqual(StorageFormat.Parquet, meta.Format);
+            Assert.AreEqual(StorageLayout.Hive, meta.Layout);
+            Assert.AreEqual(PartitionMode.None, meta.Partition);
+            Assert.AreEqual(TableCategory.Timeseries, meta.Category);
 
-            var fields = resolver.GetFieldNames(tableId);
+            var fields = meta.FieldNames;
             Assert.IsTrue(fields.Contains("symbol"));
             Assert.IsTrue(fields.Contains("close"));
-            Assert.AreEqual(typeof(double), resolver.GetFieldType(tableId, "close"));
-            Assert.AreEqual(typeof(string), resolver.GetFieldType(tableId, "symbol"));
+            Assert.AreEqual(typeof(double), meta.GetFieldType("close"));
+            Assert.AreEqual(typeof(string), meta.GetFieldType("symbol"));
 
             var files = resolver.ResolvePhysicalFiles(tableId);
             Assert.AreEqual(1, files.Count);
@@ -263,15 +274,16 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var resolver = new StorageResolver(_tempRoot);
 
             Assert.IsTrue(resolver.HasTable(tableId));
-            Assert.AreEqual("csv", resolver.GetFormat(tableId));
-            Assert.AreEqual(StorageLayout.Hive, resolver.GetLayout(tableId));
-            Assert.AreEqual("symbol", resolver.GetPartition(tableId));
+            var meta = resolver.GetMetadata(tableId);
+            Assert.AreEqual(StorageFormat.Csv, meta.Format);
+            Assert.AreEqual(StorageLayout.Hive, meta.Layout);
+            Assert.AreEqual(PartitionMode.Symbol, meta.Partition);
 
-            var fields = resolver.GetFieldNames(tableId);
+            var fields = meta.FieldNames;
             Assert.IsTrue(fields.Contains("symbol"));
             Assert.IsTrue(fields.Contains("close"));
-            Assert.AreEqual(typeof(double), resolver.GetFieldType(tableId, "close"));
-            Assert.AreEqual(typeof(string), resolver.GetFieldType(tableId, "symbol"));
+            Assert.AreEqual(typeof(double), meta.GetFieldType("close"));
+            Assert.AreEqual(typeof(string), meta.GetFieldType("symbol"));
         }
 
         [TestMethod]
@@ -280,6 +292,37 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             var resolver = new StorageResolver(_tempRoot);
             resolver.ResolvePhysicalFiles("unknown_table");
+        }
+
+        [TestMethod]
+        public void ResolvePhysicalFiles_PassMetadataDirectly_ShouldBypassCatalogQuery()
+        {
+            string tableId = "direct_meta_test";
+            CreateTable(tableId,
+                new { layout = "flat", partition = "symbol", format = "csv", schema = new { id = "int64" } },
+                new List<string> { "sh.600000.csv", "sz.000001.csv" });
+
+            var resolver = new StorageResolver(_tempRoot);
+            var meta = resolver.GetMetadata(tableId);
+            var files = resolver.ResolvePhysicalFiles(meta, "sh.600000");
+
+            Assert.AreEqual(1, files.Count);
+            Assert.IsTrue(files[0].EndsWith("sh.600000.csv"));
+        }
+
+        [TestMethod]
+        public void ClearCache_ShouldInvalidateCachedMetadataAndTopology()
+        {
+            string tableId = "clear_cache_test";
+            CreateTable(tableId, new { format = "csv", schema = new { price = "float64" } });
+
+            var resolver = new StorageResolver(_tempRoot);
+            var m1 = resolver.GetMetadata(tableId);
+            Assert.IsNotNull(m1);
+
+            resolver.ClearCache(tableId);
+            var m2 = resolver.GetMetadata(tableId);
+            Assert.AreNotSame(m1, m2);
         }
 
         #endregion

@@ -40,7 +40,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
-            using var source = new CsvTimeseriesSource(csvRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
             using (var provider = new TimeseriesRegistry(source, _tempCacheDir))
             {
@@ -59,7 +59,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string testDataRoot = GetRawDataRoot();
             string parquetRoot = Path.Combine(testDataRoot, "parquet");
             string tableId = "ashare.kline.1m.raw.custom";
-            using var source = new ParquetTimeseriesSource(parquetRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(parquetRoot, tableId);
 
             using var provider = new TimeseriesRegistry(source, _tempCacheDir);
 
@@ -77,7 +77,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
-            using var source = new CsvTimeseriesSource(csvRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
             using var provider = new TimeseriesRegistry(source, _tempCacheDir);
             
@@ -89,7 +89,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
-            using var source = new CsvTimeseriesSource(csvRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
             using var provider = new TimeseriesRegistry(source, _tempCacheDir);
             var buffer = provider.GetMatrix<double>("close");
@@ -103,7 +103,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
-            using var source = new CsvTimeseriesSource(csvRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
             using (var provider = new TimeseriesRegistry(source, _tempCacheDir))
             {
@@ -139,7 +139,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             string csvRoot = Path.Combine(GetRawDataRoot(), "csv");
             string tableId = "ashare.kline.1d.raw.baostock";
-            using var source = new CsvTimeseriesSource(csvRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
 
             // 1. 首次加载（缓存未命中，从源数据构建并写入磁盘缓存）
             using (var provider1 = new TimeseriesRegistry(

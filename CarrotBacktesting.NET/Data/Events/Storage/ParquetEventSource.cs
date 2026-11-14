@@ -8,22 +8,25 @@ namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
     /// Parquet 格式事件数据源驱动。
-    /// 基于 Parquet.Net 批量读取列数据并构建 IEventTable 实例。
+    /// 基于 Parquet.Net 批量读取列数据并构建 IEventTable 实例，实例不持久持有调度器。
     /// </summary>
     public class ParquetEventSource : IEventSource
     {
+        /// <summary>
+        /// 基于元数据与统一调度器加载事件表。
+        /// </summary>
         public IEventTable LoadTable(
+            TableMetadata metadata,
             IStorageResolver resolver,
-            string tableId,
             DateTime? startDate = null,
             DateTime? endDate = null,
             IReadOnlySet<string>? nullableFields = null)
         {
+            ArgumentNullException.ThrowIfNull(metadata);
             ArgumentNullException.ThrowIfNull(resolver);
-            ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
 
-            var fieldNames = resolver.GetFieldNames(tableId);
-            var resolverFields = resolver.GetNullableFields(tableId);
+            var fieldNames = metadata.FieldNames;
+            var resolverFields = metadata.NullableFields;
             IReadOnlySet<string> effectiveNullableFields;
             if (nullableFields == null || nullableFields.Count == 0)
             {
@@ -44,7 +47,7 @@ namespace CarrotBacktesting.NET.Data
             var ordinals = valueColumns.Select((f, idx) => (f, idx))
                 .ToDictionary(x => x.f, x => x.idx, StringComparer.OrdinalIgnoreCase);
 
-            var files = resolver.ResolvePhysicalFiles(tableId, null, startDate, endDate);
+            var files = resolver.ResolvePhysicalFiles(metadata, null, startDate, endDate);
             var data = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
             var globalEvents = new Dictionary<DateTime, List<DataRow>>();
 
@@ -123,7 +126,22 @@ namespace CarrotBacktesting.NET.Data
                 }
             }
 
-            return new EventTable(tableId, valueColumns, data, globalEvents.Count > 0 ? globalEvents : null);
+            return new EventTable(metadata.TableId, valueColumns, data, globalEvents.Count > 0 ? globalEvents : null);
+        }
+
+        /// <inheritdoc />
+        public IEventTable LoadTable(
+            IStorageResolver resolver,
+            string tableId,
+            DateTime? startDate = null,
+            DateTime? endDate = null,
+            IReadOnlySet<string>? nullableFields = null)
+        {
+            ArgumentNullException.ThrowIfNull(resolver);
+            ArgumentException.ThrowIfNullOrWhiteSpace(tableId);
+
+            var metadata = resolver.GetMetadata(tableId);
+            return LoadTable(metadata, resolver, startDate, endDate, nullableFields);
         }
     }
 }

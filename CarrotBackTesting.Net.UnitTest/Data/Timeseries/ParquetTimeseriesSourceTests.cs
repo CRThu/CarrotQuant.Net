@@ -87,7 +87,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(physicalData.Count > 0, "Physical Parquet data should contain rows.");
 
             // 2. 使用 ParquetTimeseriesSource 加载序列
-            using var source = new ParquetTimeseriesSource(parquetRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(parquetRoot, tableId);
             
             // 测试元数据接口
             int symbolIdx = source.GetSymbolIndex(testSymbol);
@@ -119,7 +119,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string parquetRoot = Path.Combine(testDataRoot, "parquet");
             string tableId = "ashare.kline.1m.raw.custom";
 
-            using var source = new ParquetTimeseriesSource(parquetRoot, tableId);
+            using var source = TimeseriesSourceFactory.Create(parquetRoot, tableId);
 
             Assert.IsTrue(source.Symbols.Count > 0, "Symbols should not be empty.");
             Assert.IsTrue(source.TradeDates.Count > 0, "TradeDates should not be empty.");
@@ -185,13 +185,13 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
 
             // 1. 无时区加载作为对照组
-            using var defaultSource = new ParquetTimeseriesSource(parquetRoot, tableId);
+            using var defaultSource = (TimeseriesSourceBase)TimeseriesSourceFactory.Create(parquetRoot, tableId);
             Assert.IsNull(defaultSource.SourceTimeZone);
             Assert.IsTrue(defaultSource.TradeDates.Count > 0);
             DateTime defaultFirstDate = defaultSource.TradeDates[0];
 
             // 2. 带 Asia/Shanghai (+8) 时区加载
-            using var tzSource = new ParquetTimeseriesSource(parquetRoot, tableId, timeZone: "Asia/Shanghai");
+            using var tzSource = (TimeseriesSourceBase)TimeseriesSourceFactory.Create(parquetRoot, tableId, timeZone: "Asia/Shanghai");
             Assert.IsNotNull(tzSource.SourceTimeZone);
             Assert.AreEqual("Asia/Shanghai", tzSource.SourceTimeZone.Id);
             Assert.AreEqual(defaultSource.TradeDates.Count, tzSource.TradeDates.Count);
@@ -239,7 +239,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                     await ParquetSerializer.SerializeAsync(samples, fs);
                 }
 
-                using var source = new ParquetTimeseriesSource(tempDir, "test_table");
+                using var source = TimeseriesSourceFactory.Create(tempDir, "test_table");
                 Assert.AreEqual(1, source.Symbols.Count);
                 Assert.AreEqual("sh.600000", source.Symbols[0]);
                 Assert.AreEqual(1, source.TradeDates.Count);
@@ -305,7 +305,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 }
 
                 // 未显式配置允许空值，读取时必须抛出方案 C 诊断异常
-                using var source = new ParquetTimeseriesSource(tempDir, "test_table_no_allow");
+                using var source = TimeseriesSourceFactory.Create(tempDir, "test_table_no_allow");
                 double[] closes = new double[2];
                 var ex = Assert.ThrowsException<InvalidDataException>(() =>
                 {
@@ -342,7 +342,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
                 // 通过构造参数传入允许空值的字段集合
                 var allowList = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Close" };
-                using var source = new ParquetTimeseriesSource(tempDir, "test_table_allow_param", nullableFields: allowList);
+                using var source = TimeseriesSourceFactory.Create(tempDir, "test_table_allow_param", nullableFields: allowList);
                 Assert.AreEqual(2, source.TradeDates.Count);
 
                 double[] closes = new double[2];
@@ -397,7 +397,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 File.WriteAllText(metadataPath, metaJson);
 
                 // 自动由 StorageResolver 读取 metadata.json 并注入白名单
-                using var source = new ParquetTimeseriesSource(tempDir, "test_table_allow_meta");
+                using var source = TimeseriesSourceFactory.Create(tempDir, "test_table_allow_meta");
                 Assert.AreEqual(2, source.TradeDates.Count);
 
                 double[] closes = new double[2];
@@ -435,7 +435,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 // 主时间戳列如果含有 null 且未显式配置允许空值，在初始化构建索引时立即抛出方案 C 诊断异常
                 var ex = Assert.ThrowsException<InvalidDataException>(() =>
                 {
-                    using var source = new ParquetTimeseriesSource(tempDir, "test_table_null_date");
+                    using var source = TimeseriesSourceFactory.Create(tempDir, "test_table_null_date");
                 });
                 Assert.IsTrue(ex.Message.Contains("Date") && ex.Message.Contains("共 1/2 行无效") && ex.Message.Contains("[0]"));
             }

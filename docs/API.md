@@ -130,31 +130,62 @@ data:
 ## 二、存储调度与数据物理层 (Abstraction.Data & Data)
 
 ### 1. IStorageResolver 与 StorageResolver
-数据区物理文件的全局调度管理器，负责统一解析 `metadata.json`、探测存储布局与执行按时间维度的动态分区剪枝。
+数据区物理存储调度与元数据注册中心单一内核，负责管理指定 `StorageRoot` 内的多表元数据解析缓存、物理文件寻址与 Hive 年月分区动态剪枝。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
+public enum StorageFormat { Parquet, Csv }
 public enum StorageLayout { Hive, Flat }
+public enum TableCategory { Timeseries, Event, Field }
+public enum PartitionMode { None, Symbol }
 
+/// <summary>
+/// 数据表不可变元数据聚合模型（单一事实来源 SSOT）。
+/// </summary>
+public sealed class TableMetadata
+{
+    public string TableId { get; }
+    public string TableDir { get; }
+    public string? MetadataPath { get; }
+    public StorageFormat Format { get; }
+    public StorageLayout Layout { get; }
+    public TableCategory Category { get; }
+    public PartitionMode Partition { get; }
+    public IReadOnlySet<string> NullableFields { get; }
+    public IReadOnlyList<string> FieldNames { get; }
+    public IReadOnlyDictionary<string, Type> FieldTypes { get; }
+    public string FileExtension => Format == StorageFormat.Parquet ? "parquet" : "csv";
+    public Type GetFieldType(string fieldName);
+}
+
+/// <summary>
+/// 存储调度与元数据统一瘦契约。
+/// </summary>
 public interface IStorageResolver
 {
     string StorageRoot { get; }
     bool HasTable(string tableId);
-    string GetMetadataPath(string tableId);
-    string GetFormat(string tableId);                 // "csv" 或 "parquet"
-    StorageLayout GetLayout(string tableId);           // Hive 或 Flat
-    string GetCategory(string tableId);               // "timeseries" 或 "events"
-    string GetPartition(string tableId);              // "symbol", "date" 或 "none"
-    IReadOnlySet<string> GetNullableFields(string tableId); // 允许为空字段白名单
-    IReadOnlyList<string> GetFieldNames(string tableId);
-    Type GetFieldType(string tableId, string fieldName);
     
     /// <summary>
-    /// 按代码路由与起止日期剪枝返回物理数据文件路径列表。
+    /// 获取指定表的权威元数据聚合模型（单点权威缓存）。
+    /// </summary>
+    TableMetadata GetMetadata(string tableId);
+
+    /// <summary>
+    /// 基于表 ID 解析物理数据文件列表，支持按代码路由与起止日期分区剪枝。
     /// </summary>
     IReadOnlyList<string> ResolvePhysicalFiles(
         string tableId, 
+        string? symbol = null, 
+        DateTime? startDate = null, 
+        DateTime? endDate = null);
+
+    /// <summary>
+    /// 直通重载：直接基于不可变表元数据解析物理文件列表，跳过字典哈希查找实现 O(1) 路由。
+    /// </summary>
+    IReadOnlyList<string> ResolvePhysicalFiles(
+        TableMetadata metadata, 
         string? symbol = null, 
         DateTime? startDate = null, 
         DateTime? endDate = null);
@@ -165,11 +196,15 @@ public interface IStorageResolver
 ```csharp
 var resolver = new StorageResolver("D:/QuantData");
 
-// 按时间范围执行 Hive 年份/月份剪枝解析
+// 1. 获取强类型不可变元数据聚合实体
+TableMetadata metadata = resolver.GetMetadata("ashare.kline.1d.raw.baostock");
+Console.WriteLine($"格式: {metadata.Format}, 布局: {metadata.Layout}, 字段数: {metadata.FieldNames.Count}");
+
+// 2. 直通解析物理文件（执行 Hive 年份/月份动态剪枝）
 var files = resolver.ResolvePhysicalFiles(
-    tableId: "ashare.kline.1m.raw.custom", 
-    startDate: new DateTime(2025, 1, 1), 
-    endDate: new DateTime(2025, 3, 31)
+    metadata: metadata,
+    startDate: new DateTime(2024, 1, 1), 
+    endDate: new DateTime(2024, 12, 31)
 );
 ```
 
@@ -200,9 +235,13 @@ public interface IMarketMetadata
 - **`TimeseriesSourceBase`**: 抽象基类（模板方法模式），收敛参数边界检查、ArrayPool 内存池租借与自适应翻倍扩容、时间戳排序、以及 `MarketDataAligner.AlignAndFill` 全局交易日历投射与 NaN 哨兵填充管线。
   - `CsvTimeseriesSource`: 继承基类，基于 Sylvan.Data.Csv 流式解析提供高性能无装箱行提取。
   - `ParquetTimeseriesSource`: 继承基类，基于 Parquet 列式存储与 YearCache 列缓存提供列切片按需提取。
-- **`TimeseriesSourceFactory`**: 时序数据源工厂类，依据 `IStorageResolver.GetFormat(tableId)` 自动派发构建对应数据源：
+- **`TimeseriesSourceFactory`**: 时序数据源工厂类，依据 `TableMetadata.Format` 强类型枚举自动派发构建对应数据源：
   ```csharp
+  // 方式一：基于物理根目录快速构建
   ITimeseriesSource source = TimeseriesSourceFactory.Create(storageRoot, tableId);
+
+  // 方式二：基于已加载的元数据与调度器精准装配
+  ITimeseriesSource source = TimeseriesSourceFactory.Create(metadata, resolver);
   ```
 
 > [!NOTE]

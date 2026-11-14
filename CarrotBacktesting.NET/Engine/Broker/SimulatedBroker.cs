@@ -1,7 +1,9 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
@@ -22,6 +24,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
         private readonly object _syncLock = new();
 
         private double _cash;
+        private double _frozenCash;
         private DateTime _currentDate = DateTime.MinValue;
         private DateTime _currentTime = DateTime.MinValue;
         private DateTime _currentExchangeDate = DateTime.MinValue;
@@ -31,6 +34,8 @@ namespace CarrotBacktesting.NET.Engine.Broker
 
         private readonly ConcurrentDictionary<string, PositionData> _positions = new();
         private readonly ConcurrentDictionary<string, OrderRecord> _orders = new();
+        private readonly Dictionary<string, List<string>> _pendingOrdersBySymbol = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, double> _marketPrices = new();
 
         public event Action<string, OrderStatus>? OnOrderStatusChanged;
         public event Action<ExecutionReport>? OnTrade;
@@ -60,7 +65,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
             // 防御 Unspecified：一律视为系统基准 UTC 并转换为交易所所在时区的当地日期
             DateTime utcTime = time.Kind == DateTimeKind.Utc
                 ? time
-                : DateTime.SpecifyKind(time, DateTimeKind.Utc);
+                : (time.Kind == DateTimeKind.Local ? time.ToUniversalTime() : DateTime.SpecifyKind(time, DateTimeKind.Utc));
             return TimeZoneInfo.ConvertTimeFromUtc(utcTime, _timeZone).Date;
         }
 
@@ -91,7 +96,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
         {
             lock (_syncLock)
             {
-                return _cash;
+                return _cash - _frozenCash;
             }
         }
 
@@ -99,14 +104,20 @@ namespace CarrotBacktesting.NET.Engine.Broker
         public decimal GetPosition(string symbol)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
-            return _positions.TryGetValue(symbol, out var pos) ? pos.TotalQuantity : 0m;
+            lock (_syncLock)
+            {
+                return _positions.TryGetValue(symbol, out var pos) ? pos.TotalQuantity : 0m;
+            }
         }
 
         /// <inheritdoc />
         public decimal GetAvailablePosition(string symbol)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
-            return _positions.TryGetValue(symbol, out var pos) ? pos.AvailableQuantity : 0m;
+            lock (_syncLock)
+            {
+                return _positions.TryGetValue(symbol, out var pos) ? pos.AvailableQuantity : 0m;
+            }
         }
 
         /// <inheritdoc />
@@ -145,18 +156,12 @@ namespace CarrotBacktesting.NET.Engine.Broker
                     double mult = GetMultiplier(pos.Symbol);
                     double marginRate = GetMarginRate(pos.Symbol);
 
-                    if (Math.Abs(marginRate - 1.0) < 1e-6 && !_config.AllowShort)
-                    {
-                        // 现货全额模式：总资产 = 现金 + 持仓最新市值
-                        total += (double)pos.TotalQuantity * pos.LastPrice * mult;
-                    }
-                    else
-                    {
-                        // 保证金衍生品模式：总资产 = 现金 + 占用保证金(纯计算) + 浮动盈亏
-                        double marginOccupied = Math.Abs((double)pos.TotalQuantity) * pos.AverageCost * mult * marginRate;
-                        double unrealizedPnL = (pos.LastPrice - pos.AverageCost) * (double)pos.TotalQuantity * mult;
-                        total += marginOccupied + unrealizedPnL;
-                    }
+                    // 通用资产盯市估值：总资产 = 现金 + 占用保证金 + 浮动盈亏
+                    // 当 marginRate = 1.0 且 mult = 1.0（现货）时，数学恒等推导为：
+                    // marginOccupied + unrealizedPnL = Qty * AvgCost + (LastPrice - AvgCost) * Qty = Qty * LastPrice（全额市值）
+                    double marginOccupied = Math.Abs((double)pos.TotalQuantity) * pos.AverageCost * mult * marginRate;
+                    double unrealizedPnL = (pos.LastPrice - pos.AverageCost) * (double)pos.TotalQuantity * mult;
+                    total += marginOccupied + unrealizedPnL;
                 }
                 return total;
             }
@@ -166,35 +171,83 @@ namespace CarrotBacktesting.NET.Engine.Broker
         public OrderStatus GetOrderStatus(string orderId)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
-            return _orders.TryGetValue(orderId, out var ord) ? ord.Status : OrderStatus.Rejected;
+            lock (_syncLock)
+            {
+                return _orders.TryGetValue(orderId, out var ord) ? ord.Status : OrderStatus.Rejected;
+            }
         }
 
         /// <inheritdoc />
         public void CancelOrder(string orderId)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
+            bool shouldDispatch = false;
+
             lock (_syncLock)
             {
                 if (_orders.TryGetValue(orderId, out var ord))
                 {
                     if (ord.Status == OrderStatus.Submitted || ord.Status == OrderStatus.Pending)
                     {
-                        ord.Status = OrderStatus.Canceled;
-                        if (OnOrderStatusChanged != null)
+                        // 释放挂单冻结资金
+                        _frozenCash = Math.Max(0.0, _frozenCash - ord.FrozenCash);
+                        ord.FrozenCash = 0.0;
+
+                        // 释放挂单冻结持仓
+                        if (_positions.TryGetValue(ord.Request.Symbol, out var pos))
                         {
-                            OnOrderStatusChanged.Invoke(orderId, OrderStatus.Canceled);
+                            pos.FrozenQuantity = Math.Max(0m, pos.FrozenQuantity - ord.FrozenPosition);
+                            if (pos.TotalQuantity > 0m)
+                            {
+                                pos.AvailableQuantity += ord.FrozenPosition;
+                            }
+                            else
+                            {
+                                // 空头撤单：恢复空头可用额度（朝远离零方向恢复，如 -3 - 2 = -5）
+                                pos.AvailableQuantity -= ord.FrozenPosition;
+                            }
                         }
+                        ord.FrozenPosition = 0m;
+
+                        ord.Status = OrderStatus.Canceled;
+
+                        // 从标的挂单桶中精确移除，若桶空则及时清理消除内存泄漏
+                        if (_pendingOrdersBySymbol.TryGetValue(ord.Request.Symbol, out var list))
+                        {
+                            list.Remove(orderId);
+                            if (list.Count == 0)
+                            {
+                                _pendingOrdersBySymbol.Remove(ord.Request.Symbol);
+                            }
+                        }
+
+                        _positionsSnapshot = null;
+                        shouldDispatch = true;
                     }
                 }
+            }
+
+            // 锁外派发事件，彻底杜绝回调重入引发死锁
+            if (shouldDispatch)
+            {
+                OnOrderStatusChanged?.Invoke(orderId, OrderStatus.Canceled);
             }
         }
 
         /// <inheritdoc />
         public void Step(DateTime currentTime)
         {
+            List<KeyValuePair<string, double>>? pendingSymbolsToMatch = null;
+
             lock (_syncLock)
             {
                 _currentTime = currentTime;
+
+                DateTime utcTime = currentTime.Kind == DateTimeKind.Utc
+                    ? currentTime
+                    : (currentTime.Kind == DateTimeKind.Local 
+                        ? currentTime.ToUniversalTime() 
+                        : DateTime.SpecifyKind(currentTime, DateTimeKind.Utc));
 
                 // 首次步进或时间发生跃迁时初始化换日阈值
                 if (_nextRollTimeUtc == DateTime.MinValue || currentTime < _currentDate)
@@ -203,9 +256,32 @@ namespace CarrotBacktesting.NET.Engine.Broker
                 }
 
                 // 时间戳阈值比对：检测是否到达交易所本地 00:00:00 换日时刻
-                if (currentTime >= _nextRollTimeUtc)
+                if (utcTime >= _nextRollTimeUtc)
                 {
                     ExecuteDayRollover(currentTime);
+                }
+
+                // 仅针对当前有未成交挂单的标的提取行情快照，准备在锁外推进撮合
+                if (_pendingOrdersBySymbol.Count > 0)
+                {
+                    pendingSymbolsToMatch = new List<KeyValuePair<string, double>>(_pendingOrdersBySymbol.Count);
+                    foreach (var symbol in _pendingOrdersBySymbol.Keys)
+                    {
+                        if (_marketPrices.TryGetValue(symbol, out var price))
+                        {
+                            pendingSymbolsToMatch.Add(new KeyValuePair<string, double>(symbol, price));
+                        }
+                    }
+                }
+            }
+
+            // 锁外执行挂单撮合，确保撮合过程中的事件派发为纯粹的 Open Calls
+            if (pendingSymbolsToMatch != null)
+            {
+                for (int i = 0; i < pendingSymbolsToMatch.Count; i++)
+                {
+                    var kvp = pendingSymbolsToMatch[i];
+                    MatchPendingOrdersForSymbol(kvp.Key, kvp.Value);
                 }
             }
         }
@@ -248,26 +324,64 @@ namespace CarrotBacktesting.NET.Engine.Broker
         public void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions)
         {
             ArgumentNullException.ThrowIfNull(positions);
+            List<string>? canceledOrderIds = null;
+
             lock (_syncLock)
             {
                 _cash = cash;
+                _frozenCash = 0.0;
+
+                // 同步账户状态时，将现有在途挂单显式标记为 Canceled 并清空冻结
+                if (_pendingOrdersBySymbol.Count > 0)
+                {
+                    canceledOrderIds = new List<string>();
+                    foreach (var list in _pendingOrdersBySymbol.Values)
+                    {
+                        foreach (var orderId in list)
+                        {
+                            if (_orders.TryGetValue(orderId, out var ord))
+                            {
+                                ord.Status = OrderStatus.Canceled;
+                                ord.FrozenCash = 0.0;
+                                ord.FrozenPosition = 0m;
+                            }
+                            canceledOrderIds.Add(orderId);
+                        }
+                    }
+                    _pendingOrdersBySymbol.Clear();
+                }
+
                 _positions.Clear();
                 _positionsSnapshot = null;
+
                 foreach (var kvp in positions)
                 {
                     if (kvp.Value != 0m)
                     {
-                        _positions[kvp.Key] = new PositionData(kvp.Key)
+                        var pos = new PositionData(kvp.Key)
                         {
                             TotalQuantity = kvp.Value,
                             AvailableQuantity = kvp.Value
                         };
+                        // 若已存在最新市场行情，同步赋予基准价以确保后续盯市估值自洽
+                        if (_marketPrices.TryGetValue(kvp.Key, out var lp))
+                        {
+                            pos.LastPrice = lp;
+                            pos.AverageCost = lp;
+                        }
+                        _positions[kvp.Key] = pos;
                     }
                 }
             }
-        }
 
-        private readonly ConcurrentDictionary<string, double> _marketPrices = new();
+            if (canceledOrderIds != null)
+            {
+                foreach (var id in canceledOrderIds)
+                {
+                    OnOrderStatusChanged?.Invoke(id, OrderStatus.Canceled);
+                }
+            }
+        }
 
         /// <summary>
         /// 更新标的最新行情价格（用于驱动市价单撮合与盯市估值）。
@@ -276,13 +390,27 @@ namespace CarrotBacktesting.NET.Engine.Broker
         /// <param name="price">最新市场行情价格。</param>
         public void UpdateMarketPrice(string symbol, double price)
         {
-            if (!string.IsNullOrWhiteSpace(symbol) && price > 0.0 && !double.IsNaN(price) && !double.IsInfinity(price))
+            if (string.IsNullOrWhiteSpace(symbol) || price <= 0.0 || double.IsNaN(price) || double.IsInfinity(price))
+            {
+                return;
+            }
+
+            bool hasPending = false;
+            lock (_syncLock)
             {
                 _marketPrices[symbol] = price;
                 if (_positions.TryGetValue(symbol, out var pos))
                 {
                     pos.LastPrice = price;
                 }
+
+                hasPending = _pendingOrdersBySymbol.ContainsKey(symbol);
+            }
+
+            // 收到最新价格时立即在锁外触发该标的未成交限价挂单的撮合检查
+            if (hasPending)
+            {
+                MatchPendingOrdersForSymbol(symbol, price);
             }
         }
 
@@ -291,15 +419,42 @@ namespace CarrotBacktesting.NET.Engine.Broker
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            // 市价单且未指定价格时，自动尝试从已缓存的最新市场行情获取基准价
-            double price = request.Price;
-            if ((price <= 0.0 || double.IsNaN(price)) && _marketPrices.TryGetValue(request.Symbol, out var lastPrice) && lastPrice > 0.0)
+            double basePrice;
+            if (request.Type == OrderType.Limit)
             {
-                price = lastPrice;
+                // 限价单：request.Price 是委托限价。撮合基准市价优先从最新市场行情获取
+                double marketPrice = 0.0;
+                lock (_syncLock)
+                {
+                    if (_marketPrices.TryGetValue(request.Symbol, out var lp) && lp > 0.0)
+                    {
+                        marketPrice = lp;
+                    }
+                }
+                basePrice = marketPrice > 0.0 ? marketPrice : request.Price;
+            }
+            else
+            {
+                // 市价单：若委托中显式指定了基准价（回测驱动），优先使用；否则从最新市场行情获取
+                if (request.Price > 0.0 && !double.IsNaN(request.Price) && !double.IsInfinity(request.Price))
+                {
+                    basePrice = request.Price;
+                }
+                else
+                {
+                    double marketPrice = 0.0;
+                    lock (_syncLock)
+                    {
+                        if (_marketPrices.TryGetValue(request.Symbol, out var lp) && lp > 0.0)
+                        {
+                            marketPrice = lp;
+                        }
+                    }
+                    basePrice = marketPrice;
+                }
             }
 
-            // 默认使用委托中指定的价格作为基准价立即执行回测撮合
-            return ExecuteOrder(request, price, null);
+            return ExecuteOrder(request, basePrice, null);
         }
 
         /// <summary>
@@ -318,304 +473,487 @@ namespace CarrotBacktesting.NET.Engine.Broker
                 : request.ClientOrderId;
 
             var record = new OrderRecord(orderId, request);
-            _orders[orderId] = record;
+
+            // 栈上暂存事件，退出锁后再行开放调用（Open Calls），杜绝死锁与重入，且零 GC 分配
+            OrderStatus? status1 = OrderStatus.Submitted;
+            OrderStatus? status2 = null;
+            ExecutionReport? tradeReport = null;
+            PositionEvent? positionReport = null;
 
             lock (_syncLock)
             {
+                // 订单登记置于锁内，彻底消除与并发 CancelOrder 的覆盖时序竞态
                 record.Status = OrderStatus.Submitted;
-                if (OnOrderStatusChanged != null)
-                {
-                    OnOrderStatusChanged.Invoke(orderId, OrderStatus.Submitted);
-                }
+                _orders[orderId] = record;
 
                 // 1. 基础参数有效性校验
                 if (request.Quantity <= 0m || basePrice <= 0.0 || double.IsNaN(basePrice) || double.IsInfinity(basePrice))
                 {
-                    RejectOrder(record, "Quantity or basePrice must be positive and finite.");
-                    return orderId;
-                }
-
-                var pos = _positions.GetOrAdd(request.Symbol, s => new PositionData(s));
-
-                // 2. 卖空权限与可用持仓检查
-                if (!_config.AllowShort && request.IsSell)
-                {
-                    if (pos.TotalQuantity <= 0m || request.Quantity > pos.AvailableQuantity)
-                    {
-                        RejectOrder(record, $"Insufficient available position. Total={pos.TotalQuantity}, Available={pos.AvailableQuantity}, Request={request.Quantity}");
-                        return orderId;
-                    }
-                }
-
-                // 3. 成交量流动性检查 (VolumeLimit)
-                if (bar != null)
-                {
-                    if (_config.OnCheckVolume != null)
-                    {
-                        if (!_config.OnCheckVolume(request, bar))
-                        {
-                            RejectOrder(record, "Rejected by OnCheckVolume hook (liquidity constraint).");
-                            return orderId;
-                        }
-                    }
-                    else if (_config.VolumeLimit > 0.0)
-                    {
-                        double barVolume = bar.GetDouble("volume");
-                        double maxAllowed = barVolume * _config.VolumeLimit;
-                        if ((double)request.Quantity > maxAllowed)
-                        {
-                            RejectOrder(record, $"Exceeded volume limit: {request.Quantity} > {maxAllowed} (BarVolume={barVolume} * {_config.VolumeLimit})");
-                            return orderId;
-                        }
-                    }
-                }
-
-                // 4. 涨跌停封板检查 (CheckLimit)
-                if (_config.CheckLimit && bar != null)
-                {
-                    if (_config.OnCheckLimit != null)
-                    {
-                        if (!_config.OnCheckLimit(request, bar))
-                        {
-                            RejectOrder(record, "Rejected by OnCheckLimit hook (price limit hit).");
-                            return orderId;
-                        }
-                    }
-                }
-
-                // 5. 滑点撮合计算
-                double fillPrice;
-                if (_config.OnCalculateSlippage != null && bar != null)
-                {
-                    fillPrice = _config.OnCalculateSlippage(request, basePrice, bar);
+                    RejectOrder(record, "Quantity or basePrice must be positive and finite.", out status2);
                 }
                 else
                 {
-                    fillPrice = request.IsBuy
-                        ? basePrice * (1.0 + _config.Slippage)
-                        : basePrice * (1.0 - _config.Slippage);
-                }
+                    var pos = _positions.GetOrAdd(request.Symbol, s => new PositionData(s));
 
-                // 6. 获取合约规格与保证金率
-                double multiplier = GetMultiplier(request.Symbol);
-                double marginRate = GetMarginRate(request.Symbol);
-                int settleDays = GetSettleDays(request.Symbol);
-
-                // 7. 计算名义成交额与手续费
-                double turnover = (double)request.Quantity * fillPrice * multiplier;
-                double commission = _config.OnCalculateFee != null
-                    ? _config.OnCalculateFee(request, turnover)
-                    : Math.Max(_config.MinFee, turnover * _config.FeeRate);
-
-                // 8. 资金充足性校验
-                bool isSpotStock = Math.Abs(marginRate - 1.0) < 1e-6 && !_config.AllowShort;
-                double requiredCash;
-
-                if (isSpotStock)
-                {
-                    requiredCash = request.IsBuy ? (turnover + commission) : commission;
-                }
-                else
-                {
-                    // 衍生品/期货：开仓占用保证金+费用；纯平仓仅需支付手续费；反手开仓需支付手续费与反手新开份额的保证金
-                    decimal closeQty = Math.Min(request.Quantity, Math.Abs(pos.TotalQuantity));
-                    decimal remainingQty = request.Quantity - closeQty;
-                    bool isPureOpening = pos.TotalQuantity == 0m || (request.IsBuy && pos.TotalQuantity > 0m) || (request.IsSell && pos.TotalQuantity < 0m);
-
-                    if (isPureOpening)
+                    // 2. 卖空权限与可用持仓检查
+                    if (request.IsSell && !ValidateSellPosition(record, pos, out status2))
                     {
-                        requiredCash = turnover * marginRate + commission;
+                        // 校验失败已被 RejectOrder 标记
+                    }
+                    // 3. 成交量流动性检查 (VolumeLimit)
+                    else if (bar != null && !ValidateLiquidity(record, bar, out status2))
+                    {
+                        // 校验失败已被 RejectOrder 标记
+                    }
+                    // 4. 涨跌停封板检查 (CheckLimit)
+                    else if (bar != null && _config.CheckLimit && !ValidatePriceLimit(record, bar, out status2))
+                    {
+                        // 校验失败已被 RejectOrder 标记
                     }
                     else
                     {
-                        double flipMargin = (double)remainingQty * fillPrice * multiplier * marginRate;
-                        requiredCash = flipMargin + commission;
+                        // 判断是否应作为未成交限价挂单保留（买单限价低于基准价，或卖单限价高于基准价）
+                        bool isUnfilledLimitOrder = false;
+                        if (request.Type == OrderType.Limit && request.Price > 0.0)
+                        {
+                            if (request.IsBuy && request.Price < basePrice)
+                            {
+                                isUnfilledLimitOrder = true;
+                            }
+                            else if (!request.IsBuy && request.Price > basePrice)
+                            {
+                                isUnfilledLimitOrder = true;
+                            }
+                        }
+
+                        // 未成交挂单按委托限价估算冻结本金；即时成交订单按基准市价计算滑点成交
+                        double targetPrice = isUnfilledLimitOrder ? request.Price : basePrice;
+
+                        // 5. 滑点撮合计算
+                        double fillPrice;
+                        if (_config.OnCalculateSlippage != null && bar != null)
+                        {
+                            fillPrice = _config.OnCalculateSlippage(request, targetPrice, bar);
+                        }
+                        else
+                        {
+                            fillPrice = request.IsBuy
+                                ? targetPrice * (1.0 + _config.Slippage)
+                                : targetPrice * (1.0 - _config.Slippage);
+                        }
+
+                        // Taker 激进限价单保护：成交价绝严禁劣于限价（买入成交价 <= LimitPrice，卖出成交价 >= LimitPrice）
+                        if (request.Type == OrderType.Limit && request.Price > 0.0)
+                        {
+                            fillPrice = request.IsBuy
+                                ? Math.Min(fillPrice, request.Price)
+                                : Math.Max(fillPrice, request.Price);
+                        }
+
+                        // 6. 获取合约规格与保证金率
+                        double multiplier = GetMultiplier(request.Symbol);
+                        double marginRate = GetMarginRate(request.Symbol);
+                        int settleDays = GetSettleDays(request.Symbol);
+
+                        // 7. 计算名义成交额与手续费
+                        double turnover = (double)request.Quantity * fillPrice * multiplier;
+                        double commission = _config.OnCalculateFee != null
+                            ? _config.OnCalculateFee(request, turnover)
+                            : Math.Max(_config.MinFee, turnover * _config.FeeRate);
+
+                        // 8. 仓位切分与资金充足性校验（通用单一路径）
+                        bool isOpposite = (request.IsBuy && pos.TotalQuantity < 0m) || (!request.IsBuy && pos.TotalQuantity > 0m);
+                        decimal closableCapacity = 0m;
+                        if (isOpposite)
+                        {
+                            closableCapacity = pos.TotalQuantity > 0m 
+                                ? Math.Max(0m, pos.AvailableQuantity) 
+                                : Math.Max(0m, Math.Abs(pos.TotalQuantity) - pos.FrozenQuantity);
+                        }
+                        decimal closeQty = isOpposite ? Math.Min(request.Quantity, closableCapacity) : 0m;
+                        decimal openQty = request.Quantity - closeQty;
+
+                        // 开仓部分所需冻结保证金与手续费（纯平仓仅需支付手续费）
+                        double requiredMargin = (double)openQty * fillPrice * multiplier * marginRate;
+                        double requiredCash = requiredMargin + commission;
+
+                        double availableCash = _cash - _frozenCash;
+                        if (availableCash < requiredCash)
+                        {
+                            RejectOrder(record, $"Insufficient cash: available={availableCash:F2}, required={requiredCash:F2}", out status2);
+                        }
+                        else
+                        {
+                            DateTime tradeTime = _currentTime != DateTime.MinValue 
+                                ? _currentTime 
+                                : (_currentDate != DateTime.MinValue ? _currentDate : DateTime.UtcNow);
+
+                            if (isUnfilledLimitOrder)
+                            {
+                                // 两阶段冻结 Phase 1：预冻结资金与持仓，进入待撮合挂单队列
+                                _frozenCash += requiredCash;
+                                record.FrozenCash = requiredCash;
+
+                                if (closeQty > 0m)
+                                {
+                                    if (pos.TotalQuantity > 0m)
+                                    {
+                                        pos.AvailableQuantity -= closeQty;
+                                    }
+                                    else
+                                    {
+                                        // 空头平仓挂单冻结：可用持仓朝零方向收敛（如 -5 + 2 = -3）
+                                        pos.AvailableQuantity += closeQty;
+                                    }
+                                    pos.FrozenQuantity += closeQty;
+                                    record.FrozenPosition = closeQty;
+                                }
+
+                                record.CloseQuantity = closeQty;
+                                record.OpenQuantity = openQty;
+                                record.Multiplier = multiplier;
+                                record.MarginRate = marginRate;
+                                record.SettleDays = settleDays;
+                                record.Status = OrderStatus.Submitted;
+
+                                if (!_pendingOrdersBySymbol.TryGetValue(request.Symbol, out var list))
+                                {
+                                    list = new List<string>();
+                                    _pendingOrdersBySymbol[request.Symbol] = list;
+                                }
+                                list.Add(orderId);
+                                _positionsSnapshot = null;
+
+                                // 保持挂单处于 Submitted 状态，无额外 status2
+                                status2 = null;
+                            }
+                            else
+                            {
+                                // 立即成交（市价单或已穿透限价的限价单）
+                                ApplyOrderFill(record, pos, fillPrice, multiplier, marginRate, settleDays, closeQty, openQty, commission, tradeTime, out tradeReport, out positionReport);
+                                status2 = OrderStatus.Filled;
+                            }
+                        }
                     }
                 }
+            }
 
-                if (_cash < requiredCash)
+            // 锁外派发事件，彻底杜绝回调重入引发死锁与状态竞争
+            if (status1.HasValue)
+            {
+                OnOrderStatusChanged?.Invoke(orderId, status1.Value);
+            }
+            if (status2.HasValue)
+            {
+                OnOrderStatusChanged?.Invoke(orderId, status2.Value);
+            }
+            if (tradeReport != null)
+            {
+                OnTrade?.Invoke(tradeReport);
+            }
+            if (positionReport != null)
+            {
+                OnPositionChanged?.Invoke(positionReport);
+            }
+
+            return orderId;
+        }
+
+        private bool ValidateSellPosition(OrderRecord record, PositionData pos, out OrderStatus? status)
+        {
+            status = null;
+            if (!_config.AllowShort)
+            {
+                if (pos.TotalQuantity <= 0m || record.Request.Quantity > pos.AvailableQuantity)
                 {
-                    RejectOrder(record, $"Insufficient cash: available={_cash:F2}, required={requiredCash:F2}");
-                    return orderId;
+                    RejectOrder(record, $"Insufficient available position. Total={pos.TotalQuantity}, Available={pos.AvailableQuantity}, Request={record.Request.Quantity}", out status);
+                    return false;
+                }
+            }
+            else if (pos.PendingLots.Count > 0 && record.Request.Quantity > pos.AvailableQuantity)
+            {
+                // 即使全局允许做空（如期货对冲），当前标的若尚有在途未交收份额（T+N），也绝对严禁违规提前平仓
+                RejectOrder(record, $"Cannot sell unsettled T+N pending lots. Total={pos.TotalQuantity}, Available={pos.AvailableQuantity}, Request={record.Request.Quantity}", out status);
+                return false;
+            }
+            return true;
+        }
+
+        private bool ValidateLiquidity(OrderRecord record, IDataRow bar, out OrderStatus? status)
+        {
+            status = null;
+            if (_config.OnCheckVolume != null)
+            {
+                if (!_config.OnCheckVolume(record.Request, bar))
+                {
+                    RejectOrder(record, "Rejected by OnCheckVolume hook (liquidity constraint).", out status);
+                    return false;
+                }
+            }
+            else if (_config.VolumeLimit > 0.0)
+            {
+                double barVolume = bar.GetDouble("volume");
+                double maxAllowed = barVolume * _config.VolumeLimit;
+                if ((double)record.Request.Quantity > maxAllowed)
+                {
+                    RejectOrder(record, $"Exceeded volume limit: {record.Request.Quantity} > {maxAllowed} (BarVolume={barVolume} * {_config.VolumeLimit})", out status);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private bool ValidatePriceLimit(OrderRecord record, IDataRow bar, out OrderStatus? status)
+        {
+            status = null;
+            if (_config.OnCheckLimit != null)
+            {
+                if (!_config.OnCheckLimit(record.Request, bar))
+                {
+                    RejectOrder(record, "Rejected by OnCheckLimit hook (price limit hit).", out status);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void ApplyOrderFill(
+            OrderRecord record,
+            PositionData pos,
+            double fillPrice,
+            double multiplier,
+            double marginRate,
+            int settleDays,
+            decimal closeQty,
+            decimal openQty,
+            double commission,
+            DateTime tradeTime,
+            out ExecutionReport tradeReport,
+            out PositionEvent positionReport)
+        {
+            // 统一扣减手续费
+            _cash -= commission;
+
+            // 阶段 A：平仓结算（释放原持仓对应的保证金，并结转平仓已实现盈亏）
+            if (closeQty > 0m)
+            {
+                double pnlPerUnit = pos.TotalQuantity > 0m
+                    ? (fillPrice - pos.AverageCost)
+                    : (pos.AverageCost - fillPrice);
+                double realizedPnL = pnlPerUnit * (double)closeQty * multiplier;
+                double marginReleased = (double)closeQty * pos.AverageCost * multiplier * marginRate;
+
+                _cash += (marginReleased + realizedPnL);
+
+                if (pos.TotalQuantity > 0m)
+                {
+                    pos.TotalQuantity -= closeQty;
+                    pos.AvailableQuantity -= closeQty;
+                }
+                else
+                {
+                    pos.TotalQuantity += closeQty;
+                    pos.AvailableQuantity += closeQty;
                 }
 
-                // 9. 状态跃迁：扣款与更新持仓
-                DateTime tradeTime = _currentTime != DateTime.MinValue 
-                    ? _currentTime 
-                    : (_currentDate != DateTime.MinValue ? _currentDate : DateTime.UtcNow);
-
-                if (isSpotStock)
+                if (pos.TotalQuantity == 0m)
                 {
-                    // 现货全额模式状态跃迁
-                    if (request.IsBuy)
+                    pos.AverageCost = 0.0;
+                    if (openQty == 0m && pos.PendingLots.Count == 0 && pos.FrozenQuantity == 0m)
                     {
-                        _cash -= (turnover + commission);
+                        _positions.TryRemove(record.Request.Symbol, out _);
+                    }
+                }
+            }
 
-                        decimal newTotal = pos.TotalQuantity + request.Quantity;
-                        pos.AverageCost = ((double)pos.TotalQuantity * pos.AverageCost + (double)request.Quantity * fillPrice) / (double)newTotal;
-                        pos.TotalQuantity = newTotal;
+            // 阶段 B：开仓建仓（扣除新开仓所需保证金，更新均价与到期队列）
+            if (openQty > 0m)
+            {
+                double openTurnover = (double)openQty * fillPrice * multiplier;
+                double marginAdded = openTurnover * marginRate;
+                _cash -= marginAdded;
 
+                if (pos.TotalQuantity == 0m)
+                {
+                    // 初始建仓（或平仓后反手新开）
+                    pos.AverageCost = fillPrice;
+                    pos.TotalQuantity = record.Request.IsBuy ? openQty : -openQty;
+
+                    if (settleDays == 0)
+                    {
+                        pos.AvailableQuantity = pos.TotalQuantity;
+                    }
+                    else
+                    {
+                        if (record.Request.IsBuy)
+                        {
+                            DateTime localTradeDate = ToExchangeDate(tradeTime);
+                            pos.PendingLots.Add(new PendingLot(openQty, localTradeDate.AddDays(settleDays)));
+                        }
+                        else
+                        {
+                            pos.AvailableQuantity = -openQty;
+                        }
+                    }
+                    _positions[record.Request.Symbol] = pos;
+                }
+                else
+                {
+                    // 同向加仓：加权平均成本更新
+                    decimal currentAbsQty = Math.Abs(pos.TotalQuantity);
+                    decimal newAbsQty = currentAbsQty + openQty;
+                    pos.AverageCost = ((double)currentAbsQty * pos.AverageCost + (double)openQty * fillPrice) / (double)newAbsQty;
+
+                    if (record.Request.IsBuy)
+                    {
+                        pos.TotalQuantity += openQty;
                         if (settleDays == 0)
                         {
-                            pos.AvailableQuantity += request.Quantity;
+                            pos.AvailableQuantity += openQty;
                         }
                         else
                         {
                             DateTime localTradeDate = ToExchangeDate(tradeTime);
-                            pos.PendingLots.Add(new PendingLot(request.Quantity, localTradeDate.AddDays(settleDays)));
+                            pos.PendingLots.Add(new PendingLot(openQty, localTradeDate.AddDays(settleDays)));
                         }
                     }
                     else
                     {
-                        _cash += (turnover - commission);
-                        pos.TotalQuantity -= request.Quantity;
-                        pos.AvailableQuantity -= request.Quantity;
-                        if (pos.TotalQuantity == 0m)
-                        {
-                            pos.AverageCost = 0.0;
-                            if (pos.PendingLots.Count == 0)
-                            {
-                                _positions.TryRemove(request.Symbol, out _);
-                            }
-                        }
+                        pos.TotalQuantity -= openQty;
+                        pos.AvailableQuantity -= openQty;
                     }
                 }
-                else
+            }
+
+            pos.LastPrice = fillPrice;
+            _marketPrices[record.Request.Symbol] = fillPrice;
+            _positionsSnapshot = null;
+
+            record.Status = OrderStatus.Filled;
+
+            tradeReport = new ExecutionReport(
+                record.OrderId,
+                record.Request.Symbol,
+                fillPrice,
+                record.Request.Quantity,
+                commission,
+                tradeTime);
+
+            positionReport = new PositionEvent(
+                record.Request.Symbol,
+                pos.TotalQuantity,
+                pos.AverageCost,
+                tradeTime);
+        }
+
+        private void MatchPendingOrdersForSymbol(string symbol, double marketPrice)
+        {
+            DateTime tradeTime = _currentTime != DateTime.MinValue 
+                ? _currentTime 
+                : (_currentDate != DateTime.MinValue ? _currentDate : DateTime.UtcNow);
+
+            FillDispatch[]? rentedDispatches = null;
+            int dispatchCount = 0;
+
+            lock (_syncLock)
+            {
+                // 强制使用锁内最新权威市场行情，防御锁外传参的陈旧时序竞态
+                if (_marketPrices.TryGetValue(symbol, out var latestPrice) && latestPrice > 0.0)
                 {
-                    // 期货 / 衍生品双向保证金模式状态跃迁
-                    _cash -= commission;
+                    marketPrice = latestPrice;
+                }
 
-                    if (request.IsBuy)
+                if (!_pendingOrdersBySymbol.TryGetValue(symbol, out var list) || list.Count == 0)
+                {
+                    return;
+                }
+
+                int initialCount = list.Count;
+                rentedDispatches = ArrayPool<FillDispatch>.Shared.Rent(initialCount);
+
+                // 正序按照 FIFO 时间优先推进撮合
+                for (int i = 0; i < list.Count; )
+                {
+                    string orderId = list[i];
+                    if (!_orders.TryGetValue(orderId, out var ord) || ord.Status != OrderStatus.Submitted)
                     {
-                        if (pos.TotalQuantity >= 0m)
-                        {
-                            // 多头加仓
-                            double margin = turnover * marginRate;
-                            _cash -= margin;
+                        list.RemoveAt(i);
+                        continue;
+                    }
 
-                            decimal newTotal = pos.TotalQuantity + request.Quantity;
-                            pos.AverageCost = ((double)pos.TotalQuantity * pos.AverageCost + (double)request.Quantity * fillPrice) / (double)newTotal;
-                            pos.TotalQuantity = newTotal;
-                            pos.AvailableQuantity += request.Quantity;
+                    // 判断限价单是否触碰成交价（买单市价 <= 委托价，卖单市价 >= 委托价）
+                    bool canFill = ord.Request.IsBuy 
+                        ? marketPrice <= ord.Request.Price 
+                        : marketPrice >= ord.Request.Price;
+
+                    if (canFill)
+                    {
+                        list.RemoveAt(i);
+
+                        // 限价挂单被动撮合（Maker 规则）：成交价严格受委托限价保护（买入成交价 <= 委托价，卖出成交价 >= 委托价）
+                        double fillPrice = ord.Request.Price;
+
+                        var pos = _positions.GetOrAdd(symbol, s => new PositionData(s));
+
+                        // 释放挂单阶段预借的持仓与资金，随后由统一的 ApplyOrderFill 权威执行扣减与结转
+                        if (pos.TotalQuantity > 0m)
+                        {
+                            pos.AvailableQuantity += ord.FrozenPosition;
                         }
                         else
                         {
-                            // 空头平仓
-                            decimal closeQty = Math.Min(request.Quantity, Math.Abs(pos.TotalQuantity));
-                            double realizedPnL = (pos.AverageCost - fillPrice) * (double)closeQty * multiplier;
-                            double marginReleased = (double)closeQty * pos.AverageCost * multiplier * marginRate;
-
-                            _cash += (marginReleased + realizedPnL);
-                            pos.TotalQuantity += closeQty;
-                            pos.AvailableQuantity += closeQty;
-
-                            decimal remainingQty = request.Quantity - closeQty;
-                            if (remainingQty > 0m)
-                            {
-                                // 反手开多
-                                double remTurnover = (double)remainingQty * fillPrice * multiplier;
-                                double margin = remTurnover * marginRate;
-                                _cash -= margin;
-                                pos.TotalQuantity = remainingQty;
-                                pos.AvailableQuantity = remainingQty;
-                                pos.AverageCost = fillPrice;
-                                _positions[request.Symbol] = pos;
-                            }
-                            else if (pos.TotalQuantity == 0m)
-                            {
-                                pos.AverageCost = 0.0;
-                                _positions.TryRemove(request.Symbol, out _);
-                            }
+                            pos.AvailableQuantity -= ord.FrozenPosition;
                         }
+                        pos.FrozenQuantity = Math.Max(0m, pos.FrozenQuantity - ord.FrozenPosition);
+                        _frozenCash = Math.Max(0.0, _frozenCash - ord.FrozenCash);
+
+                        // 重新根据最新成交价计算名义成交额与手续费
+                        double turnover = (double)ord.Request.Quantity * fillPrice * ord.Multiplier;
+                        double commission = _config.OnCalculateFee != null
+                            ? _config.OnCalculateFee(ord.Request, turnover)
+                            : Math.Max(_config.MinFee, turnover * _config.FeeRate);
+
+                        ApplyOrderFill(ord, pos, fillPrice, ord.Multiplier, ord.MarginRate, ord.SettleDays, ord.CloseQuantity, ord.OpenQuantity, commission, tradeTime, out var tradeReport, out var posEvent);
+
+                        rentedDispatches[dispatchCount++] = new FillDispatch(ord.OrderId, tradeReport, posEvent);
                     }
                     else
                     {
-                        if (pos.TotalQuantity <= 0m)
-                        {
-                            // 空头加仓
-                            double margin = turnover * marginRate;
-                            _cash -= margin;
-
-                            decimal newTotal = Math.Abs(pos.TotalQuantity) + request.Quantity;
-                            pos.AverageCost = ((double)Math.Abs(pos.TotalQuantity) * pos.AverageCost + (double)request.Quantity * fillPrice) / (double)newTotal;
-                            pos.TotalQuantity -= request.Quantity;
-                            pos.AvailableQuantity -= request.Quantity;
-                        }
-                        else
-                        {
-                            // 多头平仓
-                            decimal closeQty = Math.Min(request.Quantity, pos.TotalQuantity);
-                            double realizedPnL = (fillPrice - pos.AverageCost) * (double)closeQty * multiplier;
-                            double marginReleased = (double)closeQty * pos.AverageCost * multiplier * marginRate;
-
-                            _cash += (marginReleased + realizedPnL);
-                            pos.TotalQuantity -= closeQty;
-                            pos.AvailableQuantity -= closeQty;
-
-                            decimal remainingQty = request.Quantity - closeQty;
-                            if (remainingQty > 0m)
-                            {
-                                // 反手开空
-                                double remTurnover = (double)remainingQty * fillPrice * multiplier;
-                                double margin = remTurnover * marginRate;
-                                _cash -= margin;
-                                pos.TotalQuantity = -remainingQty;
-                                pos.AvailableQuantity = -remainingQty;
-                                pos.AverageCost = fillPrice;
-                                _positions[request.Symbol] = pos;
-                            }
-                            else if (pos.TotalQuantity == 0m)
-                            {
-                                pos.AverageCost = 0.0;
-                                _positions.TryRemove(request.Symbol, out _);
-                            }
-                        }
+                        i++;
                     }
                 }
 
-                pos.LastPrice = fillPrice;
-                _marketPrices[request.Symbol] = fillPrice;
-                _positionsSnapshot = null;
-
-                // 10. 触发成交与状态变更事件（热路径短路防无谓堆分配）
-                record.Status = OrderStatus.Filled;
-                if (OnOrderStatusChanged != null)
+                if (list.Count == 0)
                 {
-                    OnOrderStatusChanged.Invoke(orderId, OrderStatus.Filled);
+                    _pendingOrdersBySymbol.Remove(symbol);
                 }
+            }
 
-                if (OnTrade != null)
+            // 锁外派发所有成交与持仓变更事件，租借 ArrayPool 实现 100% 零 GC 分配
+            if (rentedDispatches != null)
+            {
+                try
                 {
-                    OnTrade.Invoke(new ExecutionReport(
-                        orderId,
-                        request.Symbol,
-                        fillPrice,
-                        request.Quantity,
-                        commission,
-                        tradeTime));
+                    for (int i = 0; i < dispatchCount; i++)
+                    {
+                        ref readonly var d = ref rentedDispatches[i];
+                        OnOrderStatusChanged?.Invoke(d.OrderId, OrderStatus.Filled);
+                        OnTrade?.Invoke(d.Trade);
+                        OnPositionChanged?.Invoke(d.Position);
+                    }
                 }
-
-                if (OnPositionChanged != null)
+                finally
                 {
-                    OnPositionChanged.Invoke(new PositionEvent(
-                        request.Symbol,
-                        pos.TotalQuantity,
-                        pos.AverageCost,
-                        tradeTime));
+                    ArrayPool<FillDispatch>.Shared.Return(rentedDispatches);
                 }
-
-                return orderId;
             }
         }
 
-        private void RejectOrder(OrderRecord record, string reason)
+        private void RejectOrder(OrderRecord record, string reason, out OrderStatus? status)
         {
             record.Status = OrderStatus.Rejected;
             record.RejectReason = reason;
-            if (OnOrderStatusChanged != null)
-            {
-                OnOrderStatusChanged.Invoke(record.OrderId, OrderStatus.Rejected);
-            }
+            status = OrderStatus.Rejected;
         }
 
         private double GetMultiplier(string symbol)
@@ -645,11 +983,26 @@ namespace CarrotBacktesting.NET.Engine.Broker
             return _config.SettleDays;
         }
 
+        private readonly struct FillDispatch
+        {
+            public readonly string OrderId;
+            public readonly ExecutionReport Trade;
+            public readonly PositionEvent Position;
+
+            public FillDispatch(string orderId, ExecutionReport trade, PositionEvent position)
+            {
+                OrderId = orderId;
+                Trade = trade;
+                Position = position;
+            }
+        }
+
         private class PositionData
         {
             public string Symbol { get; }
             public decimal TotalQuantity { get; set; }
             public decimal AvailableQuantity { get; set; }
+            public decimal FrozenQuantity { get; set; }
             public double AverageCost { get; set; }
             public double LastPrice { get; set; }
             public List<PendingLot> PendingLots { get; set; } = new();
@@ -665,6 +1018,14 @@ namespace CarrotBacktesting.NET.Engine.Broker
             public OrderRequest Request { get; }
             public OrderStatus Status { get; set; } = OrderStatus.Pending;
             public string? RejectReason { get; set; }
+
+            public double FrozenCash { get; set; }
+            public decimal FrozenPosition { get; set; }
+            public decimal CloseQuantity { get; set; }
+            public decimal OpenQuantity { get; set; }
+            public double Multiplier { get; set; }
+            public double MarginRate { get; set; }
+            public int SettleDays { get; set; }
 
             public OrderRecord(string orderId, OrderRequest request)
             {
