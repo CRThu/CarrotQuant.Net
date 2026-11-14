@@ -17,6 +17,7 @@ namespace CarrotBacktesting.NET.Data
         protected readonly string _tableId;
         protected readonly DateTime? _startDate;
         protected readonly DateTime? _endDate;
+        protected readonly TimeZoneInfo? _sourceTimeZone;
         protected List<string> _symbols = new();
         protected Dictionary<string, int>? _symbolMap;
         protected List<DateTime> _tradeDates = new();
@@ -32,18 +33,28 @@ namespace CarrotBacktesting.NET.Data
         public IReadOnlyList<DateTime> TradeDates => _tradeDates;
 
         /// <summary>
+        /// 数据源配置的时区信息（若未配置则为 null）。
+        /// </summary>
+        public TimeZoneInfo? SourceTimeZone => _sourceTimeZone;
+
+        /// <summary>
         /// 基类受保护构造函数。
         /// </summary>
         protected TimeseriesSourceBase(
             IStorageResolver resolver,
             string tableId,
             DateTime? startDate = null,
-            DateTime? endDate = null)
+            DateTime? endDate = null,
+            string? timeZone = null)
         {
             _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
             _tableId = tableId ?? throw new ArgumentNullException(nameof(tableId));
             _startDate = startDate;
             _endDate = endDate;
+            if (!string.IsNullOrWhiteSpace(timeZone))
+            {
+                _sourceTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+            }
         }
 
         /// <inheritdoc />

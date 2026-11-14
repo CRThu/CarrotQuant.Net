@@ -22,16 +22,16 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 便捷构造函数。
         /// </summary>
-        public ParquetTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null)
-            : this(new StorageResolver(storageRoot), tableId, startDate, endDate)
+        public ParquetTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
+            : this(new StorageResolver(storageRoot), tableId, startDate, endDate, timeZone)
         {
         }
 
         /// <summary>
         /// 核心构造函数，接收外部依赖注入的路径解析器。
         /// </summary>
-        public ParquetTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null)
-            : base(resolver, tableId, startDate, endDate)
+        public ParquetTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
+            : base(resolver, tableId, startDate, endDate, timeZone)
         {
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var dateSet = new HashSet<DateTime>();
@@ -70,7 +70,7 @@ namespace CarrotBacktesting.NET.Data
                         {
                             using var groupReader = reader.OpenRowGroupReader(i);
                             var dtCol = ReadColumnFromGroup(groupReader, dtField);
-                            var dates = ConvertToDateTimes(dtCol);
+                            var dates = ConvertToDateTimes(dtCol, _sourceTimeZone);
                             foreach (var d in dates)
                             {
                                 dateSet.Add(d);
@@ -106,7 +106,7 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (File.Exists(filePath))
                     {
-                        cache = new YearCache(filePath);
+                        cache = new YearCache(filePath, _sourceTimeZone);
                         _cachePool[filePath] = cache;
                     }
                     else
@@ -200,41 +200,63 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        private static List<DateTime> ConvertToDateTimes(object columnData)
+        private static List<DateTime> ConvertToDateTimes(object columnData, TimeZoneInfo? sourceTimeZone)
         {
             var dates = new List<DateTime>();
             if (columnData is long[] tsArr)
             {
                 foreach (var ts in tsArr)
                 {
-                    dates.Add(DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime.Date);
+                    dates.Add(sourceTimeZone != null
+                        ? DateTimeOffset.FromUnixTimeMilliseconds(ts).UtcDateTime
+                        : DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime.Date);
                 }
             }
             else if (columnData is DateTime[] dtArr)
             {
                 foreach (var dt in dtArr)
                 {
-                    dates.Add(dt.Date);
+                    dates.Add(NormalizeDateTime(dt, sourceTimeZone));
                 }
             }
             else if (columnData is DateTimeOffset[] dtoArr)
             {
                 foreach (var dto in dtoArr)
                 {
-                    dates.Add(dto.DateTime.Date);
+                    dates.Add(sourceTimeZone != null
+                        ? dto.UtcDateTime
+                        : dto.DateTime.Date);
                 }
             }
             else if (columnData is ReadOnlyMemory<char>[] romArr)
             {
                 foreach (var rom in romArr)
                 {
-                    if (DateTime.TryParse(rom.Span, out var dt))
+                    if (DateTime.TryParse(rom.Span, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt) ||
+                        DateTime.TryParse(rom.Span, out dt))
                     {
-                        dates.Add(dt.Date);
+                        dates.Add(NormalizeDateTime(dt, sourceTimeZone));
                     }
                 }
             }
             return dates;
+        }
+
+        private static DateTime NormalizeDateTime(DateTime dt, TimeZoneInfo? sourceTimeZone)
+        {
+            if (sourceTimeZone != null)
+            {
+                if (dt.Kind == DateTimeKind.Unspecified)
+                {
+                    return TimeZoneInfo.ConvertTimeToUtc(dt, sourceTimeZone);
+                }
+                if (dt.Kind == DateTimeKind.Local)
+                {
+                    return dt.ToUniversalTime();
+                }
+                return dt;
+            }
+            return dt.Date;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -295,10 +317,12 @@ namespace CarrotBacktesting.NET.Data
             private readonly ParquetReader _parquetReader;
             private readonly FileStream _fs;
             private readonly DataField[] _dataFields;
+            private readonly TimeZoneInfo? _sourceTimeZone;
 
-            public YearCache(string filePath)
+            public YearCache(string filePath, TimeZoneInfo? sourceTimeZone = null)
             {
                 FilePath = filePath;
+                _sourceTimeZone = sourceTimeZone;
                 _fs = File.OpenRead(filePath);
                 _parquetReader = ParquetReaderExtensions.OpenParquetReaderSync(_fs);
                 _dataFields = _parquetReader.Schema.GetDataFields();
@@ -330,7 +354,7 @@ namespace CarrotBacktesting.NET.Data
                     }
 
                     var dtData = ReadColumnFromGroup(groupReader, dtField);
-                    dateList.AddRange(ConvertToDateTimes(dtData));
+                    dateList.AddRange(ConvertToDateTimes(dtData, _sourceTimeZone));
                 }
 
                 Dates = dateList.ToArray();

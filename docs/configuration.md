@@ -57,13 +57,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `check_limit` | `CheckLimit` | `bool` | 否 | `false` | 是否开启涨跌停检查。开启后若挂载了 `OnCheckLimit` Hook 则执行封板拦截。 |
 | `multiplier` | `Multiplier` | `double` | 否 | `1.0` | 默认合约乘数。股票按“股”计算为 `1.0`，期货按“手”计算填一手规格（如螺纹钢填 `10.0`）。 |
 | `margin_rate` | `MarginRate` | `double` | 否 | `1.0` | 默认保证金率。股票全额现货为 `1.0`，期货按杠杆率填写（如 10 倍杠杆填 `0.1`）。 |
-
-> [!TIP]
-> **开箱即用市场预设 (Presets)**：
-> - `BrokerConfig.Universal`: 现代量化通用基线（T+0, 千一摩擦, 0元起收门槛, 千一滑点, 5%流动性约束）；
-> - `BrokerConfig.AStock`: 中国 A 股现货实战预设（T+1, 禁止做空, 万三佣金, 5元起收, 千一滑点, 开启涨跌停检查）；
-> - `BrokerConfig.Futures(marginRate, multiplier)`: 期货与 CTA 实战预设（T+0, 允许双向做空, 万零点五费率, 0元起收, 杠杆率与合约规格）；
-> - `BrokerConfig.Crypto()`: 加密货币与外盘预设（T+0, 支持做空, 万五费率, 0元起收, 千一滑点）。
+| `time_zone_id` | `TimeZoneId` | `string` | 否 | `"UTC"` | 交易所清算时区标识（遵循 IANA 标准如 `"Asia/Shanghai"`、`"America/New_York"` 或 `"UTC"`）。用于确定交易所本地自然日 00:00:00 换日与 T+N 持仓划转时刻。 |
 
 ### 3. `data` 统一入口 (`DataConfig`)
 
@@ -81,6 +75,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | :--- | :--- | :--- | :---: | :--- | :--- |
 | `table_id` | `TableId` | `string` | 是 | - | 时序表唯一标识符，格式：`{market}.{category}.[sub/freq/adj].{source}`（如 `"ashare.kline.1d.raw.baostock"`）。 |
 | `fields` | `Fields` | `List<string>?` | 否 | `null` | 需要加载的字段名列表（如 `["open", "high", "low", "close", "volume"]`）。若缺省或为 `null`，则加载表内包含的全部字段。 |
+| `time_zone` | `TimeZone` | `string?` | 否 | `null` | 数据源时间戳时区标识符（遵循 IANA 标准如 `"Asia/Shanghai"`、`"America/New_York"` 或 `"UTC"`）。若数据源时间戳为无时区本地时间，将根据此时区转换为全局单调的 UTC 时间戳；若缺省或为 null，则视为 UTC 时间。 |
 | `cache` | `Cache` | `bool` | 否 | `true` | 是否启用二进制对齐缓存。 |
 | `page_size` | `PageSize` | `int` | 否 | `4096` | 缓存分页行数大小，默认固定为 4096（必须为 2 的幂，如 1024, 2048, 4096, 8192 等）。 |
 | `refresh` | `Refresh` | `string` | 否 | `"lazy"` | 缓存刷新模式：`"lazy"`（默认，首次生成后只要存在直接加载，不检查原始数据）、`"auto"`（比对原始数据头尾时间戳增量补充）、`"force"`（强制清空并全量重刷）。 |
@@ -122,8 +117,8 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | **涨跌停判定** | `check_limit` (`bool`) | `Func<OrderRequest, IDataRow, bool>? OnCheckLimit` | 默认：若未挂载 Hook 则不限制；<br>Hook 覆盖：用户自主比对数据列（如 `limit_up`）或自定义板块涨跌停阈值。 |
 | **交易手续费** | `fee_rate` + `min_fee` (`double`) | `Func<OrderRequest, double, double>? OnCalculateFee` | 默认：$\max(\text{min\_fee}, \text{turnover} \times \text{fee\_rate})$；<br>Hook 覆盖：用户自定义单向印花税、阶梯费率或返佣。 |
 | **滑点摩擦** | `slippage` (`double`) | `Func<OrderRequest, double, IDataRow, double>? OnCalculateSlippage` | 默认：$\text{Price} \times (1 \pm \text{slippage})$；<br>Hook 覆盖：基于订单规模占全市场成交量比例计算二次方冲击成本。 |
-| **合约乘数** | `multiplier` (`double`) | `Func<string, IEngineContext, double>? OnGetMultiplier` | 默认：全品种使用配置纯数值（股票为 1.0）；<br>Hook 覆盖：多品种期货回测中，显式由用户读取 `context.Fields["specs"]` 维表。 |
-| **保证金率** | `margin_rate` (`double`) | `Func<string, IEngineContext, double>? OnGetMarginRate` | 默认：全品种使用配置纯数值（现货全额为 1.0）；<br>Hook 覆盖：按品种或杠杆分级显式从维表动态获取。 |
+| **合约乘数** | `multiplier` (`double`) | `Func<string, IFieldRegistry?, double>? OnGetMultiplier` | 默认：全品种使用配置纯数值（股票为 1.0）；<br>Hook 覆盖：多品种期货回测中，显式由用户读取 `fields?["specs"][symbol]` 维表。 |
+| **保证金率** | `margin_rate` (`double`) | `Func<string, IFieldRegistry?, double>? OnGetMarginRate` | 默认：全品种使用配置纯数值（现货全额为 1.0）；<br>Hook 覆盖：按品种或杠杆分级显式从维表动态获取。 |
 
 ### 2. 代码配置与 Hook 挂载示例
 
@@ -370,7 +365,7 @@ var fields = FieldRegistryFactory.Create(resolver, config.Data.Fields);
 ```
 
 ### 2. 工厂直连装配法（Direct Factory API）
-无需中间配置模型对象，直接面向存储根目录与具名参数快速装配，代码极致精炼：
+无需中间配置模型对象，直接面向存储根目录与具名参数快速装配，调用简洁直接：
 
 ```csharp
 using CarrotBacktesting.NET.Data;

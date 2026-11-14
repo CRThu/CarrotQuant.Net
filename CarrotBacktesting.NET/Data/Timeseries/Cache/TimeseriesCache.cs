@@ -319,7 +319,7 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (chunkWidth == width)
                     {
-                        // 极速快路径：单次裸内存直灌
+                        // 快速路径：单次连续内存块复制
                         var targetSpan = matrix.GetPageSpan(pageIdx, rowsInChunk);
                         var targetBytes = MemoryMarshal.AsBytes(targetSpan);
                         ReadChunkFile(chunkPath, targetBytes, useLz4);

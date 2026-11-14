@@ -186,6 +186,9 @@ engine.Run();
 Console.WriteLine($"回测完成，最终状态: {engine.Status}, 进度: {engine.Progress:P0}");
 ```
 
+> [!NOTE]
+> 有关引擎内部状态机、时钟步进推进及检查点保存复原，请参阅 [核心回测引擎体系 (engine.md)](engine.md)；有关撮合模型、多时区自然日清算与账户资产管理，请参阅 [虚拟经纪商体系 (broker.md)](broker.md)。
+
 ---
 
 ## 步骤五：获取全过程分析报告

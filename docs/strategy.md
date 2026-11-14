@@ -224,7 +224,7 @@ var pipeline = StrategyPipeline.Sequential()
 pipeline.AddFromSource("strategies/DualMaStrategy.cs");
 ```
 
-- **极速机器码**：内存编译耗时仅约 80~150ms，随后由 JIT 转为原生原生机器码，运行期执行效率与预编译代码 100% 相同；
+- **原生机器码执行**：内存编译耗时仅约 80~150ms，随后由 JIT 转为原生机器码，运行期执行效率与预编译代码 100% 相同；
 - **防内存泄露 (`CollectibleAssemblyLoadContext`)**：基于可回收程序集加载上下文，在参数调优与脚本修改重载后由 GC 彻底回收程序集元数据；
 - **自动依赖绑定**：动态脚本中可直接引用 C# 原生基础库、LINQ 与 CarrotQuant 抽象层。
 

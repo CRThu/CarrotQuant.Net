@@ -12,7 +12,7 @@ namespace CarrotBacktesting.NET.Scripting;
 
 /// <summary>
 /// Roslyn 动态 C# 源码策略编译器与加载器。
-/// 专为量化投研人员提供“修改源码保存即运行”的免构建体验，同时保留 C# 原生 JIT 机器码的极致性能。
+/// 专为量化投研人员提供“修改源码保存即运行”的免构建体验，同时具备 C# 原生 JIT 机器码执行效率。
 /// 内置官方 Microsoft.CodeAnalysis.CSharp 引擎，利用 <see cref="AssemblyLoadContext"/>（isCollectible: true）防止多轮优化时的内存泄露。
 /// </summary>
 public static class RoslynStrategyCompiler
@@ -64,7 +64,7 @@ public static class RoslynStrategyCompiler
         // 1. 生成抽象语法树
         var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
 
-        // 2. 创建编译配置（Release 优化等级，原生极速机器码）
+        // 2. 创建编译配置（Release 优化等级）
         var assemblyName = $"DynamicStrategy_{Guid.NewGuid():N}";
         var compilation = CSharpCompilation.Create(
             assemblyName,

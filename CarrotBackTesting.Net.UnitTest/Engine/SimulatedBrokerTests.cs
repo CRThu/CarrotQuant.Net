@@ -73,7 +73,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(expectedCash, broker.GetCash(), 1e-2);
 
             // 2. 推进到次日 (T+1 解锁)
-            broker.RollDate(DateTime.UtcNow.AddDays(1));
+            broker.Step(DateTime.UtcNow.AddDays(1));
             Assert.AreEqual(10000m, broker.GetAvailablePosition("sh.600000"));
 
             // 3. 卖出 10,000 股 @ 12.0 元 (基准价 12.0，卖出滑点千一 -> 11.988)
@@ -393,15 +393,15 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             DateTime day2 = new DateTime(2025, 1, 2);
             DateTime day3 = new DateTime(2025, 1, 3);
 
-            multiLotBroker.RollDate(day0);
+            multiLotBroker.Step(day0);
             multiLotBroker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 10000m), 10.0, null); // 到期日: day1
 
-            multiLotBroker.RollDate(day1); // 解锁 day0 买入的 10000 股
+            multiLotBroker.Step(day1); // 解锁 day0 买入的 10000 股
             Assert.AreEqual(10000m, multiLotBroker.GetAvailablePosition("sh.600000"));
 
             multiLotBroker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 2000m), 10.0, null); // 到期日: day2
 
-            multiLotBroker.RollDate(day2); // 解锁 day1 买入的 2000 股
+            multiLotBroker.Step(day2); // 解锁 day1 买入的 2000 股
             Assert.AreEqual(12000m, multiLotBroker.GetAvailablePosition("sh.600000"));
 
             multiLotBroker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 3000m), 10.0, null); // 到期日: day3
@@ -409,7 +409,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(15000m, multiLotBroker.GetPosition("sh.600000"));
             Assert.AreEqual(12000m, multiLotBroker.GetAvailablePosition("sh.600000"));
 
-            multiLotBroker.RollDate(day3); // 解锁 day2 的 3000 股
+            multiLotBroker.Step(day3); // 解锁 day2 的 3000 股
             Assert.AreEqual(15000m, multiLotBroker.GetAvailablePosition("sh.600000"));
 
             // 3. OnCheckVolume Hook 覆盖 (分别拦截与放行)
@@ -437,13 +437,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 CheckLimit = true,
                 OnCheckLimit = (order, bar) => true,
                 OnGetSettleDays = s => 0, // 动态覆盖为 T+0
-                OnGetMultiplier = (s, ctx) => { multiplierCalled = true; return 20.0; }, // 动态覆盖乘数为 20
-                OnGetMarginRate = (s, ctx) => { marginRateCalled = true; return 0.05; } // 动态覆盖保证金率为 5%
+                OnGetMultiplier = (s, f) => { multiplierCalled = true; return 20.0; }, // 动态覆盖乘数为 20
+                OnGetMarginRate = (s, f) => { marginRateCalled = true; return 0.05; } // 动态覆盖保证金率为 5%
             };
 
-            // 构造带简单 dummy 上下文的 Broker 触发 _context != null 分支
-            var dummyContext = new DummyEngineContext();
-            var dynBroker = new SimulatedBroker(dynamicConfig, dummyContext);
+            // 构造带 fields 的 Broker 注入测试
+            var dummyFields = new CarrotBacktesting.NET.Data.FieldRegistry();
+            var dynBroker = new SimulatedBroker(dynamicConfig, dummyFields);
             var passBar = CreateBar(100.0, 105.0, 98.0, 100.0, 100000.0);
             string dynOrderId = dynBroker.ExecuteOrder(new OrderRequest("custom_item", OrderDirection.Buy, OrderType.Market, 100.0, 10m), 100.0, passBar);
             Assert.AreEqual(OrderStatus.Filled, dynBroker.GetOrderStatus(dynOrderId));
@@ -539,9 +539,9 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
-        public void BrokerConfig_UniversalDefaultsAndPresets_ShouldBeStrictlySet()
+        public void BrokerConfig_DefaultValues_ShouldBeStrictlySet()
         {
-            // 1. 验证通用默认基线 (1000000, 0, false, 0.001, 0.0, 0.001, 0.05, false, 1.0, 1.0)
+            // 验证通用默认基线 (1000000, 0, false, 0.001, 0.0, 0.001, 0.05, false, 1.0, 1.0, "UTC")
             var config = new BrokerConfig();
             Assert.AreEqual(1_000_000.0, config.InitialCash);
             Assert.AreEqual(0, config.SettleDays);
@@ -553,98 +553,87 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.IsFalse(config.CheckLimit);
             Assert.AreEqual(1.0, config.Multiplier);
             Assert.AreEqual(1.0, config.MarginRate);
-
-            // 2. 验证 Universal 预设
-            var universal = BrokerConfig.Universal;
-            Assert.AreEqual(0, universal.SettleDays);
-            Assert.AreEqual(0.0, universal.MinFee);
-            Assert.AreEqual(0.05, universal.VolumeLimit);
-
-            // 3. 验证 A 股现货实战预设 (T+1, 5元起收, 万三佣金, 检查涨跌停)
-            var aStock = BrokerConfig.AStock;
-            Assert.AreEqual(1, aStock.SettleDays);
-            Assert.IsFalse(aStock.AllowShort);
-            Assert.AreEqual(0.0003, aStock.FeeRate);
-            Assert.AreEqual(5.0, aStock.MinFee);
-            Assert.AreEqual(0.001, aStock.Slippage);
-            Assert.AreEqual(0.05, aStock.VolumeLimit);
-            Assert.IsTrue(aStock.CheckLimit);
-
-            // 4. 验证期货预设 (T+0, 双向做空, 10倍杠杆, 一手10吨)
-            var futures = BrokerConfig.Futures(marginRate: 0.1, multiplier: 10.0);
-            Assert.AreEqual(0, futures.SettleDays);
-            Assert.IsTrue(futures.AllowShort);
-            Assert.AreEqual(0.00005, futures.FeeRate);
-            Assert.AreEqual(0.0, futures.MinFee);
-            Assert.AreEqual(10.0, futures.Multiplier);
-            Assert.AreEqual(0.1, futures.MarginRate);
-
-            // 5. 验证加密货币预设
-            var crypto = BrokerConfig.Crypto();
-            Assert.AreEqual(0, crypto.SettleDays);
-            Assert.IsTrue(crypto.AllowShort);
-            Assert.AreEqual(0.0005, crypto.FeeRate);
-            Assert.AreEqual(0.0, crypto.MinFee);
+            Assert.AreEqual("UTC", config.TimeZoneId);
+            Assert.AreEqual(TimeZoneInfo.Utc, config.TimeZone);
         }
 
         [TestMethod]
-        public void Hook_WithoutContext_ShouldThrowInvalidOperationException()
+        public void Hook_WithFieldRegistry_ShouldExecuteHookAndAccessFields()
         {
-            var config = new BrokerConfig
-            {
-                OnGetMultiplier = (s, ctx) => 10.0
-            };
-            var broker = new SimulatedBroker(config); // 未注入 context
-            var bar = CreateBar(10.0, 10.0, 10.0, 10.0, 1000.0);
+            var fieldTable = new CarrotBacktesting.NET.Data.FieldTable("info", new[] { "multiplier" }, new());
+            var fields = new CarrotBacktesting.NET.Data.FieldRegistry();
+            fields.Register("info", fieldTable);
 
-            // 发生交易计算乘数时必须显式抛出异常，绝不隐式兜底
-            Assert.ThrowsException<InvalidOperationException>(() =>
-                broker.ExecuteOrder(new OrderRequest("test", OrderDirection.Buy, OrderType.Market, 10.0, 10m), 10.0, bar));
-        }
-
-        [TestMethod]
-        public void AttachContext_ShouldEnableHooksExecution()
-        {
             bool hookExecuted = false;
             var config = new BrokerConfig
             {
-                OnGetMultiplier = (s, ctx) => { hookExecuted = true; return 10.0; }
+                OnGetMultiplier = (s, f) =>
+                {
+                    hookExecuted = true;
+                    Assert.IsNotNull(f, "FieldRegistry 必须通过构造注入可靠传递给 Hook");
+                    Assert.IsTrue(f.HasTable("info"));
+                    return 300.0;
+                }
             };
-            var broker = new SimulatedBroker(config);
-            broker.AttachContext(new DummyEngineContext());
 
+            var broker = new SimulatedBroker(config, fields: fields);
             var bar = CreateBar(10.0, 10.0, 10.0, 10.0, 1000.0);
             broker.ExecuteOrder(new OrderRequest("test", OrderDirection.Buy, OrderType.Market, 10.0, 10m), 10.0, bar);
 
-            Assert.IsTrue(hookExecuted, "AttachContext 后 Hook 应该成功执行");
+            Assert.IsTrue(hookExecuted, "单向注入 fields 后 Hook 应该成功执行");
+        }
+
+        [TestMethod]
+        public void BrokerConfig_InvalidTimeZoneId_ShouldThrowTimeZoneNotFoundException()
+        {
+            var config = new BrokerConfig();
+            Assert.ThrowsException<TimeZoneNotFoundException>(() => config.TimeZoneId = "Invalid/Non_Existent_Zone");
+        }
+
+        [TestMethod]
+        public void Broker_WithTimeZone_ShouldAccuratelySettleAcrossDays()
+        {
+            // 配置交易所为东八区 (Asia/Shanghai)
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                SettleDays = 1,
+                TimeZoneId = "Asia/Shanghai"
+            };
+            var broker = new SimulatedBroker(config);
+
+            // 传入 Unspecified 时间戳（模拟真实 CSV 数据源不带 Kind 标签）：UTC 2025-01-02 06:00:00 (北京时间 14:00) 买入
+            var utcTradeTime = new DateTime(2025, 1, 2, 6, 0, 0, DateTimeKind.Unspecified);
+            broker.Step(utcTradeTime);
+            broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m));
+
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "T+1 当日不可用");
+
+            // UTC 时间 2025-01-03 01:30:00 (即北京时间 2025-01-03 09:30:00) 跨日推进
+            var utcNextDay = new DateTime(2025, 1, 3, 1, 30, 0, DateTimeKind.Unspecified);
+            broker.Step(utcNextDay);
+
+            Assert.AreEqual(100m, broker.GetAvailablePosition("sh.600000"), "北京时间跨日后，即使输入为 Unspecified 也必须通过 DateTimeKind 防御准时解锁");
         }
 
         [TestMethod]
         public void MinuteLevel_TPlusOne_ShouldUnlockSharesOnNextDayMorning()
         {
-            var broker = new SimulatedBroker(BrokerConfig.AStock);
+            var broker = new SimulatedBroker(new BrokerConfig
+            {
+                SettleDays = 1,
+                AllowShort = false,
+                TimeZoneId = "Asia/Shanghai"
+            });
             // Day 1 14:55:00 买入 100 股
-            broker.RollDate(new DateTime(2025, 1, 2, 14, 55, 0));
+            broker.Step(new DateTime(2025, 1, 2, 14, 55, 0));
             broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m));
             Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "买入当日可用仓位必须为 0");
 
             // Day 2 09:31:00 早盘推进第一根 Bar
-            broker.RollDate(new DateTime(2025, 1, 3, 9, 31, 0));
+            broker.Step(new DateTime(2025, 1, 3, 9, 31, 0));
             var avail = broker.GetAvailablePosition("sh.600000");
             Assert.AreEqual(100m, avail, "次日早盘首根 Bar 必须成功解锁前一日全天任何时间买入的份额，绝不能退化为 T+2");
-        }
-
-        private class DummyEngineContext : IEngineContext
-        {
-            public int CurrentIndex => 0;
-            public DateTime CurrentTime => DateTime.UtcNow;
-            public ITimeseriesRegistry Timeseries => null!;
-            public IEventRegistry Events => null!;
-            public IFieldRegistry Fields => null!;
-            public IBroker Broker => null!;
-            public IMarketState Market => null!;
-            public IMonitor Monitor => null!;
-            public T? GetExtension<T>() where T : class => default;
         }
     }
 }

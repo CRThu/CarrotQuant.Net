@@ -69,11 +69,6 @@ namespace CarrotBacktesting.NET.Engine
             Events = events ?? new EventRegistry();
             Fields = fields ?? new FieldRegistry();
 
-            if (broker is CarrotBacktesting.NET.Engine.Broker.SimulatedBroker simBroker)
-            {
-                simBroker.AttachContext(this);
-            }
-
             CurrentIndex = -1;
             CurrentTime = DateTime.MinValue;
         }

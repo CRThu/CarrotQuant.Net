@@ -202,7 +202,7 @@ graph TD
 | `IEventRegistry` | `Abstraction/Data/IEventRegistry.cs` | 事件注册表，统一管理外部时态事件流，提供 `HasNewEvents(time, tableName)` 事件到达轻量探测 |
 
 **变更感知掩码与事件到达感知 (Change Mask & Event Detection)**：
-1. **位掩码极速判定 (`ITimeseriesRegistry.IsUpdated`)**:
+1. **位掩码常数时间判定 (`ITimeseriesRegistry.IsUpdated`)**:
    - 引擎使用 64 位无符号位掩码 `_updatedMask` 记录当前时间步各时序表的更新状态，单寄存器位运算完成，零 GC、零装箱；
    - 容量越界防御：分配序号时若 `tableIndex >= 64`，显式抛出 `NotSupportedException` 防御状态穿透；
    - 读无锁并发设计：支持通过 `GetTableIndex(tableName)` 缓存索引，按表名读路径纯无锁并发安全。
@@ -316,12 +316,13 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 | 契约 / 类型 | 文件 | 职责说明 |
 | :--- | :--- | :--- |
-| `IEngine` | `Abstraction/Engine/IEngine.cs` | 核心驱动接口，支持 `Run` / `RunAsync` / `Pause` / `Resume` / `Stop` 与状态快照 (`SaveState` / `RestoreState`) |
-| `BacktestingEngine` | `Engine/BacktestingEngine.cs` | 高性能回测驱动单一权威内核，统筹时间步切片裁剪、缓存滑动、跨日结算驱动、事件派发与策略生命周期 |
+| `IEngine` | `Abstraction/Engine/IEngine.cs` | 核心驱动瘦接口，支持 `Run` / `RunAsync` / `Pause` / `Resume` / `Stop` 与只读 `Context` 暴露 |
+| `ICheckpointable` | `Abstraction/Engine/ICheckpointable.cs` | 检查点持久化能力正交契约，支持 `SaveCheckpoint` / `RestoreCheckpoint` 与断点续跑 |
+| `BacktestingEngine` | `Engine/BacktestingEngine.cs` | 回测驱动单一权威内核，实现 `IEngine` 与 `ICheckpointable`，统筹时间步切片裁剪、缓存滑动、跨日结算驱动、事件派发与策略生命周期 |
 | `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry` |
 | `EngineContext` | `Engine/EngineContext.cs` | 策略运行上下文权威实现，单例常驻，热路径零堆分配（零 GC），支持类型化插件与扩展组件注入 |
-| `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与持仓管理，提供订单提交、T+N 跨日结算 `RollDate` 与 `OnTrade` 成交回报事件 |
-| `SimulatedBroker` | `Engine/Broker/SimulatedBroker.cs` | 统一虚拟经纪商单一内核，统领现货/期货保证金/多空状态机与对称 Hook 拦截 |
+| `IBroker` | `Abstraction/Engine/IBroker.cs` | 账户资产与持仓管理，提供订单提交、`Step` 物理推进、T+N 跨日结算与 `OnTrade` 成交回报事件 |
+| `SimulatedBroker` | `Engine/Broker/SimulatedBroker.cs` | 统一虚拟经纪商单一内核，统领现货/期货保证金/多空状态机与对称 Hook 拦截，仅单向依赖 `IFieldRegistry`，支持 IANA 多时区清算 |
 | `IMarketState` | `Abstraction/Engine/IMarketState.cs` | 市场黑板上下文，支持策略间跨层异步状态共享 |
 | `MarketState` | `Engine/MarketState.cs` | 通用强类型黑板实现，基于 ConcurrentDictionary 保证并发安全与类型单例索引 |
 | `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 统一监控抽象，管理日志输出、指标采集与告警 |
@@ -361,13 +362,8 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
      - `Slippage` 对应 `OnCalculateSlippage`（动态冲击成本模型）；
      - `Multiplier` 对应 `OnGetMultiplier`（用户显式从 `Fields` 维表查期货合约规格）；
      - `MarginRate` 对应 `OnGetMarginRate`（用户显式从 `Fields` 维表查保证金率）。
-3. **通用量化基准默认值与多市场预设 (Universal Default & Presets)**：
-   - 默认基线（`new BrokerConfig()`）：`InitialCash=1000000.0`, `SettleDays=0 (T+0)`, `AllowShort=false`, `FeeRate=0.001`, `MinFee=0.0`, `Slippage=0.001`, `VolumeLimit=0.05 (5%流动性硬约束)`, `CheckLimit=false`, `Multiplier=1.0`, `MarginRate=1.0`。
-   - 官方典范静态预设：
-     - `BrokerConfig.Universal`：现代通用量化基线；
-     - `BrokerConfig.AStock`：中国 A 股现货实战预设（T+1, 禁裸空, 万三佣金, 5元起收, 千一滑点, 开启涨跌停检查）；
-     - `BrokerConfig.Futures(marginRate, multiplier)`：期货/CTA 实战预设（T+0, 允许双向做空, 万零点五费率, 0元起收, 杠杆率与乘数）；
-     - `BrokerConfig.Crypto()`：加密货币预设（T+0, 支持做空, 万五费率, 0元起收, 千一滑点）。
+3. **通用量化基准默认值 (Universal Default Baseline)**：
+   - 默认基线（`new BrokerConfig()`）：`InitialCash=1000000.0`, `SettleDays=0 (T+0)`, `AllowShort=false`, `FeeRate=0.001`, `MinFee=0.0`, `Slippage=0.001`, `VolumeLimit=0.05 (5%流动性硬约束)`, `CheckLimit=false`, `Multiplier=1.0`, `MarginRate=1.0`, `TimeZoneId="UTC"`。按需通过 YAML 或属性覆盖定制。
 
 ### 4. 实盘与回测双轨运行模型 (Living & Backtesting Dual-Engine Alignment)
 
@@ -423,13 +419,8 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
      - `Slippage` 对应 `OnCalculateSlippage`（动态冲击成本模型）；
      - `Multiplier` 对应 `OnGetMultiplier`（用户显式从 `Fields` 维表查期货合约规格）；
      - `MarginRate` 对应 `OnGetMarginRate`（用户显式从 `Fields` 维表查保证金率）。
-3. **通用量化基准默认值与多市场预设 (Universal Default & Presets)**：
-   - 默认基线（`new BrokerConfig()`）：`InitialCash=1000000.0`, `SettleDays=0 (T+0)`, `AllowShort=false`, `FeeRate=0.001`, `MinFee=0.0`, `Slippage=0.001`, `VolumeLimit=0.05 (5%流动性硬约束)`, `CheckLimit=false`, `Multiplier=1.0`, `MarginRate=1.0`。
-   - 官方典范静态预设：
-     - `BrokerConfig.Universal`：现代通用量化基线；
-     - `BrokerConfig.AStock`：中国 A 股现货实战预设（T+1, 禁裸空, 万三佣金, 5元起收, 千一滑点, 开启涨跌停检查）；
-     - `BrokerConfig.Futures(marginRate, multiplier)`：期货/CTA 实战预设（T+0, 允许双向做空, 万零点五费率, 0元起收, 杠杆率与乘数）；
-     - `BrokerConfig.Crypto()`：加密货币预设（T+0, 支持做空, 万五费率, 0元起收, 千一滑点）。
+3. **通用量化基准默认值 (Universal Default Baseline)**：
+   - 默认基线（`new BrokerConfig()`）：`InitialCash=1000000.0`, `SettleDays=0 (T+0)`, `AllowShort=false`, `FeeRate=0.001`, `MinFee=0.0`, `Slippage=0.001`, `VolumeLimit=0.05 (5%流动性硬约束)`, `CheckLimit=false`, `Multiplier=1.0`, `MarginRate=1.0`, `TimeZoneId="UTC"`。按需通过 YAML 或属性覆盖定制。
 
 ---
 

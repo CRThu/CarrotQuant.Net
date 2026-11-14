@@ -62,65 +62,44 @@ namespace CarrotBacktesting.NET.Config
         /// </summary>
         public double MarginRate { get; set; } = 1.0;
 
-        #region 典型市场静态预设 (Presets)
+        private string _timeZoneId = "UTC";
+        private TimeZoneInfo _timeZone = TimeZoneInfo.Utc;
 
         /// <summary>
-        /// 获取现代量化通用基准预设（T+0, 千一费率, 0元起收门槛, 千一滑点, 5%流动性硬约束, 现货多头）。
+        /// 交易所清算时区标识（遵循 IANA 标准如 "Asia/Shanghai"、"America/New_York" 或 "UTC"）。
+        /// 默认为 "UTC"。系统自动跨平台自适应解析并缓存 TimeZoneInfo。
         /// </summary>
-        public static BrokerConfig Universal => new();
-
-        /// <summary>
-        /// 获取中国 A 股现货实战预设（T+1 结算, 禁止裸做空, 万三佣金, 5元起收, 千一滑点, 5%流动性约束）。
-        /// </summary>
-        public static BrokerConfig AStock => new()
+        public string TimeZoneId
         {
-            InitialCash = 1000000.0,
-            SettleDays = 1,
-            AllowShort = false,
-            FeeRate = 0.0003,
-            MinFee = 5.0,
-            Slippage = 0.001,
-            VolumeLimit = 0.05,
-            CheckLimit = true,
-            Multiplier = 1.0,
-            MarginRate = 1.0
-        };
+            get => _timeZoneId;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _timeZoneId = "UTC";
+                    _timeZone = TimeZoneInfo.Utc;
+                    return;
+                }
+                _timeZoneId = value;
+                // 严格遵循规范第 8 条与第 12 条：若时区无效，显式抛出强类型异常，坚决杜绝静默重置为 UTC
+                _timeZone = TimeZoneInfo.FindSystemTimeZoneById(value);
+            }
+        }
 
         /// <summary>
-        /// 获取期货与 CTA 实战预设（T+0, 允许双向做空, 万零点五费率, 0元起收门槛, 万二滑点, 杠杆率与乘数）。
+        /// 缓存的时区对象，避免热路径重复查找。
         /// </summary>
-        public static BrokerConfig Futures(double marginRate = 0.1, double multiplier = 10.0) => new()
+        [YamlIgnore]
+        [System.Text.Json.Serialization.JsonIgnore]
+        public TimeZoneInfo TimeZone
         {
-            InitialCash = 1000000.0,
-            SettleDays = 0,
-            AllowShort = true,
-            FeeRate = 0.00005,
-            MinFee = 0.0,
-            Slippage = 0.0002,
-            VolumeLimit = 0.05,
-            CheckLimit = false,
-            Multiplier = multiplier,
-            MarginRate = marginRate
-        };
-
-        /// <summary>
-        /// 获取加密货币与外盘现货/合约预设（T+0, 支持做空, 万五费率, 0元起收门槛, 千一滑点）。
-        /// </summary>
-        public static BrokerConfig Crypto(bool allowShort = true) => new()
-        {
-            InitialCash = 1000000.0,
-            SettleDays = 0,
-            AllowShort = allowShort,
-            FeeRate = 0.0005,
-            MinFee = 0.0,
-            Slippage = 0.001,
-            VolumeLimit = 0.05,
-            CheckLimit = false,
-            Multiplier = 1.0,
-            MarginRate = 1.0
-        };
-
-        #endregion
+            get => _timeZone;
+            set
+            {
+                _timeZone = value ?? TimeZoneInfo.Utc;
+                _timeZoneId = _timeZone.Id;
+            }
+        }
 
         #region 对称 Hook 矩阵 (仅在代码中挂载，YAML 序列化时自动忽略)
 
@@ -161,17 +140,17 @@ namespace CarrotBacktesting.NET.Config
 
         /// <summary>
         /// 合约乘数 Hook。在多品种期货回测中，显式由用户读取维表获取一手乘数。
-        /// 参数：(string symbol, IEngineContext context) -> double (乘数)
+        /// 参数：(string symbol, IFieldRegistry? fields) -> double (乘数)
         /// </summary>
         [YamlIgnore]
-        public Func<string, IEngineContext, double>? OnGetMultiplier { get; set; }
+        public Func<string, IFieldRegistry?, double>? OnGetMultiplier { get; set; }
 
         /// <summary>
         /// 保证金率 Hook。在多品种期货回测中，显式由用户读取维表获取保证金率。
-        /// 参数：(string symbol, IEngineContext context) -> double (保证金率)
+        /// 参数：(string symbol, IFieldRegistry? fields) -> double (保证金率)
         /// </summary>
         [YamlIgnore]
-        public Func<string, IEngineContext, double>? OnGetMarginRate { get; set; }
+        public Func<string, IFieldRegistry?, double>? OnGetMarginRate { get; set; }
 
         #endregion
     }

@@ -14,7 +14,7 @@ public interface ITimeseriesSource : IMarketMetadata, IDisposable
     /// 遵循统一对齐与缺失值契约：对于停牌、未上市或漏采的交易日，目标单元格必须严格置为标准 NaN 哨兵值。
     /// </summary>
     /// <typeparam name="T">
-    /// 目标数据类型，必须为非托管类型（unmanaged），以支持极速内存块拷贝。
+    /// 目标数据类型，必须为非托管类型（unmanaged），以支持非托管内存块直接拷贝。
     /// </typeparam>
     /// <param name="symbol">要读取的标的代码。</param>
     /// <param name="fieldName">字段名称，例如 "close"、"volume"。</param>

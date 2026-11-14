@@ -274,5 +274,57 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
             }
         }
+
+        [TestMethod]
+        public void CsvTimeseriesSource_WithTimeZone_ShouldNormalizeDatesToUtc()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "carrot_test_tz_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string tableId = "tz_test_table";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+
+                // 写入带具体分钟的本地时间 CSV (如北京时间 09:30:00 与 10:00:00)
+                string csvContent = "symbol,datetime,close\n" +
+                                    "sh.600000,2025-01-02 09:30:00,10.0\n" +
+                                    "sh.600000,2025-01-02 10:00:00,11.0\n";
+                File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
+
+                // 1. 指定 Asia/Shanghai (+8) 时区加载
+                using var sourceAsia = new CsvTimeseriesSource(tempDir, tableId, timeZone: "Asia/Shanghai");
+                Assert.IsNotNull(sourceAsia.SourceTimeZone);
+                Assert.AreEqual(2, sourceAsia.TradeDates.Count);
+
+                // 北京时间 09:30:00 对应 UTC 01:30:00
+                DateTime expectedUtc1 = new DateTime(2025, 1, 2, 1, 30, 0, DateTimeKind.Utc);
+                DateTime expectedUtc2 = new DateTime(2025, 1, 2, 2, 0, 0, DateTimeKind.Utc);
+                Assert.AreEqual(expectedUtc1, sourceAsia.TradeDates[0]);
+                Assert.AreEqual(expectedUtc2, sourceAsia.TradeDates[1]);
+                Assert.AreEqual(DateTimeKind.Utc, sourceAsia.TradeDates[0].Kind);
+
+                // 2. 验证 ReadSymbolSeries 能够正常按 UTC 索引读取
+                double[] dest = new double[2];
+                sourceAsia.ReadSymbolSeries("sh.600000", "close", 0, 2, dest);
+                Assert.AreEqual(10.0, dest[0]);
+                Assert.AreEqual(11.0, dest[1]);
+
+                // 3. 验证 factory 工厂与 TimeseriesConfig.TimeZone 集成
+                var tsConfig = new CarrotBacktesting.NET.Config.TimeseriesConfig
+                {
+                    TableId = tableId,
+                    TimeZone = "America/New_York",
+                    Cache = false
+                };
+                var registry = TimeseriesRegistryFactory.Create(tempDir, tsConfig);
+                // 纽约时间 09:30:00 EST (UTC-5) 对应 UTC 14:30:00
+                DateTime expectedNyUtc = new DateTime(2025, 1, 2, 14, 30, 0, DateTimeKind.Utc);
+                Assert.AreEqual(expectedNyUtc, registry.Metadata.TradeDates[0]);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
     }
 }

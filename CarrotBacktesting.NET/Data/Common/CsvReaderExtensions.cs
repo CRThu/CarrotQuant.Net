@@ -58,23 +58,35 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 解析当前行指定列的日期（只保留 Date 精度）。
+        /// 解析当前行指定列的日期时间。
         /// 自动适配 DateTime、Unix 毫秒时间戳以及 ISO 8601 / Invariant / Local 文本日期格式。
+        /// 若指定了数据源时区 sourceTimeZone，则将无时区本地时间精确映射为全局物理唯一的 UTC 时间；
+        /// 若未指定时区，则保持原有默认日期并保留 Date 精度。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DateTime ParseDate(this CsvDataReader reader, int colIdx)
+        public static DateTime ParseDate(this CsvDataReader reader, int colIdx, TimeZoneInfo? sourceTimeZone = null)
         {
             if (colIdx < 0 || reader.IsDBNull(colIdx)) return DateTime.MinValue;
 
             Type fieldType = reader.GetFieldType(colIdx);
             if (fieldType == typeof(DateTime))
             {
-                return reader.GetDateTime(colIdx).Date;
+                DateTime dtVal = reader.GetDateTime(colIdx);
+                if (sourceTimeZone != null)
+                {
+                    return dtVal.Kind == DateTimeKind.Unspecified
+                        ? TimeZoneInfo.ConvertTimeToUtc(dtVal, sourceTimeZone)
+                        : dtVal.ToUniversalTime();
+                }
+                return dtVal.Date;
             }
 
             if (fieldType == typeof(long))
             {
-                return DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(colIdx)).DateTime.Date;
+                long tsVal = reader.GetInt64(colIdx);
+                return sourceTimeZone != null
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(tsVal).UtcDateTime
+                    : DateTimeOffset.FromUnixTimeMilliseconds(tsVal).DateTime.Date;
             }
 
             string dtStr = reader.GetString(colIdx);
@@ -82,37 +94,50 @@ namespace CarrotBacktesting.NET.Data
 
             if (long.TryParse(dtStr, out long ts))
             {
-                return DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime.Date;
+                return sourceTimeZone != null
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(ts).UtcDateTime
+                    : DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime.Date;
             }
 
+            DateTime parsed;
             if (DateTime.TryParse(dtStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
             {
-                return dt.Date;
+                parsed = dt;
             }
-
-            if (DateTime.TryParse(dtStr, out var dtLocal))
+            else if (DateTime.TryParse(dtStr, out var dtLocal))
             {
-                return dtLocal.Date;
+                parsed = dtLocal;
+            }
+            else
+            {
+                return DateTime.MinValue;
             }
 
-            return DateTime.MinValue;
+            if (sourceTimeZone != null)
+            {
+                return parsed.Kind == DateTimeKind.Unspecified
+                    ? TimeZoneInfo.ConvertTimeToUtc(parsed, sourceTimeZone)
+                    : parsed.ToUniversalTime();
+            }
+
+            return parsed.Date;
         }
 
         /// <summary>
         /// 联合解析当前行的时间戳，优先从 datetime 列获取，缺失时回退至 timestamp 列。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DateTime ParseDate(this CsvDataReader reader, int dtIdx, int tsIdx)
+        public static DateTime ParseDate(this CsvDataReader reader, int dtIdx, int tsIdx, TimeZoneInfo? sourceTimeZone = null)
         {
             if (dtIdx >= 0)
             {
-                DateTime dt = reader.ParseDate(dtIdx);
+                DateTime dt = reader.ParseDate(dtIdx, sourceTimeZone);
                 if (dt != DateTime.MinValue) return dt;
             }
 
             if (tsIdx >= 0)
             {
-                return reader.ParseDate(tsIdx);
+                return reader.ParseDate(tsIdx, sourceTimeZone);
             }
 
             return DateTime.MinValue;

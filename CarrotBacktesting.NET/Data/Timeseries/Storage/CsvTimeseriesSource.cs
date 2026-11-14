@@ -16,16 +16,16 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 便捷构造函数。
         /// </summary>
-        public CsvTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null)
-            : this(new StorageResolver(storageRoot), tableId, startDate, endDate)
+        public CsvTimeseriesSource(string storageRoot, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
+            : this(new StorageResolver(storageRoot), tableId, startDate, endDate, timeZone)
         {
         }
 
         /// <summary>
         /// 核心构造函数，接收外部依赖注入的路径解析器。
         /// </summary>
-        public CsvTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null)
-            : base(resolver, tableId, startDate, endDate)
+        public CsvTimeseriesSource(IStorageResolver resolver, string tableId, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
+            : base(resolver, tableId, startDate, endDate, timeZone)
         {
             // 1. 扫描可用股票代码，委托给路径调度器解析符合时间区间的物理文件
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -76,7 +76,7 @@ namespace CarrotBacktesting.NET.Data
 
                 while (reader.Read())
                 {
-                    DateTime dt = reader.ParseDate(dateColIdx);
+                    DateTime dt = reader.ParseDate(dateColIdx, _sourceTimeZone);
                     if (dt != DateTime.MinValue)
                     {
                         dateSet.Add(dt);
@@ -123,7 +123,7 @@ namespace CarrotBacktesting.NET.Data
                         }
                     }
 
-                    DateTime rowDate = reader.ParseDate(dateColIdx);
+                    DateTime rowDate = reader.ParseDate(dateColIdx, _sourceTimeZone);
                     if (rowDate == DateTime.MinValue) continue;
 
                     EnsureCapacity(ref rawDates, ref rawValues, count);

@@ -120,6 +120,13 @@ namespace CarrotBacktesting.NET.Config
         public List<string>? Fields { get; set; }
 
         /// <summary>
+        /// 数据源时间戳时区标识符（遵循 IANA 标准如 "Asia/Shanghai", "America/New_York", "UTC"）。
+        /// 若数据源时间戳为无时区本地时间，将根据此时区转换为全局单调的 UTC 时间戳。
+        /// 若为 null 或空字符串，则假定数据源时间戳本身已为 UTC 时间。
+        /// </summary>
+        public string? TimeZone { get; set; }
+
+        /// <summary>
         /// 是否启用二进制对齐缓存，默认为 true。
         /// </summary>
         public bool Cache { get; set; } = true;
@@ -171,6 +178,12 @@ namespace CarrotBacktesting.NET.Config
         public string Name { get; set; } = "";
         public string TableId { get; set; } = "";
         public List<string>? Fields { get; set; }
+
+        /// <summary>
+        /// 事件数据源时间戳时区标识符（遵循 IANA 标准如 "Asia/Shanghai", "America/New_York", "UTC"）。
+        /// 若为 null 或空字符串，则假定事件数据源时间戳本身已为 UTC 时间。
+        /// </summary>
+        public string? TimeZone { get; set; }
     }
 
     /// <summary>

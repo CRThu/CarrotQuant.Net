@@ -51,7 +51,7 @@ namespace CarrotBacktesting.NET.Data
             ArgumentNullException.ThrowIfNull(config);
             ArgumentException.ThrowIfNullOrWhiteSpace(config.TableId);
 
-            var source = TimeseriesSourceFactory.Create(resolver, config.TableId, startDate, endDate);
+            var source = TimeseriesSourceFactory.Create(resolver, config.TableId, startDate, endDate, config.TimeZone);
             return new TimeseriesRegistry(
                 source,
                 resolver.StorageRoot,

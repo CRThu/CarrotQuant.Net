@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
@@ -16,11 +17,15 @@ namespace CarrotBacktesting.NET.Engine.Broker
     public class SimulatedBroker : IBroker
     {
         private readonly BrokerConfig _config;
-        private IEngineContext? _context;
+        private readonly IFieldRegistry? _fields;
+        private readonly TimeZoneInfo _timeZone;
         private readonly object _syncLock = new();
 
         private double _cash;
         private DateTime _currentDate = DateTime.MinValue;
+        private DateTime _currentTime = DateTime.MinValue;
+        private DateTime _currentExchangeDate = DateTime.MinValue;
+        private DateTime _nextRollTimeUtc = DateTime.MinValue;
         private long _orderSequence = 0;
         private IReadOnlyDictionary<string, decimal>? _positionsSnapshot;
 
@@ -33,24 +38,52 @@ namespace CarrotBacktesting.NET.Engine.Broker
 
         /// <summary>
         /// 构造虚拟经纪商实例。
+        /// 依赖严格单向自顶向下：仅依赖维表抽象 IFieldRegistry，彻底解耦运行时 EngineContext。
         /// </summary>
-        /// <param name="config">经纪商交易与风控配置。</param>
-        /// <param name="context">引擎黑板运行上下文（可选，供 Hook 访问维表或行情）。</param>
-        public SimulatedBroker(BrokerConfig config, IEngineContext? context = null)
+        /// <param name="config">经纪商交易与风控配置（含清算时区）。</param>
+        /// <param name="fields">标的静态维表注册表（可选，供动态 Hook 查乘数/保证金率）。</param>
+        public SimulatedBroker(BrokerConfig config, IFieldRegistry? fields = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _context = context;
+            _fields = fields;
+            _timeZone = config.TimeZone ?? TimeZoneInfo.Utc;
             _cash = config.InitialCash;
         }
 
-        /// <summary>
-        /// 挂载引擎运行时上下文（由 EngineContext 构造时自动双向绑定，彻底解决初始化循环依赖）。
-        /// </summary>
-        /// <param name="context">策略运行时上下文。</param>
-        internal void AttachContext(IEngineContext context)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private DateTime ToExchangeDate(DateTime time)
         {
-            ArgumentNullException.ThrowIfNull(context);
-            _context = context;
+            if (_timeZone == TimeZoneInfo.Utc)
+            {
+                return time.Date;
+            }
+            // 防御 Unspecified：一律视为系统基准 UTC 并转换为交易所所在时区的当地日期
+            DateTime utcTime = time.Kind == DateTimeKind.Utc
+                ? time
+                : DateTime.SpecifyKind(time, DateTimeKind.Utc);
+            return TimeZoneInfo.ConvertTimeFromUtc(utcTime, _timeZone).Date;
+        }
+
+        private void InitializeRollThreshold(DateTime currentTime)
+        {
+            _currentDate = currentTime;
+            _currentExchangeDate = ToExchangeDate(currentTime);
+            CalculateNextRollTimeUtc(_currentExchangeDate);
+            UnlockPendingLots(_currentExchangeDate);
+        }
+
+        private void CalculateNextRollTimeUtc(DateTime exchangeDate)
+        {
+            // 下一次换日时刻为交易所本地次日 00:00:00 对应的物理时刻
+            DateTime nextLocalMidnight = exchangeDate.Date.AddDays(1);
+            if (_timeZone == TimeZoneInfo.Utc)
+            {
+                _nextRollTimeUtc = DateTime.SpecifyKind(nextLocalMidnight, DateTimeKind.Utc);
+            }
+            else
+            {
+                _nextRollTimeUtc = TimeZoneInfo.ConvertTimeToUtc(nextLocalMidnight, _timeZone);
+            }
         }
 
         /// <inheritdoc />
@@ -157,33 +190,56 @@ namespace CarrotBacktesting.NET.Engine.Broker
         }
 
         /// <inheritdoc />
-        public void RollDate(DateTime nextTradeDate)
+        public void Step(DateTime currentTime)
         {
             lock (_syncLock)
             {
-                _currentDate = nextTradeDate;
+                _currentTime = currentTime;
 
-                // 推进跨日结算：将到期的 T+N 冻结份额划转为今日可用持仓（倒序原地移除，零堆分配）
-                foreach (var pos in _positions.Values)
+                // 首次步进或时间发生跃迁时初始化换日阈值
+                if (_nextRollTimeUtc == DateTime.MinValue || currentTime < _currentDate)
                 {
-                    if (pos.PendingLots.Count == 0) continue;
+                    InitializeRollThreshold(currentTime);
+                }
 
-                    decimal unlocked = 0m;
-                    for (int i = pos.PendingLots.Count - 1; i >= 0; i--)
-                    {
-                        var lot = pos.PendingLots[i];
-                        if (nextTradeDate >= lot.AvailableDate)
-                        {
-                            unlocked += lot.Quantity;
-                            pos.PendingLots.RemoveAt(i);
-                        }
-                    }
+                // 时间戳阈值比对：检测是否到达交易所本地 00:00:00 换日时刻
+                if (currentTime >= _nextRollTimeUtc)
+                {
+                    ExecuteDayRollover(currentTime);
+                }
+            }
+        }
 
-                    if (unlocked > 0m)
+        private void ExecuteDayRollover(DateTime currentTime)
+        {
+            _currentDate = currentTime;
+            _currentExchangeDate = ToExchangeDate(currentTime);
+            CalculateNextRollTimeUtc(_currentExchangeDate);
+            UnlockPendingLots(_currentExchangeDate);
+        }
+
+        private void UnlockPendingLots(DateTime exchangeDate)
+        {
+            // 推进跨日结算：将到期的 T+N 冻结份额划转为今日可用持仓（倒序原地移除，零堆分配）
+            foreach (var pos in _positions.Values)
+            {
+                if (pos.PendingLots.Count == 0) continue;
+
+                decimal unlocked = 0m;
+                for (int i = pos.PendingLots.Count - 1; i >= 0; i--)
+                {
+                    var lot = pos.PendingLots[i];
+                    if (exchangeDate >= lot.AvailableDate)
                     {
-                        pos.AvailableQuantity += unlocked;
-                        _positionsSnapshot = null;
+                        unlocked += lot.Quantity;
+                        pos.PendingLots.RemoveAt(i);
                     }
+                }
+
+                if (unlocked > 0m)
+                {
+                    pos.AvailableQuantity += unlocked;
+                    _positionsSnapshot = null;
                 }
             }
         }
@@ -345,9 +401,9 @@ namespace CarrotBacktesting.NET.Engine.Broker
                 }
 
                 // 9. 状态跃迁：扣款与更新持仓
-                DateTime tradeTime = _currentDate != DateTime.MinValue 
-                    ? _currentDate 
-                    : (_context != null && _context.CurrentTime != DateTime.MinValue ? _context.CurrentTime : DateTime.UtcNow);
+                DateTime tradeTime = _currentTime != DateTime.MinValue 
+                    ? _currentTime 
+                    : (_currentDate != DateTime.MinValue ? _currentDate : DateTime.UtcNow);
 
                 if (isSpotStock)
                 {
@@ -366,7 +422,8 @@ namespace CarrotBacktesting.NET.Engine.Broker
                         }
                         else
                         {
-                            pos.PendingLots.Add(new PendingLot(request.Quantity, tradeTime.Date.AddDays(settleDays)));
+                            DateTime localTradeDate = ToExchangeDate(tradeTime);
+                            pos.PendingLots.Add(new PendingLot(request.Quantity, localTradeDate.AddDays(settleDays)));
                         }
                     }
                     else
@@ -501,11 +558,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
         {
             if (_config.OnGetMultiplier != null)
             {
-                if (_context == null)
-                {
-                    throw new InvalidOperationException($"品种 '{symbol}' 配置了 OnGetMultiplier Hook，但 SimulatedBroker 尚未挂载 IEngineContext，无法访问维表或行情。");
-                }
-                return _config.OnGetMultiplier(symbol, _context);
+                return _config.OnGetMultiplier(symbol, _fields);
             }
             return _config.Multiplier;
         }
@@ -514,11 +567,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
         {
             if (_config.OnGetMarginRate != null)
             {
-                if (_context == null)
-                {
-                    throw new InvalidOperationException($"品种 '{symbol}' 配置了 OnGetMarginRate Hook，但 SimulatedBroker 尚未挂载 IEngineContext，无法访问维表或行情。");
-                }
-                return _config.OnGetMarginRate(symbol, _context);
+                return _config.OnGetMarginRate(symbol, _fields);
             }
             return _config.MarginRate;
         }

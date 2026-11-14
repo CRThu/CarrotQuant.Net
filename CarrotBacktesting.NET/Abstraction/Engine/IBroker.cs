@@ -60,10 +60,10 @@ public interface IBroker
     OrderStatus GetOrderStatus(string orderId);
 
     /// <summary>
-    /// 引擎推进到新交易日时的跨日结算通知（用于 T+N 解锁冻结持仓、按日盯市等）。
+    /// 推进经纪商物理时钟时间步，驱动日内精确时间戳对齐与多时区自动跨日清算（如 T+N 解锁冻结持仓、按日盯市等）。
     /// </summary>
-    /// <param name="currentDate">当前推进到的交易日。</param>
-    void RollDate(DateTime currentDate) { }
+    /// <param name="currentTime">当前全局物理时间戳。</param>
+    void Step(DateTime currentTime) { }
 
     /// <summary>
     /// 实盘断线重连或定时对账时，由交易所权威数据原子同步本地账户状态（回测模式无需调用）。

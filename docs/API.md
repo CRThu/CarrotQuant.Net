@@ -198,7 +198,7 @@ public interface IMarketMetadata
   ```
 - **`TimeseriesSourceBase`**: 抽象基类（模板方法模式），收敛参数边界检查、ArrayPool 内存池租借与自适应翻倍扩容、时间戳排序、以及 `MarketDataAligner.AlignAndFill` 全局交易日历投射与 NaN 哨兵填充管线。
   - `CsvTimeseriesSource`: 继承基类，基于 Sylvan.Data.Csv 流式解析提供高性能无装箱行提取。
-  - `ParquetTimeseriesSource`: 继承基类，基于 Parquet 列式存储与 YearCache 列缓存提供极速列切片提取。
+  - `ParquetTimeseriesSource`: 继承基类，基于 Parquet 列式存储与 YearCache 列缓存提供列切片按需提取。
 - **`TimeseriesSourceFactory`**: 时序数据源工厂类，依据 `IStorageResolver.GetFormat(tableId)` 自动派发构建对应数据源：
   ```csharp
   ITimeseriesSource source = TimeseriesSourceFactory.Create(storageRoot, tableId);
@@ -601,19 +601,28 @@ public interface IEngineContext
 - **协作约定**: 缺省 key 时为类型全局单例（如统一发布的宏观指标或目标持仓）；显式指定 key 时代表独立命名通道/槽位，支持同类型多实例隔离（如多因子并发打分）与跨策略协同消费。
 
 ### 3. IBroker 与订单交互
+
+> 详细撮合模型、现货与保证金状态机、多时区自然日清算及完整契约详见 [虚拟经纪商体系 (broker.md)](broker.md)。
+
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 public interface IBroker
 {
     double GetCash();
+    double GetTotalEquity();
     decimal GetPosition(string symbol);
+    decimal GetAvailablePosition(string symbol);
+    IReadOnlyDictionary<string, decimal> GetPositions();
     string SubmitOrder(OrderRequest request);
     void CancelOrder(string orderId);
     OrderStatus GetOrderStatus(string orderId);
+    void Step(DateTime currentTime);
+    void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions);
     
     event Action<string, OrderStatus> OnOrderStatusChanged;
     event Action<ExecutionReport> OnTrade;
+    event Action<PositionEvent>? OnPositionChanged;
 }
 ```
 
@@ -625,7 +634,7 @@ public interface IBroker
 
 ### 4. IEngine 与 BacktestingEngine (回测驱动核心)
 
-统一统领回测生命周期、时间网格推进、T+N 跨日结算与策略管线执行。
+统一统领回测生命周期、时间网格推进、T+N 跨日结算与策略管线执行。详细生命周期状态机与步进流水线详见 [核心回测引擎体系 (engine.md)](engine.md)。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Engine;
@@ -635,22 +644,27 @@ public interface IEngine
     EngineStatus Status { get; }
     double Progress { get; }
     DateTime CurrentTime { get; }
+    IEngineContext Context { get; }
 
     void Run();
     Task RunAsync(CancellationToken cancellationToken = default);
     void Pause();
     void Resume();
     void Stop();
-    byte[] SaveState();
-    void RestoreState(byte[] state);
+}
+
+public interface ICheckpointable
+{
+    byte[] SaveCheckpoint();
+    void RestoreCheckpoint(byte[] checkpoint);
 }
 ```
 
 - **`BacktestingEngine` 单一权威内核**：
-  - **二分区间裁剪**：依据 `StartDate` 与 `EndDate` 通过二分查找精准裁剪 `TradeDates` 索引；
-  - **主时钟极速推进**：按时间步严格执行（`UpdateStep` → `Timeseries.StepTo` → 跨日检测 `Broker.RollDate` → 离散事件探测派发 `pipeline.OnEvent` → 策略主决策 `pipeline.OnUpdate`）；
-  - **热路径零堆分配 (零 GC)**：上下文单例常驻、复用事件内存缓冲区，单步纳秒级执行；
-  - **完备状态机与线程安全**：`Idle` → `Running` → `Paused` / `Completed` / `Faulted`，支持无悬挂优雅取消与暂停等待。
+  - **二分区间裁剪**：依据 `StartDate` 与 `EndDate` 通过二分查找确定起止 `TradeDates` 索引；
+  - **主时钟步进推进**：按时间步严格执行（`UpdateStep` → `Timeseries.StepTo` → 推进经纪商时钟与交易所本地清算 `Broker.Step` → 离散事件探测派发 `pipeline.OnEvent` → 策略主决策 `pipeline.OnUpdate`）；
+  - **热路径零堆分配 (零 GC)**：上下文单例常驻、复用事件内存缓冲区，单步执行零额外分配；
+  - **状态机生命周期控制**：`Idle` → `Running` → `Paused` / `Completed` / `Faulted`，支持优雅取消与暂停等待。
 
 ---
 

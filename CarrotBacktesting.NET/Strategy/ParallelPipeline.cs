@@ -37,8 +37,8 @@ public class ParallelPipeline : StrategyPipeline
 
     /// <summary>
     /// 并行时间步核心驱动入口。
-    /// 仅在 Concurrent 为 true 且子策略数大于 1 时启用多核并发驱动；否则采用极速单线程顺序执行。
-    /// 热路径采用实例级固定委托复用，实现绝对零堆分配（0 GC Allocations）。
+    /// 仅在 Concurrent 为 true 且子策略数大于 1 时启用多核并发驱动；否则采用确定性单线程顺序执行。
+    /// 热路径采用实例级固定委托复用，实现零堆分配（0 GC Allocations）。
     /// </summary>
     public override void OnUpdate(IEngineContext context)
     {
@@ -67,8 +67,8 @@ public class ParallelPipeline : StrategyPipeline
 
     /// <summary>
     /// 外部异构事件并行分发入口。
-    /// 仅在 Concurrent 为 true 且子策略数大于 1 时启用多核并发分发；否则采用极速单线程顺序分发。
-    /// 热路径采用实例级固定委托复用，实现绝对零堆分配（0 GC Allocations）。
+    /// 仅在 Concurrent 为 true 且子策略数大于 1 时启用多核并发分发；否则采用确定性单线程顺序分发。
+    /// 热路径采用实例级固定委托复用，实现零堆分配（0 GC Allocations）。
     /// </summary>
     public override void OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events)
     {

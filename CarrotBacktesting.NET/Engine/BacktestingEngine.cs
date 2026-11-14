@@ -13,11 +13,11 @@ using CarrotBacktesting.NET.Strategy;
 namespace CarrotBacktesting.NET.Engine
 {
     /// <summary>
-    /// 高性能单一权威回测驱动引擎（BacktestingEngine）。
-    /// 统一统领时序滑动窗口、T+N 跨日结算驱动、异构离散事件派发、策略管线步进与引擎状态机生命周期控制。
-    /// 遵循热路径零堆分配（零 GC）原则，具备数百万 Bar/s 高吞吐性能与完备的线程安全生命周期管理。
+    /// 单一内核回测驱动引擎（BacktestingEngine）。
+    /// 统领时序滑动窗口、T+N 跨日结算驱动、异构离散事件派发、策略管线步进与状态机生命周期控制。
+    /// 遵循热路径零堆分配（零 GC）原则，基于确定性时间步循环驱动与线程安全状态机。
     /// </summary>
-    public class BacktestingEngine : IEngine, IDisposable
+    public class BacktestingEngine : IEngine, ICheckpointable, IDisposable
     {
         private readonly ITimeseriesRegistry _timeseries;
         private readonly IBroker _broker;
@@ -121,7 +121,7 @@ namespace CarrotBacktesting.NET.Engine
             ArgumentNullException.ThrowIfNull(sessionConfig);
             ArgumentNullException.ThrowIfNull(timeseries);
 
-            var broker = new SimulatedBroker(sessionConfig.Broker);
+            var broker = new SimulatedBroker(sessionConfig.Broker, fields);
 
             IStrategyPipeline activePipeline;
             if (pipeline != null)
@@ -242,8 +242,6 @@ namespace CarrotBacktesting.NET.Engine
                 }
 
                 int totalSteps = endIndex - startIndex + 1;
-                DateTime lastDate = DateTime.MinValue;
-
                 // 5. 核心时间步驱动循环（热路径零分配）
                 for (int i = startIndex; i <= endIndex; i++)
                 {
@@ -269,13 +267,8 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.2 时序滑动窗口与预读驱动
                     _timeseries.StepTo(i);
 
-                    // 5.3 跨日结算检测（仅在真实跨日时触发一次，零额外开销）
-                    DateTime currentDate = currentTime.Date;
-                    if (currentDate != lastDate)
-                    {
-                        _broker.RollDate(currentTime);
-                        lastDate = currentDate;
-                    }
+                    // 5.3 推进经纪商时钟与交易所本地跨日结算（单指令 CPU 比较，零 GC）
+                    _broker.Step(currentTime);
 
                     // 5.4 离散事件常数时间轻量探测与派发
                     if (_events.HasNewEvents(currentTime))
@@ -442,7 +435,7 @@ namespace CarrotBacktesting.NET.Engine
         }
 
         /// <inheritdoc />
-        public byte[] SaveState()
+        public byte[] SaveCheckpoint()
         {
             lock (_stateLock)
             {
@@ -459,37 +452,37 @@ namespace CarrotBacktesting.NET.Engine
         }
 
         /// <inheritdoc />
-        public void RestoreState(byte[] state)
+        public void RestoreCheckpoint(byte[] checkpoint)
         {
-            ArgumentNullException.ThrowIfNull(state);
-            if (state.Length < 32)
+            ArgumentNullException.ThrowIfNull(checkpoint);
+            if (checkpoint.Length < 32)
             {
-                throw new ArgumentException($"恢复状态数据字节长度不足，预期至少 32 字节，实际为 {state.Length} 字节。", nameof(state));
+                throw new ArgumentException($"恢复检查点数据字节长度不足，预期至少 32 字节，实际为 {checkpoint.Length} 字节。", nameof(checkpoint));
             }
 
             lock (_stateLock)
             {
                 if (_status != EngineStatus.Idle)
                 {
-                    throw new InvalidOperationException($"仅可在引擎处于 Idle 状态时恢复状态，当前状态为: {_status}");
+                    throw new InvalidOperationException($"仅可在引擎处于 Idle 状态时恢复检查点，当前状态为: {_status}");
                 }
 
-                using var ms = new MemoryStream(state);
+                using var ms = new MemoryStream(checkpoint);
                 using var reader = new BinaryReader(ms);
                 uint magic = reader.ReadUInt32();
                 if (magic != StateMagic)
                 {
-                    throw new InvalidDataException($"无效的状态数据魔数: 0x{magic:X8}，期望为 0x{StateMagic:X8}。");
+                    throw new InvalidDataException($"无效的检查点数据魔数: 0x{magic:X8}，期望为 0x{StateMagic:X8}。");
                 }
                 int version = reader.ReadInt32();
                 if (version != StateVersion)
                 {
-                    throw new InvalidDataException($"不支持的状态数据版本: {version}，当前引擎版本为: {StateVersion}。");
+                    throw new InvalidDataException($"不支持的检查点数据版本: {version}，当前引擎版本为: {StateVersion}。");
                 }
 
                 _ = reader.ReadInt32(); // 忽略旧状态，恢复后保持 Idle
                 int restoredIndex = reader.ReadInt32();
-                DateTime restoredTime = new DateTime(reader.ReadInt64());
+                DateTime restoredTime = new DateTime(reader.ReadInt64(), DateTimeKind.Utc);
                 _progress = reader.ReadDouble();
 
                 _context.UpdateStep(restoredIndex, restoredTime);

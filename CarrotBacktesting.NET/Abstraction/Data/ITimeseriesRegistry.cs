@@ -58,7 +58,7 @@ public interface ITimeseriesRegistry
 
     /// <summary>
     /// 获取指定时序表注册分配的整型序号。
-    /// 策略可在 OnStart 中预先缓存序号以在 OnUpdate 中获得最极致的寄存器级判定性能。
+    /// 策略可在 OnStart 中预先缓存序号以在 OnUpdate 中获得寄存器级位运算判定效率。
     /// </summary>
     /// <param name="tableName">时序表名称。</param>
     /// <returns>对应的整型序号（0 ~ 63）。若未注册或不支持则返回 -1。</returns>

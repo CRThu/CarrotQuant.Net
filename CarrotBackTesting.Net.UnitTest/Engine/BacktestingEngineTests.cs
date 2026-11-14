@@ -258,7 +258,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Broker = new BrokerConfig
                 {
                     InitialCash = 1000000.0,
-                    OnGetMultiplier = (sym, ctx) =>
+                    OnGetMultiplier = (sym, fields) =>
                     {
                         multiplierCalled = true;
                         return 300.0; // 股指期货一手 300 乘数
@@ -274,7 +274,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             engine.Run();
 
             Assert.AreEqual(EngineStatus.Completed, engine.Status);
-            Assert.IsTrue(multiplierCalled, "通过 Factory 构造的 SimulatedBroker 必须成功挂载 Context 并执行 OnGetMultiplier");
+            Assert.IsTrue(multiplierCalled, "通过 Factory 构造的 SimulatedBroker 必须成功传递 Fields 并执行 OnGetMultiplier");
         }
 
         [TestMethod]
@@ -374,7 +374,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 }
                 else if (context.CurrentIndex == 1)
                 {
-                    // Day 1 跨日后，通过 RollDate 解锁，可用持仓应为 1000m
+                    // Day 1 跨日后，通过 Step 驱动结算解锁，可用持仓应为 1000m
                     var avail = context.Broker.GetAvailablePosition("sh.600000");
                     if (avail == 1000m)
                     {
@@ -397,11 +397,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
-        public void Run_RollDate_TPlusOne_ShouldUnlockSharesOnNextDay()
+        public void Run_Step_TPlusOne_ShouldUnlockSharesOnNextDay()
         {
             var (ts, _) = CreateTestTimeseries(3, new DateTime(2025, 1, 1));
-            // 采用 A 股 T+1 预设
-            var broker = new SimulatedBroker(BrokerConfig.AStock);
+            // 采用 T+1 现货配置
+            var broker = new SimulatedBroker(new BrokerConfig { SettleDays = 1, AllowShort = false });
             var strategy = new TPlusOneTradeStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -411,7 +411,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             Assert.AreEqual(EngineStatus.Completed, engine.Status);
             Assert.IsTrue(strategy.TriedSellDay0Failed, "Day 0 应该被 T+1 冻结");
-            Assert.IsTrue(strategy.SellDay1Succeeded, "Day 1 经由 RollDate 跨日结算后应成功卖出平仓");
+            Assert.IsTrue(strategy.SellDay1Succeeded, "Day 1 经由 Step 跨日结算后应成功卖出平仓");
         }
 
         [TestMethod]
@@ -556,7 +556,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
-        public void SaveAndRestoreState_ShouldValidateAndResumeExecution()
+        public void SaveAndRestoreCheckpoint_ShouldValidateAndResumeExecution()
         {
             var (ts, dates) = CreateTestTimeseries(10);
             var broker = new SimulatedBroker(new BrokerConfig());
@@ -565,24 +565,28 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             pipeline.Add(strategy);
 
             using var engine1 = new BacktestingEngine(ts, broker, pipeline);
+            Assert.IsTrue(engine1 is ICheckpointable, "BacktestingEngine 必须实现 ICheckpointable 契约");
+            var checkpointable1 = (ICheckpointable)engine1;
+
             var context = engine1.Context as EngineContext;
             context!.UpdateStep(6, dates[6]); // 模拟跑到了第 6 天
 
-            byte[] state = engine1.SaveState();
-            Assert.IsNotNull(state);
-            Assert.IsTrue(state.Length >= 32);
+            byte[] checkpoint = checkpointable1.SaveCheckpoint();
+            Assert.IsNotNull(checkpoint);
+            Assert.IsTrue(checkpoint.Length >= 32);
 
             // 1. 验证非法长度异常
-            Assert.ThrowsException<ArgumentException>(() => engine1.RestoreState(new byte[10]));
+            Assert.ThrowsException<ArgumentException>(() => checkpointable1.RestoreCheckpoint(new byte[10]));
 
             // 2. 验证非法魔数异常
-            var corrupted = (byte[])state.Clone();
+            var corrupted = (byte[])checkpoint.Clone();
             corrupted[0] = 0xFF;
-            Assert.ThrowsException<System.IO.InvalidDataException>(() => engine1.RestoreState(corrupted));
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => checkpointable1.RestoreCheckpoint(corrupted));
 
             // 3. 验证正常恢复并从第 7 天继续断点续跑 (7, 8, 9 共 3 步)
             using var engine2 = new BacktestingEngine(ts, broker, pipeline);
-            engine2.RestoreState(state);
+            var checkpointable2 = (ICheckpointable)engine2;
+            checkpointable2.RestoreCheckpoint(checkpoint);
 
             Assert.AreEqual(6, engine2.Context.CurrentIndex);
             Assert.AreEqual(dates[6], engine2.Context.CurrentTime);
@@ -759,7 +763,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
-        public void RestoreState_WhenRunning_ThrowsInvalidOperationException()
+        public void RestoreCheckpoint_WhenRunning_ThrowsInvalidOperationException()
         {
             var (ts, _) = CreateTestTimeseries(50);
             var broker = new SimulatedBroker(new BrokerConfig());
@@ -769,15 +773,133 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             pipeline.Add(strategy);
 
             using var engine = new BacktestingEngine(ts, broker, pipeline);
-            var state = engine.SaveState();
+            var checkpoint = ((ICheckpointable)engine).SaveCheckpoint();
 
             var task = engine.RunAsync();
             strategy.ReachedStep.Wait();
 
-            Assert.ThrowsException<InvalidOperationException>(() => engine.RestoreState(state));
+            Assert.ThrowsException<InvalidOperationException>(() => ((ICheckpointable)engine).RestoreCheckpoint(checkpoint));
 
             strategy.StepGate.Set();
             task.Wait(1000);
+        }
+
+        [TestMethod]
+        public void Run_MultiTimezone_USMarket_TPlusOne_ShouldUnlockAcrossUtcMidnight()
+        {
+            // 构造纽约时间美股跨越 UTC 午夜的连续时间步：
+            // Day 1 美东 15:30 (UTC 20:30) 买入
+            // Day 1 美东 19:30 (UTC 00:30 次日，跨越了 UTC 00:00，但美东仍在 Day 1！) -> T+1 必须仍然冻结！
+            // Day 2 美东 09:30 (UTC 14:30) 美东次日开盘 -> 必须成功解锁！
+            var tz = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+            var dt1_ny = new DateTime(2025, 1, 2, 15, 30, 0, DateTimeKind.Unspecified);
+            var dt2_ny_afterhours = new DateTime(2025, 1, 2, 19, 30, 0, DateTimeKind.Unspecified);
+            var dt3_ny_day2 = new DateTime(2025, 1, 3, 9, 30, 0, DateTimeKind.Unspecified);
+
+            var utc1 = TimeZoneInfo.ConvertTimeToUtc(dt1_ny, tz); // 2025-01-02 20:30:00 UTC
+            var utc2 = TimeZoneInfo.ConvertTimeToUtc(dt2_ny_afterhours, tz); // 2025-01-03 00:30:00 UTC (跨越了 UTC 午夜！)
+            var utc3 = TimeZoneInfo.ConvertTimeToUtc(dt3_ny_day2, tz); // 2025-01-03 14:30:00 UTC
+
+            var dates = new List<DateTime> { utc1, utc2, utc3 };
+            var meta = new DynamicMarketMetadata(new[] { "AAPL" }, dates);
+            var ts = new MockTimeseriesRegistry(meta);
+
+            var brokerConfig = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                SettleDays = 1,
+                TimeZoneId = "America/New_York"
+            };
+            var broker = new SimulatedBroker(brokerConfig);
+
+            var strategy = new UsMarketTPlusOneStrategy();
+            var pipeline = StrategyPipeline.Sequential();
+            pipeline.Add(strategy);
+
+            using var engine = new BacktestingEngine(ts, broker, pipeline);
+            engine.Run();
+
+            Assert.AreEqual(EngineStatus.Completed, engine.Status);
+            Assert.IsTrue(strategy.UtcMidnightStillFrozen, "跨越 UTC 00:00 但未到纽约 00:00 时，持仓必须仍然被冻结");
+            Assert.IsTrue(strategy.NextDayMorningUnlocked, "纽约次日早盘时，前一日美股持仓必须准时解锁并成功卖出");
+        }
+
+        [TestMethod]
+        public void Run_ExecutionReport_Time_ShouldMatchCurrentStepTimePrecisely()
+        {
+            var dates = new List<DateTime>
+            {
+                new DateTime(2025, 1, 2, 9, 30, 0),
+                new DateTime(2025, 1, 2, 10, 0, 0),
+                new DateTime(2025, 1, 2, 14, 55, 0)
+            };
+            var meta = new DynamicMarketMetadata(new[] { "sh.600000" }, dates);
+            var ts = new MockTimeseriesRegistry(meta);
+            var broker = new SimulatedBroker(new BrokerConfig { SettleDays = 0 });
+
+            var trackingStrategy = new MinuteExecutionReportTrackingStrategy();
+            var pipeline = StrategyPipeline.Sequential();
+            pipeline.Add(trackingStrategy);
+
+            using var engine = new BacktestingEngine(ts, broker, pipeline);
+            engine.Run();
+
+            Assert.AreEqual(EngineStatus.Completed, engine.Status);
+            Assert.AreEqual(2, trackingStrategy.Reports.Count);
+            // 验证 10:00 下单成交时间戳为 10:00，14:55 下单成交时间戳为 14:55，绝不停滞在 09:30
+            Assert.AreEqual(dates[1], trackingStrategy.Reports[0].Time, "10:00 成交回报时间必须精确匹配 10:00");
+            Assert.AreEqual(dates[2], trackingStrategy.Reports[1].Time, "14:55 成交回报时间必须精确匹配 14:55");
+        }
+
+        private class UsMarketTPlusOneStrategy : IStrategy
+        {
+            public string Name => "UsMarketTPlusOneStrategy";
+            public bool UtcMidnightStillFrozen { get; private set; }
+            public bool NextDayMorningUnlocked { get; private set; }
+
+            public void OnUpdate(IEngineContext context)
+            {
+                if (context.CurrentIndex == 0)
+                {
+                    // Step 0: 买入 100 股
+                    context.Broker.SubmitOrder(new OrderRequest("AAPL", OrderDirection.Buy, OrderType.Market, 150.0, 100m));
+                }
+                else if (context.CurrentIndex == 1)
+                {
+                    // Step 1: 跨越 UTC 午夜但仍在纽约 Day 1 晚间，可用应仍为 0
+                    if (context.Broker.GetAvailablePosition("AAPL") == 0m)
+                    {
+                        UtcMidnightStillFrozen = true;
+                    }
+                }
+                else if (context.CurrentIndex == 2)
+                {
+                    // Step 2: 纽约次日早盘，可用应解锁为 100m
+                    if (context.Broker.GetAvailablePosition("AAPL") == 100m)
+                    {
+                        NextDayMorningUnlocked = true;
+                    }
+                }
+            }
+        }
+
+        private class MinuteExecutionReportTrackingStrategy : IStrategy
+        {
+            public string Name => "MinuteExecutionReportTrackingStrategy";
+            public List<ExecutionReport> Reports { get; } = new();
+
+            public void OnUpdate(IEngineContext context)
+            {
+                if (context.CurrentIndex == 1 || context.CurrentIndex == 2)
+                {
+                    context.Broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 10m));
+                }
+            }
+
+            public void OnTrade(IEngineContext context, ExecutionReport e)
+            {
+                Reports.Add(e);
+            }
         }
 
         [TestMethod]

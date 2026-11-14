@@ -79,14 +79,7 @@ public interface IEngine
     void Stop();
 
     /// <summary>
-    /// 将引擎及关联策略的当前状态序列化为二进制数组，用于持久化或状态恢复。
+    /// 获取当前引擎持有的策略运行上下文。
     /// </summary>
-    /// <returns>包含序列化状态数据的字节数组。</returns>
-    byte[] SaveState();
-
-    /// <summary>
-    /// 从指定的二进制数组中恢复引擎及策略的状态。
-    /// </summary>
-    /// <param name="state">之前通过 SaveState 获取的字节数组。</param>
-    void RestoreState(byte[] state);
+    IEngineContext Context { get; }
 }

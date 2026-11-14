@@ -174,5 +174,29 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 source.ReadSymbolSeries(testSymbol, "close", 0, 1, new double[2]);
             });
         }
+
+        [TestMethod]
+        public void ParquetTimeseriesSource_WithTimeZone_ShouldNormalizeDatesToUtc()
+        {
+            string testDataRoot = GetTestDataRoot();
+            string parquetRoot = Path.Combine(testDataRoot, "parquet");
+            string tableId = "ashare.kline.1d.raw.baostock";
+
+            // 1. 无时区加载作为对照组
+            using var defaultSource = new ParquetTimeseriesSource(parquetRoot, tableId);
+            Assert.IsNull(defaultSource.SourceTimeZone);
+            Assert.IsTrue(defaultSource.TradeDates.Count > 0);
+            DateTime defaultFirstDate = defaultSource.TradeDates[0];
+
+            // 2. 带 Asia/Shanghai (+8) 时区加载
+            using var tzSource = new ParquetTimeseriesSource(parquetRoot, tableId, timeZone: "Asia/Shanghai");
+            Assert.IsNotNull(tzSource.SourceTimeZone);
+            Assert.AreEqual("Asia/Shanghai", tzSource.SourceTimeZone.Id);
+            Assert.AreEqual(defaultSource.TradeDates.Count, tzSource.TradeDates.Count);
+
+            // Parquet 物理列存储的是 Unix 毫秒时间戳，在指定时区模式下保留精确的 UTC 时间戳
+            Assert.AreEqual(DateTimeKind.Utc, tzSource.TradeDates[0].Kind);
+            Assert.AreEqual(new DateTime(2021, 1, 4, 7, 0, 0, DateTimeKind.Utc), tzSource.TradeDates[0]);
+        }
     }
 }
