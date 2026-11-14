@@ -140,7 +140,7 @@ public class BrokenStrategy : IStrategy
         });
 
         StringAssert.Contains(ex.Message, "动态策略源码编译失败");
-        StringAssert.Contains(ex.Message, "[Line");
+        StringAssert.Contains(ex.Message, "[Line 9, Col 5]");
     }
 
     [TestMethod]
@@ -376,5 +376,85 @@ public class UnsafeFastStrategy : IStrategy
         {
             alc.Unload();
         }
+    }
+
+    [TestMethod]
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    public void Roslyn_AssemblyLoadContext_Unload_ShouldBeGarbageCollected()
+    {
+        WeakReference alcWeakRef = null!;
+        WeakReference asmWeakRef = null!;
+
+        void CompileAndUnload()
+        {
+            const string code = @"
+using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Engine;
+public class EphemeralStrategy : IStrategy {
+    public string Name => ""Ephemeral"";
+    public void OnUpdate(IEngineContext context) { }
+}";
+            var (strategy, alc) = RoslynStrategyCompiler.CompileSource(code);
+            alcWeakRef = new WeakReference(alc, trackResurrection: true);
+            asmWeakRef = new WeakReference(strategy.GetType().Assembly, trackResurrection: true);
+
+            Assert.IsTrue(alcWeakRef.IsAlive);
+            Assert.IsTrue(asmWeakRef.IsAlive);
+
+            alc.Unload();
+        }
+
+        CompileAndUnload();
+
+        for (int i = 0; i < 10 && (alcWeakRef.IsAlive || asmWeakRef.IsAlive); i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+
+        Assert.IsFalse(alcWeakRef.IsAlive, "Collectible AssemblyLoadContext 必须在 Unload 后被 GC 完全回收，杜绝元数据内存泄漏！");
+        Assert.IsFalse(asmWeakRef.IsAlive, "动态策略程序集必须在 Unload 后被 GC 完全回收！");
+    }
+
+    [TestMethod]
+    public void CompileSource_ShortTypeName_ShouldFindAndInstantiate()
+    {
+        const string code = @"
+namespace CustomNamespace.Strategies
+{
+    using CarrotBacktesting.NET.Abstraction.Strategy;
+    using CarrotBacktesting.NET.Abstraction.Engine;
+    public class ShortNamedStrategy : IStrategy
+    {
+        public string Name => ""ShortNamed"";
+        public void OnUpdate(IEngineContext context) { }
+    }
+}";
+        // 传入短类名测试从命名空间回退查找
+        var (strategy, alc) = RoslynStrategyCompiler.CompileSource(code, typeName: "ShortNamedStrategy");
+        try
+        {
+            Assert.IsNotNull(strategy);
+            Assert.AreEqual("ShortNamed", strategy.Name);
+        }
+        finally
+        {
+            alc.Unload();
+        }
+    }
+
+    [TestMethod]
+    public void CompileSource_TypeNameNotImplementingIStrategy_ThrowsTypeLoadException()
+    {
+        const string code = @"
+public class NonStrategyClass
+{
+    public int Value => 100;
+}";
+        Assert.ThrowsException<TypeLoadException>(() =>
+        {
+            RoslynStrategyCompiler.CompileSource(code, typeName: "NonStrategyClass");
+        });
     }
 }

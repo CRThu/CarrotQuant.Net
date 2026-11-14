@@ -635,5 +635,162 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var avail = broker.GetAvailablePosition("sh.600000");
             Assert.AreEqual(100m, avail, "次日早盘首根 Bar 必须成功解锁前一日全天任何时间买入的份额，绝不能退化为 T+2");
         }
+
+        [TestMethod]
+        public void Defense_NaNAndInfinityBasePrice_ShouldBeStrictlyRejected()
+        {
+            var config = new BrokerConfig { InitialCash = 1_000_000.0 };
+            var broker = new SimulatedBroker(config);
+
+            // 1. 测试 NaN 价格
+            var nanOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, double.NaN, 100m);
+            string id1 = broker.ExecuteOrder(nanOrder, double.NaN, null);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id1));
+            Assert.IsFalse(double.IsNaN(broker.GetCash()), "账户资金绝不能被 NaN 污染");
+            Assert.AreEqual(1_000_000.0, broker.GetCash(), 1e-4);
+
+            // 2. 测试 Infinity 价格
+            var infOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, double.PositiveInfinity, 100m);
+            string id2 = broker.ExecuteOrder(infOrder, double.PositiveInfinity, null);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id2));
+            Assert.AreEqual(1_000_000.0, broker.GetCash(), 1e-4);
+
+            // 3. 测试 -Infinity 价格
+            string id3 = broker.ExecuteOrder(infOrder, double.NegativeInfinity, null);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id3));
+            Assert.AreEqual(1_000_000.0, broker.GetCash(), 1e-4);
+        }
+
+        [TestMethod]
+        public void SpotStock_MinFee_SmallOrder_ShouldApplyMinimumFee()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                FeeRate = 0.0003,
+                MinFee = 5.0,
+                Slippage = 0.0
+            };
+            var broker = new SimulatedBroker(config);
+
+            // 买入 100 股 @ 2.0 元，成交额 200 元；万三佣金仅 0.06 元，必须触发 5.0 元最低手续费
+            var order = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 2.0, 100m);
+            string id = broker.SubmitOrder(order);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(id));
+
+            // 扣减现金 = 200.0 (turnover) + 5.0 (minFee) = 205.0
+            Assert.AreEqual(100_000.0 - 205.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(100m, broker.GetPosition("sh.600000"));
+        }
+
+        [TestMethod]
+        public void Futures_ShortPosition_AvailableQuantityAndPartialClose_ShouldBeAccurate()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 1_000_000.0,
+                AllowShort = true,
+                MarginRate = 0.1, // 10% 保证金
+                Multiplier = 10.0,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = new SimulatedBroker(config);
+
+            // 1. 做空 5 手 @ 100.0 元
+            // turnover = 5 * 100 * 10 = 5000. 保证金占用 = 500
+            broker.ExecuteOrder(new OrderRequest("IF2501", OrderDirection.Sell, OrderType.Limit, 100.0, 5m), 100.0, null);
+            Assert.AreEqual(-5m, broker.GetPosition("IF2501"));
+            Assert.AreEqual(-5m, broker.GetAvailablePosition("IF2501"), "空头可用持仓必须与总持仓同步保持负号一致");
+            Assert.AreEqual(1_000_000.0 - 500.0, broker.GetCash(), 1e-4);
+
+            // 2. 买平 2 手 @ 90.0 元 (盈利：(100 - 90) * 2 * 10 = 200; 释放保证金 = 2 * 100 * 10 * 0.1 = 200)
+            broker.ExecuteOrder(new OrderRequest("IF2501", OrderDirection.Buy, OrderType.Limit, 90.0, 2m), 90.0, null);
+            Assert.AreEqual(-3m, broker.GetPosition("IF2501"));
+            Assert.AreEqual(-3m, broker.GetAvailablePosition("IF2501"), "部分平仓后空头可用持仓应准确更新为 -3");
+            Assert.AreEqual(1_000_000.0 - 500.0 + 200.0 + 200.0, broker.GetCash(), 1e-4);
+
+            // 3. 买平剩余 3 手 @ 110.0 元 (亏损：(100 - 110) * 3 * 10 = -300; 释放保证金 = 3 * 100 * 10 * 0.1 = 300)
+            broker.ExecuteOrder(new OrderRequest("IF2501", OrderDirection.Buy, OrderType.Limit, 110.0, 3m), 110.0, null);
+            Assert.AreEqual(0m, broker.GetPosition("IF2501"));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("IF2501"));
+            Assert.AreEqual(1_000_000.0 - 500.0 + 400.0 + (-300.0 + 300.0), broker.GetCash(), 1e-4);
+        }
+
+        [TestMethod]
+        public void Futures_PositionFlip_ShouldCloseAndOpenRemainderAccurately()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 1_000_000.0,
+                AllowShort = true,
+                MarginRate = 0.1,
+                Multiplier = 1.0,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = new SimulatedBroker(config);
+
+            // 1. 空头 5 手 @ 100.0 (占用保证金 50)
+            broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 100.0, 5m), 100.0, null);
+            Assert.AreEqual(-5m, broker.GetPosition("rb2505"));
+
+            // 2. 买入 8 手 @ 100.0 (意图：平空 5 手 + 反手开多 3 手)
+            // 平空 5 手释放保证金 50，盈亏 0；反手开多 3 手占用保证金 3 * 100 * 0.1 = 30
+            broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 100.0, 8m), 100.0, null);
+            Assert.AreEqual(3m, broker.GetPosition("rb2505"), "反手后持仓应从 -5 转为 +3");
+            Assert.AreEqual(3m, broker.GetAvailablePosition("rb2505"));
+            Assert.AreEqual(1_000_000.0 - 30.0, broker.GetCash(), 1e-4);
+
+            // 3. 卖出 7 手 @ 100.0 (意图：平多 3 手 + 反手开空 4 手)
+            // 平多 3 手释放保证金 30；反手开空 4 手占用保证金 4 * 100 * 0.1 = 40
+            broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 100.0, 7m), 100.0, null);
+            Assert.AreEqual(-4m, broker.GetPosition("rb2505"), "反手后持仓应从 +3 转为 -4");
+            Assert.AreEqual(-4m, broker.GetAvailablePosition("rb2505"));
+            Assert.AreEqual(1_000_000.0 - 40.0, broker.GetCash(), 1e-4);
+        }
+
+        [TestMethod]
+        public void Futures_PositionFlip_InsufficientCashForRemainder_ShouldReject()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 10.0, // 仅 10 元现金
+                AllowShort = true,
+                MarginRate = 0.1,
+                Multiplier = 1.0,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = new SimulatedBroker(config);
+
+            // 初始持有多头 5 手 (假设通过 SyncState 注入，避免开仓扣现金)
+            broker.SyncState(10.0, new Dictionary<string, decimal> { ["rb2505"] = 5m });
+
+            // 意图卖出 8 手 (平多 5 手，反手开空 3 手)
+            // 反手开空 3 手需要保证金 3 * 100 * 0.1 = 30 元，而可用现金仅 10 元，必须被拒单拦截
+            string id = broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 100.0, 8m), 100.0, null);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id));
+            Assert.AreEqual(5m, broker.GetPosition("rb2505"), "拒单后持仓不变");
+            Assert.AreEqual(10.0, broker.GetCash(), "拒单后资金不变");
+        }
+
+        [TestMethod]
+        public void SubmitOrder_MarketOrder_UsesMarketPrice()
+        {
+            var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 };
+            var broker = new SimulatedBroker(config);
+
+            // 预先更新市场价格
+            broker.UpdateMarketPrice("sh.600000", 15.0);
+
+            // 市价单便捷构造函数（Price 默认为 0.0）
+            var marketOrder = new OrderRequest("sh.600000", OrderDirection.Buy, 100m);
+            string id = broker.SubmitOrder(marketOrder);
+
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(id));
+            Assert.AreEqual(100m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(100_000.0 - 1500.0, broker.GetCash(), 1e-4);
+        }
     }
 }

@@ -54,6 +54,10 @@ namespace CarrotBacktesting.NET.Data
                     if (list != null && list.Count > 0)
                     {
                         _globalEvents[date.Date] = list.ToArray();
+                        if (!_dayMaps.ContainsKey(date.Date))
+                        {
+                            _dayMaps[date.Date] = new Dictionary<string, IReadOnlyList<IDataRow>>(0, StringComparer.OrdinalIgnoreCase);
+                        }
                     }
                 }
             }
@@ -132,7 +136,7 @@ namespace CarrotBacktesting.NET.Data
             return false;
         }
 
-        public bool ContainsDate(DateTime date) => _dayMaps.ContainsKey(date.Date);
+        public bool ContainsDate(DateTime date) => _dayMaps.ContainsKey(date.Date) || _globalEvents.ContainsKey(date.Date);
 
         #region 强类型即时点查与流式 LINQ
 

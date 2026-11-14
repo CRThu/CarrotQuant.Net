@@ -270,6 +270,34 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(0, emptyRegistry.GetTableNames().Count);
         }
 
+        [TestMethod]
+        public void TestFieldTable_MissingKey_ThrowsKeyNotFoundException()
+        {
+            string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
+            var resolver = new StorageResolver(csvRoot);
+            var table = FieldSourceFactory.Create(resolver, "ashare.industry.eastmoney");
+            var registry = new FieldRegistry();
+            registry.Register("industry", table);
+
+            // 1. 点查不存在的标的抛出 KeyNotFoundException
+            Assert.ThrowsException<KeyNotFoundException>(() =>
+            {
+                var _ = table["non_existent_symbol"];
+            });
+
+            // 2. 强类型点查不存在的标的抛出 KeyNotFoundException
+            Assert.ThrowsException<KeyNotFoundException>(() =>
+            {
+                table.Get<EastmoneyIndustry>("non_existent_symbol");
+            });
+
+            // 3. 注册中心点查不存在的维表抛出 KeyNotFoundException
+            Assert.ThrowsException<KeyNotFoundException>(() =>
+            {
+                var _ = registry["non_existent_table"];
+            });
+        }
+
         #endregion
     }
 }

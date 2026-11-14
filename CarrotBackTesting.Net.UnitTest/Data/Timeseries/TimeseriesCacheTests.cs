@@ -738,6 +738,54 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             bool okSmall = store.TryReadChunk<double>("close", 0, small, out _);
             Assert.IsFalse(okSmall);
         }
+
+        [TestMethod]
+        public void TestLoadMatrix_CorruptCompressedChunkFile_ThrowsInvalidDataException()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_corrupt", 16, "lz4");
+            var symbols = new[] { "sh.600000" };
+            var dates = new[] { DateTime.Today };
+
+            using (var buffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
+            {
+                buffer[0, 0] = 100.5;
+                store.WriteMatrix("close", buffer, symbols, dates);
+            }
+
+            string chunkFile = Path.Combine(_tempDir, "table_corrupt", "close", "chunk_0.bin");
+            Assert.IsTrue(File.Exists(chunkFile));
+
+            // 1. 损坏场景 A：文件小于 4 字节
+            File.WriteAllBytes(chunkFile, new byte[] { 0x01, 0x02 });
+            var ex1 = Assert.ThrowsException<InvalidDataException>(() =>
+            {
+                store.LoadMatrix<double>("close");
+            });
+            StringAssert.Contains(ex1.Message, "Corrupt compressed chunk file");
+
+            // 2. 损坏场景 B：头部声明的解压长度与期望长度不符
+            byte[] invalidLenBytes = new byte[16];
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(invalidLenBytes.AsSpan(0, 4), 99999);
+            File.WriteAllBytes(chunkFile, invalidLenBytes);
+            var ex2 = Assert.ThrowsException<InvalidDataException>(() =>
+            {
+                store.LoadMatrix<double>("close");
+            });
+            StringAssert.Contains(ex2.Message, "Decompressed length mismatch");
+
+            // 3. 损坏场景 C：头部声明长度匹配，但有效载荷无法被 LZ4 正常解压
+            byte[] badLz4Bytes = new byte[12];
+            // 真实期望是 1行 * 1列 * 8字节 = 8字节
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(badLz4Bytes.AsSpan(0, 4), 8);
+            badLz4Bytes[4] = 0xFF;
+            badLz4Bytes[5] = 0xFF;
+            File.WriteAllBytes(chunkFile, badLz4Bytes);
+            var ex3 = Assert.ThrowsException<InvalidDataException>(() =>
+            {
+                store.LoadMatrix<double>("close");
+            });
+            StringAssert.Contains(ex3.Message, "LZ4 decoding failed");
+        }
     }
 }
 

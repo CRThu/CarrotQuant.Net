@@ -310,5 +310,37 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(50m, row.GetDecimal("invalid", 50m));
             Assert.AreEqual(0m, row.GetDecimal("non_existent"));
         }
+
+        [TestMethod]
+        public void EntityMapper_DirtyDataGuards_AllPrimitiveTypes_ThrowsInvalidDataException()
+        {
+            var columns = new List<string> { "name", "price", "weight", "count", "timestamp", "is_active", "date" };
+            var ctor = EntityMapper.ResolveConstructor<MultiTypeEntity>(columns);
+            var factory = EntityMapper.GetOrCreateCompiledFactory<MultiTypeEntity>(ctor, columns);
+
+            // 1. float 脏数据
+            var dirtyFloat = new[] { "AAPL", "150.0", "not_a_float", "10", "1000", "true", "2025-01-01" };
+            var exFloat = Assert.ThrowsException<System.IO.InvalidDataException>(() => factory(dirtyFloat));
+            StringAssert.Contains(exFloat.Message, "not_a_float");
+            StringAssert.Contains(exFloat.Message, "Weight");
+
+            // 2. long 脏数据
+            var dirtyLong = new[] { "AAPL", "150.0", "1.5", "10", "not_a_long", "true", "2025-01-01" };
+            var exLong = Assert.ThrowsException<System.IO.InvalidDataException>(() => factory(dirtyLong));
+            StringAssert.Contains(exLong.Message, "not_a_long");
+            StringAssert.Contains(exLong.Message, "Timestamp");
+
+            // 3. bool 脏数据
+            var dirtyBool = new[] { "AAPL", "150.0", "1.5", "10", "1000", "not_a_bool", "2025-01-01" };
+            var exBool = Assert.ThrowsException<System.IO.InvalidDataException>(() => factory(dirtyBool));
+            StringAssert.Contains(exBool.Message, "not_a_bool");
+            StringAssert.Contains(exBool.Message, "IsActive");
+
+            // 4. DateTime 脏数据
+            var dirtyDate = new[] { "AAPL", "150.0", "1.5", "10", "1000", "true", "not_a_date" };
+            var exDate = Assert.ThrowsException<System.IO.InvalidDataException>(() => factory(dirtyDate));
+            StringAssert.Contains(exDate.Message, "not_a_date");
+            StringAssert.Contains(exDate.Message, "Date");
+        }
     }
 }

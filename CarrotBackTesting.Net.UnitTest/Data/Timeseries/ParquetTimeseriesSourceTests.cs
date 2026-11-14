@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using CarrotBacktesting.NET.Data;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Parquet;
 using Parquet.Data;
+using Parquet.Serialization;
 
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
@@ -197,6 +199,119 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // Parquet 物理列存储的是 Unix 毫秒时间戳，在指定时区模式下保留精确的 UTC 时间戳
             Assert.AreEqual(DateTimeKind.Utc, tzSource.TradeDates[0].Kind);
             Assert.AreEqual(new DateTime(2021, 1, 4, 7, 0, 0, DateTimeKind.Utc), tzSource.TradeDates[0]);
+        }
+
+        public class NonNullableSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime Date { get; set; }
+            public double Close { get; set; }
+            public float Open { get; set; }
+            public long Volume { get; set; }
+            public int Amount { get; set; }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_NonNullableColumns_ShouldNotBeZeroOrNaN()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_non_nullable_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "test_table");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<NonNullableSample>
+                {
+                    new()
+                    {
+                        Symbol = "sh.600000",
+                        Date = new DateTime(2025, 1, 2),
+                        Close = 12.34,
+                        Open = 12.0f,
+                        Volume = 10000L,
+                        Amount = 100
+                    }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                using var source = new ParquetTimeseriesSource(tempDir, "test_table");
+                Assert.AreEqual(1, source.Symbols.Count);
+                Assert.AreEqual("sh.600000", source.Symbols[0]);
+                Assert.AreEqual(1, source.TradeDates.Count);
+
+                double[] closes = new double[1];
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 1, closes);
+                Assert.AreEqual(12.34, closes[0], 1e-4);
+
+                float[] opens = new float[1];
+                source.ReadSymbolSeries("sh.600000", "Open", 0, 1, opens);
+                Assert.AreEqual(12.0f, opens[0], 1e-4f);
+
+                long[] volumes = new long[1];
+                source.ReadSymbolSeries("sh.600000", "Volume", 0, 1, volumes);
+                Assert.AreEqual(10000L, volumes[0]);
+
+                int[] amounts = new int[1];
+                source.ReadSymbolSeries("sh.600000", "Amount", 0, 1, amounts);
+                Assert.AreEqual(100, amounts[0]);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, true);
+                }
+            }
+        }
+
+        public class NullableKlineSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime Date { get; set; }
+            public double? Close { get; set; }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_NullableColumnsWithNulls_ShouldHandleNullsAsNaN()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_nullable_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "test_table_nullable");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<NullableKlineSample>
+                {
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 2), Close = null },
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 3), Close = 25.5 }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                using var source = new ParquetTimeseriesSource(tempDir, "test_table_nullable");
+                Assert.AreEqual(2, source.TradeDates.Count);
+
+                double[] closes = new double[2];
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes);
+                Assert.IsTrue(double.IsNaN(closes[0]), "Null row should be NaN");
+                Assert.AreEqual(25.5, closes[1], 1e-4, "Non-null row must preserve value and not be shifted");
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, true);
+                }
+            }
         }
     }
 }

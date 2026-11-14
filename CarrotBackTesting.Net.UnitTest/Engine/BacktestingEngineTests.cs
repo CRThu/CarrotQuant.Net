@@ -365,9 +365,17 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                         10.0,
                         1000m));
 
-                    // 验证当日可用持仓受 T+1 约束仍为 0
+                    // 验证当日可用持仓受 T+1 约束仍为 0，并强行提交卖单测试风控拦截（零假阳性）
                     var avail = context.Broker.GetAvailablePosition("sh.600000");
-                    if (avail == 0m)
+                    string sellOrdId = context.Broker.SubmitOrder(new OrderRequest(
+                        "sh.600000",
+                        OrderDirection.Sell,
+                        OrderType.Market,
+                        10.0,
+                        500m));
+                    var sellStatus = context.Broker.GetOrderStatus(sellOrdId);
+
+                    if (avail == 0m && sellStatus == OrderStatus.Rejected)
                     {
                         TriedSellDay0Failed = true;
                     }
@@ -462,10 +470,12 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             using var engine = new BacktestingEngine(ts, broker, pipeline);
             engine.Run();
 
-            Assert.IsTrue(strategy.OrderStatusChanges.Count > 0, "应收到订单状态变更回调");
-            Assert.IsTrue(strategy.Trades.Count > 0, "应收到成交回报回调");
-            Assert.IsTrue(strategy.PositionChanges.Count > 0, "应收到持仓变更回调");
+            Assert.AreEqual(2, strategy.OrderStatusChanges.Count, "应收到 Submitted 与 Filled 两次状态回调");
+            Assert.AreEqual(1, strategy.Trades.Count, "应且仅应收到 1 次成交回报");
+            Assert.AreEqual(1, strategy.PositionChanges.Count, "应且仅应收到 1 次持仓变更回报");
             Assert.AreEqual("sh.600000", strategy.Trades[0].Symbol);
+            Assert.AreEqual(500m, strategy.Trades[0].FillQuantity);
+            Assert.AreEqual(500m, strategy.PositionChanges[0].NewQuantity);
         }
 
         [TestMethod]
@@ -623,6 +633,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         {
             public string Name => "RealDataMaStrategy";
             public int TradeCount { get; private set; }
+            public List<ExecutionReport> Trades { get; } = new();
             private bool _ordered = false;
 
             public void OnUpdate(IEngineContext context)
@@ -648,6 +659,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public void OnTrade(IEngineContext context, ExecutionReport e)
             {
                 TradeCount++;
+                Trades.Add(e);
             }
         }
 
@@ -689,8 +701,14 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             engine.Run();
 
             Assert.AreEqual(EngineStatus.Completed, engine.Status);
-            Assert.IsTrue(strategy.TradeCount > 0, "真实数据回测应成功触发成交");
-            Assert.IsTrue(broker.GetTotalEquity() > 0, "总资产应为正数");
+            Assert.AreEqual(1, strategy.TradeCount, "真实数据回测应且仅应触发 1 次买入成交");
+            string firstSymbol = tsRegistry.Metadata.Symbols[0];
+            Assert.AreEqual(100m, broker.GetPosition(firstSymbol), "标的持仓应精确为 100 股");
+            double cash = broker.GetCash();
+            double equity = broker.GetTotalEquity();
+            Assert.IsTrue(cash < 1000000.0, "资金应扣减成交金额与手续费");
+            Assert.IsTrue(equity > 0.0, "总资产应为正数");
+            Assert.AreEqual(cash + 100.0 * strategy.Trades[0].FillPrice, equity, 1e-2, "总资产必须精确守恒等于现金加持仓市值");
         }
 
         private class ThrowingStrategy : IStrategy
@@ -936,6 +954,136 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             Assert.AreEqual(EngineStatus.Completed, engine.Status);
             Assert.AreEqual(0, strategy.UpdateCount);
+        }
+
+        [TestMethod]
+        public void CreateFactory_WithNullPipeline_ShouldBuildFromSessionConfigOrFallback()
+        {
+            var (ts, _) = CreateTestTimeseries(2);
+
+            // 1. SessionConfig 中无 Pipeline 配置，回退至默认 Sequential 管线
+            var sessionConfig1 = new SessionConfig
+            {
+                Engine = new EngineConfig { Mode = "backtest" },
+                Broker = new BrokerConfig()
+            };
+            using var engine1 = BacktestingEngine.Create(sessionConfig1, ts, pipeline: null);
+            Assert.IsNotNull(engine1);
+            Assert.AreEqual(EngineStatus.Idle, engine1.Status);
+
+            // 2. SessionConfig 中显式声明 Pipeline 配置，工厂自动构建装配
+            var sessionConfig2 = new SessionConfig
+            {
+                Engine = new EngineConfig { Mode = "backtest" },
+                Broker = new BrokerConfig(),
+                Pipeline = new PipelineConfiguration
+                {
+                    Name = "AutoConfigPipeline",
+                    Mode = PipelineMode.Sequential,
+                    Pipeline = new List<StrategyNodeConfiguration>
+                    {
+                        new() { Type = typeof(CountingStrategy).AssemblyQualifiedName }
+                    }
+                }
+            };
+            using var engine2 = BacktestingEngine.Create(sessionConfig2, ts, pipeline: null);
+            engine2.Run();
+            Assert.AreEqual(EngineStatus.Completed, engine2.Status);
+        }
+
+        [TestMethod]
+        public void EmptyTradeDates_ShouldLogWarningAndComplete()
+        {
+            // 构造 0 个交易日的空时序元数据
+            var metadata = new DynamicMarketMetadata(new[] { "sh.600000" }, Array.Empty<DateTime>(), new Dictionary<string, Type> { { "close", typeof(double) } });
+            using var emptyTs = new TimeseriesRegistry(metadata, (sym, f) => null!);
+            var broker = new SimulatedBroker(new BrokerConfig());
+            var pipeline = StrategyPipeline.Sequential();
+
+            using var engine = new BacktestingEngine(emptyTs, broker, pipeline);
+            engine.Run();
+
+            Assert.AreEqual(EngineStatus.Completed, engine.Status);
+        }
+
+        [TestMethod]
+        public void RestoreCheckpoint_InvalidVersion_ThrowsInvalidDataException()
+        {
+            var (ts, _) = CreateTestTimeseries(5);
+            var broker = new SimulatedBroker(new BrokerConfig());
+            var pipeline = StrategyPipeline.Sequential();
+            using var engine = new BacktestingEngine(ts, broker, pipeline);
+
+            // 写入正确 Magic (0x43514254) 但错误版本号 (Version = 999) 的检查点二进制
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+            writer.Write(0x43514254u);
+            writer.Write(999);
+            writer.Write(0);
+            writer.Write(0);
+            writer.Write(DateTime.Today.Ticks);
+            writer.Write(0.0);
+
+            Assert.ThrowsException<InvalidDataException>(() => engine.RestoreCheckpoint(ms.ToArray()));
+        }
+
+        [TestMethod]
+        public void RestoreCheckpoint_PastEndIndex_CompletesImmediately()
+        {
+            var (ts, _) = CreateTestTimeseries(5);
+            var broker = new SimulatedBroker(new BrokerConfig());
+            var strategy = new CountingStrategy();
+            var pipeline = StrategyPipeline.Sequential();
+            pipeline.Add(strategy);
+            using var engine = new BacktestingEngine(ts, broker, pipeline);
+
+            // 构造步进索引为 10（超过总交易日数 5）的合法检查点
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+            writer.Write(0x43514254u); // Magic
+            writer.Write(1);           // Version = 1
+            writer.Write(1);           // Running
+            writer.Write(10);          // currentIndex = 10
+            writer.Write(DateTime.Today.Ticks);
+            writer.Write(1.0);
+
+            engine.RestoreCheckpoint(ms.ToArray());
+            engine.Run();
+
+            Assert.AreEqual(EngineStatus.Completed, engine.Status);
+            Assert.AreEqual(0, strategy.UpdateCount);
+        }
+
+        [TestMethod]
+        public void DispatchEvents_GlobalEvents_ShouldDispatchToPipeline()
+        {
+            var (ts, dates) = CreateTestTimeseries(3, new DateTime(2025, 1, 1));
+            var broker = new SimulatedBroker(new BrokerConfig());
+
+            // 构造全局广播事件（无标的代码，全市场广播）
+            var eventDate = dates[1];
+            var ordinals = new Dictionary<string, int> { ["rate"] = 0 };
+            var row = new DataRow(string.Empty, eventDate, new[] { "0.025" }, ordinals);
+            var globalDict = new Dictionary<DateTime, List<DataRow>>
+            {
+                [eventDate] = new List<DataRow> { row }
+            };
+            var dataDict = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
+            var eventTable = new EventTable("macro_rate", new[] { "rate" }, dataDict, globalDict);
+            var eventRegistry = new EventRegistry();
+            eventRegistry.Register("macro_rate", eventTable);
+
+            var strategy = new EventTrackingStrategy();
+            var pipeline = StrategyPipeline.Sequential();
+            pipeline.Add(strategy);
+
+            using var engine = new BacktestingEngine(ts, broker, pipeline, events: eventRegistry);
+            engine.Run();
+
+            Assert.AreEqual(EngineStatus.Completed, engine.Status);
+            Assert.AreEqual(1, strategy.ReceivedEvents.Count, "策略应成功接收到全局广播事件");
+            Assert.AreEqual("macro_rate", strategy.ReceivedEvents[0].table);
+            Assert.AreEqual(1, strategy.ReceivedEvents[0].count);
         }
     }
 }

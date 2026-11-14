@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -163,10 +164,19 @@ namespace CarrotBacktesting.NET.Data
             {
                 int[] defLevels = new int[rowCount];
                 var memBuf = (ReadOnlyMemory<char>[])buffer;
-                groupReader.ReadRawSync(dataField, memBuf, defLevels);
-                for (int i = 0; i < rowCount; i++)
+                if (!dataField.IsNullable)
                 {
-                    if (defLevels[i] == 0) memBuf[i] = ReadOnlyMemory<char>.Empty;
+                    groupReader.ReadRawSync(dataField, memBuf, defLevels);
+                }
+                else
+                {
+                    var packed = new ReadOnlyMemory<char>[rowCount];
+                    groupReader.ReadRawSync(dataField, packed, defLevels);
+                    int valIdx = 0;
+                    for (int i = 0; i < rowCount; i++)
+                    {
+                        memBuf[i] = defLevels[i] > 0 ? packed[valIdx++] : ReadOnlyMemory<char>.Empty;
+                    }
                 }
             }
             else
@@ -177,9 +187,41 @@ namespace CarrotBacktesting.NET.Data
                 else if (readType == typeof(long)) ReadColumnRawTyped<long>(groupReader, dataField, (long[])buffer, defLevels, 0);
                 else if (readType == typeof(int)) ReadColumnRawTyped<int>(groupReader, dataField, (int[])buffer, defLevels, 0);
                 else if (readType == typeof(bool)) ReadColumnRawTyped<bool>(groupReader, dataField, (bool[])buffer, defLevels, false);
+                else if (readType == typeof(DateTime))
+                {
+                    var dtBuf = (DateTime[])buffer;
+                    if (!dataField.IsNullable)
+                    {
+                        groupReader.ReadRawSync(dataField, dtBuf, defLevels);
+                    }
+                    else
+                    {
+                        var packed = new DateTime[rowCount];
+                        groupReader.ReadRawSync(dataField, packed, defLevels);
+                        int valIdx = 0;
+                        for (int i = 0; i < rowCount; i++)
+                        {
+                            dtBuf[i] = defLevels[i] > 0 ? packed[valIdx++] : DateTime.MinValue;
+                        }
+                    }
+                }
                 else if (readType == typeof(DateTimeOffset))
                 {
-                    groupReader.ReadRawSync(dataField, (DateTimeOffset[])buffer, defLevels);
+                    var dtoBuf = (DateTimeOffset[])buffer;
+                    if (!dataField.IsNullable)
+                    {
+                        groupReader.ReadRawSync(dataField, dtoBuf, defLevels);
+                    }
+                    else
+                    {
+                        var packed = new DateTimeOffset[rowCount];
+                        groupReader.ReadRawSync(dataField, packed, defLevels);
+                        int valIdx = 0;
+                        for (int i = 0; i < rowCount; i++)
+                        {
+                            dtoBuf[i] = defLevels[i] > 0 ? packed[valIdx++] : DateTimeOffset.MinValue;
+                        }
+                    }
                 }
                 else
                 {
@@ -193,10 +235,25 @@ namespace CarrotBacktesting.NET.Data
         private static void ReadColumnRawTyped<T>(ParquetRowGroupReader groupReader, DataField field, T[] buffer, int[] defLevels, T defaultValue)
             where T : unmanaged
         {
-            groupReader.ReadRawSync(field, buffer, defLevels);
-            for (int i = 0; i < buffer.Length; i++)
+            if (!field.IsNullable)
             {
-                if (defLevels[i] == 0) buffer[i] = defaultValue;
+                groupReader.ReadRawSync(field, buffer, defLevels);
+                return;
+            }
+
+            T[] packed = ArrayPool<T>.Shared.Rent(buffer.Length);
+            try
+            {
+                groupReader.ReadRawSync(field, packed, defLevels);
+                int valIdx = 0;
+                for (int i = 0; i < buffer.Length; i++)
+                {
+                    buffer[i] = defLevels[i] > 0 ? packed[valIdx++] : defaultValue;
+                }
+            }
+            finally
+            {
+                ArrayPool<T>.Shared.Return(packed);
             }
         }
 

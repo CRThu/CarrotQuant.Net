@@ -74,6 +74,11 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceOrFilePath);
 
+        if (_isCompiled)
+        {
+            throw new InvalidOperationException("策略管线已被 Compile 密封固化，禁止在运行期动态追加子策略。");
+        }
+
         var (strategy, alc) = File.Exists(sourceOrFilePath)
             ? RoslynStrategyCompiler.CompileFile(sourceOrFilePath, typeName, constructorArgs)
             : RoslynStrategyCompiler.CompileSource(sourceOrFilePath, typeName, constructorArgs);
@@ -89,6 +94,12 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     public void RegisterDynamicContext(AssemblyLoadContext alc)
     {
         ArgumentNullException.ThrowIfNull(alc);
+
+        if (_isCompiled)
+        {
+            throw new InvalidOperationException("策略管线已被 Compile 密封固化，禁止在运行期注册动态上下文。");
+        }
+
         _dynamicContexts.Add(alc);
     }
 

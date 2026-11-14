@@ -219,6 +219,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(globalTable.TryGetGlobal(dt, out var gRows));
             Assert.AreEqual(1, gRows.Count);
             Assert.AreEqual("holiday", gRows[0].GetString("type"));
+            Assert.IsTrue(globalTable.ContainsDate(dt));
+            Assert.AreEqual(1, globalTable.Count);
+            Assert.IsTrue(globalTable.Dates.Contains(dt));
+            Assert.IsNotNull(globalTable[dt]);
+            Assert.AreEqual(0, globalTable[dt].Count);
         }
 
         [TestMethod]
@@ -378,6 +383,35 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var table = registry["adj"];
             Assert.IsNotNull(table);
             Assert.IsTrue(table.Count > 0);
+        }
+
+        [TestMethod]
+        public void EventTable_MissingKeys_ThrowsKeyNotFoundException()
+        {
+            string csvRoot = Path.Combine(EventTableTests.GetTestDataRoot(), "csv");
+            var resolver = new StorageResolver(csvRoot);
+            var table = EventSourceFactory.Create(resolver, "ashare.adj_factor.baostock");
+
+            var nonExistentDate = new DateTime(1990, 1, 1);
+            var validDate = new DateTime(2021, 7, 21);
+
+            // 1. 日期不存在抛出 KeyNotFoundException
+            Assert.ThrowsException<KeyNotFoundException>(() =>
+            {
+                var _ = table[nonExistentDate];
+            });
+
+            // 2. 日期存在但标的不存在抛出 KeyNotFoundException
+            Assert.ThrowsException<KeyNotFoundException>(() =>
+            {
+                var _ = table[validDate, "non_existent_symbol"];
+            });
+
+            // 3. 强类型点查标的不存在抛出 KeyNotFoundException
+            Assert.ThrowsException<KeyNotFoundException>(() =>
+            {
+                table.Get<AdjustmentFactor>(validDate, "non_existent_symbol");
+            });
         }
     }
 }

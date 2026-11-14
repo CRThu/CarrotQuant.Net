@@ -413,15 +413,19 @@ public class StrategyPipelineTests
         parallel.Add(new ConcurrentAlphaStrategy("Alpha1", 50, 1.0));
         parallel.Compile();
 
-        Assert.ThrowsException<AggregateException>(() =>
+        var exUpdate = Assert.ThrowsException<AggregateException>(() =>
         {
             parallel.OnUpdate(context);
         });
+        Assert.IsTrue(exUpdate.InnerExceptions.Count >= 1);
+        Assert.IsTrue(exUpdate.InnerExceptions.Any(e => e is InvalidOperationException && e.Message == "Update failed!"));
 
-        Assert.ThrowsException<AggregateException>(() =>
+        var exEvent = Assert.ThrowsException<AggregateException>(() =>
         {
             parallel.OnEvent(context, "evt", Array.Empty<IDataRow>());
         });
+        Assert.IsTrue(exEvent.InnerExceptions.Count >= 1);
+        Assert.IsTrue(exEvent.InnerExceptions.Any(e => e is InvalidOperationException && e.Message == "Event failed!"));
     }
 
     [TestMethod]
@@ -558,5 +562,103 @@ public class StrategyPipelineTests
         Assert.IsTrue(disposableLeaf.IsDisposed);
         // 验证清空了内部策略引用
         Assert.AreEqual(0, new List<IStrategy>(master.GetStrategies()).Count);
+    }
+
+    [TestMethod]
+    public void StrategyPipeline_AddFromSource_InlineCodeAndFile_ShouldLoadAndCompile()
+    {
+        using var pipeline = StrategyPipeline.Sequential();
+
+        // 1. 从字符串代码加载
+        const string inlineCode = @"
+using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Engine;
+public class InlineStrategy : IStrategy {
+    public string Name => ""InlineStrategy"";
+    public int Lookback => 75;
+    public void OnUpdate(IEngineContext context) { }
+}";
+        pipeline.AddFromSource(inlineCode);
+        Assert.AreEqual(75, pipeline.Lookback);
+
+        // 2. 从临时源码文件加载
+        var tempFile = Path.Combine(Path.GetTempPath(), $"SourceStrategy_{Guid.NewGuid():N}.cs");
+        const string fileCode = @"
+using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Engine;
+public class FileStrategy : IStrategy {
+    public string Name => ""FileStrategy"";
+    public int Lookback => 120;
+    public void OnUpdate(IEngineContext context) { }
+}";
+        File.WriteAllText(tempFile, fileCode);
+        try
+        {
+            pipeline.AddFromSource(tempFile);
+            Assert.AreEqual(120, pipeline.Lookback);
+
+            pipeline.Compile();
+            var strategies = pipeline.GetStrategies().ToList();
+            Assert.AreEqual(2, strategies.Count);
+            Assert.AreEqual("InlineStrategy", strategies[0].Name);
+            Assert.AreEqual("FileStrategy", strategies[1].Name);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [TestMethod]
+    public void Pipeline_ThreeLevelNesting_RecursivelyAggregatesLookbackAndFreezesArray()
+    {
+        var root = StrategyPipeline.Sequential();
+        var stage1 = StrategyPipeline.Parallel();
+        var subStage = StrategyPipeline.Sequential();
+
+        subStage.Add(new StepTraceStrategy("Leaf_A", 150, new List<string>()));
+        subStage.Add(new StepTraceStrategy("Leaf_B", 450, new List<string>())); // 全局最大
+
+        stage1.Add(subStage);
+        stage1.Add(new StepTraceStrategy("Leaf_C", 80, new List<string>()));
+
+        root.Add(stage1);
+        root.Add(new StepTraceStrategy("Leaf_D", 200, new List<string>()));
+
+        // 1. 验证 3 层递归 Lookback 聚合计算准确性: max(150, 450, 80, 200) = 450
+        Assert.AreEqual(450, root.Lookback);
+
+        // 2. 验证 Compile 密封与底层数组恒等（零二次动态分配）
+        root.Compile();
+        Assert.AreEqual(450, root.Lookback);
+
+        var strategies1 = root.GetStrategies().ToArray();
+        var strategies2 = root.GetStrategies().ToArray();
+        Assert.AreEqual(4, strategies1.Length);
+        CollectionAssert.AreEqual(strategies1, strategies2);
+
+        // 3. 验证三层子节点均已处于不可追加密封状态
+        Assert.ThrowsException<InvalidOperationException>(() => subStage.Add(new StepTraceStrategy("Leaf_E", 10, new List<string>())));
+        Assert.ThrowsException<InvalidOperationException>(() => stage1.Add(new StepTraceStrategy("Leaf_F", 10, new List<string>())));
+    }
+
+    [TestMethod]
+    public void StrategyPipeline_Compiled_AddFromSourceAndRegisterContext_ThrowsInvalidOperationException()
+    {
+        using var pipeline = StrategyPipeline.Sequential();
+        pipeline.Add(new StepTraceStrategy("Leaf", 50, new List<string>()));
+        pipeline.Compile();
+
+        // 密封后尝试 AddFromSource 应立即拦截
+        Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            pipeline.AddFromSource("public class Test : IStrategy { public string Name => \"T\"; public int Lookback => 1; public void OnUpdate(IEngineContext c) {} }");
+        });
+
+        // 密封后尝试 RegisterDynamicContext 应立即拦截
+        Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            pipeline.RegisterDynamicContext(new System.Runtime.Loader.AssemblyLoadContext("TestAlc", isCollectible: true));
+        });
     }
 }

@@ -267,11 +267,39 @@ namespace CarrotBacktesting.NET.Engine.Broker
             }
         }
 
+        private readonly ConcurrentDictionary<string, double> _marketPrices = new();
+
+        /// <summary>
+        /// 更新标的最新行情价格（用于驱动市价单撮合与盯市估值）。
+        /// </summary>
+        /// <param name="symbol">标的代码。</param>
+        /// <param name="price">最新市场行情价格。</param>
+        public void UpdateMarketPrice(string symbol, double price)
+        {
+            if (!string.IsNullOrWhiteSpace(symbol) && price > 0.0 && !double.IsNaN(price) && !double.IsInfinity(price))
+            {
+                _marketPrices[symbol] = price;
+                if (_positions.TryGetValue(symbol, out var pos))
+                {
+                    pos.LastPrice = price;
+                }
+            }
+        }
+
         /// <inheritdoc />
         public string SubmitOrder(OrderRequest request)
         {
+            ArgumentNullException.ThrowIfNull(request);
+
+            // 市价单且未指定价格时，自动尝试从已缓存的最新市场行情获取基准价
+            double price = request.Price;
+            if ((price <= 0.0 || double.IsNaN(price)) && _marketPrices.TryGetValue(request.Symbol, out var lastPrice) && lastPrice > 0.0)
+            {
+                price = lastPrice;
+            }
+
             // 默认使用委托中指定的价格作为基准价立即执行回测撮合
-            return ExecuteOrder(request, request.Price, null);
+            return ExecuteOrder(request, price, null);
         }
 
         /// <summary>
@@ -301,9 +329,9 @@ namespace CarrotBacktesting.NET.Engine.Broker
                 }
 
                 // 1. 基础参数有效性校验
-                if (request.Quantity <= 0m || basePrice <= 0.0)
+                if (request.Quantity <= 0m || basePrice <= 0.0 || double.IsNaN(basePrice) || double.IsInfinity(basePrice))
                 {
-                    RejectOrder(record, "Quantity or basePrice must be positive.");
+                    RejectOrder(record, "Quantity or basePrice must be positive and finite.");
                     return orderId;
                 }
 
@@ -389,9 +417,20 @@ namespace CarrotBacktesting.NET.Engine.Broker
                 }
                 else
                 {
-                    // 衍生品/期货：开仓占用保证金+费用；平仓仅需支付手续费
-                    bool isOpening = (request.IsBuy && pos.TotalQuantity >= 0m) || (request.IsSell && pos.TotalQuantity <= 0m);
-                    requiredCash = isOpening ? (turnover * marginRate + commission) : commission;
+                    // 衍生品/期货：开仓占用保证金+费用；纯平仓仅需支付手续费；反手开仓需支付手续费与反手新开份额的保证金
+                    decimal closeQty = Math.Min(request.Quantity, Math.Abs(pos.TotalQuantity));
+                    decimal remainingQty = request.Quantity - closeQty;
+                    bool isPureOpening = pos.TotalQuantity == 0m || (request.IsBuy && pos.TotalQuantity > 0m) || (request.IsSell && pos.TotalQuantity < 0m);
+
+                    if (isPureOpening)
+                    {
+                        requiredCash = turnover * marginRate + commission;
+                    }
+                    else
+                    {
+                        double flipMargin = (double)remainingQty * fillPrice * multiplier * marginRate;
+                        requiredCash = flipMargin + commission;
+                    }
                 }
 
                 if (_cash < requiredCash)
@@ -470,7 +509,19 @@ namespace CarrotBacktesting.NET.Engine.Broker
                             pos.TotalQuantity += closeQty;
                             pos.AvailableQuantity += closeQty;
 
-                            if (pos.TotalQuantity == 0m)
+                            decimal remainingQty = request.Quantity - closeQty;
+                            if (remainingQty > 0m)
+                            {
+                                // 反手开多
+                                double remTurnover = (double)remainingQty * fillPrice * multiplier;
+                                double margin = remTurnover * marginRate;
+                                _cash -= margin;
+                                pos.TotalQuantity = remainingQty;
+                                pos.AvailableQuantity = remainingQty;
+                                pos.AverageCost = fillPrice;
+                                _positions[request.Symbol] = pos;
+                            }
+                            else if (pos.TotalQuantity == 0m)
                             {
                                 pos.AverageCost = 0.0;
                                 _positions.TryRemove(request.Symbol, out _);
@@ -488,7 +539,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
                             decimal newTotal = Math.Abs(pos.TotalQuantity) + request.Quantity;
                             pos.AverageCost = ((double)Math.Abs(pos.TotalQuantity) * pos.AverageCost + (double)request.Quantity * fillPrice) / (double)newTotal;
                             pos.TotalQuantity -= request.Quantity;
-                            pos.AvailableQuantity += request.Quantity;
+                            pos.AvailableQuantity -= request.Quantity;
                         }
                         else
                         {
@@ -501,7 +552,19 @@ namespace CarrotBacktesting.NET.Engine.Broker
                             pos.TotalQuantity -= closeQty;
                             pos.AvailableQuantity -= closeQty;
 
-                            if (pos.TotalQuantity == 0m)
+                            decimal remainingQty = request.Quantity - closeQty;
+                            if (remainingQty > 0m)
+                            {
+                                // 反手开空
+                                double remTurnover = (double)remainingQty * fillPrice * multiplier;
+                                double margin = remTurnover * marginRate;
+                                _cash -= margin;
+                                pos.TotalQuantity = -remainingQty;
+                                pos.AvailableQuantity = -remainingQty;
+                                pos.AverageCost = fillPrice;
+                                _positions[request.Symbol] = pos;
+                            }
+                            else if (pos.TotalQuantity == 0m)
                             {
                                 pos.AverageCost = 0.0;
                                 _positions.TryRemove(request.Symbol, out _);
@@ -511,6 +574,7 @@ namespace CarrotBacktesting.NET.Engine.Broker
                 }
 
                 pos.LastPrice = fillPrice;
+                _marketPrices[request.Symbol] = fillPrice;
                 _positionsSnapshot = null;
 
                 // 10. 触发成交与状态变更事件（热路径短路防无谓堆分配）
