@@ -21,7 +21,17 @@ namespace CarrotBacktesting.NET.Indicators
         public int Period => _period;
 
         /// <summary>
-        /// 构建流式 EMA 指标实例。
+        /// 获取平滑衰减乘数（Alpha）。
+        /// </summary>
+        public double Alpha => _multiplier;
+
+        /// <summary>
+        /// 获取平滑衰减乘数（Multiplier，等价于 Alpha）。
+        /// </summary>
+        public double Multiplier => _multiplier;
+
+        /// <summary>
+        /// 按周期构建流式 EMA 指标实例（标准平滑乘数 alpha = 2 / (period + 1)）。
         /// </summary>
         /// <param name="period">平滑周期（必须 >= 1）。</param>
         /// <param name="historyCapacity">历史回溯缓冲容量（默认 8）。</param>
@@ -34,6 +44,25 @@ namespace CarrotBacktesting.NET.Indicators
 
             _period = period;
             _multiplier = 2.0 / (period + 1.0);
+            _ema = 0.0;
+            _initSum = 0.0;
+            _samples = 0;
+        }
+
+        /// <summary>
+        /// 按自定义平滑衰减系数构建流式 EMA 指标实例。
+        /// </summary>
+        /// <param name="alpha">平滑衰减系数（必须在区间 (0, 1] 内）。</param>
+        /// <param name="historyCapacity">历史回溯缓冲容量（默认 8）。</param>
+        public Ema(double alpha, int historyCapacity = 8) : base(historyCapacity)
+        {
+            if (alpha <= 0.0 || alpha > 1.0 || double.IsNaN(alpha))
+            {
+                throw new ArgumentOutOfRangeException(nameof(alpha), "平滑系数 alpha 必须在区间 (0, 1] 内。");
+            }
+
+            _multiplier = alpha;
+            _period = Math.Max(1, (int)Math.Round(2.0 / alpha - 1.0));
             _ema = 0.0;
             _initSum = 0.0;
             _samples = 0;

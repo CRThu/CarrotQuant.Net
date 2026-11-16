@@ -63,3 +63,4 @@
 #*.RTF   diff=astextplain
 
 echarts.js linguist-vendored
+CarrotBackTesting.NET.TestData/** linguist-vendored

@@ -163,6 +163,27 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.AreEqual(30.0, ema.Current, 1e-12);
         }
 
+        [TestMethod]
+        public void Ema_WithCustomAlpha_ShouldCalculateAndValidateProperly()
+        {
+            // 1. 验证自定义 alpha 模式
+            var ema = new Ema(0.1);
+            Assert.AreEqual(0.1, ema.Alpha, 1e-12);
+            Assert.AreEqual(0.1, ema.Multiplier, 1e-12);
+            // 2/0.1 - 1 = 19
+            Assert.AreEqual(19, ema.Period);
+
+            // 2. 异常边界防护
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new Ema(0.0));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new Ema(-0.5));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new Ema(1.5));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new Ema(double.NaN));
+
+            // 3. 经典周期构造模式的 Alpha 属性对齐
+            var ema20 = new Ema(19);
+            Assert.AreEqual(2.0 / 20.0, ema20.Alpha, 1e-12);
+        }
+
         #endregion
 
         #region 3. RSI 相对强弱指标测试
@@ -492,11 +513,158 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.IsTrue(double.IsNaN(macd.Hist[0]));
         }
 
+        #endregion
+
+        #region 7. WMA 加权移动平均测试
+
+        [TestMethod]
+        public void Wma_BoundaryAndHistoryIndexing_ShouldWorkProperly()
+        {
+            var wma = new Wma(3);
+            Assert.IsFalse(wma.IsReady);
+            Assert.IsTrue(double.IsNaN(wma.Current));
+
+            // Feed bar 1: close = 10
+            wma.Update(10, 10, 10, 10, 100);
+            Assert.IsFalse(wma.IsReady);
+
+            // Feed bar 2: close = 20
+            wma.Update(20, 20, 20, 20, 100);
+            Assert.IsFalse(wma.IsReady);
+
+            // Feed bar 3: close = 30
+            // WMA3 = (10*1 + 20*2 + 30*3) / (1+2+3) = (10 + 40 + 90) / 6 = 140 / 6 = 23.333333
+            wma.Update(30, 30, 30, 30, 100);
+            Assert.IsTrue(wma.IsReady);
+            Assert.AreEqual(140.0 / 6.0, wma.Current, 1e-10);
+
+            // Feed bar 4: close = 40
+            // WMA3 = (20*1 + 30*2 + 40*3) / 6 = (20 + 60 + 120) / 6 = 200 / 6 = 33.333333
+            wma.Update(40, 40, 40, 40, 100);
+            Assert.AreEqual(200.0 / 6.0, wma.Current, 1e-10);
+            Assert.AreEqual(140.0 / 6.0, wma[-1], 1e-10);
+
+            // 防未来函数
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => wma[1]);
+
+            // Reset
+            wma.Reset();
+            Assert.IsFalse(wma.IsReady);
+            Assert.IsTrue(double.IsNaN(wma.Current));
+        }
+
+        #endregion
+
+        #region 8. VWAP 成交量加权平均价测试
+
+        [TestMethod]
+        public void Vwap_CumulativeAndRolling_ShouldHandleZeroVolumeAndReset()
+        {
+            // 1. 累计模式
+            var vwapCum = new Vwap(0);
+            // TP1 = (10+10+10)/3 = 10, Vol = 100 -> PV = 1000
+            vwapCum.Update(10, 10, 10, 10, 100);
+            Assert.IsTrue(vwapCum.IsReady);
+            Assert.AreEqual(10.0, vwapCum.Current, 1e-10);
+
+            // TP2 = (20+20+20)/3 = 20, Vol = 300 -> PV = 6000
+            // CumPV = 7000, CumVol = 400 => VWAP = 7000 / 400 = 17.5
+            vwapCum.Update(20, 20, 20, 20, 300);
+            Assert.AreEqual(17.5, vwapCum.Current, 1e-10);
+
+            // 零成交量时，VWAP 保持当前有效值
+            vwapCum.Update(30, 30, 30, 30, 0);
+            Assert.AreEqual(17.5, vwapCum.Current, 1e-10);
+
+            // Reset
+            vwapCum.Reset();
+            Assert.IsFalse(vwapCum.IsReady);
+
+            // 2. 滚动 2 周期模式
+            var vwap2 = new Vwap(2);
+            vwap2.Update(10, 10, 10, 10, 100);
+            Assert.IsFalse(vwap2.IsReady);
+            vwap2.Update(20, 20, 20, 20, 100);
+            Assert.IsTrue(vwap2.IsReady);
+            Assert.AreEqual(15.0, vwap2.Current, 1e-10);
+
+            // Feed bar 3: TP = 30, Vol = 100 -> 滑出 bar 1 (10*100), 剩余 (20*100 + 30*100)/200 = 25.0
+            vwap2.Update(30, 30, 30, 30, 100);
+            Assert.AreEqual(25.0, vwap2.Current, 1e-10);
+        }
+
+        #endregion
+
+        #region 9. KDJ 随机指标测试
+
+        [TestMethod]
+        public void Kdj_SubStreamsAndFlatMarketZeroDivisionDefense_ShouldSucceed()
+        {
+            var kdj = new Kdj(3, 3, 3);
+            Assert.IsFalse(kdj.IsReady);
+            Assert.IsFalse(kdj.K.IsReady);
+
+            // 极端平盘无波动测试（H = L = C），验证除以零防御
+            for (int i = 0; i < 5; i++)
+            {
+                kdj.Update(10, 10, 10, 10, 100);
+            }
+
+            Assert.IsTrue(kdj.IsReady);
+            Assert.IsFalse(double.IsNaN(kdj.K.Current));
+            Assert.IsFalse(double.IsNaN(kdj.D.Current));
+            Assert.IsFalse(double.IsNaN(kdj.J.Current));
+            Assert.AreEqual(50.0, kdj.K.Current, 1e-8);
+            Assert.AreEqual(50.0, kdj.D.Current, 1e-8);
+            Assert.AreEqual(50.0, kdj.J.Current, 1e-8);
+
+            // 子流只读保护：外部调用 Update 必须显式抛错
+            Assert.ThrowsException<NotSupportedException>(() => kdj.K.Update(1, 1, 1, 1, 1));
+        }
+
+        #endregion
+
+        #region 10. SAR 抛物转向系统测试
+
+        [TestMethod]
+        public void Sar_DirectionReversalAndBoundaries_ShouldTrackCorrectly()
+        {
+            var sar = new Sar(0.02, 0.2);
+            Assert.IsFalse(sar.IsReady);
+
+            // Bar 0
+            sar.Update(10, 11, 9, 10, 100);
+            Assert.IsFalse(sar.IsReady);
+
+            // Bar 1: 走高进入多头
+            sar.Update(10.5, 12, 10, 11.5, 100);
+            Assert.IsTrue(sar.IsReady);
+            Assert.IsTrue(sar.IsLong);
+            Assert.AreEqual(9.0, sar.Current, 1e-10);
+
+            // 连续暴跌击穿 SAR 触发反转
+            sar.Update(8, 8.5, 6.0, 7.0, 100);
+            Assert.IsFalse(sar.IsLong);
+            Assert.IsTrue(sar.Current >= 10.0);
+
+            // Reset
+            sar.Reset();
+            Assert.IsFalse(sar.IsReady);
+        }
+
+        #endregion
+
+        #region 11. 指标基础契约与通用行为测试
+
         [TestMethod]
         public void Indicators_ColdStartUnready_ShouldReturnNaN()
         {
             var sma = new Sma(5);
             var ema = new Ema(5);
+            var wma = new Wma(5);
+            var vwap = new Vwap(5);
+            var kdj = new Kdj(5, 3, 3);
+            var sar = new Sar(0.02, 0.2);
             var rsi = new Rsi(5);
             var atr = new Atr(5);
             var macd = new Macd(3, 6, 3);
@@ -507,6 +675,14 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.IsTrue(double.IsNaN(sma[0]));
             Assert.IsTrue(double.IsNaN(ema.Current));
             Assert.IsTrue(double.IsNaN(ema[0]));
+            Assert.IsTrue(double.IsNaN(wma.Current));
+            Assert.IsTrue(double.IsNaN(wma[0]));
+            Assert.IsTrue(double.IsNaN(vwap.Current));
+            Assert.IsTrue(double.IsNaN(vwap[0]));
+            Assert.IsTrue(double.IsNaN(kdj.Current));
+            Assert.IsTrue(double.IsNaN(kdj[0]));
+            Assert.IsTrue(double.IsNaN(sar.Current));
+            Assert.IsTrue(double.IsNaN(sar[0]));
             Assert.IsTrue(double.IsNaN(rsi.Current));
             Assert.IsTrue(double.IsNaN(rsi[0]));
             Assert.IsTrue(double.IsNaN(atr.Current));
@@ -524,6 +700,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
         public void Indicators_LookaheadBias_ShouldThrowException()
         {
             var ema = new Ema(3);
+            var wma = new Wma(3);
             var rsi = new Rsi(3);
             var atr = new Atr(3);
             var macd = new Macd(3, 6, 3);
@@ -531,6 +708,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             for (int i = 0; i < 10; i++)
             {
                 ema.Update(10 + i);
+                wma.Update(10 + i, 10 + i, 10 + i, 10 + i, 100);
                 rsi.Update(10 + i);
                 atr.Update(10 + i, 12 + i, 8 + i, 10 + i, 100);
                 macd.Update(10 + i);
@@ -538,6 +716,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 
             // offset > 0 访问未来 Bar 必须全部抛出 ArgumentOutOfRangeException
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => _ = ema[1]);
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => _ = wma[1]);
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => _ = rsi[1]);
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => _ = atr[1]);
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => _ = macd[1]);

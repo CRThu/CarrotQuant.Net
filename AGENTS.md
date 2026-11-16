@@ -135,7 +135,7 @@ graph TD
             IStreamIndicator[IStreamIndicator]
 
             IndicatorRegistry --> IndicatorPoolBase
-            IndicatorPoolBase <|-- IndicatorPoolTyped
+            IndicatorPoolBase -->|泛型派生| IndicatorPoolTyped
             IndicatorPoolTyped --> IStreamIndicator
         end
 
@@ -167,7 +167,7 @@ graph TD
 | 分层 | 核心职责 | 核心组件 / 契约 |
 | :--- | :--- | :--- |
 | **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvTimeseriesSource`, `ParquetTimeseriesSource`, `TimeseriesRegistry`, `TimeseriesCacheManager<T>`, `ITimeseriesRegistry`, `IEventTable`, `IEventRegistry`, `IFieldRegistry`, `FieldRegistry`, `FieldSourceFactory`, `FieldTable` |
-| **Indicator Layer (指标体系)** | 增量流式指标计算、全市场标的数组连续容器、多策略共享单次驱动与极简取价门面 | `IStreamIndicator`, `IndicatorPool`, `IndicatorPool<T>`, `IndicatorRegistry`, `Sma`, `Ema`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
+| **Indicator Layer (指标体系)** | 增量流式指标计算、全市场标的数组连续容器、多策略共享单次驱动与极简取价门面 | `IStreamIndicator`, `IndicatorPool`, `IndicatorPool<T>`, `IndicatorRegistry`, `Sma`, `Ema`, `Wma`, `Vwap`, `Kdj`, `Sar`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
 | **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
 | **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机、实盘增量事件循环、上下文注入、可观测性监控 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
 | **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `ISignalStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
@@ -515,7 +515,11 @@ CarrotQuant .NET 彻底根除无多态价值的冗余镜像接口（`IIndicatorR
 ### 2. 增量流式经典指标库与数值特性
 所有指标基于严格的 $O(1)$ 增量递推物理公式，单 Bar 仅需固定次数常数浮点运算，百万步运算仅需数毫秒：
 - **`Sma`**: 简单移动平均，维护累加和与环形回溯缓冲，内建百万步高精度浮点漂移校正；连续停牌输入 `double.NaN` 时状态机与回溯缓冲完全冻结保持，复牌输入有效价格后平滑顺延计算；
-- **`Ema`**: 指数移动平均，前 $p$ 期简单平均冷启动平滑对齐；解除 `<= 0.0` 误判限制，仅防御 `double.IsNaN`，支持负数与实数差离平滑；
+- **`Ema`**: 指数移动平均，前 $p$ 期简单平均冷启动平滑对齐；原生支持自定义衰减系数 $\alpha \in (0, 1]$ 构造与等价周期换算（$N \approx \frac{2}{\alpha}-1$），暴露 `Alpha`、`Multiplier` 与 `Period` 属性；解除 `<= 0.0` 误判限制，仅防御 `double.IsNaN`，支持负数与实数差离平滑；
+- **`Wma`**: 加权移动平均，赋予近期价格线性递增权重；基于数学差分递推公式 $W_t = W_{t-1} + N\cdot C_t - S_{t-1}$ 实现真 $O(1)$ 纳秒级更新，热路径零堆分配（Zero GC）；
+- **`Vwap`**: 成交量加权平均价，基于典型价格 $TP = (H+L+C)/3$ 与成交量计算；支持累计全周期模式（`period = 0`）与定长滑动窗口模式（`period > 0`），成交量为 0 边界安全防御，支持日内跨日 `Reset` 复原；
+- **`Kdj`**: 随机指标，严格遵循中国 A 股通达信/同花顺标准（初始 $K=50, D=50, J=3K-2D$）；极盘无波动（$H_n = L_n$）除以零边界防御，通过受控只读子流 `K`、`D`、`J` 展开；
+- **`Sar`**: 抛物转向系统，严格遵循 Welles Wilder 经典物理状态机与 TA-Lib C 内核标准；首步反转对齐，极值跟踪与动态加速因子（AF）限幅，单点反转边界与多空方向无缝自适应；
 - **`Macd`**: 异同移动平均复合指标，通过只读子流 `Dif`、`Dea`、`Hist` 展开；**熊市负值 DIF 严格防御**：单边下跌死叉 DIF < 0 时信号线 DEA 正常增量平滑，绝不误判为停牌；子流直接调用 `Update` 显式抛出 `NotSupportedException`；
 - **`BollingerBands`**: 布林带复合指标，无偏样本标准差增量递推，通过只读子流 `Upper`、`Middle`、`Lower` 展开；
 - **`Atr`**: 真实波幅均值，首步平滑对齐，精确捕获大幅跳空缺口真实波幅；
