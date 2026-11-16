@@ -104,16 +104,24 @@ stateDiagram-v2
 ### 2. 热路径步进流水线 (Step Pipeline)
 每个时间步内部严格按以下顺序执行，全程无堆内存分配：
 1. **时钟推进**：`_context.UpdateStep(i, currentTime)`，更新上下文中的索引与当前物理时间戳；
-2. **时序缓存滑动**：`_timeseries.StepTo(i)`，驱动底层 4096 行分块内存槽位滑动与异步预读；
-3. **经纪商时钟推进与跨日结算**：调用 `_broker.Step(currentTime)`，由经纪商自主比对换日阈值 `_nextRollTimeUtc`，到达交易所本地次日 00:00:00 时自动触发 T+N 可用持仓划转（详见 [broker.md](broker.md)）；
-4. **离散事件探测**：常数时间探测 `_events.HasNewEvents(currentTime)`，命中时调用预分配静态缓冲派发；
-5. **策略管线执行**：驱动 `_pipeline.OnUpdate(_context)`，策略黑板与状态机协同。
+2. **跨日增量因子供给**：检测到跨日且存在除权事件时，针对性增量更新 `_context` 对应标的的累计复权因子；
+3. **时序缓存滑动**：`_timeseries.StepTo(i)`，驱动底层 4096 行分块内存槽位滑动与异步预读；
+4. **仿真交易所撮合**：`_simExchange.Step(currentTime, _timeseries, i)`，撮合在途订单，**强制使用未复权物理价格（Raw）**；
+5. **经纪商时钟推进与跨日结算**：调用 `_broker.Step(currentTime)`，由经纪商自主比对换日阈值 `_nextRollTimeUtc`，到达交易所本地次日 00:00:00 时自动触发 T+N 可用持仓划转（详见 [broker.md](broker.md)）；
+6. **离散事件探测**：常数时间探测 `_events.HasNewEvents(currentTime)`，命中时调用预分配静态缓冲派发；
+7. **指标注册中心单步驱动**：`_indicators.Step(_context)`，统一单次泵送所有已注册指标池，多策略共享单次计算；
+8. **策略管线执行**：驱动 `_pipeline.OnUpdate(_context)`，策略黑板与状态机协同。
+
+### 3. 复权因子冷启动极速滚动与跨模态覆盖告警
+- **免剪枝全量加载**：除权因子事件表（`ashare.adj_factor.*`）全历史仅 2~3 MB，不按起测年份激进剪枝；
+- **从头滚动至 StartDate (< 0.5ms)**：引擎在正式进入主循环前，按时间序从历史首个事件极速滚动遍历至起测日，直接覆写沉淀出全市场截至起测日的权威累计因子；
+- **跨模态覆盖校验（有行情无因子必报警）**：启动前扫描全市场，若发现某标的在行情矩阵中存在有效价格，但除权表中完全查无此人，立即通过 `IMonitor.Log` 输出醒目的聚合 Warning 告警并采样打印前 5 只标的代码，杜绝因因子漏载导致的静默失真。
 
 ---
 
 ## 四、运行时只读上下文 (EngineContext)
 
-`EngineContext` 是策略层在 `OnUpdate` 与 `OnEvent` 中获取环境状态的唯一入口：
+`EngineContext` 是策略层在 `OnUpdate` 与 `OnEvent` 中获取环境状态的唯一入口，统一收敛极简当期取价门面与指标注册中心：
 
 ```csharp
 public class EngineContext : IEngineContext
@@ -125,12 +133,26 @@ public class EngineContext : IEngineContext
     public IFieldRegistry Fields { get; }
     public IBroker Broker { get; }
     public IMarketState Market { get; }
-    public IMonitor Monitor { get; }
+    public IndicatorRegistry Indicators { get; }
+
+    // 当期极简取价门面（专职当期快照，统一 double，默认 Post 后复权，根除历史因子时间错位）
+    public double GetClose(string symbol, PriceMode mode = PriceMode.Post);
+    public double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post);
+    public double GetOpen(string symbol, PriceMode mode = PriceMode.Post);
+    public double GetOpen(int symbolIndex, PriceMode mode = PriceMode.Post);
+    public double GetHigh(string symbol, PriceMode mode = PriceMode.Post);
+    public double GetHigh(int symbolIndex, PriceMode mode = PriceMode.Post);
+    public double GetLow(string symbol, PriceMode mode = PriceMode.Post);
+    public double GetLow(int symbolIndex, PriceMode mode = PriceMode.Post);
+    public double GetVolume(string symbol, PriceMode mode = PriceMode.Raw); // 成交量默认保持物理量 Raw
+    public double GetVolume(int symbolIndex, PriceMode mode = PriceMode.Raw);
+    public double GetField(string symbol, string fieldName, PriceMode mode = PriceMode.Post);
+    public double GetField(int symbolIndex, string fieldName, PriceMode mode = PriceMode.Post);
 }
 ```
 
 - **单例内联更新**：每个回测任务全局仅分配一个 `EngineContext` 实例，每时间步仅通过内部 `UpdateStep` 字段赋值更新，不产生额外托管堆对象分配；
-- **状态隔离**：策略层仅能通过只读属性读取数据与指标，无法篡改引擎状态或数据源缓冲区。
+- **物理价格与策略价格严格隔离**：交易所撮合（`SimulatedExchangeGateway`）与资产账本（`Broker`）100% 走真实未复权价格（Raw），策略决策通过门面默认享受无跳空的平滑后复权价格（Post）。
 
 ---
 

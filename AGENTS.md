@@ -128,6 +128,17 @@ graph TD
         EngineContext[EngineContext]
         IMonitor[IMonitor]
 
+        subgraph IndicatorSubsystem [Indicator Subsystem - 流式指标与计算属性体系]
+            IndicatorRegistry[IndicatorRegistry]
+            IndicatorPoolBase[IndicatorPool]
+            IndicatorPoolTyped[IndicatorPool&lt;T&gt;]
+            IStreamIndicator[IStreamIndicator]
+
+            IndicatorRegistry --> IndicatorPoolBase
+            IndicatorPoolBase <|-- IndicatorPoolTyped
+            IndicatorPoolTyped --> IStreamIndicator
+        end
+
         BacktestingEngine --> IEngine
         LivingEngine --> IEngine
         ITimeseriesRegistry --> IEngine
@@ -136,7 +147,9 @@ graph TD
         IEngine --> Broker
         IEngine --> SimulatedExchangeGateway
         IEngine --> IMonitor
+        IEngine --> IndicatorRegistry
         IEngine --> EngineContext
+        IndicatorRegistry --> EngineContext
         EngineContext --> IEngineContext
     end
 
@@ -154,12 +167,14 @@ graph TD
 | 分层 | 核心职责 | 核心组件 / 契约 |
 | :--- | :--- | :--- |
 | **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvTimeseriesSource`, `ParquetTimeseriesSource`, `TimeseriesRegistry`, `TimeseriesCacheManager<T>`, `ITimeseriesRegistry`, `IEventTable`, `IEventRegistry`, `IFieldRegistry`, `FieldRegistry`, `FieldSourceFactory`, `FieldTable` |
+| **Indicator Layer (指标体系)** | 增量流式指标计算、全市场标的数组连续容器、多策略共享单次驱动与极简取价门面 | `IStreamIndicator`, `IndicatorPool`, `IndicatorPool<T>`, `IndicatorRegistry`, `Sma`, `Ema`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
 | **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
 | **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机、实盘增量事件循环、上下文注入、可观测性监控 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
 | **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `ISignalStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
 
-- **数据与执行流向**: (`ITimeseriesRegistry`, `IEventRegistry`, `IFieldRegistry`) → `IEngine` → (`Broker` / `SimulatedExchangeGateway` / `IMonitor`) → `IEngineContext` → 策略层
+- **数据与执行流向**: (`ITimeseriesRegistry`, `IEventRegistry`, `IFieldRegistry`) → `IEngine` → (`IndicatorRegistry` / `Broker` / `SimulatedExchangeGateway` / `IMonitor`) → `IEngineContext` → 策略层
 - **交易执行流向**: 策略通过 `context.Broker` 发出订单意图 → `Broker` 驱动 `AccountLedger` 完成两阶段预冻结 → 通过 `IExchangeGateway` 路由至 `SimulatedExchangeGateway`（回测）或实盘柜台（实盘）→ 撮合成交回报通过 Open Calls 无锁异步回调通知策略
+- **指标计算流向**: 引擎主时钟驱动 `_indicators.Step(_context)` 批量泵送当前 Bar 行情 → 全市场标的指标池单步单次增量递推更新 → 策略在 `OnUpdate` 中通过 `pool[symbolIndex]` 或 `context.Indicators.Get<T>()` 纳秒直取最新指标值
 - **策略流水线典型流向**: 信号生产 (`ISignalStrategy`) → 组合持仓规划 → 交易风控执行 (`IStrategy` / `RuleStrategyBase`)
 
 ### 3. 策略协作模型概要
@@ -178,6 +193,7 @@ graph TD
 - `ISignalStrategy`: 纯信号语义契约，专注于信号生产与特征分析，通过黑板（`context.Market`）发布状态、概率分布或打分，无账户与持仓负担。
 - `RuleStrategyBase`: 规则交易便利模板基类，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
 - `IStrategyPipeline`: 组合策略管线契约，定义拓扑添加 `Add`、密封优化 `Compile`、策略展开 `GetStrategies` 与递归最大 `Lookback` 汇总。
+- **流式指标与极简门面调用**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd` 声明全市场标的池并持有极速索引引用，在 `OnUpdate` 中利用 `pool[symbolIndex]` 纳秒级直取或通过 `context.Indicators.Get<T>` 免声明读取，详见 [第六节](#六流式指标与计算属性体系-indicator--computed-property-architecture)。
 
 ### 2. 通用强类型黑板 (`IMarketState`)
 - **通用强类型状态容器**: 支持零装箱的 `GetState<T>(key)`、`SetState<T>(state, key)`、`HasState<T>(key)` 与 `Clear()`，用于策略间正交解耦与异步数据交换。
@@ -411,8 +427,9 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | `ICheckpointable` | `Abstraction/Engine/ICheckpointable.cs` | 检查点持久化能力正交契约，支持 `SaveCheckpoint` / `RestoreCheckpoint` 与断点续跑 |
 | `BacktestingEngine` | `Engine/BacktestingEngine.cs` | 回测驱动单一权威内核，实现 `IEngine` 与 `ICheckpointable`，统筹时间步切片裁剪、缓存滑动、跨日结算驱动、事件派发与策略生命周期 |
 | `LivingEngine` | `Engine/LivingEngine.cs` | 实盘事件驱动执行引擎，支持异步行情监听、实时 Bar 追加与实时风险监控 |
-| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry` |
+| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry`, `IndicatorRegistry` 及当期极简取价门面 |
 | `EngineContext` | `Engine/EngineContext.cs` | 策略运行上下文权威实现，单例常驻，热路径零堆分配（零 GC），支持类型化插件与扩展组件注入 |
+| `IndicatorRegistry` | `Indicators/IndicatorRegistry.cs` | 全局指标注册中心具象类，统一管理全市场标的池，热路径无锁单次泵送，对策略屏蔽内部步进方法 |
 | `IMarketState` | `Abstraction/Engine/IMarketState.cs` | 市场黑板上下文，支持策略间跨层异步状态共享 |
 | `MarketState` | `Engine/MarketState.cs` | 通用强类型黑板实现，基于 ConcurrentDictionary 保证并发安全与类型单例索引 |
 | `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 统一监控抽象，管理日志输出、指标采集与告警 |
@@ -459,9 +476,59 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | **VectorBT** | Python / Numba | 2,000 万 ~ 5,000 万 | 1,000 万 ~ 3,000 万 | 约 10~30 秒 | 纯矩阵向量化广播速度快，但无法处理真实订单状态机、T+1、流动性拦截与路径依赖。 |
 | **CarrotQuant .NET** | **现代 C# (.NET 10)** | **2,000 万 ~ 5,000 万** | **200 万 ~ 800 万** | **约 35~120 秒** | **兼具矩阵高吞吐与订单撮合保真度**。非托管连续内存 + AsOf 时间片 + 对称 Hook 拦截。 |
 
+### 4. 当期极简取价门面与除权因子供给机制 (Pricing Facades & Adjustment Safety)
+
+1. **统一取价门面 (`GetClose`, `GetOpen`, `GetHigh`, `GetLow`, `GetVolume`)**:
+   - `EngineContext` 原生提供当前 Bar 统一取价门面，统一返回原生 `double`，同时支持标的代码（`string symbol`）与标的全局列索引（`int symbolIndex`）重载；
+   - 内部对 OHLCV 矩阵建立单次惰性解析缓存（`_resolvedClose` 标量快速标记），后续百万级步进中跳过字段探查与字典查找，无 Try-Catch 异常分支阻碍 JIT 内联，实测 1000 步热循环堆内存分配严格为 **0 bytes**。
+2. **复权口径严格解耦 (`PriceMode.Post` vs `PriceMode.Raw`)**:
+   - **约定优于配置**: 门面方法缺省复权模式均为 `PriceMode.Post`（后复权），消除除权除息造成的虚假价格断崖；
+   - **撮合与核算 100% 物理隔离**: 交易所撮合（`SimulatedExchangeGateway`）、订单簿（`OrderBook`）与资产账本（`AccountLedger`）强制绑定物理真实原价（Raw），完全与策略分析用的后复权价（Post）物理隔离。
+3. **成交量（Volume）物理守恒与白名单防护**:
+   - `GetVolume` 契约固定返回物理原始成交量（Raw 股数），无论传入何种复权模式均绝不乘复权因子，坚决杜绝因价格复权计算虚假放大成交量；
+   - `GetField` 引入 `_priceFields` 白名单校验，仅对声明的价格字段在 Post 模式下乘因子，市盈率（PE）、换手率、成交笔数等非价格衍生字段严格受白名单保护，杜绝误乘。
+4. **全历史因子极速滚动与首日覆盖严格告警**:
+   - 回测启动前，引擎从除权表历史首个事件极速滚动沉淀至起测日（耗时 $< 0.5\text{ms}$），保证跨年回测基准因子精准对齐；
+   - **前置时序严格比对**: 引擎起测前逐一校验全市场标的首次产生有效行情（非 NaN）的日期与除权表首条记录的生效日期；凡在产生有效行情前未提供除权因子、或首条除权记录滞后于交易首日的，强制输出聚合 Warning 告警（如次新股、停牌漏配），杜绝隐式赋 1.0 掩盖数据缺失。
+
 ---
 
-## 六、数据存储与元数据规范 (CarrotQuant.Data)
+## 六、流式指标与计算属性体系 (Indicator & Computed Property Architecture)
+
+> 💡 详细增量流式经典指标库、数值计算特性与双模极速开发实战详见专门白皮书 [流式指标与计算属性开发指南 (docs/indicators.md)](docs/indicators.md)。
+
+### 1. 三位一体核心实体模型
+CarrotQuant .NET 彻底根除无多态价值的冗余镜像接口（`IIndicatorRegistry` / `IIndicatorPool`），收敛为 3 个核心实体：
+- **`IStreamIndicator` (`Abstraction/Indicators/IStreamIndicator.cs`)**:
+  - 增量流式指标顶层接口契约，单一输入入口 `Update(open, high, low, close, volume)`，以 5 个原生 `double` 寄存器参数对齐单值与复合指标需求，严格零装箱；
+  - 属性暴露最新值 `Value` / `Current`、预热指示 `IsReady`，支持重置状态机 `Reset()`；
+  - 负数时序索引器 `this[int offset]`：统一以 `0` 代表当期，`-1` 代表上期；当 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，**在物理契约层彻底熔断未来函数偷价风险**。
+- **`IndicatorPool` & `IndicatorPool<T>` (`Abstraction/Indicators/IndicatorPool.cs`)**:
+  - 全市场标的指标池连续扁平容器，非泛型基类 `IndicatorPool` 统筹 Name、Count 与 PriceMode，泛型具体类 `IndicatorPool<T>` 内部直接持有连续平铺数组 `T[] _instances`；
+  - 热路径提供与原生数组等同的纳秒级寻址 `pool[symbolIndex]`（CPU L2 Cache 极致亲和），并支持标的代码寻址 `pool[symbol]`；
+  - 引擎调度方法 `Step(context)` 与 `Reset()` 设为 `internal`，在引擎主循环内部流转，外部策略代码完全不可见，杜绝策略误调导致状态污染。
+- **`IndicatorRegistry` (`Indicators/IndicatorRegistry.cs`)**:
+  - 全局指标注册中心，直接以具象类挂载于 `IEngineContext.Indicators`，彻底消灭虚派发表（V-Table）查找开销，赋能 JIT 激进内联；
+  - 基于显式双重检查锁定（DCL）实现并发线程安全，杜绝多线程竞争创建多余标的池（幽灵指标池）；
+  - 维护写时复制（COW）不可变快照数组 `volatile IndicatorPool[] _activePools`，主循环每步执行局部变量快照读取，100% 纯无锁推进且零 GC。
+
+### 2. 增量流式经典指标库与数值特性
+所有指标基于严格的 $O(1)$ 增量递推物理公式，单 Bar 仅需固定次数常数浮点运算，百万步运算仅需数毫秒：
+- **`Sma`**: 简单移动平均，维护累加和与环形回溯缓冲，内建百万步高精度浮点漂移校正；连续停牌输入 `double.NaN` 时状态机与回溯缓冲完全冻结保持，复牌输入有效价格后平滑顺延计算；
+- **`Ema`**: 指数移动平均，前 $p$ 期简单平均冷启动平滑对齐；解除 `<= 0.0` 误判限制，仅防御 `double.IsNaN`，支持负数与实数差离平滑；
+- **`Macd`**: 异同移动平均复合指标，通过只读子流 `Dif`、`Dea`、`Hist` 展开；**熊市负值 DIF 严格防御**：单边下跌死叉 DIF < 0 时信号线 DEA 正常增量平滑，绝不误判为停牌；子流直接调用 `Update` 显式抛出 `NotSupportedException`；
+- **`BollingerBands`**: 布林带复合指标，无偏样本标准差增量递推，通过只读子流 `Upper`、`Middle`、`Lower` 展开；
+- **`Atr`**: 真实波幅均值，首步平滑对齐，精确捕获大幅跳空缺口真实波幅；
+- **`Rsi`**: 相对强弱指标，单边单调价格极值防御与除以零安全兜底。
+
+### 3. 策略端双模极速使用体验
+- **持有标的池模式（高频全市场首选）**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd("name", factory)` 注册并持有 `IndicatorPool<T>` 实例，在 `OnUpdate` 中通过 `pool[symbolIndex]` 纳秒直取；
+- **免声明直取门面模式（单标的快速读取）**: 策略在 `OnUpdate` 中通过 `context.Indicators.Get<T>("name", symbol)` 直接读取，免除类私有字段声明；
+- **单步单次驱动保障**: 引擎主循环在进入策略管线前统一触发 `_indicators.Step(_context)` 批量泵送当前 Bar 行情，管线内所有串/并行子策略共享同一指标池计算状态，单步单次计算，彻底消除重复开销。
+
+---
+
+## 七、数据存储与元数据规范 (CarrotQuant.Data)
 
 ### 1. 核心存储标准
 - **存储格式**: 统一使用 `CSV` 或 `Parquet`。
@@ -494,7 +561,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ---
 
-## 七、YAML 配置规范 (`CarrotBacktesting.NET.Config`)
+## 八、YAML 配置规范 (`CarrotBacktesting.NET.Config`)
 
 系统采用蛇形命名（`snake_case`）YAML 文件驱动引擎与数据层；相对路径均以当前配置文件所在物理目录为基准自动合并为绝对路径。
 顶层聚合为 `SessionConfig` 全局会话配置根，统筹四大正交支柱：
@@ -510,7 +577,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ---
 
-## 八、历史版本架构与专业报表速查索引 (v3 Reference)
+## 九、历史版本架构与专业报表速查索引 (v3 Reference)
 
 > 💡 源码归档于 `CarrotBacktesting.NET/V3/`，完整指南见 [V3/README.md](CarrotBacktesting.NET/V3/README.md)，供分析器迁移与 Excel 报表生成时速查。
 
@@ -531,7 +598,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ---
 
-## 九、工程研发与文档维护规范
+## 十、工程研发与文档维护规范
 
 1. **单一事实来源 (SSOT & DRY)**: 核心契约与数据结构单点权威定义，严禁冗余拷贝或散落多处定义。
 2. **显式优于隐式 (Explicit > Implicit)**: 优先读取 `metadata.json` 显式类型，配置与参数清晰透明，严禁未经对齐的隐式推断与静默容错。

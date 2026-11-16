@@ -100,6 +100,11 @@ namespace CarrotBacktesting.NET.Config
         public List<FieldTableConfig> Fields { get; set; } = new();
 
         /// <summary>
+        /// 价格复权设置。
+        /// </summary>
+        public AdjustmentConfig Adjust { get; set; } = new();
+
+        /// <summary>
         /// 将当前独立数据配置序列化为标准下划线命名规范的 YAML 文本内容。
         /// </summary>
         public string ToYaml() => YamlSerializer.Serialize(this);
@@ -216,5 +221,31 @@ namespace CarrotBacktesting.NET.Config
         /// 若 metadata.json 中也定义了 nullable_fields，此处将与元数据配置合并生效。
         /// </summary>
         public List<string>? NullableFields { get; set; }
+    }
+
+    /// <summary>
+    /// 行情复权配置。
+    /// </summary>
+    public class AdjustmentConfig
+    {
+        /// <summary>
+        /// 复权模式: "post" (后复权), "none" (未复权物理价，默认)。
+        /// </summary>
+        public string Mode { get; set; } = "none";
+
+        /// <summary>
+        /// 除权因子事件表名称，默认 "adjustments"。
+        /// </summary>
+        public string Table { get; set; } = "adjustments";
+
+        /// <summary>
+        /// 因子值字段名，默认 "back_adj_factor"。
+        /// </summary>
+        public string FactorField { get; set; } = "back_adj_factor";
+
+        /// <summary>
+        /// 需同步复权的价格类字段白名单，默认 ["open", "high", "low", "close"]。
+        /// </summary>
+        public List<string> PriceFields { get; set; } = new() { "open", "high", "low", "close" };
     }
 }

@@ -1,10 +1,13 @@
+using System;
 using CarrotBacktesting.NET.Abstraction.Data;
+using CarrotBacktesting.NET.Abstraction.Indicators;
+using CarrotBacktesting.NET.Indicators;
 
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 /// <summary>
 /// 定义策略运行上下文接口。
-/// 该接口为策略层提供当前行情数据访问、交易执行（Broker）及宏观状态查询（Market）的统一入口。
+/// 该接口为策略层提供当前行情数据访问、交易执行（Broker）、指标计算（Indicators）及宏观状态查询（Market）的统一入口。
 /// </summary>
 public interface IEngineContext
 {
@@ -42,6 +45,101 @@ public interface IEngineContext
     /// 获取市场状态黑板。宏观策略可通过此接口更新全局结论，微观策略通过此接口获取过滤条件。
     /// </summary>
     IMarketState Market { get; }
+
+    /// <summary>
+    /// 获取全局指标注册中心，统筹增量流式指标池的注册、多策略共享与引擎步进泵送。
+    /// </summary>
+    IndicatorRegistry Indicators { get; }
+
+    #region 当期极简取价门面 (Unified Current Bar Market Data Facades)
+
+    /// <summary>
+    /// 获取指定标的的当期收盘价（默认提供平滑后复权价）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetClose(string symbol, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的列索引的当期收盘价（热路径零字典哈希）。
+    /// </summary>
+    /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的的当期开盘价（默认提供平滑后复权价）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetOpen(string symbol, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的列索引的当期开盘价（热路径零字典哈希）。
+    /// </summary>
+    /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetOpen(int symbolIndex, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的的当期最高价（默认提供平滑后复权价）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetHigh(string symbol, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的列索引的当期最高价（热路径零字典哈希）。
+    /// </summary>
+    /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetHigh(int symbolIndex, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的的当期最低价（默认提供平滑后复权价）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetLow(string symbol, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的列索引的当期最低价（热路径零字典哈希）。
+    /// </summary>
+    /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetLow(int symbolIndex, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的的当期成交量（默认保持物理量 Raw）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="mode">价格模式（成交量默认保持 Raw）。</param>
+    double GetVolume(string symbol, PriceMode mode = PriceMode.Raw);
+
+    /// <summary>
+    /// 获取指定标的列索引的当期成交量（热路径零字典哈希）。
+    /// </summary>
+    /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="mode">价格模式（成交量默认保持 Raw）。</param>
+    double GetVolume(int symbolIndex, PriceMode mode = PriceMode.Raw);
+
+    /// <summary>
+    /// 获取指定标的当期任意时序字段值。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="fieldName">字段名（如 "vwap", "turnover", "settlement" 等）。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetField(string symbol, string fieldName, PriceMode mode = PriceMode.Post);
+
+    /// <summary>
+    /// 获取指定标的列索引当期任意时序字段值（热路径零字典哈希）。
+    /// </summary>
+    /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="fieldName">字段名。</param>
+    /// <param name="mode">价格模式（默认 Post 后复权）。</param>
+    double GetField(int symbolIndex, string fieldName, PriceMode mode = PriceMode.Post);
+
+    #endregion
 
     /// <summary>
     /// 允许策略查询引擎内其他已注册的组件或插件。

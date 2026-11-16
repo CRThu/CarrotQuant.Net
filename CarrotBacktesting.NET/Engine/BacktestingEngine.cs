@@ -5,10 +5,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
+using CarrotBacktesting.NET.Abstraction.Indicators;
 using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Engine.Broker;
 using CarrotBacktesting.NET.Engine.Exchange;
+using CarrotBacktesting.NET.Indicators;
 using CarrotBacktesting.NET.Strategy;
 
 namespace CarrotBacktesting.NET.Engine
@@ -29,6 +31,12 @@ namespace CarrotBacktesting.NET.Engine
         private readonly IMarketState _market;
         private readonly EngineConfig _config;
         private readonly IMonitor _monitor;
+        private readonly AdjustmentConfig _adjustConfig;
+        private readonly IndicatorRegistry _indicators;
+
+        private bool _hasAdjustments = false;
+        private IEventTable? _adjTable;
+        private DateTime _lastDate = DateTime.MinValue;
 
         private const uint StateMagic = 0x43514254; // "CQBT"
         private const int StateVersion = 1;
@@ -84,7 +92,8 @@ namespace CarrotBacktesting.NET.Engine
             IMarketState? market = null,
             EngineConfig? config = null,
             IMonitor? monitor = null,
-            ISimulatedExchange? simExchange = null)
+            ISimulatedExchange? simExchange = null,
+            AdjustmentConfig? adjustConfig = null)
         {
             _timeseries = timeseries ?? throw new ArgumentNullException(nameof(timeseries));
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -92,11 +101,13 @@ namespace CarrotBacktesting.NET.Engine
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
             _config = config ?? new EngineConfig();
             _monitor = monitor ?? NullMonitor.Instance;
+            _adjustConfig = adjustConfig ?? new AdjustmentConfig();
 
-            _context = new EngineContext(timeseries, broker, market, events, fields);
+            _context = new EngineContext(timeseries, broker, market, events, fields, priceFields: _adjustConfig.PriceFields);
             _events = _context.Events;
             _fields = _context.Fields;
             _market = _context.Market;
+            _indicators = _context.Indicators;
 
             _orderStatusHandler = (orderId, status) => _pipeline.OnOrderStatusChanged(_context, orderId, status);
             _tradeHandler = (report) => _pipeline.OnTrade(_context, report);
@@ -152,7 +163,8 @@ namespace CarrotBacktesting.NET.Engine
                 market,
                 sessionConfig.Engine,
                 monitor,
-                simExchange: simGateway);
+                simExchange: simGateway,
+                adjustConfig: sessionConfig.Data.Adjust);
         }
 
         /// <inheritdoc />
@@ -193,10 +205,10 @@ namespace CarrotBacktesting.NET.Engine
                 // 2. 桥接 Broker 事件通知到 Pipeline
                 SubscribeBrokerEvents();
 
-                // 3. 触发策略启动生命周期
-                _pipeline.OnStart(_context);
+                // 2.1 重置指标注册中心
+                _indicators.Reset();
 
-                // 4. 获取时间坐标系与区间裁剪
+                // 3. 获取时间坐标系与区间裁剪
                 var tradeDates = _timeseries.Metadata.TradeDates;
                 if (tradeDates == null || tradeDates.Count == 0)
                 {
@@ -248,7 +260,15 @@ namespace CarrotBacktesting.NET.Engine
                     }
                 }
 
+                // 3.1 预热复权因子（从头极速滚动至起测日并执行跨模态一致性覆盖校验）
+                PrewarmAdjustments(tradeDates[startIndex]);
+
+                // 4. 触发策略启动生命周期
+                _pipeline.OnStart(_context);
+
                 int totalSteps = endIndex - startIndex + 1;
+                _lastDate = DateTime.MinValue;
+
                 // 5. 核心时间步驱动循环（热路径零分配）
                 for (int i = startIndex; i <= endIndex; i++)
                 {
@@ -271,6 +291,16 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.1 更新上下文
                     _context.UpdateStep(i, currentTime);
 
+                    // 5.1.1 跨日增量因子供给
+                    if (_hasAdjustments && currentTime.Date != _lastDate)
+                    {
+                        _lastDate = currentTime.Date;
+                        if (_events.HasNewEvents(currentTime, _adjustConfig.Table))
+                        {
+                            UpdateDailyFactors(currentTime);
+                        }
+                    }
+
                     // 5.2 时序滑动窗口与预读驱动
                     _timeseries.StepTo(i);
 
@@ -285,6 +315,9 @@ namespace CarrotBacktesting.NET.Engine
                     {
                         DispatchEvents(currentTime);
                     }
+
+                    // 5.4.1 驱动指标注册中心步进更新（单步单次批量泵送）
+                    _indicators.Step(_context);
 
                     // 5.5 驱动策略主决策计算
                     _pipeline.OnUpdate(_context);
@@ -363,6 +396,155 @@ namespace CarrotBacktesting.NET.Engine
                 if (_eventBuffer.Count > 0)
                 {
                     _pipeline.OnEvent(_context, tableName, _eventBuffer);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 预热除权因子数组，从全历史第一条除权事件极速滚动至起测日（StartDate），
+        /// 并执行行情与因子的跨模态覆盖校验（有行情无因子精准 Warning 告警）。
+        /// </summary>
+        private void PrewarmAdjustments(DateTime startDate)
+        {
+            if (!_adjustConfig.Mode.Equals("post", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            string tableName = _adjustConfig.Table;
+            if (!_events.HasTable(tableName))
+            {
+                throw new InvalidOperationException($"启用了后复权模式 (mode: post)，但在事件注册表中未找到指定的除权表 '{tableName}'。");
+            }
+
+            _adjTable = _events[tableName];
+            if (_adjTable.Count == 0)
+            {
+                throw new InvalidOperationException($"启用了后复权模式 (mode: post)，但除权表 '{tableName}' 中的记录总数为 0。");
+            }
+
+            _hasAdjustments = true;
+            int symbolCount = _timeseries.Metadata.Symbols.Count;
+            var factors = new double[symbolCount];
+            Array.Fill(factors, 1.0);
+
+            // 1. 从历史第一条除权事件开始，按时间升序快速遍历至 startDate 覆写因子（< 0.5ms）
+            foreach (var date in _adjTable.Dates)
+            {
+                if (date > startDate) break;
+
+                if (_adjTable.TryGetDay(date, out var dayEvents) && dayEvents != null)
+                {
+                    foreach (var (symbol, rows) in dayEvents)
+                    {
+                        if (rows.Count > 0)
+                        {
+                            var row = rows[^1];
+                            double factor = row.GetDouble(_adjustConfig.FactorField, 0.0);
+                            if (factor > 0.0)
+                            {
+                                int sIdx = _timeseries.Metadata.GetSymbolIndex(symbol);
+                                if (sIdx >= 0)
+                                {
+                                    factors[sIdx] = factor;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. 统计除权表中每只标的首次提供复权因子的最早日期（用于一一对应严格校验）
+            var firstAdjDates = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            foreach (var date in _adjTable.Dates)
+            {
+                if (_adjTable.TryGetDay(date, out var dayEvents) && dayEvents != null)
+                {
+                    foreach (var (symbol, rows) in dayEvents)
+                    {
+                        if (rows.Count > 0 && !firstAdjDates.ContainsKey(symbol))
+                        {
+                            firstAdjDates[symbol] = date;
+                        }
+                    }
+                }
+            }
+
+            // 3. 行情与因子的跨模态覆盖与时序前置严格校验（任何一天产生行情之前未给过复权必报警）
+            IReadOnlyMatrix2D<double>? closeMatrix = null;
+            try { closeMatrix = _timeseries.GetMatrix<double>("close"); } catch { }
+
+            var unassignedSymbols = new List<string>();
+            var tradeDates = _timeseries.Metadata.TradeDates;
+
+            for (int s = 0; s < symbolCount; s++)
+            {
+                string symbol = _timeseries.Metadata.Symbols[s];
+
+                // 寻找该标的首次出现有效价格的日期（上市日或首次交易日）
+                DateTime? firstTradeDate = null;
+                if (closeMatrix != null && s < closeMatrix.Width)
+                {
+                    int rowCount = closeMatrix.RowCount;
+                    for (int r = 0; r < rowCount; r++)
+                    {
+                        double p = closeMatrix[r, s];
+                        if (!double.IsNaN(p) && p > 0.0)
+                        {
+                            firstTradeDate = r < tradeDates.Count ? tradeDates[r] : startDate;
+                            break;
+                        }
+                    }
+                }
+
+                // 若标的存在有效交易行情
+                if (firstTradeDate.HasValue)
+                {
+                    if (!firstAdjDates.TryGetValue(symbol, out var firstAdjDate))
+                    {
+                        // 标的有行情，但在除权表中完全无任何记录
+                        unassignedSymbols.Add($"{symbol}(首日:{firstTradeDate.Value:yyyy-MM-dd},除权表无记录)");
+                    }
+                    else if (firstAdjDate > firstTradeDate.Value)
+                    {
+                        // 标的已产生行情，但在产生行情之前/首日未提供复权因子（例如2025上市首条除权在2026）
+                        unassignedSymbols.Add($"{symbol}(首日:{firstTradeDate.Value:yyyy-MM-dd},首条除权:{firstAdjDate:yyyy-MM-dd})");
+                    }
+                }
+            }
+
+            if (unassignedSymbols.Count > 0)
+            {
+                string samples = string.Join(", ", unassignedSymbols.Take(5));
+                _monitor.Log(
+                    $"[Warning] 发现 {unassignedSymbols.Count} 只标的在产生有效行情前未在除权表 '{tableName}' 中提供过复权因子（未严格一一对应，已按 1.0 补齐，存在严重漏配风险！）。样本: [{samples}{(unassignedSymbols.Count > 5 ? ", ..." : "")}]",
+                    LogLevel.Warning);
+            }
+
+            // 4. 整体注入上下文基准数组
+            _context.SetDailyFactors(factors);
+        }
+
+        private void UpdateDailyFactors(DateTime currentTime)
+        {
+            if (_adjTable == null) return;
+            if (_adjTable.TryGetDay(currentTime.Date, out var dayEvents) && dayEvents != null)
+            {
+                foreach (var (symbol, rows) in dayEvents)
+                {
+                    if (rows.Count > 0)
+                    {
+                        var row = rows[^1];
+                        double factor = row.GetDouble(_adjustConfig.FactorField, 0.0);
+                        if (factor > 0.0)
+                        {
+                            int sIdx = _timeseries.Metadata.GetSymbolIndex(symbol);
+                            if (sIdx >= 0)
+                            {
+                                _context.UpdateFactor(sIdx, factor);
+                            }
+                        }
+                    }
                 }
             }
         }

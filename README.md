@@ -12,6 +12,8 @@ CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易�
 - **三层分离架构**: 数据层 / 引擎层 / 策略层通过接口契约解耦，各层可独立演进。
 - **双格式数据源**: 统一支持 CSV 与 Parquet 格式，通过 `IStorageResolver` 屏蔽物理存储差异。
 - **稠密矩阵 + 稀疏事件**: `ITimeseriesRegistry` 提供高性能二维时序矩阵（`GetMatrix`）与单标的一维序列（`GetSeries`）访问，`IEventTable` 提供点查与强类型流式 LINQ。
+- **计算属性与极速复权**: `IEngineContext` 提供当期零分配极速取价门面（统一 `double`，仅当期，默认后复权），除权表全量极速滚动预热 + 跨模态覆盖校验；交易所撮合 100% 走真实未复权价格（Raw）。
+- **增量流式指标子系统**: 独立命名空间 `Indicators`，纯净契约 `IStreamIndicator`，双精度防漂移，行业标准停牌 NaN 冻结跳过（Skip & Freeze），多值指标组合模式（MACD, BollingerBands），`IndicatorPool<T>` 全局单次更新多策略共享。
 - **泛型事件系统**: 用户只需定义 record 类型，框架自动完成 CSV/Parquet → T 的零配置映射。
 - **策略管线**: 支持串联/并联组合模式，引擎启动前通过 `Compile()` 优化拓扑。
 - **Context 黑板模式**: 策略间通过 `IEngineContext` 共享状态与数据，实现策略逻辑与交易执行的解耦。
@@ -97,6 +99,7 @@ var metalStocks = industryTable.GetKeys("钼"); // 无需记忆列名，全表�
 - **[客户端经纪商与账户账本体系 (docs/broker.md)](docs/broker.md)**: `IBroker` 契约、`AccountLedger` 纯财务账本、两阶段挂单冻结状态机、零现金卖出平仓、T+N 跨日清算与实盘对账。
 - **[交易所仿真与集中撮合体系 (docs/exchange.md)](docs/exchange.md)**: `IExchangeGateway` 与 `ISimulatedExchange` 契约、标的桶化 FIFO 挂单簿、纯计算撮合引擎、响应式纯行情驱动（`OnMarketData`）。
 - **[核心引擎与执行体系 (docs/engine.md)](docs/engine.md)**: 引擎生命周期五态状态机、主时钟步进流水线、检查点持久化（`ICheckpointable`）。
+- **[流式指标与计算属性开发指南 (docs/indicators.md)](docs/indicators.md)**: 增量流式指标契约（`IStreamIndicator`）、全市场标的数组容器（`IndicatorPool<T>`）、注册中心单步驱动、取价门面与除权因子安全供给。
 - **[策略子系统与管线开发指南 (docs/strategy.md)](docs/strategy.md)**: 统一策略抽象、组合策略管线（串行/并行多核并发）、通用强类型黑板、Roslyn 动态免编译加载。
 - **[配置管理与环境组织 (docs/configuration.md)](docs/configuration.md)**: `SessionConfig` 四大正交支柱、多态数据外链、跨环境基准路径级联解析与参数全量字典。
 - **[底层数据存储与物理格式规范 (docs/data_format.md)](docs/data_format.md)**: 物理目录组织、Table ID 规范、Hive 年月分区、双时间轴契约与自描述缺省回退。

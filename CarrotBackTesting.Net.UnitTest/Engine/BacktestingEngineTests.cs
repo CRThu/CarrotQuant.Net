@@ -335,11 +335,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var writeTask = Task.Run(() =>
             {
                 int counter = 0;
-                while (!cts.IsCancellationRequested)
+                do
                 {
                     var dummyTable = new EventTable($"table_{counter++}", new[] { "col" }, new());
                     registry.Register(dummyTable.Name, dummyTable);
-                }
+                } while (!cts.IsCancellationRequested);
             });
 
             var readTask = Task.Run(() =>

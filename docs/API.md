@@ -14,8 +14,9 @@
 - [四、异构事件流系统 (Event Stream System)](#四异构事件流系统-event-stream-system)
 - [五、标的静态属性与维表系统 (Fields System)](#五标的静态属性与维表系统-fields-system)
 - [六、引擎与黑板上下文 (Engine & Execution Context)](#六引擎与黑板上下文-engine--execution-context)
-- [七、策略与管线开发 (Strategy & Pipeline)](#七策略与管线开发-strategy--pipeline)
-- [八、流水记录与分析层 (Analysis & Recorder)](#八流水记录与分析层-analysis--recorder)
+- [七、独立指标与计算属性子系统 (Indicators & Computed Properties)](#七独立指标与计算属性子系统-indicators--computed-properties)
+- [八、策略与管线开发 (Strategy & Pipeline)](#八策略与管线开发-strategy--pipeline)
+- [九、流水记录与分析层 (Analysis & Recorder)](#九流水记录与分析层-analysis--recorder)
 
 ---
 
@@ -44,7 +45,8 @@ public static class SessionConfigLoader
 - **`SessionConfig`**: 顶层聚合配置四大支柱：`EngineConfig Engine`、`BrokerConfig Broker`、`DataConfig Data` 与可选的 `PipelineConfiguration? Pipeline`。
 - **`EngineConfig`**: 引擎自身参数：`Mode` (`backtest`/`living`)、`StartDate` (DateTime?)、`EndDate` (DateTime?)。
 - **`BrokerConfig`**: `InitialCash` (double)、`SettleDays` (int: 0 即 T+0, 1 即 T+1)、`AllowShort` (bool)、`FeeRate` (double)、`MinFee` (double)、`Slippage` (double)、`VolumeLimit` (double)、`CheckLimit` (bool)、`Multiplier` (double)、`MarginRate` (double)，对称覆盖 Hook，以及内置静态市场预设（`Universal`, `AStock`, `Futures`, `Crypto`）。
-- **`DataConfig`**: `Root` (string)、`Timeseries` (`List<TimeseriesConfig>`)、`Events` (`List<EventStreamConfig>`)、`Fields` (`List<FieldTableConfig>`)。
+- **`DataConfig`**: `Root` (string)、`Timeseries` (`List<TimeseriesConfig>`)、`Events` (`List<EventStreamConfig>`)、`Fields` (`List<FieldTableConfig>`)、`Adjust` (`AdjustmentConfig`)。
+- **`AdjustmentConfig`**: `Mode` ("post" / "none")、`Table` (string: 默认 "adjustments")、`FactorField` (string: 默认 "back_adj_factor")、`PriceFields` (`List<string>`: 默认 ["open", "high", "low", "close"])。
 - **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)、`TimeZone` (string?)、`Cache` (bool)、`PageSize` (int)、`Refresh` (string)、`Compression` (string)、`CommitBatchSize` (int)、`MaxPages` (int)、`Prefetch` (bool)、`NullableFields` (`List<string>?`)。
 - **`EventStreamConfig`**: `Name` (string)、`TableId` (string)、`Fields` (`List<string>?`)、`TimeZone` (string?)、`NullableFields` (`List<string>?`)。
 - **`FieldTableConfig`**: `Name` (string)、`TableId` (string)、`KeyColumn` (string?)、`ValueColumns` (`List<string>?`)、`NullableFields` (`List<string>?`)。
@@ -614,21 +616,36 @@ IFieldRegistry fieldRegistry = FieldRegistryFactory.Create(resolver, configs);
 ## 六、引擎与黑板上下文 (Engine & Execution Context)
 
 ### 1. IEngineContext (黑板上下文)
-策略层运行时的核心宿主环境，隔离具体回测撮合引擎或实盘网关细节。
+策略层运行时的核心宿主环境，隔离具体回测撮合引擎或实盘网关细节，收敛极简当期取价门面与指标注册中心。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 public interface IEngineContext
 {
-    DateTime CurrentTime { get; }         // 当前时间步
-    int CurrentIndex { get; }             // 当前交易日行索引
+    DateTime CurrentTime { get; }           // 当前时间步
+    int CurrentIndex { get; }               // 当前交易日行索引
     ITimeseriesRegistry Timeseries { get; } // 全局时序注册表与行情矩阵输入
-    IEventRegistry Events { get; }        // 异构事件流
-    IFieldRegistry Fields { get; }        // 标的静态属性与维表字典
-    IBroker Broker { get; }               // 账户持仓与报单
-    IMarketState Market { get; }          // 宏观市场决策黑板
-    T? GetExtension<T>() where T : class; // 引擎扩展组件与插件查询
+    IEventRegistry Events { get; }          // 异构事件流
+    IFieldRegistry Fields { get; }          // 标的静态属性与维表字典
+    IBroker Broker { get; }                 // 账户持仓与报单
+    IMarketState Market { get; }            // 宏观市场决策黑板
+    IndicatorRegistry Indicators { get; }  // 全局指标注册中心（具象类挂载，消灭虚派发）
+    T? GetExtension<T>() where T : class;   // 引擎扩展组件与插件查询
+
+    // 当期极简取价门面（专职当期快照，统一 double，默认 Post 后复权，根除因子时间错位）
+    double GetClose(string symbol, PriceMode mode = PriceMode.Post);
+    double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post);
+    double GetOpen(string symbol, PriceMode mode = PriceMode.Post);
+    double GetOpen(int symbolIndex, PriceMode mode = PriceMode.Post);
+    double GetHigh(string symbol, PriceMode mode = PriceMode.Post);
+    double GetHigh(int symbolIndex, PriceMode mode = PriceMode.Post);
+    double GetLow(string symbol, PriceMode mode = PriceMode.Post);
+    double GetLow(int symbolIndex, PriceMode mode = PriceMode.Post);
+    double GetVolume(string symbol, PriceMode mode = PriceMode.Raw); // 成交量默认保持 Raw 物理量
+    double GetVolume(int symbolIndex, PriceMode mode = PriceMode.Raw);
+    double GetField(string symbol, string fieldName, PriceMode mode = PriceMode.Post);
+    double GetField(int symbolIndex, string fieldName, PriceMode mode = PriceMode.Post);
 }
 ```
 
@@ -739,7 +756,66 @@ public interface ICheckpointable
 
 ---
 
-## 七、策略与管线开发 (Strategy & Pipeline)
+## 七、独立指标与计算属性子系统 (Indicators & Computed Properties)
+
+为彻底避免全量预计算后复权价与指标导致物理二维矩阵膨胀（20GB~30GB），CarrotQuant.NET 建立了高性能增量流式指标子系统与当期极速复权因子供给机制。
+
+### 1. IStreamIndicator (流式指标核心契约)
+统一单值与多值指标为唯一抽象契约，原生支持负数时序索引、未来函数偷价熔断（offset > 0 强制抛错）与停牌冻结跳过（Skip & Freeze）。每步传入完整的 OHLCV 市场行情，杜绝假参数与伪实现：
+
+```csharp
+namespace CarrotBacktesting.NET.Abstraction.Indicators;
+
+public interface IStreamIndicator
+{
+    double this[int offset] { get; } // 统一负数索引: 0 为当期，-1 为上一期；offset > 0 抛出 ArgumentOutOfRangeException
+    double Current => this[0];       // 便捷当期值
+    bool IsReady { get; }            // 预热期感知
+    void Reset();                    // 状态机重置守恒
+
+    void Update(double open, double high, double low, double close, double volume);
+}
+```
+
+### 2. 常用流式指标实现 (Indicators)
+- **`Sma`**: 简单移动平均。定长滑动窗口与双精度累加器（`double _sum`），预计算倒数乘法，复杂度严格为 $O(1)$，彻底免疫单精度浮点舍入漂移。
+- **`Ema`**: 指数移动平均。增量平滑递推，前期简单平均对齐冷启动。
+- **`Rsi`**: 相对强弱指标。基于 J. Welles Wilder 平滑递推算法。
+- **`Atr`**: 真实波幅均值。自动处理跨日跳空高开/低开。
+- **`Macd`**: 复合多值指标。采用组合模式实现 `IStreamIndicator`（索引器默认指向 `Dif`），通过强类型只读属性暴露 `Dif`、`Dea` 与 `Hist` 子流。
+- **`BollingerBands`**: 布林带复合指标。通过只读属性暴露 `Upper`、`Middle` 与 `Lower` 子流。
+
+### 3. IndicatorRegistry (全局指标注册中心与标的池容器)
+- **零接口套娃与具象类挂载**：策略端直接操作纯具象类 `IndicatorRegistry`，消灭无多态价值的镜像接口与虚派发开销。
+- **双模极速体验（Pool 模式 & Get 门面模式）**：
+  - **标的池持有模式**：`var smaPool = context.Indicators.GetOrAdd("sma20", () => new Sma(20));` 策略直接持有 `IndicatorPool<T>` 实例，通过 `smaPool[symbolIndex]` 纳秒级纯数组下标直取，CPU L2 Cache 极致亲和；
+  - **免声明门面模式**：通过 `context.Indicators.Get<T>("sma20", symbol)` 免去字段声明直接读取；
+- **全市场稠密数组驱动与内部步进隔离**：`Step()` 与 `Reset()` 步进调度方法设为 `internal`，对策略彻底隐身，杜绝策略误调用导致状态污染。引擎主循环在进入策略前执行单次 `Step(_context)` 统一批量泵送，多策略共享同一指标计算状态，**单步单次计算，彻底消除重复开销**。
+- **除权因子一一对应严格校验**：在复权模式下，系统在启动时及步进过程中对所有标的进行首日有效行情严格比对；凡在产生有效行情之前未在除权表中提供过复权因子的标的（如次新股、跨年加载未覆盖、数据源断档），系统强制发出 Warning 告警，杜绝静默隐式赋 1.0 带来的数据污染。
+
+```csharp
+// 策略端声明式体验范例:
+// 1. 初始化声明（约定优于配置: 默认绑定 Post 后复权，引擎自动统一泵送 OHLCV）
+// 可直接持有高频 Pool 实例：
+var smaPool = context.Indicators.GetOrAdd("sma20", () => new Sma(20));
+var macdPool = context.Indicators.GetOrAdd("macd", () => new Macd(12, 26, 9));
+
+// 2. 决策时直接读取特定标的的指标（引擎已在每步进入 OnUpdate 前全自动泵送完毕）
+// 方式 A：通过持有的 Pool 极速索引（O(1) 连续数组）
+double fastSma = smaPool[symbolIndex].Current;
+double prevSma = smaPool[symbolIndex][-1];
+
+// 方式 B：通过门面免声明直接读取
+var macd = context.Indicators.Get<Macd>("macd", symbol);
+if (macd.Dif[0] > macd.Dea[0] && macd.Dif[-1] <= macd.Dea[-1])
+{
+    // DIF 上穿 DEA 金叉信号
+}
+```
+
+---
+
+## 八、策略与管线开发 (Strategy & Pipeline)
 
 ### 1. IStrategy 契约
 所有策略的基础契约，定义策略在引擎推进过程中的统一驱动入口与生命周期：
@@ -850,7 +926,7 @@ public class MovingAverageCrossStrategy : IStrategy
 
 ---
 
-## 八、流水记录与分析层 (Analysis & Recorder)
+## 九、流水记录与分析层 (Analysis & Recorder)
 
 ### 1. IRecorder
 回测与实盘过程的流水采集器。
