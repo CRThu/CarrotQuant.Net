@@ -427,13 +427,18 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | `ICheckpointable` | `Abstraction/Engine/ICheckpointable.cs` | 检查点持久化能力正交契约，支持 `SaveCheckpoint` / `RestoreCheckpoint` 与断点续跑 |
 | `BacktestingEngine` | `Engine/BacktestingEngine.cs` | 回测驱动单一权威内核，实现 `IEngine` 与 `ICheckpointable`，统筹时间步切片裁剪、缓存滑动、跨日结算驱动、事件派发与策略生命周期 |
 | `LivingEngine` | `Engine/LivingEngine.cs` | 实盘事件驱动执行引擎，支持异步行情监听、实时 Bar 追加与实时风险监控 |
-| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry`, `IndicatorRegistry` 及当期极简取价门面 |
+| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry`, `IndicatorRegistry`、当期极简取价门面及权威账户持仓门面 |
 | `EngineContext` | `Engine/EngineContext.cs` | 策略运行上下文权威实现，单例常驻，热路径零堆分配（零 GC），支持类型化插件与扩展组件注入 |
 | `IndicatorRegistry` | `Indicators/IndicatorRegistry.cs` | 全局指标注册中心具象类，统一管理全市场标的池，热路径无锁单次泵送，对策略屏蔽内部步进方法 |
 | `IMarketState` | `Abstraction/Engine/IMarketState.cs` | 市场黑板上下文，支持策略间跨层异步状态共享 |
 | `MarketState` | `Engine/MarketState.cs` | 通用强类型黑板实现，基于 ConcurrentDictionary 保证并发安全与类型单例索引 |
 | `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 统一监控抽象，管理日志输出、指标采集与告警 |
 | `NullMonitor` | `Engine/NullMonitor.cs` | 零开销默认空监控实现（Null Object Pattern） |
+| `ConsoleMonitor` | `Engine/ConsoleMonitor.cs` | 控制台采样节流监控与进度上报实现，实现 `IMonitor` 与 `IProgress<EngineProgress>` |
+| `EngineProgress` | `Abstraction/Engine/EngineProgress.cs` | 引擎任务进度数据传输对象（当前步、总步数、当前时间、执行速度） |
+| `ITradingRecorder` | `Abstraction/Analysis/ITradingRecorder.cs` | 交易事实记录器契约，管理交割单、平仓记录、未平仓持仓快照、资产曲线与信号打点 |
+| `TradingRecorder` | `Analysis/TradingRecorder.cs` | 纯事实记录器权威实现，热路径零额外撮合开销，实现 `ITradingRecorder` 与 `ICheckpointable` |
+| `TradingResult` | `Abstraction/Analysis/TradingResult.cs` | 综合交易结果模型，完整聚合交割单、平仓记录、期末在手持仓、步进资产曲线与每日快照 |
 
 ### 2. 实盘与回测双轨运行模型 (Living & Backtesting Dual-Engine Alignment)
 

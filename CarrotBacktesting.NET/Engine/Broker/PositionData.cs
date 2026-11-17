@@ -37,6 +37,16 @@ internal sealed class PositionData
     public double LastPrice { get; set; }
 
     /// <summary>
+    /// 首次建仓开仓时间。
+    /// </summary>
+    public DateTime OpenTime { get; set; } = DateTime.MinValue;
+
+    /// <summary>
+    /// 开仓策略标签。
+    /// </summary>
+    public string OpenTag { get; set; } = string.Empty;
+
+    /// <summary>
     /// 在途 T+N 交收批次队列（如 A 股 T+1 买入后在此排队等待换日解锁）。
     /// </summary>
     public List<PendingLot> PendingLots { get; } = new();

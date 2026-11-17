@@ -40,7 +40,7 @@ public abstract class RuleStrategyBase : IStrategy
         {
             if (string.IsNullOrWhiteSpace(symbol)) continue;
 
-            var pos = context.Broker.GetPosition(symbol);
+            var pos = context.GetPosition(symbol);
             if (pos == 0m)
             {
                 CheckEntry(context, symbol);

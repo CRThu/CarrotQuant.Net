@@ -14,6 +14,11 @@ public interface IBroker
     double GetCash();
 
     /// <summary>
+    /// 获取当前账户可用现金。
+    /// </summary>
+    double AvailableCash => GetCash();
+
+    /// <summary>
     /// 获取当前账户的总动态资产权益（可用现金 + 持仓浮动市值/占用保证金 + 未实现盈亏）。
     /// </summary>
     /// <returns>账户总权益。</returns>

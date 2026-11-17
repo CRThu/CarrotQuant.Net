@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
@@ -17,6 +18,7 @@ internal sealed class AccountLedger
     private readonly IFieldRegistry? _fields;
     private readonly Dictionary<string, PositionData> _positions = new(StringComparer.Ordinal);
     private IReadOnlyDictionary<string, decimal>? _positionsSnapshot;
+    private long _positionVersion = 1;
 
     private double _cash;
     private double _frozenCash;
@@ -24,6 +26,7 @@ internal sealed class AccountLedger
     public double Cash => _cash;
     public double FrozenCash => _frozenCash;
     public double AvailableCash => _cash - _frozenCash;
+    public long PositionVersion => _positionVersion;
 
     public AccountLedger(BrokerConfig config, IFieldRegistry? fields = null)
     {
@@ -95,8 +98,106 @@ internal sealed class AccountLedger
     }
 
     /// <summary>
-    /// 挂单前两阶段原子预冻结（Phase 1）。
-    /// 判定持仓可用度、执行反向翻仓双段切分，预冻结资金与持仓。
+    /// 获取当前账户持仓所占用的总保证金。
+    /// </summary>
+    public double GetOccupiedMargin()
+    {
+        double margin = 0.0;
+        foreach (var pos in _positions.Values)
+        {
+            if (pos.TotalQuantity == 0m) continue;
+            double mult = GetMultiplier(pos.Symbol);
+            double marginRate = GetMarginRate(pos.Symbol);
+            margin += Math.Abs((double)pos.TotalQuantity) * pos.AverageCost * mult * marginRate;
+        }
+        return margin;
+    }
+
+    /// <summary>
+    /// 获取当前所有活跃持仓的总未实现收益（浮动盈亏）。
+    /// </summary>
+    public double GetTotalUnrealizedPnL(Func<string, double>? priceResolver = null)
+    {
+        double total = 0.0;
+        foreach (var pos in _positions.Values)
+        {
+            if (pos.TotalQuantity == 0m) continue;
+            double mult = GetMultiplier(pos.Symbol);
+            double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
+            double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
+            double pnl = (price - pos.AverageCost) * (double)pos.TotalQuantity * mult;
+            total += pnl;
+        }
+        return total;
+    }
+
+    /// <summary>
+    /// 获取当前所有活跃持仓的快照列表。
+    /// </summary>
+    /// <param name="priceResolver">价格解析委托。</param>
+    /// <param name="totalEquity">账户总净值（用于计算持仓权重）。</param>
+    /// <returns>持仓快照列表。</returns>
+    public IReadOnlyList<PositionSnapshot> GetActivePositionSnapshots(Func<string, double>? priceResolver, double totalEquity)
+    {
+        var list = new List<PositionSnapshot>();
+        foreach (var pos in _positions.Values)
+        {
+            if (pos.TotalQuantity == 0m) continue;
+
+            double mult = GetMultiplier(pos.Symbol);
+            double marginRate = GetMarginRate(pos.Symbol);
+            double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
+            double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
+
+            TradeSide side = pos.TotalQuantity >= 0m ? TradeSide.Long : TradeSide.Short;
+            decimal qty = Math.Abs(pos.TotalQuantity);
+            decimal availQty = Math.Abs(pos.AvailableQuantity);
+            decimal frozenQty = pos.FrozenQuantity;
+            double marketValue = (double)qty * price * mult;
+            double unrealizedPnL = side == TradeSide.Long
+                ? (price - pos.AverageCost) * (double)qty * mult
+                : (pos.AverageCost - price) * (double)qty * mult;
+            double occupiedMargin = (double)qty * pos.AverageCost * mult * marginRate;
+            double weight = totalEquity > 0.0 ? marketValue / totalEquity : 0.0;
+
+            list.Add(new PositionSnapshot(
+                pos.Symbol,
+                side,
+                qty,
+                availQty,
+                frozenQty,
+                pos.AverageCost,
+                price,
+                mult,
+                marketValue,
+                unrealizedPnL,
+                marginRate,
+                occupiedMargin,
+                weight));
+        }
+
+        return list.Count == 0 ? Array.Empty<PositionSnapshot>() : list;
+    }
+
+    /// <summary>
+    /// 获取当前所有活跃持仓的总名义市值。
+    /// </summary>
+    public double GetTotalMarketValue(Func<string, double>? priceResolver = null)
+    {
+        double total = 0.0;
+        foreach (var pos in _positions.Values)
+        {
+            if (pos.TotalQuantity == 0m) continue;
+            double mult = GetMultiplier(pos.Symbol);
+            double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
+            double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
+            total += Math.Abs((double)pos.TotalQuantity) * price * mult;
+        }
+        return total;
+    }
+
+    /// <summary>
+    /// 预冻结委托所需的资金或持仓。
     /// </summary>
     public bool TryFreeze(
         OrderRequest request,
@@ -157,7 +258,9 @@ internal sealed class AccountLedger
         // 3. 资金可用性校验：纯平仓所需现金为 0（手续费在成交回款中扣除）；新开仓部分需冻结保证金与预估手续费
         double requiredMargin = (double)openQty * estimatedPrice * multiplier * marginRate;
         double estimatedFee = openQty > 0m && estimatedPrice > 0.0
-            ? Math.Max(_config.MinFee, (double)openQty * estimatedPrice * multiplier * _config.FeeRate)
+            ? (_config.OnCalculateFee != null
+                ? _config.OnCalculateFee(request, (double)openQty * estimatedPrice * multiplier)
+                : Math.Max(_config.MinFee, (double)openQty * estimatedPrice * multiplier * _config.FeeRate))
             : 0.0;
         double requiredCash = requiredMargin + estimatedFee;
 
@@ -216,8 +319,7 @@ internal sealed class AccountLedger
     }
 
     /// <summary>
-    /// 订单物理成交落账（Phase 2 Commit）。
-    /// 释放对应比例预冻结额度、扣除实际手续费、正式结转持仓成本并结转已实现盈亏。
+    /// 订单物理成交落账（Phase 2 Commit）基础重载。
     /// </summary>
     public void CommitFill(
         ExecutionReport report,
@@ -231,6 +333,32 @@ internal sealed class AccountLedger
         decimal unfreezePosition,
         DateTime exchangeDate,
         out PositionEvent posEvent)
+    {
+        CommitFill(
+            report, isBuy, closeQty, openQty, multiplier, marginRate, settleDays,
+            unfreezeCash, unfreezePosition, exchangeDate, string.Empty,
+            out posEvent, out _, out _);
+    }
+
+    /// <summary>
+    /// 订单物理成交落账（Phase 2 Commit）。
+    /// 释放对应比例预冻结额度、扣除实际手续费、正式结转持仓成本并结转已实现盈亏，生成交割单与平仓记录。
+    /// </summary>
+    public void CommitFill(
+        ExecutionReport report,
+        bool isBuy,
+        decimal closeQty,
+        decimal openQty,
+        double multiplier,
+        double marginRate,
+        int settleDays,
+        double unfreezeCash,
+        decimal unfreezePosition,
+        DateTime exchangeDate,
+        string orderTag,
+        out PositionEvent posEvent,
+        out Trade? closedTrade,
+        out SettlementRecord settlement)
     {
         ArgumentNullException.ThrowIfNull(report);
 
@@ -249,16 +377,48 @@ internal sealed class AccountLedger
         // 2. 扣除实际成交手续费
         _cash -= report.Commission;
 
+        closedTrade = null;
+        double closeRealizedPnL = 0.0;
+
         // 3. 阶段 A：平仓结算（释放保证金并结转已实现盈亏）
         if (closeQty > 0m)
         {
+            TradeSide side = pos.TotalQuantity > 0m ? TradeSide.Long : TradeSide.Short;
             double pnlPerUnit = pos.TotalQuantity > 0m
                 ? (report.FillPrice - pos.AverageCost)
                 : (pos.AverageCost - report.FillPrice);
-            double realizedPnL = pnlPerUnit * (double)closeQty * multiplier;
+            double grossPnL = pnlPerUnit * (double)closeQty * multiplier;
             double marginReleased = (double)closeQty * pos.AverageCost * multiplier * marginRate;
 
-            _cash += (marginReleased + realizedPnL);
+            // 分摊平仓手续费
+            double closeFee = report.FillQuantity > 0m
+                ? (double)(closeQty / report.FillQuantity) * report.Commission
+                : 0.0;
+            closeRealizedPnL = grossPnL - closeFee;
+
+            _cash += (marginReleased + grossPnL);
+
+            double initialNotional = (double)closeQty * pos.AverageCost * multiplier;
+            double returnRate = initialNotional > 0.0 ? closeRealizedPnL / initialNotional : 0.0;
+            DateTime entryTime = pos.OpenTime != DateTime.MinValue ? pos.OpenTime : report.Time;
+            int holdingSteps = Math.Max(1, (int)(report.Time - entryTime).TotalMinutes);
+
+            closedTrade = new Trade(
+                report.Symbol,
+                side,
+                entryTime,
+                pos.AverageCost,
+                report.Time,
+                report.FillPrice,
+                closeQty,
+                multiplier,
+                closeRealizedPnL,
+                returnRate,
+                closeFee,
+                0.0,
+                holdingSteps,
+                pos.OpenTag,
+                orderTag ?? string.Empty);
 
             if (pos.TotalQuantity > 0m)
             {
@@ -273,6 +433,8 @@ internal sealed class AccountLedger
             if (pos.TotalQuantity == 0m)
             {
                 pos.AverageCost = 0.0;
+                pos.OpenTime = DateTime.MinValue;
+                pos.OpenTag = string.Empty;
                 if (openQty == 0m && pos.PendingLots.Count == 0 && pos.FrozenQuantity == 0m)
                 {
                     _positions.Remove(report.Symbol);
@@ -291,6 +453,8 @@ internal sealed class AccountLedger
             {
                 pos.AverageCost = report.FillPrice;
                 pos.TotalQuantity = isBuy ? openQty : -openQty;
+                pos.OpenTime = report.Time;
+                pos.OpenTag = orderTag ?? string.Empty;
 
                 if (settleDays == 0)
                 {
@@ -315,6 +479,12 @@ internal sealed class AccountLedger
                 decimal newAbsQty = currentAbsQty + openQty;
                 pos.AverageCost = ((double)currentAbsQty * pos.AverageCost + (double)openQty * report.FillPrice) / (double)newAbsQty;
 
+                if (pos.OpenTime == DateTime.MinValue)
+                {
+                    pos.OpenTime = report.Time;
+                    pos.OpenTag = orderTag ?? string.Empty;
+                }
+
                 if (isBuy)
                 {
                     pos.TotalQuantity += openQty;
@@ -337,8 +507,24 @@ internal sealed class AccountLedger
 
         pos.LastPrice = report.FillPrice;
         _positionsSnapshot = null;
+        _positionVersion++;
 
         posEvent = new PositionEvent(report.Symbol, pos.TotalQuantity, pos.AverageCost, report.Time);
+
+        // 5. 生成交割单流水
+        double turnover = (double)report.FillQuantity * report.FillPrice * multiplier;
+        settlement = new SettlementRecord(
+            report.Time,
+            report.Symbol,
+            report.OrderId,
+            isBuy ? OrderDirection.Buy : OrderDirection.Sell,
+            report.FillPrice,
+            report.FillQuantity,
+            turnover,
+            report.Commission,
+            closeRealizedPnL,
+            _cash,
+            orderTag ?? string.Empty);
     }
 
     /// <summary>
@@ -366,6 +552,7 @@ internal sealed class AccountLedger
             {
                 pos.AvailableQuantity += unlocked;
                 _positionsSnapshot = null;
+                _positionVersion++;
             }
         }
     }
@@ -381,6 +568,7 @@ internal sealed class AccountLedger
         _frozenCash = 0.0;
         _positions.Clear();
         _positionsSnapshot = null;
+        _positionVersion++;
 
         foreach (var kvp in positions)
         {

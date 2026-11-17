@@ -8,21 +8,28 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 /// <param name="Type">订单类型（市价/限价）。</param>
 /// <param name="Price">委托价格。对于市价单，此值通常忽略。</param>
 /// <param name="Quantity">委托数量。</param>
-public record OrderRequest(string Symbol, OrderDirection Direction, OrderType Type, double Price, decimal Quantity)
+/// <param name="OrderTag">策略业务标签（如开仓理由、特征 Tag），用于订单归因与成交流水追踪。</param>
+public record OrderRequest(
+    string Symbol,
+    OrderDirection Direction,
+    OrderType Type,
+    double Price,
+    decimal Quantity,
+    string OrderTag = "")
 {
     /// <summary>
     /// 市价单便捷构造函数（价格默认为 0.0）。
     /// </summary>
-    public OrderRequest(string symbol, OrderDirection direction, decimal quantity)
-        : this(symbol, direction, OrderType.Market, 0.0, quantity)
+    public OrderRequest(string symbol, OrderDirection direction, decimal quantity, string orderTag = "")
+        : this(symbol, direction, OrderType.Market, 0.0, quantity, orderTag)
     {
     }
 
     /// <summary>
     /// 限价单便捷构造函数。
     /// </summary>
-    public OrderRequest(string symbol, OrderDirection direction, double price, decimal quantity)
-        : this(symbol, direction, OrderType.Limit, price, quantity)
+    public OrderRequest(string symbol, OrderDirection direction, double price, decimal quantity, string orderTag = "")
+        : this(symbol, direction, OrderType.Limit, price, quantity, orderTag)
     {
     }
 

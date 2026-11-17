@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Indicators;
@@ -63,10 +64,31 @@ namespace CarrotBacktesting.NET.Engine
         public IBroker Broker { get; }
 
         /// <inheritdoc />
+        public ITradingRecorder? Recorder { get; }
+
+        /// <inheritdoc />
+        public void RecordSignal(string symbol, double signalValue, string? signalGroup = null, string? reason = null)
+        {
+            Recorder?.RecordSignal(new SignalRecord(CurrentTime, symbol, signalValue, signalGroup ?? string.Empty, reason ?? string.Empty));
+        }
+
+        /// <inheritdoc />
         public IMarketState Market { get; }
 
         /// <inheritdoc />
         public IndicatorRegistry Indicators { get; internal set; }
+
+        /// <inheritdoc />
+        public decimal GetPosition(string symbol) => Broker.GetPosition(symbol);
+
+        /// <inheritdoc />
+        public decimal GetAvailablePosition(string symbol) => Broker.GetAvailablePosition(symbol);
+
+        /// <inheritdoc />
+        public double AvailableCash => Broker.GetCash();
+
+        /// <inheritdoc />
+        public double TotalEquity => Broker.GetTotalEquity();
 
         /// <summary>
         /// 获取全市场最新有效复权因子只读快照引用。
@@ -83,6 +105,7 @@ namespace CarrotBacktesting.NET.Engine
         /// <param name="fields">标的维表注册表（若为空则自动构建默认 FieldRegistry 实例）。</param>
         /// <param name="indicators">指标注册中心（若为空则依据时序元数据自动构建）。</param>
         /// <param name="priceFields">价格类需复权字段白名单（默认包含 open, high, low, close）。</param>
+        /// <param name="recorder">量化事实记录器（可选）。</param>
         public EngineContext(
             ITimeseriesRegistry timeseries,
             IBroker broker,
@@ -90,7 +113,8 @@ namespace CarrotBacktesting.NET.Engine
             IEventRegistry? events = null,
             IFieldRegistry? fields = null,
             IndicatorRegistry? indicators = null,
-            IEnumerable<string>? priceFields = null)
+            IEnumerable<string>? priceFields = null,
+            ITradingRecorder? recorder = null)
         {
             Timeseries = timeseries ?? throw new ArgumentNullException(nameof(timeseries));
             Broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -98,6 +122,7 @@ namespace CarrotBacktesting.NET.Engine
             Events = events ?? new EventRegistry();
             Fields = fields ?? new FieldRegistry();
             Indicators = indicators ?? new IndicatorRegistry(timeseries.Metadata);
+            Recorder = recorder;
 
             _priceFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {

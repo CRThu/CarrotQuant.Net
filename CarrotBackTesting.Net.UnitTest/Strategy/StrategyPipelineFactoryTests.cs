@@ -99,6 +99,12 @@ public class StrategyPipelineFactoryTests
         public CarrotBacktesting.NET.Abstraction.Data.IFieldRegistry Fields => throw new NotImplementedException();
         public IBroker Broker => throw new NotImplementedException();
         public IMarketState Market { get; } = new MarketState();
+        public CarrotBacktesting.NET.Abstraction.Analysis.ITradingRecorder? Recorder => null;
+        public void RecordSignal(string symbol, double signalValue, string? signalGroup = null, string? reason = null) { }
+        public decimal GetPosition(string symbol) => 0m;
+        public decimal GetAvailablePosition(string symbol) => 0m;
+        public double AvailableCash => 0.0;
+        public double TotalEquity => 0.0;
         public CarrotBacktesting.NET.Indicators.IndicatorRegistry Indicators => throw new NotImplementedException();
         public double GetClose(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
         public double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post) => double.NaN;

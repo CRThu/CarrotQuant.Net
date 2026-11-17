@@ -108,11 +108,14 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
-        public void OrderContext_QuantityProperty_ShouldBeDecimal()
+        public void TradeExecutionDetails_Properties_ShouldBeCorrect()
         {
-            var ctx = new OrderContext("ord-1", "sh.600000", OrderDirection.Buy, 10.5, 500m, OrderStatus.Filled, DateTime.UtcNow);
-            Assert.AreEqual(500m, ctx.Quantity);
-            Assert.AreEqual(10.5, ctx.Price);
+            var report = new ExecutionReport("ord-1", "sh.600000", 10.5, 500m, 5.0, DateTime.UtcNow);
+            var details = new TradeExecutionDetails(report, OrderDirection.Buy, 1.0, "TestTag");
+            Assert.AreEqual(500m, details.Report.FillQuantity);
+            Assert.AreEqual(10.5, details.Report.FillPrice);
+            Assert.AreEqual(OrderDirection.Buy, details.Direction);
+            Assert.AreEqual("TestTag", details.OrderTag);
         }
     }
 }

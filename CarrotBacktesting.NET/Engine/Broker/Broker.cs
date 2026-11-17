@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
@@ -27,6 +28,9 @@ public sealed class Broker : IBroker
 
     public event Action<string, OrderStatus>? OnOrderStatusChanged;
     public event Action<ExecutionReport>? OnTrade;
+    public event Action<TradeExecutionDetails>? OnTradeDetails;
+    public event Action<Trade>? OnTradeClosed;
+    public event Action<SettlementRecord>? OnSettlement;
     public event Action<PositionEvent>? OnPositionChanged;
 
     /// <summary>
@@ -72,18 +76,76 @@ public sealed class Broker : IBroker
     {
         lock (_syncLock)
         {
-            return _ledger.GetTotalEquity(sym =>
-            {
-                double p = priceResolver?.Invoke(sym) ?? 0.0;
-                if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
-                if (_gateway is ISimulatedExchange sim)
-                {
-                    p = sim.GetMarketPrice(sym);
-                    if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
-                }
-                return 0.0;
-            });
+            return _ledger.GetTotalEquity(sym => ResolvePrice(sym, priceResolver));
         }
+    }
+
+    /// <summary>
+    /// 生成当前时间步的净值点数据。
+    /// </summary>
+    /// <param name="time">当前时间戳。</param>
+    /// <param name="priceResolver">可选的价格解析委托。</param>
+    /// <returns>净值点。</returns>
+    public EquityPoint CreateEquityPoint(DateTime time, Func<string, double>? priceResolver = null)
+    {
+        lock (_syncLock)
+        {
+            double equity = _ledger.GetTotalEquity(sym => ResolvePrice(sym, priceResolver));
+            double cash = _ledger.AvailableCash;
+            double frozenCash = _ledger.FrozenCash;
+            double occupiedMargin = _ledger.GetOccupiedMargin();
+            double totalMarketValue = _ledger.GetTotalMarketValue(sym => ResolvePrice(sym, priceResolver));
+            double unrealizedPnL = _ledger.GetTotalUnrealizedPnL(sym => ResolvePrice(sym, priceResolver));
+            return new EquityPoint(time, equity, cash, frozenCash, occupiedMargin, totalMarketValue, unrealizedPnL);
+        }
+    }
+
+    /// <summary>
+    /// 权威生成当前时点的日终全景资产与持仓快照。
+    /// </summary>
+    /// <param name="time">快照时间戳。</param>
+    /// <param name="priceResolver">可选的价格解析委托。</param>
+    /// <returns>日终资产与持仓快照。</returns>
+    public DailySnapshot CreateDailySnapshot(DateTime time, Func<string, double>? priceResolver = null)
+    {
+        lock (_syncLock)
+        {
+            double equity = _ledger.GetTotalEquity(sym => ResolvePrice(sym, priceResolver));
+            double cash = _ledger.AvailableCash;
+            double frozenCash = _ledger.FrozenCash;
+            double occupiedMargin = _ledger.GetOccupiedMargin();
+            double totalMarketValue = _ledger.GetTotalMarketValue(sym => ResolvePrice(sym, priceResolver));
+            double unrealizedPnL = _ledger.GetTotalUnrealizedPnL(sym => ResolvePrice(sym, priceResolver));
+            var positions = _ledger.GetActivePositionSnapshots(sym => ResolvePrice(sym, priceResolver), equity);
+
+            return new DailySnapshot(time, equity, cash, frozenCash, occupiedMargin, totalMarketValue, unrealizedPnL, positions);
+        }
+    }
+
+    /// <summary>
+    /// 获取当前所有活跃持仓的快照列表。
+    /// </summary>
+    /// <param name="priceResolver">可选的价格解析委托。</param>
+    /// <returns>活跃持仓快照列表。</returns>
+    public IReadOnlyList<PositionSnapshot> GetActivePositions(Func<string, double>? priceResolver = null)
+    {
+        lock (_syncLock)
+        {
+            double equity = _ledger.GetTotalEquity(sym => ResolvePrice(sym, priceResolver));
+            return _ledger.GetActivePositionSnapshots(sym => ResolvePrice(sym, priceResolver), equity);
+        }
+    }
+
+    private double ResolvePrice(string symbol, Func<string, double>? customResolver)
+    {
+        double p = customResolver?.Invoke(symbol) ?? 0.0;
+        if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
+        if (_gateway is ISimulatedExchange sim)
+        {
+            p = sim.GetMarketPrice(symbol);
+            if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
+        }
+        return 0.0;
     }
 
     /// <inheritdoc />
@@ -249,6 +311,9 @@ public sealed class Broker : IBroker
         PositionEvent? posEvent = null;
         OrderStatus newStatus = OrderStatus.Filled;
         bool shouldDispatchState = false;
+        TradeExecutionDetails? details = null;
+        Trade? closedTrade = null;
+        SettlementRecord? settlement = null;
 
         lock (_syncLock)
         {
@@ -290,6 +355,16 @@ public sealed class Broker : IBroker
                 shouldDispatchState = true;
             }
 
+            // 若外部撮合回报未携带券商佣金，则依据券商费率配置在此权威计算
+            if (report.Commission <= 0.0 && (_config.FeeRate > 0.0 || _config.MinFee > 0.0 || _config.OnCalculateFee != null))
+            {
+                double turnover = (double)report.FillQuantity * report.FillPrice * ord.Multiplier;
+                double commission = _config.OnCalculateFee != null
+                    ? _config.OnCalculateFee(ord.Request, turnover)
+                    : Math.Max(_config.MinFee, turnover * _config.FeeRate);
+                report = report with { Commission = commission };
+            }
+
             DateTime exchangeDate = ToExchangeDate(report.Time);
             _ledger.CommitFill(
                 report,
@@ -302,7 +377,12 @@ public sealed class Broker : IBroker
                 unfreezeCash,
                 unfreezePos,
                 exchangeDate,
-                out posEvent);
+                ord.Request.OrderTag,
+                out posEvent,
+                out closedTrade,
+                out settlement);
+
+            details = new TradeExecutionDetails(report, ord.Request.Direction, ord.Multiplier, ord.Request.OrderTag);
         }
 
         // 锁外派发状态、成交与持仓变更事件（Open Calls）
@@ -310,7 +390,19 @@ public sealed class Broker : IBroker
         {
             OnOrderStatusChanged?.Invoke(report.OrderId, newStatus);
         }
+        if (details.HasValue)
+        {
+            OnTradeDetails?.Invoke(details.Value);
+        }
         OnTrade?.Invoke(report);
+        if (settlement != null)
+        {
+            OnSettlement?.Invoke(settlement);
+        }
+        if (closedTrade != null)
+        {
+            OnTradeClosed?.Invoke(closedTrade);
+        }
         if (posEvent != null)
         {
             OnPositionChanged?.Invoke(posEvent);

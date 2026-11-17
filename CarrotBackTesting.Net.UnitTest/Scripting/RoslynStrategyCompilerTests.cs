@@ -35,6 +35,12 @@ public class RoslynStrategyCompilerTests
         public CarrotBacktesting.NET.Abstraction.Data.IFieldRegistry Fields => throw new NotImplementedException();
         public IBroker Broker { get; }
         public IMarketState Market { get; }
+        public CarrotBacktesting.NET.Abstraction.Analysis.ITradingRecorder? Recorder => null;
+        public void RecordSignal(string symbol, double signalValue, string? signalGroup = null, string? reason = null) { }
+        public decimal GetPosition(string symbol) => Broker?.GetPosition(symbol) ?? 0m;
+        public decimal GetAvailablePosition(string symbol) => Broker?.GetAvailablePosition(symbol) ?? 0m;
+        public double AvailableCash => Broker?.AvailableCash ?? 0.0;
+        public double TotalEquity => Broker?.GetTotalEquity() ?? 0.0;
 
         public FakeEngineContext(IBroker broker, IMarketState market)
         {

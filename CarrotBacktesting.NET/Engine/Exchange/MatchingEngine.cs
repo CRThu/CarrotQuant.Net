@@ -7,7 +7,7 @@ namespace CarrotBacktesting.NET.Engine.Exchange;
 
 /// <summary>
 /// 纯计算撮合与市场摩擦内核。
-/// 专职负责限价触碰判定、价格改善、滑点冲击模型重估、交易费计算与涨跌停/流动性风控合规拦截。
+/// 专职负责限价触碰判定、价格改善、滑点冲击模型重估与涨跌停/流动性风控合规拦截。
 /// 纯函数设计，不持有状态，具备确定性与高可测性。
 /// </summary>
 internal sealed class MatchingEngine
@@ -68,11 +68,7 @@ internal sealed class MatchingEngine
         // 4. 即时成交（Taker 规则）：计算滑点
         double fillPrice = CalculateTakerFillPrice(request, basePrice, bar);
 
-        // 5. 计算手续费
-        double turnover = (double)request.Quantity * fillPrice * multiplier;
-        double commission = CalculateCommission(request, turnover);
-
-        return MatchResult.Filled(fillPrice, request.Quantity, commission, tradeTime);
+        return MatchResult.Filled(fillPrice, request.Quantity, tradeTime);
     }
 
     /// <summary>
@@ -123,10 +119,7 @@ internal sealed class MatchingEngine
         // Maker 限价挂单成交价：严格遵循委托限价保护（成交价 = 委托限价）
         double fillPrice = request.Price;
 
-        double turnover = (double)request.Quantity * fillPrice * order.Multiplier;
-        double commission = CalculateCommission(request, turnover);
-
-        return MatchResult.Filled(fillPrice, request.Quantity, commission, tradeTime);
+        return MatchResult.Filled(fillPrice, request.Quantity, tradeTime);
     }
 
     private double CalculateTakerFillPrice(OrderRequest request, double basePrice, IDataRow? bar)
@@ -152,15 +145,6 @@ internal sealed class MatchingEngine
         }
 
         return fillPrice;
-    }
-
-    private double CalculateCommission(OrderRequest request, double turnover)
-    {
-        if (_config.OnCalculateFee != null)
-        {
-            return _config.OnCalculateFee(request, turnover);
-        }
-        return Math.Max(_config.MinFee, turnover * _config.FeeRate);
     }
 
     private bool CheckLiquidity(OrderRequest request, IDataRow bar, out string reason)
@@ -236,6 +220,9 @@ internal readonly struct MatchResult
         Commission = commission;
         Time = time;
     }
+
+    public static MatchResult Filled(double fillPrice, decimal fillQuantity, DateTime time, double commission = 0.0) =>
+        new(true, false, false, null, fillPrice, fillQuantity, commission, time);
 
     public static MatchResult Filled(double fillPrice, decimal fillQuantity, double commission, DateTime time) =>
         new(true, false, false, null, fillPrice, fillQuantity, commission, time);

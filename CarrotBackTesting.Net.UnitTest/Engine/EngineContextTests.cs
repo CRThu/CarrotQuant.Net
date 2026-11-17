@@ -102,5 +102,19 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual("TestPlugin", retrieved.Name);
             Assert.AreSame(plugin, retrieved);
         }
+
+        [TestMethod]
+        public void Facades_AccountAndPosition_ForwardToBrokerAccurately()
+        {
+            var ts = CreateMockRegistry();
+            var config = new BrokerConfig { InitialCash = 50_000.0 };
+            var broker = new Broker(new SimulatedExchangeGateway(config), config);
+            var ctx = new EngineContext(ts, broker);
+
+            Assert.AreEqual(50_000.0, ctx.AvailableCash);
+            Assert.AreEqual(50_000.0, ctx.TotalEquity);
+            Assert.AreEqual(0m, ctx.GetPosition("sh.600000"));
+            Assert.AreEqual(0m, ctx.GetAvailablePosition("sh.600000"));
+        }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Indicators;
 using CarrotBacktesting.NET.Indicators;
@@ -42,6 +43,20 @@ public interface IEngineContext
     IBroker Broker { get; }
 
     /// <summary>
+    /// 获取交易事实记录器接口（可选），用于沉淀策略信号打点或扩展归因。
+    /// </summary>
+    ITradingRecorder? Recorder { get; }
+
+    /// <summary>
+    /// 便捷记录策略决策信号打点数据。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="signalValue">信号值（如打分、概率或目标权重）。</param>
+    /// <param name="signalGroup">信号分组。</param>
+    /// <param name="reason">信号触发理由。</param>
+    void RecordSignal(string symbol, double signalValue, string? signalGroup = null, string? reason = null);
+
+    /// <summary>
     /// 获取市场状态黑板。宏观策略可通过此接口更新全局结论，微观策略通过此接口获取过滤条件。
     /// </summary>
     IMarketState Market { get; }
@@ -50,6 +65,35 @@ public interface IEngineContext
     /// 获取全局指标注册中心，统筹增量流式指标池的注册、多策略共享与引擎步进泵送。
     /// </summary>
     IndicatorRegistry Indicators { get; }
+
+    #region 当期账户与持仓权威门面 (Account & Position SSOT Facades)
+
+    /// <summary>
+    /// 获取指定标的当前总持仓量（多头为正，空头为负，无持仓为 0）。
+    /// 作为策略判断单一事实来源（SSOT），严禁在策略内部私存或自行推算仓位。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <returns>物理总持仓数量。</returns>
+    decimal GetPosition(string symbol);
+
+    /// <summary>
+    /// 获取指定标的当前可用持仓量（已剔除挂单冻结及 T+N 在途锁定，多头为正，空头为负）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <returns>可用持仓数量。</returns>
+    decimal GetAvailablePosition(string symbol);
+
+    /// <summary>
+    /// 获取当前账户可用现金余额。
+    /// </summary>
+    double AvailableCash { get; }
+
+    /// <summary>
+    /// 获取当前账户动态盯市总资产。
+    /// </summary>
+    double TotalEquity { get; }
+
+    #endregion
 
     #region 当期极简取价门面 (Unified Current Bar Market Data Facades)
 

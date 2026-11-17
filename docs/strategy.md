@@ -112,7 +112,7 @@ public abstract class RuleStrategyBase : IStrategy
     {
         foreach (var symbol in GetSymbols(context))
         {
-            var pos = context.Broker.GetPosition(symbol);
+            var pos = context.GetPosition(symbol);
             if (pos == 0m)
             {
                 CheckEntry(context, symbol);
@@ -338,7 +338,7 @@ public class MaCrossStrategy : IStrategy
             fastMa /= FastPeriod;
             slowMa /= SlowPeriod;
 
-            decimal position = context.Broker.GetPosition(symbol);
+            decimal position = context.GetPosition(symbol);
 
             if (fastMa > slowMa && position == 0)
             {

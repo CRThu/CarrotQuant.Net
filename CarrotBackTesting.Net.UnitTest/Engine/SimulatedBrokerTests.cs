@@ -1439,6 +1439,50 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             string idReject = brokerPoor.SubmitOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m));
             Assert.AreEqual(OrderStatus.Rejected, brokerPoor.GetOrderStatus(idReject), "无平仓额度且资金不足以开多时，必须严格拒单");
         }
+
+        [TestMethod]
+        public void Broker_AuthoritativeCommissionCalculation_StandardAndCustomHooks()
+        {
+            // 1. 标准佣金计算（测试千分之三费率与最低 5 元门槛）
+            var configStandard = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                FeeRate = 0.0003,
+                MinFee = 5.0,
+                Slippage = 0.0
+            };
+            var broker1 = CreateBroker(configStandard);
+            broker1.UpdateMarketPrice("sh.600000", 10.0);
+
+            ExecutionReport? capturedReport = null;
+            broker1.OnTrade += r => capturedReport = r;
+
+            // 买入 100 股 @ 10 元，成交额 1000 元，按 0.0003 计算为 0.3 元，但受 MinFee=5.0 约束，最终佣金应权威计算为 5.0 元
+            broker1.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m), 10.0, null);
+
+            Assert.IsNotNull(capturedReport);
+            Assert.AreEqual(5.0, capturedReport.Commission, 1e-4, "券商必须根据 MinFee 权威计算佣金");
+            Assert.AreEqual(100_000.0 - 1000.0 - 5.0, broker1.GetCash(), 1e-4);
+
+            // 2. 自定义 Hook 佣金计算（OnCalculateFee）
+            var configHook = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                OnCalculateFee = (req, turnover) => 12.34,
+                Slippage = 0.0
+            };
+            var broker2 = CreateBroker(configHook);
+            broker2.UpdateMarketPrice("sh.600000", 10.0);
+
+            ExecutionReport? hookReport = null;
+            broker2.OnTrade += r => hookReport = r;
+
+            broker2.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m), 10.0, null);
+
+            Assert.IsNotNull(hookReport);
+            Assert.AreEqual(12.34, hookReport.Commission, 1e-4, "券商必须调用自定义 OnCalculateFee Hook 计算佣金");
+            Assert.AreEqual(100_000.0 - 1000.0 - 12.34, broker2.GetCash(), 1e-4);
+        }
     }
 
     internal static class BrokerTestExtensions

@@ -930,26 +930,29 @@ public class MovingAverageCrossStrategy : IStrategy
 
 ---
 
-## 九、流水记录与分析层 (Analysis & Recorder)
+## 九、交易事实沉淀与分析层 (Analysis & Recorder)
 
-### 1. IRecorder
-回测与实盘过程的流水采集器。
+### 1. ITradingRecorder
+回测与实盘量化事实纯接收记录器，实现 `ITradingRecorder` 与 `ICheckpointable`。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Analysis;
 
-public interface IRecorder
+public interface ITradingRecorder
 {
-    void RecordOrder(OrderContext order);
-    void RecordTrade(TradeContext trade);
-    void RecordSnapshot(PortfolioSnapshot snapshot);
-    BacktestReport GetReport();
+    void RecordStep(EquityPoint point);
+    void RecordDailySnapshot(DailySnapshot snapshot);
+    void RecordSettlement(SettlementRecord settlement);
+    void RecordClosedTrade(Trade trade);
+    void RecordSignal(SignalRecord signal);
+    TradingResult GetResult(IReadOnlyList<PositionSnapshot> endingPositions);
+    void Reset();
 }
 ```
 
-### 2. 流水数据模型
-- **`OrderContext`**: `(string OrderId, string Symbol, OrderDirection Direction, double Price, double Volume, OrderStatus Status, DateTime Time)` —— 记录订单状态变更快照。
-- **`TradeContext`**: `(string TradeId, string Symbol, double EntryPrice, double ExitPrice, double ProfitAndLoss, DateTime EntryTime, DateTime ExitTime)` —— 记录一笔完整开平仓交易明细与损益。
-- **`PortfolioSnapshot`**: `(DateTime Time, double AvailableCash, double TotalEquity, int OpenPositionsCount)` —— 记录时步点投资组合净值与持仓快照。
-- **`BacktestReport`**: 量化统计指标综合报告。
-- 导出的结果数据可直接供给控制台格式化输出或后续报表导出器渲染。
+### 2. 核心数据模型
+- **`EquityPoint`**: `(DateTime Time, double TotalEquity, double AvailableCash, double FrozenCash, double OccupiedMargin, double TotalMarketValue, double UnrealizedPnL)` —— 56 字节值类型步进点，热路径 0 GC，派生 `MarginRatio`。
+- **`SettlementRecord`**: 标准券商交割单流水（`Time`, `Symbol`, `OrderId`, `Direction`, `Price`, `Quantity`, `Turnover`, `Commission`, `RealizedPnL`, `BalanceCash`, `OrderTag`）。
+- **`Trade`**: 已平仓对冲交易明细（开平仓时间戳与标签、开平仓价格、数量、乘数、已实现盈亏、手续费、持仓步数）。
+- **`DailySnapshot`**: 跨日收盘全景资产与持仓透视快照，包含 `List<PositionSnapshot>`，用于 Barra 风格归因与实盘对账。
+- **`TradingResult`**: 综合不可变结果集，聚合 `Settlements`, `ClosedTrades`, `OpenPositions`, `EquityCurve`, `DailySnapshots`, `Signals`，作为下游绩效分析与报告渲染的单一事实来源。

@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Indicators;
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Analysis;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Engine.Broker;
 using CarrotBacktesting.NET.Engine.Exchange;
@@ -31,6 +34,8 @@ namespace CarrotBacktesting.NET.Engine
         private readonly IMarketState _market;
         private readonly EngineConfig _config;
         private readonly IMonitor _monitor;
+        private readonly ITradingRecorder _recorder;
+        private readonly IProgress<EngineProgress>? _progressReporter;
         private readonly AdjustmentConfig _adjustConfig;
         private readonly IndicatorRegistry _indicators;
 
@@ -54,6 +59,8 @@ namespace CarrotBacktesting.NET.Engine
 
         private readonly Action<string, OrderStatus> _orderStatusHandler;
         private readonly Action<ExecutionReport> _tradeHandler;
+        private readonly Action<SettlementRecord> _settlementHandler;
+        private readonly Action<Trade> _tradeClosedHandler;
         private readonly Action<PositionEvent> _positionHandler;
         private bool _isSubscribed = false;
 
@@ -62,6 +69,20 @@ namespace CarrotBacktesting.NET.Engine
 
         /// <inheritdoc />
         public double Progress => _progress;
+
+        /// <summary>
+        /// 获取当前引擎挂载的交易事实记录器。
+        /// </summary>
+        public ITradingRecorder Recorder => _recorder;
+
+        /// <summary>
+        /// 获取当前回测的结果集，包含已平仓交易、未平仓持仓、净值曲线与每日快照。
+        /// </summary>
+        public TradingResult GetResult()
+        {
+            var endingPositions = (_broker as Broker.Broker)?.GetActivePositions() ?? Array.Empty<PositionSnapshot>();
+            return _recorder.GetResult(endingPositions);
+        }
 
         /// <inheritdoc />
         public DateTime CurrentTime => _context.CurrentTime;
@@ -83,6 +104,9 @@ namespace CarrotBacktesting.NET.Engine
         /// <param name="config">引擎运行配置（可选）。</param>
         /// <param name="monitor">监控与日志记录器（可选，缺省为 NullMonitor）。</param>
         /// <param name="simExchange">仿真交易所（可选，若未指定则自动自 broker.Gateway 感知）。</param>
+        /// <param name="adjustConfig">除权除息配置（可选）。</param>
+        /// <param name="recorder">交易事实记录器（可选，缺省自动构建默认 TradingRecorder）。</param>
+        /// <param name="progress">批处理进度接收器（可选，若未指定且 monitor 实现了 IProgress&lt;EngineProgress&gt; 则自动复用）。</param>
         public BacktestingEngine(
             ITimeseriesRegistry timeseries,
             IBroker broker,
@@ -93,7 +117,9 @@ namespace CarrotBacktesting.NET.Engine
             EngineConfig? config = null,
             IMonitor? monitor = null,
             ISimulatedExchange? simExchange = null,
-            AdjustmentConfig? adjustConfig = null)
+            AdjustmentConfig? adjustConfig = null,
+            ITradingRecorder? recorder = null,
+            IProgress<EngineProgress>? progress = null)
         {
             _timeseries = timeseries ?? throw new ArgumentNullException(nameof(timeseries));
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -102,8 +128,10 @@ namespace CarrotBacktesting.NET.Engine
             _config = config ?? new EngineConfig();
             _monitor = monitor ?? NullMonitor.Instance;
             _adjustConfig = adjustConfig ?? new AdjustmentConfig();
+            _recorder = recorder ?? new TradingRecorder();
+            _progressReporter = progress ?? (monitor as IProgress<EngineProgress>);
 
-            _context = new EngineContext(timeseries, broker, market, events, fields, priceFields: _adjustConfig.PriceFields);
+            _context = new EngineContext(timeseries, broker, market, events, fields, priceFields: _adjustConfig.PriceFields, recorder: _recorder);
             _events = _context.Events;
             _fields = _context.Fields;
             _market = _context.Market;
@@ -111,6 +139,8 @@ namespace CarrotBacktesting.NET.Engine
 
             _orderStatusHandler = (orderId, status) => _pipeline.OnOrderStatusChanged(_context, orderId, status);
             _tradeHandler = (report) => _pipeline.OnTrade(_context, report);
+            _settlementHandler = (settlement) => _recorder.RecordSettlement(settlement);
+            _tradeClosedHandler = (closedTrade) => _recorder.RecordClosedTrade(closedTrade);
             _positionHandler = (posEvent) => _pipeline.OnPositionChanged(_context, posEvent);
         }
 
@@ -124,6 +154,7 @@ namespace CarrotBacktesting.NET.Engine
         /// <param name="fields">维表注册表（可选）。</param>
         /// <param name="market">市场黑板（可选）。</param>
         /// <param name="monitor">监控接口（可选）。</param>
+        /// <param name="recorder">交易事实记录器（可选）。</param>
         /// <returns>已装配就绪的 BacktestingEngine 实例。</returns>
         public static BacktestingEngine Create(
             SessionConfig sessionConfig,
@@ -132,7 +163,8 @@ namespace CarrotBacktesting.NET.Engine
             IEventRegistry? events = null,
             IFieldRegistry? fields = null,
             IMarketState? market = null,
-            IMonitor? monitor = null)
+            IMonitor? monitor = null,
+            ITradingRecorder? recorder = null)
         {
             ArgumentNullException.ThrowIfNull(sessionConfig);
             ArgumentNullException.ThrowIfNull(timeseries);
@@ -164,7 +196,8 @@ namespace CarrotBacktesting.NET.Engine
                 sessionConfig.Engine,
                 monitor,
                 simExchange: simGateway,
-                adjustConfig: sessionConfig.Data.Adjust);
+                adjustConfig: sessionConfig.Data.Adjust,
+                recorder: recorder);
         }
 
         /// <inheritdoc />
@@ -268,6 +301,7 @@ namespace CarrotBacktesting.NET.Engine
 
                 int totalSteps = endIndex - startIndex + 1;
                 _lastDate = DateTime.MinValue;
+                long runStartTimestamp = Stopwatch.GetTimestamp();
 
                 // 5. 核心时间步驱动循环（热路径零分配）
                 for (int i = startIndex; i <= endIndex; i++)
@@ -291,11 +325,15 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.1 更新上下文
                     _context.UpdateStep(i, currentTime);
 
-                    // 5.1.1 跨日增量因子供给
-                    if (_hasAdjustments && currentTime.Date != _lastDate)
+                    // 5.1.1 跨日检测与日终快照沉淀
+                    if (currentTime.Date != _lastDate)
                     {
+                        if (_lastDate != DateTime.MinValue && _broker is Broker.Broker bPrev && i > startIndex)
+                        {
+                            _recorder.RecordDailySnapshot(bPrev.CreateDailySnapshot(tradeDates[i - 1]));
+                        }
                         _lastDate = currentTime.Date;
-                        if (_events.HasNewEvents(currentTime, _adjustConfig.Table))
+                        if (_hasAdjustments && _events.HasNewEvents(currentTime, _adjustConfig.Table))
                         {
                             UpdateDailyFactors(currentTime);
                         }
@@ -322,8 +360,26 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.5 驱动策略主决策计算
                     _pipeline.OnUpdate(_context);
 
-                    // 5.6 进度刷新
-                    _progress = (double)(i - startIndex + 1) / totalSteps;
+                    // 5.6 记录当前时间步净值点
+                    if (_broker is Broker.Broker realBroker)
+                    {
+                        _recorder.RecordStep(realBroker.CreateEquityPoint(currentTime));
+                    }
+
+                    // 5.7 上报执行进度
+                    int currentStep = i - startIndex + 1;
+                    _progress = (double)currentStep / totalSteps;
+                    if (_progressReporter != null)
+                    {
+                        TimeSpan elapsed = Stopwatch.GetElapsedTime(runStartTimestamp);
+                        _progressReporter.Report(new EngineProgress(currentStep, totalSteps, currentTime, elapsed));
+                    }
+                }
+
+                // 记录最终交易日收盘快照
+                if (_broker is Broker.Broker endBroker && endIndex >= startIndex)
+                {
+                    _recorder.RecordDailySnapshot(endBroker.CreateDailySnapshot(tradeDates[endIndex]));
                 }
 
                 // 6. 正常收尾触发策略终止
@@ -556,6 +612,11 @@ namespace CarrotBacktesting.NET.Engine
                 _broker.OnOrderStatusChanged += _orderStatusHandler;
                 _broker.OnTrade += _tradeHandler;
                 _broker.OnPositionChanged += _positionHandler;
+                if (_broker is Broker.Broker realBroker)
+                {
+                    realBroker.OnSettlement += _settlementHandler;
+                    realBroker.OnTradeClosed += _tradeClosedHandler;
+                }
                 _isSubscribed = true;
             }
         }
@@ -567,6 +628,11 @@ namespace CarrotBacktesting.NET.Engine
                 _broker.OnOrderStatusChanged -= _orderStatusHandler;
                 _broker.OnTrade -= _tradeHandler;
                 _broker.OnPositionChanged -= _positionHandler;
+                if (_broker is Broker.Broker realBroker)
+                {
+                    realBroker.OnSettlement -= _settlementHandler;
+                    realBroker.OnTradeClosed -= _tradeClosedHandler;
+                }
                 _isSubscribed = false;
             }
         }

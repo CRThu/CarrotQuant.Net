@@ -65,8 +65,8 @@ public class MatchingEngineTests
         // 10.0 * 1.001 = 10.01
         Assert.AreEqual(10.01, result.FillPrice, 1e-4);
         Assert.AreEqual(1000m, result.FillQuantity);
-        // turnover = 1000 * 10.01 = 10010; fee = 10010 * 0.0003 = 3.003 -> MinFee = 5.0
-        Assert.AreEqual(5.0, result.Commission, 1e-4);
+        // 撮合引擎仅输出撮合价量，不越界计算券商佣金
+        Assert.AreEqual(0.0, result.Commission, 1e-4);
     }
 
     [TestMethod]
@@ -87,8 +87,8 @@ public class MatchingEngineTests
         // 10.0 * (1 - 0.002) = 9.98
         Assert.AreEqual(9.98, result.FillPrice, 1e-4);
         Assert.AreEqual(2000m, result.FillQuantity);
-        // turnover = 2000 * 9.98 = 19960; fee = 19960 * 0.0005 = 9.98
-        Assert.AreEqual(9.98, result.Commission, 1e-4);
+        // 撮合引擎仅输出撮合价量，不越界计算券商佣金
+        Assert.AreEqual(0.0, result.Commission, 1e-4);
     }
 
     [TestMethod]
@@ -242,12 +242,11 @@ public class MatchingEngineTests
     }
 
     [TestMethod]
-    public void CustomHooks_SlippageAndFee_ShouldBeInvoked()
+    public void CustomHooks_Slippage_ShouldBeInvoked()
     {
         var config = new BrokerConfig
         {
-            OnCalculateSlippage = (req, basePrice, bar) => basePrice + 0.123,
-            OnCalculateFee = (req, turnover) => 8.88
+            OnCalculateSlippage = (req, basePrice, bar) => basePrice + 0.123
         };
         var matcher = new MatchingEngine(config);
 
@@ -257,7 +256,7 @@ public class MatchingEngineTests
 
         Assert.IsTrue(result.IsFilled);
         Assert.AreEqual(10.123, result.FillPrice, 1e-4);
-        Assert.AreEqual(8.88, result.Commission, 1e-4);
+        Assert.AreEqual(0.0, result.Commission, 1e-4);
     }
 
     [TestMethod]

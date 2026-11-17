@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Engine.Broker;
@@ -282,5 +283,73 @@ public class AccountLedgerTests
 
         // 50,000 + 1000 * 30 + 500 * 40 = 50,000 + 30,000 + 20,000 = 100,000
         Assert.AreEqual(100_000.0, equity, 1e-4);
+    }
+
+    [TestMethod]
+    public void CommitFill_GeneratesClosedTradeAndSettlementRecord_Accurately()
+    {
+        var config = new BrokerConfig
+        {
+            InitialCash = 100_000.0,
+            AllowShort = false,
+            SettleDays = 0,
+            FeeRate = 0.0
+        };
+        var ledger = new AccountLedger(config);
+        var t1 = new DateTime(2025, 1, 2, 9, 30, 0, DateTimeKind.Utc);
+        var t2 = new DateTime(2025, 1, 2, 10, 0, 0, DateTimeKind.Utc);
+
+        // 1. 开仓买入 100 股 @ 10.0 元
+        var buyReq = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m) { OrderTag = "TagBuy" };
+        ledger.TryFreeze(buyReq, 10.0, 1.0, 1.0, out var cQty, out var oQty, out var fCash, out var fPos, out _);
+        var fillBuy = new ExecutionReport("ord-1", "sh.600000", 10.0, 100m, 5.0, t1);
+
+        ledger.CommitFill(
+            fillBuy, true, cQty, oQty, 1.0, 1.0, 0, fCash, fPos, t1, "TagBuy",
+            out var posEvent1, out var closedTrade1, out var settlement1);
+
+        Assert.IsNull(closedTrade1, "开仓不应生成平仓记录");
+        Assert.IsNotNull(settlement1, "任何成交必须生成权威交割单流水");
+        Assert.AreEqual(OrderDirection.Buy, settlement1.Direction);
+        Assert.AreEqual(100m, settlement1.Quantity);
+        Assert.AreEqual(10.0, settlement1.Price);
+        Assert.AreEqual(1000.0, settlement1.Turnover);
+        Assert.AreEqual(5.0, settlement1.Commission);
+        Assert.AreEqual(0.0, settlement1.RealizedPnL);
+        Assert.AreEqual(100_000.0 - 1000.0 - 5.0, settlement1.BalanceCash);
+        Assert.AreEqual("TagBuy", settlement1.OrderTag);
+
+        // 2. 平仓卖出 100 股 @ 15.0 元
+        var sellReq = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 15.0, 100m) { OrderTag = "TagSell" };
+        ledger.TryFreeze(sellReq, 15.0, 1.0, 1.0, out cQty, out oQty, out fCash, out fPos, out _);
+        var fillSell = new ExecutionReport("ord-2", "sh.600000", 15.0, 100m, 8.0, t2);
+
+        ledger.CommitFill(
+            fillSell, false, cQty, oQty, 1.0, 1.0, 0, fCash, fPos, t2, "TagSell",
+            out var posEvent2, out var closedTrade2, out var settlement2);
+
+        Assert.IsNotNull(closedTrade2, "平仓必须生成平仓交易记录");
+        Assert.AreEqual("sh.600000", closedTrade2.Symbol);
+        Assert.AreEqual(TradeSide.Long, closedTrade2.Side);
+        Assert.AreEqual(100m, closedTrade2.Quantity);
+        Assert.AreEqual(10.0, closedTrade2.EntryPrice);
+        Assert.AreEqual(15.0, closedTrade2.ExitPrice);
+        Assert.AreEqual(t1, closedTrade2.EntryTime);
+        Assert.AreEqual(t2, closedTrade2.ExitTime);
+        Assert.AreEqual("TagBuy", closedTrade2.EntryTag);
+        Assert.AreEqual("TagSell", closedTrade2.ExitTag);
+        // 平仓实现盈亏：毛利 500 - 卖出手续费 8 = 492
+        Assert.AreEqual(492.0, closedTrade2.RealizedPnL, 1e-4);
+
+        Assert.IsNotNull(settlement2, "平仓成交必须生成权威交割单流水");
+        Assert.AreEqual(OrderDirection.Sell, settlement2.Direction);
+        Assert.AreEqual(100m, settlement2.Quantity);
+        Assert.AreEqual(15.0, settlement2.Price);
+        Assert.AreEqual(1500.0, settlement2.Turnover);
+        Assert.AreEqual(8.0, settlement2.Commission);
+        Assert.AreEqual(492.0, settlement2.RealizedPnL, 1e-4);
+        Assert.AreEqual("TagSell", settlement2.OrderTag);
+        Assert.AreEqual(100_487.0, ledger.Cash, 1e-4);
+        Assert.AreEqual(ledger.Cash, settlement2.BalanceCash);
     }
 }
