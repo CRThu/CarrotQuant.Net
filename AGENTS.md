@@ -171,11 +171,13 @@ graph TD
 | **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
 | **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机、实盘增量事件循环、上下文注入、可观测性监控 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
 | **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `ISignalStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
+| **Analysis Layer (绩效分析与报表层)** | 交易事实沉淀、四层量化统计、Alpha信号前向质量评估与多渠道报告呈现 | `ITradingRecorder`, `TradingRecorder`, `TradingResult`, `IAnalysisEngine`, `AnalysisEngine`, `PortfolioStatistics`, `CapitalStatistics`, `TradeStatistics`, `CostStatistics`, `SignalStatistics`, `AnalysisReport`, `ConsoleExporter` |
 
 - **数据与执行流向**: (`ITimeseriesRegistry`, `IEventRegistry`, `IFieldRegistry`) → `IEngine` → (`IndicatorRegistry` / `Broker` / `SimulatedExchangeGateway` / `IMonitor`) → `IEngineContext` → 策略层
 - **交易执行流向**: 策略通过 `context.Broker` 发出订单意图 → `Broker` 驱动 `AccountLedger` 完成两阶段预冻结 → 通过 `IExchangeGateway` 路由至 `SimulatedExchangeGateway`（回测）或实盘柜台（实盘）→ 撮合成交回报通过 Open Calls 无锁异步回调通知策略
 - **指标计算流向**: 引擎主时钟驱动 `_indicators.Step(_context)` 批量泵送当前 Bar 行情 → 全市场标的指标池单步单次增量递推更新 → 策略在 `OnUpdate` 中通过 `pool[symbolIndex]` 或 `context.Indicators.Get<T>()` 纳秒直取最新指标值
 - **策略流水线典型流向**: 信号生产 (`ISignalStrategy`) → 组合持仓规划 → 交易风控执行 (`IStrategy` / `RuleStrategyBase`)
+- **事实与分析流向**: 引擎主循环与成交回报流水记账 (`TradingRecorder`) → 终局生成不可变 `TradingResult` → `IAnalysisEngine` 纯函数式驱动各 `*Statistics.Create` → `AnalysisReport` 聚合根 → 终端与多渠道报表呈现。
 
 ### 3. 策略协作模型概要
 - **黑板解耦模式**: 通过 `context.Market`（`IMarketState`）统一交换强类型信号与状态，实现生产端（`ISignalStrategy`）与消费端（组合规划/执行策略）正交解耦。
@@ -439,6 +441,16 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | `ITradingRecorder` | `Abstraction/Analysis/ITradingRecorder.cs` | 交易事实记录器契约，管理交割单、平仓记录、未平仓持仓快照、资产曲线与信号打点 |
 | `TradingRecorder` | `Analysis/TradingRecorder.cs` | 纯事实记录器权威实现，热路径零额外撮合开销，实现 `ITradingRecorder` 与 `ICheckpointable` |
 | `TradingResult` | `Abstraction/Analysis/TradingResult.cs` | 综合交易结果模型，完整聚合交割单、平仓记录、期末在手持仓、步进资产曲线与每日快照 |
+| `IAnalysisEngine` | `Abstraction/Analysis/IAnalysisEngine.cs` | 绩效分析与评估调度契约，方法 `Analyze(result, options, timeseries)` |
+| `AnalysisEngine` | `Analysis/AnalysisEngine.cs` | 绩效分析调度引擎，统筹装配五大 Statistics，详见专门白皮书 [绩效分析与报表子系统 (docs/analysis.md)](docs/analysis.md) |
+| `PortfolioStatistics` | `Abstraction/Analysis/PortfolioStatistics.cs` | 第一层组合净值与风险统计模型，内置 `PortfolioStatistics.Create` 静态工厂 |
+| `CapitalStatistics` | `Abstraction/Analysis/CapitalStatistics.cs` | 第二层资本利用与敞口统计模型，内置 `CapitalStatistics.Create` 静态工厂 |
+| `TradeStatistics` | `Abstraction/Analysis/TradeStatistics.cs` | 第三层交易行为与执行归因统计模型，内置 `TradeStatistics.Create` 静态工厂 |
+| `CostStatistics` | `Abstraction/Analysis/CostStatistics.cs` | 第四层现实交易成本与损耗统计模型，内置 `CostStatistics.Create` 静态工厂 |
+| `SignalStatistics` | `Abstraction/Analysis/SignalStatistics.cs` | 独立 Alpha 信号前向质量评估模型，内置 `SignalStatistics.Create` 静态工厂 |
+| `AnalysisReport` | `Abstraction/Analysis/AnalysisReport.cs` | 综合分析报告聚合根，包含 `Facts`, `Portfolio`, `Capital`, `Trades`, `Cost`, `Signals` |
+| `ConsoleExporter` | `Analysis/Exporters/ConsoleExporter.cs` | 基于 Spectre.Console 的控制台绩效分析报表导出器，支持强类型配置开关与深色 HTML 一键落盘 |
+| `IReportExporter` | `Abstraction/Analysis/IReportExporter.cs` | 报表导出器契约，解耦终端与外部交付介质 |
 
 ### 2. 实盘与回测双轨运行模型 (Living & Backtesting Dual-Engine Alignment)
 

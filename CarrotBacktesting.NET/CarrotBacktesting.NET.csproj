@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageReference Include="Spectre.Console" Version="0.57.2" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
     <PackageReference Include="Parquet.Net" Version="6.1.0" />
     <PackageReference Include="Sylvan.Data.Csv" Version="1.4.4" />
