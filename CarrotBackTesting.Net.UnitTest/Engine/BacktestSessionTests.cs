@@ -277,7 +277,10 @@ public class BacktestSessionTests
         var session = new BacktestSession(config, engine);
 
         session.Dispose();
-        // 重复调用不抛异常（幂等性）
+        // 验证重复释放幂等性
         session.Dispose();
+
+        // 验证底层引擎已被释放：再次尝试运行必须抛出 ObjectDisposedException
+        Assert.ThrowsException<ObjectDisposedException>(() => session.Run());
     }
 }

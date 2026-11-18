@@ -494,6 +494,20 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             Assert.IsInstanceOfType(timeseries, typeof(ITimeseriesRegistry));
             Assert.IsInstanceOfType(timeseries, typeof(ITimeseriesWriter));
+            Assert.IsInstanceOfType(timeseries, typeof(CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler));
+        }
+
+        [TestMethod]
+        public void ITimeseriesScheduler_PagingInterface_IsSeparatedFromReadOnlyTimeseriesRegistry()
+        {
+            var meta = new CarrotBacktesting.NET.Data.DynamicMarketMetadata(new[] { "sh.600000" }, new[] { DateTime.UtcNow });
+            var registry = new CarrotBacktesting.NET.Data.TimeseriesRegistry(meta, (f, t) => null!);
+
+            // 验证实现了调度契约
+            Assert.IsTrue(registry is CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler);
+            // 验证 ITimeseriesRegistry 类型本身不暴露 StepTo（编译期隔离，此处测试运行时多态）
+            CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler scheduler = (CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler)registry;
+            scheduler.StepTo(0);
         }
 
         private class MockTimeseriesSource : ITimeseriesSource

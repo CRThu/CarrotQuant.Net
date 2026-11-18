@@ -168,9 +168,12 @@ public class RuleStrategyBaseTests
 
     private class NullSymbolsRuleStrategy : RuleStrategyBase
     {
+        public int EntriesCheckedCount { get; private set; }
+        public int ExitsCheckedCount { get; private set; }
+
         protected override IEnumerable<string> GetSymbols(IEngineContext context) => null!;
-        protected override void CheckEntry(IEngineContext context, string symbol) { }
-        protected override void CheckExit(IEngineContext context, string symbol, decimal position) { }
+        protected override void CheckEntry(IEngineContext context, string symbol) => EntriesCheckedCount++;
+        protected override void CheckExit(IEngineContext context, string symbol, decimal position) => ExitsCheckedCount++;
     }
 
     [TestMethod]
@@ -180,8 +183,11 @@ public class RuleStrategyBaseTests
         var context = new FakeEngineContext(broker, new MarketState());
         var strategy = new NullSymbolsRuleStrategy();
 
-        // 验证 GetSymbols 返回 null 时安全退出且不抛异常
+        // 验证 GetSymbols 返回 null 时安全退出且不抛异常，且不触发任何 Entry / Exit 检查
         strategy.OnUpdate(context);
+
+        Assert.AreEqual(0, strategy.EntriesCheckedCount, "标的列表为空时不应触发开仓检查");
+        Assert.AreEqual(0, strategy.ExitsCheckedCount, "标的列表为空时不应触发平仓检查");
     }
 
     [TestMethod]

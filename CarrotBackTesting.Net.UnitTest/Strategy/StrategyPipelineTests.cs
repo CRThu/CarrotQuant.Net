@@ -535,6 +535,9 @@ public class StrategyPipelineTests
         // 0 个策略时 OnUpdate 与 OnEvent 应安全通过且不发生任何异常
         parallel.OnUpdate(context);
         parallel.OnEvent(context, "test", Array.Empty<IDataRow>());
+
+        Assert.AreEqual(0, parallel.GetStrategies().Count(), "零策略管线子策略列表应为空");
+        Assert.AreEqual(200, parallel.Lookback, "缺省 Lookback 应保持基类默认值 200");
     }
 
     [TestMethod]

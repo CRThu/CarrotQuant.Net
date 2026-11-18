@@ -125,8 +125,13 @@ public class SimulatedExchangeGatewayTests
         using var matrix = new ChunkMatrix2D<double>(1, 1024, 1);
         var registry = new DummyTimeseriesRegistry(matrix, metadata);
 
-        // 挂单簿为空时直接安全返回
+        bool reportFired = false;
+        gateway.OnExecution += _ => reportFired = true;
+
+        // 挂单簿为空时直接安全返回，且不派发任何成交回报
         gateway.Step(dates[0], registry, 0);
+
+        Assert.IsFalse(reportFired, "空挂单簿在时间步推进时不应触发任何成交回报");
     }
 
     [TestMethod]
