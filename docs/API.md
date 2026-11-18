@@ -253,14 +253,14 @@ public interface IMarketMetadata
 
 ## 三、内存数据供给层 (ITimeseriesRegistry & ChunkMatrix2D)
 
-### 1. ITimeseriesRegistry & ITimeseriesWriter (CQRS 读写分离)
-数据层向引擎与策略提供只读数据访问契约（`ITimeseriesRegistry`），向实盘数据录入与持久化提供写入契约（`ITimeseriesWriter`）。
+### 1. ITimeseriesRegistry, ITimeseriesScheduler & ITimeseriesWriter (CQRS 读写分离)
+数据层向引擎与策略提供只读数据访问契约（`ITimeseriesRegistry`），向引擎主时钟提供槽位调度契约（`ITimeseriesScheduler`），向实盘数据录入与持久化提供写入契约（`ITimeseriesWriter`）。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
 /// <summary>
-/// 纯只读数据契约（面向策略与回测消费）。
+/// 纯只读数据契约（面向策略与回测消费，零调度污染）。
 /// </summary>
 public interface ITimeseriesRegistry
 {
@@ -271,6 +271,14 @@ public interface ITimeseriesRegistry
     /// 获取指定字段的全局二维只读时序矩阵（Row=交易日/时间步，Col=股票代码）。
     /// </summary>
     IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
+}
+
+/// <summary>
+/// 时序调度驱动契约（面向引擎主时钟，用于滑动分块内存槽位与异步预读）。
+/// </summary>
+public interface ITimeseriesScheduler
+{
+    void StepTo(int currentLogicalRow);
 }
 
 /// <summary>
@@ -415,7 +423,7 @@ public sealed class TimeseriesCacheManager<T> : ITimeseriesCacheManager where T 
     public void Dispose();
 }
 
-public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesWriter, IDisposable
+public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler, ITimeseriesWriter, IDisposable
 {
     public IMarketMetadata Metadata { get; }
     public bool HasField(string fieldName);
@@ -464,6 +472,21 @@ public static class MatrixExtensions
     public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, string symbol, IMarketMetadata metadata) where T : unmanaged;
     public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry provider, string fieldName, int symbolIndex = 0) where T : unmanaged;
     public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry provider, string fieldName, string symbol) where T : unmanaged;
+}
+```
+
+### 7. DataLayerFactory
+根据 `DataConfig` 配置声明，一键自闭环装配时序、事件与维表三大多模态数据层：
+
+```csharp
+namespace CarrotBacktesting.NET.Data;
+
+public static class DataLayerFactory
+{
+    public static (ITimeseriesRegistry Timeseries, IEventRegistry Events, IFieldRegistry Fields) Create(
+        DataConfig config,
+        DateTime? startDate = null,
+        DateTime? endDate = null);
 }
 ```
 
@@ -630,7 +653,7 @@ public interface IEngineContext
     IFieldRegistry Fields { get; }          // 标的静态属性与维表字典
     IBroker Broker { get; }                 // 账户持仓与报单
     IMarketState Market { get; }            // 宏观市场决策黑板
-    IndicatorRegistry Indicators { get; }  // 全局指标注册中心（具象类挂载，消灭虚派发）
+    IIndicatorRegistry Indicators { get; }  // 全局指标注册中心（瘦契约挂载，零反向穿透）
     T? GetExtension<T>() where T : class;   // 引擎扩展组件与插件查询
 
     // 当期极简取价门面（专职当期快照，统一 double，默认 Post 后复权，根除因子时间错位）
@@ -651,9 +674,10 @@ public interface IEngineContext
 
 ### 2. IMarketState (通用强类型黑板)
 策略间正交解耦与异步数据交换的通用强类型容器，底层基于 `ConcurrentDictionary<string, object>` 保障多核并发下的绝对线程安全：
-- **`GetState<T>(string? key = null) where T : class`**: 获取强类型状态/信号。缺省 key 时以类型全名作为权威单例索引；指定 key 时从对应命名槽位读取。
-- **`SetState<T>(T state, string? key = null) where T : class`**: 发布强类型状态/信号。
-- **`HasState<T>(string? key = null) where T : class`**: 探测黑板中是否存在指定类型（与可选 Key）的状态。
+- **`GetState<T>(string? key = null)`**: 获取强类型状态/信号（无 class 引用类型限制，原生支持 struct 只读结构体）。缺省 key 时以类型全名作为权威单例索引；指定 key 时从对应命名槽位读取。
+- **`TryGetState<T>(out T? state, string? key = null)`**: 安全探测并获取强类型状态/信号。
+- **`SetState<T>(T state, string? key = null)`**: 发布强类型状态/信号，记录更新时态戳。
+- **`HasState<T>(string? key = null)`**: 探测黑板中是否存在指定类型（与可选 Key）的状态。
 - **`Clear()`**: 清理黑板中所有状态数据。
 - **协作约定**: 缺省 key 时为类型全局单例（如统一发布的宏观指标或目标持仓）；显式指定 key 时代表独立命名通道/槽位，支持同类型多实例隔离（如多因子并发打分）与跨策略协同消费。
 
@@ -750,9 +774,10 @@ public interface ICheckpointable
 
 - **`BacktestingEngine` 单一权威内核**：
   - **二分区间裁剪**：依据 `StartDate` 与 `EndDate` 通过二分查找确定起止 `TradeDates` 索引；
-  - **主时钟步进推进**：按时间步严格执行（`UpdateStep` → `Timeseries.StepTo` → 推进经纪商时钟与交易所本地清算 `Broker.Step` → 离散事件探测派发 `pipeline.OnEvent` → 策略主决策 `pipeline.OnUpdate`）；
+  - **主时钟步进推进**：按时间步严格执行（`UpdateStep` → 调度器推进 `ITimeseriesScheduler.StepTo` → 推进经纪商时钟与交易所本地清算 `Broker.Step` → 离散事件探测派发 `pipeline.OnEvent` → 指标单步单次增量计算 `Indicators.Step` → 策略主决策 `pipeline.OnUpdate`）；
   - **热路径零堆分配 (零 GC)**：上下文单例常驻、复用事件内存缓冲区，单步执行零额外分配；
-  - **状态机生命周期控制**：`Idle` → `Running` → `Paused` / `Completed` / `Faulted`，支持安全取消与暂停等待。
+  - **状态机生命周期控制**：`Idle` → `Running` → `Paused` / `Completed` / `Faulted`，支持安全取消与暂停等待；
+  - **会话门面 (`BacktestSession`)**：整合配置解析、引擎步进与绩效分析，支持通过 `BacktestSession.Run("session.yaml")` 直接执行回测并生成报告。
 
 ---
 
@@ -842,9 +867,9 @@ public interface IStrategy
 }
 ```
 
-### 2. 核心派生契约与模板基类
-- **`ISignalStrategy`**: 纯信号语义标记契约，面向特征分析与信号生产，通过黑板（`context.Market.SetState<T>`）发布打分或状态，解耦交易执行。
+### 2. 模板基类与开发范式
 - **`RuleStrategyBase`**: 规则交易便利模板基类，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
+- **纯信号/Alpha 策略范式**: 直接实现 `IStrategy` 契约，专注于特征计算与信号生产，通过黑板（`context.Market.SetState<T>`）发布打分或状态，与后续执行策略正交解耦。
 
 ### 3. 组合策略管线 (StrategyPipeline)
 采用组合模式（Composite Pattern）将特征分析、多信号生产、仓位规划与风控报单统一编排为单一标准的 `IStrategy`：

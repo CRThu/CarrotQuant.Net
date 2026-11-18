@@ -110,7 +110,7 @@ graph TD
     subgraph StrategyLayer [4. Strategy Layer - 策略层]
         Pipeline["组合管线拓扑 (StrategyPipeline: 串行因果 / 多核并发 Alpha)"]
         Blackboard["强类型黑板解耦 (IMarketState 跨策略状态与信号发布)"]
-        Strategies["策略实现 (IStrategy / ISignalStrategy / RuleStrategyBase)"]
+        Strategies["策略实现 (IStrategy / RuleStrategyBase)"]
         Strategies --> Pipeline
         Strategies --> Blackboard
     end

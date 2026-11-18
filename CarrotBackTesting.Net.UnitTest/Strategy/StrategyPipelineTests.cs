@@ -94,7 +94,7 @@ public class StrategyPipelineTests
 
     private record AlphaSignals(double Score);
 
-    private class ProducerStrategy : ISignalStrategy
+    private class ProducerStrategy : IStrategy
     {
         public string Name => "Producer";
         public void OnUpdate(IEngineContext context)
@@ -268,7 +268,7 @@ public class StrategyPipelineTests
         });
     }
 
-    private class ConcurrentAlphaStrategy : ISignalStrategy
+    private class ConcurrentAlphaStrategy : IStrategy
     {
         public string Name { get; }
         public int Lookback { get; }

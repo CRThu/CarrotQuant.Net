@@ -14,17 +14,17 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 | **Indicator Layer (指标体系)** | 增量流式指标计算、全市场标的数组连续容器、多策略共享单次驱动与极简取价门面 | `IStreamIndicator`, `IndicatorPool`, `IndicatorPool<T>`, `IndicatorRegistry`, `Sma`, `Ema`, `Wma`, `Vwap`, `Kdj`, `Sar`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
 | **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
 | **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机、实盘增量事件循环、上下文注入、可观测性监控 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
-| **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `ISignalStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
+| **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
 | **Analysis Layer (绩效分析与报表层)** | 交易事实沉淀、单路径分析器管线、四层量化统计、Alpha信号前向质量评估与多渠道报告呈现 | `ITradingRecorder`, `TradingRecorder`, `TradingResult`, `IAnalysisEngine`, `AnalysisEngine`, `IAnalyzer`, `AnalyzerBase<T>`, `IAnalysisResult`, `PortfolioAnalyzer`, `CapitalAnalyzer`, `TradeAnalyzer`, `CostAnalyzer`, `SignalAnalyzer`, `PortfolioStatistics`, `CapitalStatistics`, `TradeStatistics`, `CostStatistics`, `SignalStatistics`, `AnalysisReport`, `ConsoleExporter` |
 
 - **数据与执行流向**: (`ITimeseriesRegistry`, `IEventRegistry`, `IFieldRegistry`) → `IEngine` → (`IndicatorRegistry` / `Broker` / `SimulatedExchangeGateway` / `IMonitor`) → `IEngineContext` → 策略层
 - **交易执行流向**: 策略通过 `context.Broker` 发出订单意图 → `Broker` 驱动 `AccountLedger` 完成两阶段预冻结 → 通过 `IExchangeGateway` 路由至 `SimulatedExchangeGateway`（回测）或实盘柜台（实盘）→ 撮合成交回报通过 Open Calls 无锁异步回调通知策略
 - **指标计算流向**: 引擎主时钟驱动 `_indicators.Step(_context)` 批量泵送当前 Bar 行情 → 全市场标的指标池单步单次增量递推更新 → 策略在 `OnUpdate` 中通过 `pool[symbolIndex]` 或 `context.Indicators.Get<T>()` 常数时间直取最新指标值
-- **策略流水线典型流向**: 信号生产 (`ISignalStrategy`) → 组合持仓规划 → 交易风控执行 (`IStrategy` / `RuleStrategyBase`)
+- **策略流水线典型流向**: 信号生产 (Alpha 策略) → 组合持仓规划 → 交易风控执行 (`IStrategy` / `RuleStrategyBase`)
 - **事实与分析流向**: 引擎主循环与成交回报流水记账 (`TradingRecorder`) → 终局生成不可变 `TradingResult` → `IAnalysisEngine` (`AnalysisEngine`) 单路径调度各 `IAnalyzer` 管线 → `AnalysisReport` 聚合根 → 终端与多渠道报表呈现。
 
 ### 3. 策略协作模型概要
-- **黑板解耦模式**: 通过 `context.Market`（`IMarketState`）统一交换强类型信号与状态，实现生产端（`ISignalStrategy`）与消费端（组合规划/执行策略）正交解耦。
+- **黑板解耦模式**: 通过 `context.Market`（`IMarketState`）统一交换强类型信号与状态，实现生产端（Alpha 生产策略）与消费端（组合规划/执行策略）正交解耦。
 - **组合管线拓扑**: 基于组合模式（Composite Pattern）通过 `SequentialPipeline`（串行有序）与 `ParallelPipeline`（多核并发）自由编排策略层次。
 - **运行期密封优化**: 引擎启动前调用 `Compile()` 固化拓扑与 Lookback 深度，消除运行期拓扑变动与越界检查开销。详细契约与机制见 [第二节](#二策略与黑板体系-strategy--blackboard-architecture)。
 
@@ -35,8 +35,7 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 > 💡 详细组合管线拓扑、多核并发驱动、黑板解耦模式与 Roslyn 动态编译实践详见专门白皮书 [策略子系统与管线开发指南 (docs/strategy.md)](docs/strategy.md)。
 
 ### 1. 核心契约分层
-- `IStrategy`: 统一顶层抽象，单一 `OnUpdate(IEngineContext context)` 与离散事件 `OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events)` 入口，原生支持全市场截面排序、单标的时序与网格双向调仓。
-- `ISignalStrategy`: 纯信号语义契约，专注于信号生产与特征分析，通过黑板（`context.Market`）发布状态、概率分布或打分，无账户与持仓负担。
+- `IStrategy`: 统一顶层抽象，单一 `OnUpdate(IEngineContext context)` 与离散事件 `OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events)` 入口，信号生产（Alpha）与交易风控统一基于此契约，原生支持全市场截面排序、单标的时序与网格双向调仓。
 - `RuleStrategyBase`: 规则交易便利模板基类，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
 - `IStrategyPipeline`: 组合策略管线契约，定义拓扑添加 `Add`、密封优化 `Compile`、策略展开 `GetStrategies` 与递归最大 `Lookback` 汇总。
 - **流式指标与统一门面调用**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd` 声明全市场标的池并持有极速索引引用，在 `OnUpdate` 中利用 `pool[symbolIndex]` 高速直取或通过 `context.Indicators.Get<T>` 免声明读取，详见 [第六节](#六流式指标与计算属性体系-indicator--computed-property-architecture)。
@@ -325,7 +324,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | 测试模式 / 策略复杂度 | 预期吞吐量 (Bar/s) | 3 亿 Bar (1 年全市场 1m) 耗时 | 物理耗时与瓶颈深度归因 |
 | :--- | :---: | :---: | :--- |
 | **空策略 / 纯矩阵扫描 (Baseline)** | **2,000 万 ~ 5,000 万** | **6 ~ 15 秒** | 非托管 `ChunkMatrix2D` 连续内存，L1/L2 Cache 预取命中率 > 98%，消除 JIT 数组越界检查，单 Bar 仅需 20~50 纳秒，零 GC 暂停。 |
-| **纯信号打点评估 (ISignalStrategy)** | **1,000 万 ~ 2,500 万** | **12 ~ 30 秒** | 绕过撮合器与订单持仓状态机，直接在连续特征上评估 IC/IR 与胜率，单标的浮点运算极度紧凑。 |
+| **纯信号打点评估 (Alpha 信号)** | **1,000 万 ~ 2,500 万** | **12 ~ 30 秒** | 绕过撮合器与订单持仓状态机，直接在连续特征上评估 IC/IR 与胜率，单标的浮点运算极度紧凑。 |
 | **经典技术指标 / CTA / 均线策略** | **200 万 ~ 800 万** | **35 ~ 150 秒** | 计算滑动均线、ATR 等浮点数学运算，工作集从 L1/L2 溢出至 L3 缓存，订单状态与持仓事件入队。 |
 | **全市场截面选股 + Top-K 排序 + 调仓** | **50 万 ~ 200 万** | **150 ~ 600 秒** | 每 1 分钟对全市场 5,000 只标的进行一次 $O(N \log N)$ 排序并计算目标权重。 |
 

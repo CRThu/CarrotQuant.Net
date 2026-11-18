@@ -11,7 +11,7 @@ namespace CarrotBacktesting.NET.Data
     /// 对外向策略提供只读二维时序矩阵（GetMatrix）与单标的一维序列（GetSeries），
     /// 对内纯粹持有并协调各字段分块调度器（<see cref="ITimeseriesCacheManager"/>）的生命周期与持久化一致性提交（Commit）。
     /// </summary>
-    public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesWriter, IDisposable
+    public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler, ITimeseriesWriter, IDisposable
     {
         private readonly IMarketMetadata _metadata;
         private readonly Func<string, Type, ITimeseriesCacheManager> _managerFactory;

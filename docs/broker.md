@@ -22,6 +22,7 @@
 - [七、动态盯市估值 (GetTotalEquity)](#七动态盯市估值-gettotalequity)
 - [八、并发线程安全与开放调用 (Open Calls)](#八并发线程安全与开放调用-open-calls)
 - [九、在线实盘交易集成与状态对账 (Online Trading & SyncState)](#九在线实盘交易集成与状态对账-online-trading--syncstate)
+- [十、可观测性与能力接口扩展 (Capability Interfaces)](#十可观测性与能力接口扩展-capability-interfaces)
 
 ---
 
@@ -245,3 +246,23 @@ broker.SyncState(liveCash, livePositionsDictionary);
 - 验证柜台拒单后的预冻结资金与持仓原路全额回滚；
 - 验证网络重连后 `SyncState` 对账；
 - 验证多空双向反手大单跨 3 批次异步成交时的原子翻仓。
+
+---
+
+## 十、可观测性与能力接口扩展 (Capability Interfaces)
+
+遵循接口隔离原则（ISP），经纪商核心接口 `IBroker` 保持纯净精简，针对记账审计与系统装配扩展了专门的能力契约（位于 `CarrotBacktesting.NET.Abstraction.Engine`）：
+
+### 1. 账户快照与结算事实供给 (`IAccountSnapshotProvider`)
+```csharp
+public interface IAccountSnapshotProvider
+{
+    // 获取当期账户资金与多空持仓快照（支持盯市估值）
+    AccountSnapshot GetSnapshot(DateTime time, IEngineContext? context = null);
+
+    // 换日结算与平仓事实事件（供记账器沉淀真实收益与交易日志）
+    event Action<DailySettlementEvent>? OnSettlement;
+    event Action<TradeClosedEvent>? OnTradeClosed;
+}
+```
+- **记账器彻底解耦**：分析记录器（`TradingRecorder`）仅依赖 `IAccountSnapshotProvider` 能力契约，完全杜绝了对具体 `Broker` 类的反向依赖与强制向下转换。

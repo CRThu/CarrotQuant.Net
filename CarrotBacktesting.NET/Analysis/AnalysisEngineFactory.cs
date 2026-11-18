@@ -117,7 +117,7 @@ public static class AnalysisEngineFactory
     }
 
     /// <summary>
-    /// 一键驱动分析并按配置自动执行全渠道报表导出（最贴合业务直觉的一站式流式门面）。
+    /// 执行量化分析并依据配置执行报表导出。
     /// </summary>
     /// <param name="engine">分析引擎实例。</param>
     /// <param name="facts">不可变交易事实账本。</param>

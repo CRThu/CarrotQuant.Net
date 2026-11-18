@@ -554,8 +554,25 @@ var events = EventRegistryFactory.Create(resolver, config.Data.Events);
 var fields = FieldRegistryFactory.Create(resolver, config.Data.Fields);
 ```
 
-### 2. 工厂直连装配法（Direct Factory API）
-无需中间配置模型对象，直接面向存储根目录与具名参数快速装配，调用简洁直接：
+### 2. 工厂装配法（Factory API）
+
+#### 方式 A：基于 DataConfig 统一装配 (DataLayerFactory)
+```csharp
+using CarrotBacktesting.NET.Config;
+using CarrotBacktesting.NET.Data;
+
+// 读取会话配置
+var sessionConfig = SessionConfig.Load("configs/session.yaml");
+
+// 构建时序、事件与维表数据层并执行起止时间分区剪枝
+var (timeseries, events, fields) = DataLayerFactory.Create(
+    sessionConfig.Data,
+    sessionConfig.Engine?.StartDate,
+    sessionConfig.Engine?.EndDate);
+```
+
+#### 方式 B：细粒度子系统装配 (Subsystem Factories)
+若需对各子系统进行独立配置与精细化参数控制：
 
 ```csharp
 using CarrotBacktesting.NET.Data;

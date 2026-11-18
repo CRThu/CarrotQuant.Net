@@ -33,13 +33,6 @@ public interface ITimeseriesRegistry
     bool HasField(string fieldName);
 
     /// <summary>
-    /// 推进时间步至指定逻辑行，触发常驻分块页面滑动淘汰与后台异步预读（Prefetch）。
-    /// 默认空实现，由支持滑动分块调度的实现重写。
-    /// </summary>
-    /// <param name="currentLogicalRow">当前时间步对应的全局行索引。</param>
-    void StepTo(int currentLogicalRow) { }
-
-    /// <summary>
     /// 检查指定序号的时序表在当前时间步是否触发了更新（跨 Bar / 跨时间步）。
     /// 采用 64 位无符号位掩码实现，单次判定开销 &lt; 0.3ns。
     /// 默认实现返回 true（保障单表回测绝对零损耗，无需感知位掩码）。

@@ -336,7 +336,7 @@ public abstract class AnalyzerBase<TResult> : IAnalyzer where TResult : class, I
 }
 ```
 
-官方五大标准分析器（位于 `CarrotBacktesting.NET.Analysis.Analyzers`）与任何自定义扩展地位完全均等：
+官方五大标准分析器（位于 `CarrotBacktesting.NET.Analysis.Analyzers`）与任何自定义扩展地位完全均等，其产出的五大强类型统计模型统一归属于纯抽象层 `CarrotBacktesting.NET.Abstraction.Analysis.StatisticsModels`：
 - `PortfolioAnalyzer`: 包含全部净值宏观与基准算法，产出 `PortfolioStatistics`；
 - `CapitalAnalyzer`: 包含持仓暴露、保证金与换手率算法，产出 `CapitalStatistics`；
 - `TradeAnalyzer`: 包含胜率、盈亏比、连胜连败、MFE 与 Exit Timing 算法，产出 `TradeStatistics`；

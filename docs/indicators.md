@@ -23,11 +23,11 @@
 
 CarrotQuant .NET 确立**三大底层原则**：
 - **真正的增量推进一步（$O(1)$ Incremental Step）**：每个指标内部仅维持状态机（如当前累加和、指数平滑值、微型环形回溯缓冲），每根 Bar 仅需固定次数的浮点运算，复杂度严格恒定为 $O(1)$，百万步计算仅需几毫秒；
-- **三位一体极简收敛（Zero Interface Bloat）**：彻底消除多余的镜像接口，统一收敛为：
-  - `IStreamIndicator`（指标统一接口契约）
+- **三位一体与瘦契约隔离（Clean Contracts & Zero Interface Bloat）**：
+  - `IStreamIndicator`（指标统一接口契约，位于 `Abstraction.Indicators`）
   - `IndicatorPool<T>`（全市场标的数组连续容器，继承非泛型基类 `IndicatorPool`）
-  - `IndicatorRegistry`（全局指标管理中心，直接作为具象类挂载于 `context.Indicators`）
-- **引擎步进隔离与 100% 零 GC（Zero Heap Allocation & Access Isolation）**：步进调度方法 `Step` 与 `Reset` 被严格声明为 `internal`，对策略层完全隐身；热路径遍历采用写时复制（COW）的平铺快照数组，单步推进零锁争用、零内存分配。
+  - `IIndicatorRegistry` / `IndicatorRegistry`（全局指标管理中心，瘦契约位于 `Abstraction.Indicators` 挂载于 `context.Indicators`，具体实现类位于 `Indicators` 命名空间）
+- **引擎步进隔离与 100% 零 GC（Zero Heap Allocation & Access Isolation）**：步进调度方法 `Step` 与 `Reset` 被严格声明为 `internal`，对策略层完全隐身；策略层面向 `IIndicatorRegistry` 瘦契约编程；热路径遍历采用写时复制（COW）的平铺快照数组，单步推进零锁争用、零内存分配。
 
 ```mermaid
 graph TD
@@ -120,23 +120,29 @@ public sealed class IndicatorPool<T> : IndicatorPool where T : class, IStreamInd
 - **激进内联与边界检查消除**：无符号整数压缩比对 `(uint)symbolIndex >= (uint)_instances.Length`，单指令完成上下界检查，消除虚方法派发；
 - **步进调度严格封装**：`Step` 与 `Reset` 标记为 `internal override`，在引擎程序集内部流转，外部策略代码只能访问只读属性与索引器，杜绝策略误调。
 
-### 3. 全局指标注册中心 (`IndicatorRegistry`)
-直接作为具体类挂载于 `IEngineContext.Indicators`：
+### 3. 全局指标注册中心 (`IIndicatorRegistry` 与 `IndicatorRegistry`)
+抽象瘦契约位于 `CarrotBacktesting.NET.Abstraction.Indicators` 挂载于 `IEngineContext.Indicators`，具象类 `IndicatorRegistry` 位于 `CarrotBacktesting.NET.Indicators`：
 
 ```csharp
-public sealed class IndicatorRegistry
+namespace CarrotBacktesting.NET.Abstraction.Indicators;
+
+public interface IIndicatorRegistry
 {
     // 声明式注册或获取（若已注册同名指标则直接返回，多策略全局单步只算一次）
-    public IndicatorPool<T> GetOrAdd<T>(string name, Func<T> factory, PriceMode mode = PriceMode.Post)
+    IndicatorPool<T> GetOrAdd<T>(string name, Func<T> factory, PriceMode mode = PriceMode.Post)
         where T : class, IStreamIndicator;
 
     // 单标的快捷直取门面（免去策略声明字段）
-    public T Get<T>(string name, int symbolIndex) where T : class, IStreamIndicator;
-    public T Get<T>(string name, string symbol) where T : class, IStreamIndicator;
+    T Get<T>(string name, int symbolIndex) where T : class, IStreamIndicator;
+    T Get<T>(string name, string symbol) where T : class, IStreamIndicator;
 
-    public bool Has(string name);
+    bool Has(string name);
+}
 
-    // 内部生命周期管理（对策略彻底隐身）
+// 具象类实现契约并封装内部步进生命周期
+public sealed class IndicatorRegistry : IIndicatorRegistry
+{
+    // 内部生命周期管理（internal 级别对策略彻底隐身）
     internal void Step(IEngineContext context);
     internal void Reset();
 }

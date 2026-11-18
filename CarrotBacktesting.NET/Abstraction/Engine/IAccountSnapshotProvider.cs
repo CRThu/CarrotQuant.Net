@@ -33,4 +33,14 @@ public interface IAccountSnapshotProvider
     /// <param name="priceResolver">可选的价格解析委托。</param>
     /// <returns>活跃持仓快照列表。</returns>
     IReadOnlyList<PositionSnapshot> GetActivePositions(Func<string, double>? priceResolver = null);
+
+    /// <summary>
+    /// 当发生每日结算时触发，提供完整的结算事实记录。
+    /// </summary>
+    event Action<SettlementRecord>? OnSettlement;
+
+    /// <summary>
+    /// 当平仓交易发生并确认时触发，提供闭环往返交易事实记录。
+    /// </summary>
+    event Action<Trade>? OnTradeClosed;
 }

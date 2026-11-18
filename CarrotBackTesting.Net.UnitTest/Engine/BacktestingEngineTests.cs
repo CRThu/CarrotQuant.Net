@@ -21,7 +21,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
     {
         #region 测试桩定义 (Test Doubles)
 
-        private class MockTimeseriesRegistry : ITimeseriesRegistry
+        private class MockTimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler
         {
             public IMarketMetadata Metadata { get; }
             public List<int> SteppedRows { get; } = new();

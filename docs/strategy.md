@@ -88,13 +88,11 @@ public interface IStrategy
 }
 ```
 
-### 2. `ISignalStrategy`（纯信号语义标记契约）
-```csharp
-public interface ISignalStrategy : IStrategy
-{
-}
-```
-继承自 `IStrategy`，语义上专注于特征提取与 Alpha 信号生产。纯信号策略不触碰 `context.Broker` 报单接口，仅通过黑板（`context.Market`）发布打分向量、概率分布或状态标签，支持高吞吐的纯信号回测与胜率评估。
+### 2. 纯信号 / Alpha 策略范式 (Signal & Alpha Strategy Pattern)
+纯信号或特征生产策略无需额外的空标记接口，直接实现 `IStrategy`：
+- **职责专注**：专注于特征工程、数学打分与信号生产，不触碰 `context.Broker` 报单接口；
+- **状态解耦**：通过通用黑板（`context.Market.SetState<T>`）发布打分向量、概率分布或状态标签；
+- **极速评估**：可直接在多核并发管线（`ParallelPipeline`）中作为前序阶段高吞吐运行。
 
 ### 3. `RuleStrategyBase`（规则交易模板基类）
 专为单/多标的“无仓开仓、有仓平仓”的规则交易与快速原型测试提供的便利模板：
@@ -153,9 +151,11 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 public interface IMarketState
 {
-    T? GetState<T>(string? key = null) where T : class;
-    void SetState<T>(T state, string? key = null) where T : class;
-    bool HasState<T>(string? key = null) where T : class;
+    // 获取强类型状态/信号（无 class 引用类型限制，原生支持 struct 只读结构体）
+    T? GetState<T>(string? key = null);
+    bool TryGetState<T>(out T? state, string? key = null);
+    void SetState<T>(T state, string? key = null);
+    bool HasState<T>(string? key = null);
     void Clear();
 }
 ```
@@ -220,8 +220,12 @@ var pipeline = StrategyPipeline.Sequential()
 支持研究员直接编写独立 `.cs` 源码文件，无需编译整个主工程，修改保存即可立即运行：
 
 ```csharp
-// 直接加载单文件或源码字符串
-pipeline.AddFromSource("strategies/DualMaStrategy.cs");
+// 编译源码文件并获取原生策略实例与可回收上下文
+var (strategy, alc) = RoslynStrategyCompiler.CompileFile("strategies/DualMaStrategy.cs");
+
+// 添加至管线并注册卸载生命周期，退出或销毁时由 GC 彻底回收程序集元数据
+pipeline.Add(strategy);
+pipeline.RegisterOnDispose(() => alc.Unload());
 ```
 
 - **原生机器码执行**：内存编译耗时仅约 80~150ms，随后由 JIT 转为原生机器码，运行期执行效率与预编译代码 100% 相同；

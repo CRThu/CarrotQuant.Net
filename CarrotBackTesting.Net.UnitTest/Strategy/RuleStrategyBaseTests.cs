@@ -97,7 +97,7 @@ public class RuleStrategyBaseTests
         }
     }
 
-    private class MockAlphaSignalStrategy : ISignalStrategy
+    private class MockAlphaSignalStrategy : IStrategy
     {
         public string Name => "MockAlpha";
         public void OnUpdate(IEngineContext context)
@@ -133,7 +133,7 @@ public class RuleStrategyBaseTests
         var market = new MarketState();
         var context = new FakeEngineContext(broker, market);
 
-        ISignalStrategy alpha = new MockAlphaSignalStrategy();
+        IStrategy alpha = new MockAlphaSignalStrategy();
         Assert.IsInstanceOfType<IStrategy>(alpha);
 
         alpha.OnUpdate(context);

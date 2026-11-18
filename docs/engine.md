@@ -10,6 +10,7 @@
 - [三、主时钟步进推进机制](#三主时钟步进推进机制)
 - [四、运行时只读上下文 (EngineContext)](#四运行时只读上下文-enginecontext)
 - [五、检查点保存与断点复原 (ICheckpointable)](#五检查点保存与断点复原-icheckpointable)
+- [六、顶层会话门面 (BacktestSession)](#六顶层会话门面-backtestsession)
 
 ---
 
@@ -33,7 +34,7 @@ graph TD
 
     subgraph StrategyLayer [Strategy Layer - 策略管线]
         Pipeline[StrategyPipeline<br>Composite 拓扑编排]
-        Strategy[IStrategy / ISignalStrategy]
+        Strategy[IStrategy / RuleStrategyBase]
     end
 
     TR --> Engine
@@ -105,7 +106,7 @@ stateDiagram-v2
 每个时间步内部严格按以下顺序执行，全程无堆内存分配：
 1. **时钟推进**：`_context.UpdateStep(i, currentTime)`，更新上下文中的索引与当前物理时间戳；
 2. **跨日增量因子供给**：检测到跨日且存在除权事件时，针对性增量更新 `_context` 对应标的的累计复权因子；
-3. **时序缓存滑动**：`_timeseries.StepTo(i)`，驱动底层 4096 行分块内存槽位滑动与异步预读；
+3. **时序缓存滑动**：引擎通过 `ITimeseriesScheduler` 调度契约（`_timeseriesScheduler?.StepTo(i)`）驱动底层 4096 行分块内存槽位滑动与异步预读，与上层策略只读门面 `ITimeseriesRegistry` 形成 CQRS 物理隔离；
 4. **仿真交易所撮合**：`_simExchange.Step(currentTime, _timeseries, i)`，撮合在途订单，**强制使用未复权物理价格（Raw）**；
 5. **经纪商时钟推进与跨日结算**：调用 `_broker.Step(currentTime)`，由经纪商自主比对换日阈值 `_nextRollTimeUtc`，到达交易所本地次日 00:00:00 时自动触发 T+N 可用持仓划转（详见 [broker.md](broker.md)）；
 6. **离散事件探测**：常数时间探测 `_events.HasNewEvents(currentTime)`，命中时调用预分配静态缓冲派发；
@@ -188,3 +189,42 @@ public class BacktestingEngine : IEngine, ICheckpointable, IDisposable
 - **魔数防护**：文件头必须精确匹配 `0x43514254`（ASCII 标识 `"CQBT"`），若数据损坏或格式不符显式抛出 `InvalidDataException`；
 - **状态机守护**：仅允许在引擎处于 `Idle` 状态时调用 `RestoreCheckpoint`；在 `Running` 或 `Paused` 下恢复将立即抛出 `InvalidOperationException`，杜绝运行期竞态污染；
 - **断点续跑**：恢复后，引擎将从 `StepIndex + 1` 自动开始后续步进，步数与进度精确衔接。
+
+---
+
+## 六、顶层会话门面 (BacktestSession)
+
+`BacktestSession`（位于 `CarrotBacktesting.NET`）作为系统的顶层门面（Facade），统筹配置解析、引擎执行与绩效分析导出。支持声明式配置驱动与编程式策略挂载两种使用模式：
+
+### 1. 声明式配置执行 (Declarative Execution)
+基于 YAML 配置文件直接执行回测，并依据配置完成绩效分析与报表导出：
+
+```csharp
+using CarrotBacktesting.NET;
+
+// 依据配置文件执行回测并生成分析报告
+var report = BacktestSession.Run("configs/session.yaml");
+```
+
+### 2. 编程式策略挂载 (Programmatic Execution)
+加载环境与账户配置，并在代码中显式注入自定义策略实例：
+
+```csharp
+using CarrotBacktesting.NET;
+
+// 加载配置并注入自定义策略实例
+using var session = BacktestSession.Load("configs/session.yaml", new DualMaStrategy());
+session.Run();
+var report = session.Analyze();
+```
+
+### 3. 结果与底层组件访问
+回测完成后，可通过实例属性访问不可变交易事实账本与引擎上下文：
+
+```csharp
+// 获取不可变交易事实账本
+TradingResult? facts = session.Result;
+
+// 访问底层引擎运行时上下文
+IEngineContext context = session.Engine.Context;
+```

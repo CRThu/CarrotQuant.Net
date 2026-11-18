@@ -24,6 +24,7 @@
   - [1. 不可变元数据模型 (TableMetadata)](#1-不可变元数据模型-tablemetadata)
   - [2. 无状态流式样本推断 (TableMetadataInferer)](#2-无状态流式样本推断-tablemetadatainferer)
   - [3. 物理寻址与直通优化 (StorageResolver)](#3-物理寻址与直通优化-storageresolver)
+- [六、多模态数据层装配工厂 (DataLayerFactory)](#六多模态数据层装配工厂-datalayerfactory)
 
 ---
 
@@ -78,10 +79,11 @@ Row N-1 [ val ]     [ val ]    ...     [ val ]
 - **零写放大增量追加**：在实盘或增量回测中，调用 `AppendRow` 追加数据时，仅当前活跃分块标记为脏并执行磁盘落盘（`Commit`），历史已固化的分块保持只读，彻底消除全量重写带来的写放大；
 - **动态列宽自动拓展**：当新增标的接入时，旧分块载入内存后自动补齐新列宽并填充 NaN，存储空间零膨胀。
 
-### 4. 时序注册表统一门面 (TimeseriesRegistry)
-`TimeseriesRegistry` 实现 `ITimeseriesRegistry` 只读契约与 `ITimeseriesWriter` 写入契约，内部聚合各字段的 `TimeseriesCacheManager<T>`：
-- **只读输出保障**：`GetMatrix<T>(fieldName)` 必须返回 `IReadOnlyMatrix2D<T>`，禁止外部篡改；
-- **单标的时序便利获取**：针对单标的回测或基准指数对比，提供 `GetSeries<T>(fieldName, symbol)`，直接返回高效的一维只读列视图（`ReadOnlyColumnView<T>`）。
+### 4. 时序注册表与 CQRS 读写分离 (TimeseriesRegistry & ITimeseriesScheduler)
+`TimeseriesRegistry` 是时序子系统的聚合核心，采用 CQRS（命令查询职责分离）与接口隔离（ISP）原则：
+- **只读查询门面 (`ITimeseriesRegistry`)**：面向策略层与上层决策，仅暴露只读查询接口 `GetMatrix<T>(fieldName)`（返回只读 `IReadOnlyMatrix2D<T>`）与单标的一维视图 `GetSeries<T>`，绝不包含任何推进步进方法，杜绝策略层越权污染底层页表；
+- **调度驱动契约 (`ITimeseriesScheduler`)**：专门面向回测/实盘引擎主时钟调度，暴露 `StepTo(int currentLogicalRow)`，负责滑动环形缓冲槽位并触发后台异步预读（Prefetch）；
+- **写入落盘契约 (`ITimeseriesWriter`)**：面向实盘/增量数据源，暴露 `AppendRow` 与 `Commit`。
 
 ### 5. 位掩码变更感知 (IsUpdated)
 引擎推进主时钟时，为了在策略层以位掩码常数时间判定各时序表当前步是否存在有效更新：
@@ -191,3 +193,23 @@ public interface IFieldTable : IEnumerable<KeyValuePair<string, IReadOnlyList<ID
 - **双缓存隔离**：内部独立维护 `_metadataCache`（元数据字典）与 `_topologyCache`（物理目录拓扑结构字典）；随实例销毁被 GC 安全回收，退出零脏状态；
 - **直通优化 (Bypass Hash Lookup)**：数据源底层（如 `ParquetTimeseriesSource`）直接持有不可变 `TableMetadata` 实例，在冷块加载调用 `ResolvePhysicalFiles(_metadata, ...)` 时，直通跳过字典哈希寻址，将物理寻址耗时降为 $O(1)$；
 - **年份分区剪枝 (Partition Pruning)**：当回测指定了起止时间时，仅扫描命中年份的分区目录，大幅缩减冷启动耗时。
+
+---
+
+## 六、多模态数据层装配工厂 (DataLayerFactory)
+
+为了解耦外部调用与数据层三大子系统（时序、事件、维表）的组装次序与依赖，系统提供 `DataLayerFactory` 作为统一装配工厂：
+
+```csharp
+using CarrotBacktesting.NET.Data;
+
+// 根据 DataConfig 声明构建时序、事件与维表数据层
+var (timeseries, events, fields) = DataLayerFactory.Create(
+    config.Data,
+    config.Engine?.StartDate,
+    config.Engine?.EndDate);
+```
+
+- **统一元数据中枢**：工厂内部权威构建唯一的 `StorageResolver` 实例，并共享给下游三大多模态工厂；
+- **起止时间智能剪枝**：自动根据引擎的 `StartDate` 与 `EndDate` 计算分区剪枝区间，时序与事件表按需扫描，大幅降低冷启动 I/O；
+- **契约隔离交付**：返回标准的 `ITimeseriesRegistry`、`IEventRegistry` 与 `IFieldRegistry` 抽象契约，调用端零物理存储与具体类型耦合。

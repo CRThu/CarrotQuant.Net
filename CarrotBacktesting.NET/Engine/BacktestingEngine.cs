@@ -27,6 +27,7 @@ namespace CarrotBacktesting.NET.Engine
     public class BacktestingEngine : IEngine, ICheckpointable, IDisposable
     {
         private readonly ITimeseriesRegistry _timeseries;
+        private readonly ITimeseriesScheduler? _timeseriesScheduler;
         private readonly IBroker _broker;
         private readonly IAccountSnapshotProvider? _snapshotProvider;
         private readonly ISimulatedExchange? _simExchange;
@@ -124,6 +125,7 @@ namespace CarrotBacktesting.NET.Engine
             IProgress<EngineProgress>? progress = null)
         {
             _timeseries = timeseries ?? throw new ArgumentNullException(nameof(timeseries));
+            _timeseriesScheduler = timeseries as ITimeseriesScheduler;
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _snapshotProvider = broker as IAccountSnapshotProvider;
             _simExchange = simExchange ?? (broker as ISimulatedExchange) ?? ((broker as Broker.Broker)?.Gateway as ISimulatedExchange);
@@ -148,8 +150,8 @@ namespace CarrotBacktesting.NET.Engine
         }
 
         /// <summary>
-        /// 便捷静态工厂：根据整体会话配置与数据供给装配回测引擎。
-        /// 若未传入 timeseries，将自动依据 sessionConfig.Data 闭环装配时序、事件与维表数据层。
+        /// 根据会话配置构建回测引擎实例。
+        /// 若未显式提供 timeseries，将根据 sessionConfig.Data 自动构建对应的数据层。
         /// </summary>
         /// <param name="sessionConfig">会话级总配置。</param>
         /// <param name="timeseries">时序行情供给源（可选，缺省由 sessionConfig.Data 自动构建）。</param>
@@ -355,7 +357,7 @@ namespace CarrotBacktesting.NET.Engine
                     }
 
                     // 5.2 时序滑动窗口与预读驱动
-                    _timeseries.StepTo(i);
+                    _timeseriesScheduler?.StepTo(i);
 
                     // 5.3 驱动仿真交易所批量撮合在途限价单与开盘挂单
                     _simExchange?.Step(currentTime, _timeseries, i);
@@ -627,10 +629,10 @@ namespace CarrotBacktesting.NET.Engine
                 _broker.OnOrderStatusChanged += _orderStatusHandler;
                 _broker.OnTrade += _tradeHandler;
                 _broker.OnPositionChanged += _positionHandler;
-                if (_broker is Broker.Broker realBroker)
+                if (_snapshotProvider != null)
                 {
-                    realBroker.OnSettlement += _settlementHandler;
-                    realBroker.OnTradeClosed += _tradeClosedHandler;
+                    _snapshotProvider.OnSettlement += _settlementHandler;
+                    _snapshotProvider.OnTradeClosed += _tradeClosedHandler;
                 }
                 _isSubscribed = true;
             }
@@ -643,10 +645,10 @@ namespace CarrotBacktesting.NET.Engine
                 _broker.OnOrderStatusChanged -= _orderStatusHandler;
                 _broker.OnTrade -= _tradeHandler;
                 _broker.OnPositionChanged -= _positionHandler;
-                if (_broker is Broker.Broker realBroker)
+                if (_snapshotProvider != null)
                 {
-                    realBroker.OnSettlement -= _settlementHandler;
-                    realBroker.OnTradeClosed -= _tradeClosedHandler;
+                    _snapshotProvider.OnSettlement -= _settlementHandler;
+                    _snapshotProvider.OnTradeClosed -= _tradeClosedHandler;
                 }
                 _isSubscribed = false;
             }

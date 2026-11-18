@@ -60,7 +60,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(tsRegistry.Metadata.TradeDates.Count > 0);
 
             // 验证时步推进
-            tsRegistry.StepTo(0);
+            ((CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler)tsRegistry).StepTo(0);
 
             var closeMatrix = tsRegistry.GetMatrix<double>("close");
             Assert.IsNotNull(closeMatrix);

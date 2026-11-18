@@ -61,8 +61,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(registry.HasField("close"));
             Assert.IsTrue(registry.Metadata.Symbols.Count > 0);
 
-            // 验证 ITimeseriesRegistry.StepTo 契约方法可被直接调用
-            registry.StepTo(0);
+            // 验证 ITimeseriesScheduler.StepTo 契约方法可被直接调用
+            ((CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler)registry).StepTo(0);
 
             var matrix = registry.GetMatrix<double>("close");
             Assert.IsNotNull(matrix);

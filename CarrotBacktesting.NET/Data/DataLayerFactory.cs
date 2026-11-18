@@ -5,9 +5,8 @@ using CarrotBacktesting.NET.Config;
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// 数据层一体化自闭环装配工厂。
-    /// 基于统一会话数据配置（<see cref="DataConfig"/>）一键自动构建时序、事件与维表三大注册中心。
-    /// 彻底消除配置模型与执行引擎间的“两张皮”割裂。
+    /// 数据层装配工厂。
+    /// 基于数据配置模型（<see cref="DataConfig"/>）构建时序、事件与维表注册中心。
     /// </summary>
     public static class DataLayerFactory
     {
