@@ -11,15 +11,6 @@ using Parquet.Serialization;
 
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
-    public record AdjFactorRecord(double BackAdjFactor);
-
-    public class NullableEventSample
-    {
-        public string Symbol { get; set; } = "sh.600000";
-        public DateTime Date { get; set; } = new DateTime(2025, 1, 2);
-        public string? Note { get; set; }
-    }
-
     /// <summary>
     /// 事件子系统（Events）集成测试。
     /// 分别针对纯代码配置（Code Configuration）与 YAML 文件配置（YAML Configuration）进行端到端真实数据载入验证。
@@ -27,6 +18,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
     [TestClass]
     public class EventsIntegrationTests
     {
+        public record AdjFactorRecord(double BackAdjFactor);
+
+        public class NullableEventSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime Date { get; set; } = new DateTime(2025, 1, 2);
+            public string? Note { get; set; }
+        }
+
         private static string GetTestDataRoot()
         {
             return Path.Combine(AppContext.BaseDirectory, "TestData", "test_data_root");

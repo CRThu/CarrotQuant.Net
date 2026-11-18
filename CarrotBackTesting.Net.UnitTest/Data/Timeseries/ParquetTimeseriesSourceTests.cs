@@ -444,5 +444,206 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
             }
         }
+
+        public class NullableSymbolSample
+        {
+            public string? Symbol { get; set; }
+            public DateTime Date { get; set; }
+            public double Close { get; set; }
+        }
+
+        [TestMethod]
+        public async Task SymbolColumn_WithNull_WithoutAllowlist_ThrowsInvalidDataException()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_null_sym_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "symbol_null_table");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<NullableSymbolSample>
+                {
+                    new() { Symbol = null, Date = new DateTime(2025, 1, 2), Close = 10.0 },
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 3), Close = 11.0 }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                var ex = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    using var source = TimeseriesSourceFactory.Create(tempDir, "symbol_null_table");
+                });
+                StringAssert.Contains(ex.Message, "Symbol");
+                StringAssert.Contains(ex.Message, "共 1/2 行无效");
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        public class MixedNumericSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime Date { get; set; }
+            public double DoubleVal { get; set; }
+            public float FloatVal { get; set; }
+            public long LongVal { get; set; }
+            public int IntVal { get; set; }
+        }
+
+        [TestMethod]
+        public async Task ArrayValueConversions_AllPrimitiveCombinations_ShouldConvertAccurately()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_num_conv_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "numeric_convert_table");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<MixedNumericSample>
+                {
+                    new()
+                    {
+                        Symbol = "sh.600000",
+                        Date = new DateTime(2025, 1, 2),
+                        DoubleVal = 100.5,
+                        FloatVal = 50.25f,
+                        LongVal = 999999L,
+                        IntVal = 1234
+                    }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, "numeric_convert_table");
+                Assert.AreEqual(1, source.TradeDates.Count);
+
+                // 1. double -> long & int
+                long[] doubleAsLong = new long[1];
+                source.ReadSymbolSeries("sh.600000", "DoubleVal", 0, 1, doubleAsLong);
+                Assert.AreEqual(100L, doubleAsLong[0]);
+
+                int[] doubleAsInt = new int[1];
+                source.ReadSymbolSeries("sh.600000", "DoubleVal", 0, 1, doubleAsInt);
+                Assert.AreEqual(100, doubleAsInt[0]);
+
+                // 2. float -> double, long, int
+                double[] floatAsDouble = new double[1];
+                source.ReadSymbolSeries("sh.600000", "FloatVal", 0, 1, floatAsDouble);
+                Assert.AreEqual(50.25, floatAsDouble[0], 1e-4);
+
+                long[] floatAsLong = new long[1];
+                source.ReadSymbolSeries("sh.600000", "FloatVal", 0, 1, floatAsLong);
+                Assert.AreEqual(50L, floatAsLong[0]);
+
+                int[] floatAsInt = new int[1];
+                source.ReadSymbolSeries("sh.600000", "FloatVal", 0, 1, floatAsInt);
+                Assert.AreEqual(50, floatAsInt[0]);
+
+                // 3. long -> double, float, int
+                double[] longAsDouble = new double[1];
+                source.ReadSymbolSeries("sh.600000", "LongVal", 0, 1, longAsDouble);
+                Assert.AreEqual(999999.0, longAsDouble[0], 1e-4);
+
+                float[] longAsFloat = new float[1];
+                source.ReadSymbolSeries("sh.600000", "LongVal", 0, 1, longAsFloat);
+                Assert.AreEqual(999999.0f, longAsFloat[0], 1e-4f);
+
+                int[] longAsInt = new int[1];
+                source.ReadSymbolSeries("sh.600000", "LongVal", 0, 1, longAsInt);
+                Assert.AreEqual(999999, longAsInt[0]);
+
+                // 4. int -> double, float, long
+                double[] intAsDouble = new double[1];
+                source.ReadSymbolSeries("sh.600000", "IntVal", 0, 1, intAsDouble);
+                Assert.AreEqual(1234.0, intAsDouble[0], 1e-4);
+
+                float[] intAsFloat = new float[1];
+                source.ReadSymbolSeries("sh.600000", "IntVal", 0, 1, intAsFloat);
+                Assert.AreEqual(1234.0f, intAsFloat[0], 1e-4f);
+
+                long[] intAsLong = new long[1];
+                source.ReadSymbolSeries("sh.600000", "IntVal", 0, 1, intAsLong);
+                Assert.AreEqual(1234L, intAsLong[0]);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        public class DateTimeOffsetSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTimeOffset Date { get; set; }
+            public DateTimeOffset? OptionalTime { get; set; }
+            public double Close { get; set; }
+        }
+
+        [TestMethod]
+        public async Task DateTimeOffsetColumn_HandlingAndConversion()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_dto_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "dto_table");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var baseTime = new DateTimeOffset(2025, 3, 1, 9, 30, 0, TimeSpan.FromHours(8));
+                var samples = new List<DateTimeOffsetSample>
+                {
+                    new() { Symbol = "sh.600000", Date = baseTime, OptionalTime = baseTime, Close = 20.0 },
+                    new() { Symbol = "sh.600000", Date = baseTime.AddDays(1), OptionalTime = null, Close = 21.0 }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                // 测试包含 metadata nullable_fields 与 外部参数合并分支
+                string metadataPath = Path.Combine(tableDir, "metadata.json");
+                File.WriteAllText(metadataPath, """
+                {
+                    "table_id": "dto_table",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "OptionalTime": "datetime",
+                        "Close": "double"
+                    },
+                    "nullable_fields": ["OptionalTime"]
+                }
+                """);
+
+                // 外部也传入允许空值字段，触发合并逻辑
+                var externalAllow = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Close" };
+                using var source = TimeseriesSourceFactory.Create(tempDir, "dto_table", nullableFields: externalAllow);
+
+                Assert.AreEqual(2, source.TradeDates.Count);
+                double[] closes = new double[2];
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes);
+                Assert.AreEqual(20.0, closes[0], 1e-4);
+                Assert.AreEqual(21.0, closes[1], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
     }
 }

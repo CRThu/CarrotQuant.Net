@@ -325,6 +325,75 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreNotSame(m1, m2);
         }
 
+        [TestMethod]
+        public void StorageResolver_Constructor_InvalidRoot_ThrowsArgumentException()
+        {
+            Assert.ThrowsException<ArgumentException>(() => new StorageResolver(""));
+            Assert.ThrowsException<ArgumentException>(() => new StorageResolver("   "));
+        }
+
+        [TestMethod]
+        public void HasTable_VariousConditions_ReturnsAccurateResults()
+        {
+            var resolver = new StorageResolver(_tempRoot);
+
+            // 1. 空或无效名称
+            Assert.IsFalse(resolver.HasTable(""));
+            Assert.IsFalse(resolver.HasTable("   "));
+            Assert.IsFalse(resolver.HasTable(null!));
+
+            // 2. 不存在的目录
+            Assert.IsFalse(resolver.HasTable("non_existent_table"));
+
+            // 3. 存在目录但无文件
+            string emptyDir = Path.Combine(_tempRoot, "empty_table");
+            Directory.CreateDirectory(emptyDir);
+            Assert.IsFalse(resolver.HasTable("empty_table"));
+
+            // 4. 存在目录且有文件（无 metadata.json）
+            string tableWithCsv = Path.Combine(_tempRoot, "csv_table");
+            Directory.CreateDirectory(tableWithCsv);
+            File.WriteAllText(Path.Combine(tableWithCsv, "data.csv"), "col1,col2\n1,2");
+            Assert.IsTrue(resolver.HasTable("csv_table"));
+
+            // 5. 存在 metadata.json
+            string tableWithMeta = Path.Combine(_tempRoot, "meta_table");
+            Directory.CreateDirectory(tableWithMeta);
+            File.WriteAllText(Path.Combine(tableWithMeta, "metadata.json"), "{}");
+            Assert.IsTrue(resolver.HasTable("meta_table"));
+        }
+
+        [TestMethod]
+        public void GetMetadata_InvalidTableId_ThrowsArgumentException()
+        {
+            var resolver = new StorageResolver(_tempRoot);
+            Assert.ThrowsException<ArgumentException>(() => resolver.GetMetadata(""));
+            Assert.ThrowsException<ArgumentException>(() => resolver.GetMetadata("   "));
+            Assert.ThrowsException<DirectoryNotFoundException>(() => resolver.GetMetadata("not_exist"));
+        }
+
+        [TestMethod]
+        public void GetMetadata_WithoutMetadataJson_TriggersInference()
+        {
+            // 构造一个没有 metadata.json 但有标准 CSV 的表
+            string tableId = "inferred_csv_table";
+            string tableDir = Path.Combine(_tempRoot, tableId);
+            Directory.CreateDirectory(tableDir);
+            File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), "datetime,open,close,volume\n2025-01-02,10.0,10.5,1000");
+
+            var resolver = new StorageResolver(_tempRoot);
+            var metadata = resolver.GetMetadata(tableId);
+
+            Assert.IsNotNull(metadata);
+            Assert.AreEqual(StorageFormat.Csv, metadata.Format);
+            Assert.AreEqual(PartitionMode.Symbol, metadata.Partition);
+            Assert.IsTrue(metadata.FieldNames.Contains("close"));
+
+            Assert.IsTrue(resolver.HasTable(tableId));
+            resolver.ClearCache(tableId);
+            resolver.ClearCache(null); // 全量清理
+        }
+
         #endregion
     }
 }

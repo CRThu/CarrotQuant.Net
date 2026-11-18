@@ -7,7 +7,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace CarrotBackTesting.Net.UnitTest.Engine
 {
     [TestClass]
-    public class EngineContractsTests
+    public class EngineBrokerEventBridgeTests
     {
         private class DummyBroker : IBroker
         {
@@ -144,3 +144,4 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
     }
 }
+

@@ -11,14 +11,6 @@ using Parquet.Serialization;
 
 namespace CarrotBackTesting.Net.UnitTest.Data
 {
-    public record IndustryModel(string BoardCode, string BoardName, string Symbol, string StockName);
-
-    public class NullableFieldSample
-    {
-        public string Symbol { get; set; } = "sh.600000";
-        public string? Concept { get; set; }
-    }
-
     /// <summary>
     /// 标的维表子系统（Fields）集成测试。
     /// 分别针对纯代码配置（Code Configuration）与 YAML 文件配置（YAML Configuration）进行端到端真实数据载入验证。
@@ -26,6 +18,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
     [TestClass]
     public class FieldsIntegrationTests
     {
+        public record IndustryModel(string BoardCode, string BoardName, string Symbol, string StockName);
+
+        public class NullableFieldSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public string? Concept { get; set; }
+        }
+
         private static string GetTestDataRoot()
         {
             return Path.Combine(AppContext.BaseDirectory, "TestData", "test_data_root");

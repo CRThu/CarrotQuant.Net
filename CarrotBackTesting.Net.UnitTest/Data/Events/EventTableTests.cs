@@ -314,81 +314,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
         }
 
-        #endregion
-    }
-
-    [TestClass]
-    public class EventRegistryTests
-    {
-        [TestMethod]
-        public void RegisterAndRetrieve_ShouldWork()
-        {
-            var registry = new EventRegistry();
-            var emptySymbolData = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
-            var table = new EventTable("adjustments", new[] { "back_adj_factor" }, emptySymbolData);
-
-            registry.Register("adjustments", table);
-
-            Assert.IsTrue(registry.HasTable("adjustments"));
-            var retrieved = registry.GetTable("adjustments");
-            Assert.AreSame(table, retrieved);
-
-            var viaIndexer = registry["adjustments"];
-            Assert.AreSame(table, viaIndexer);
-
-            var names = registry.GetTableNames();
-            Assert.AreEqual(1, names.Count);
-            Assert.AreEqual("adjustments", names[0]);
-        }
-
-        [TestMethod]
-        [ExpectedException(typeof(KeyNotFoundException))]
-        public void GetTable_NonExistent_ShouldThrow()
-        {
-            var registry = new EventRegistry();
-            registry.GetTable("non_existent");
-        }
-
-        [TestMethod]
-        public void HasTable_ShouldReturnCorrectly()
-        {
-            var registry = new EventRegistry();
-            Assert.IsFalse(registry.HasTable("adjustments"));
-
-            var emptySymbolData = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
-            var table = new EventTable("adjustments", new[] { "back_adj_factor" }, emptySymbolData);
-            registry.Register("adjustments", table);
-
-            Assert.IsTrue(registry.HasTable("adjustments"));
-            Assert.IsFalse(registry.HasTable("other"));
-        }
-
-        [TestMethod]
-        public void EventRegistryFactory_BatchAssemble_ShouldWork()
-        {
-            string csvRoot = Path.Combine(EventTableTests.GetTestDataRoot(), "csv");
-            var resolver = new StorageResolver(csvRoot);
-
-            var configs = new[]
-            {
-                new CarrotBacktesting.NET.Config.EventStreamConfig
-                {
-                    Name = "adj",
-                    TableId = "ashare.adj_factor.baostock"
-                }
-            };
-
-            var registry = EventRegistryFactory.Create(resolver, configs);
-            Assert.IsTrue(registry.HasTable("adj"));
-            var table = registry["adj"];
-            Assert.IsNotNull(table);
-            Assert.IsTrue(table.Count > 0);
-        }
-
         [TestMethod]
         public void EventTable_MissingKeys_ThrowsKeyNotFoundException()
         {
-            string csvRoot = Path.Combine(EventTableTests.GetTestDataRoot(), "csv");
+            string csvRoot = Path.Combine(GetTestDataRoot(), "csv");
             var resolver = new StorageResolver(csvRoot);
             var table = EventSourceFactory.Create(resolver, "ashare.adj_factor.baostock");
 
@@ -413,5 +342,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 table.Get<AdjustmentFactor>(validDate, "non_existent_symbol");
             });
         }
+
+        #endregion
     }
 }

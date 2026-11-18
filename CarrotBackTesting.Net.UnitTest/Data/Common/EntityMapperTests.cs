@@ -26,7 +26,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
     public record EnumEntity(string Name, MarketSide Side, MarketSide? OptionalSide);
 
     [TestClass]
-    public class EntityMapperAndDataRowTests
+    public class EntityMapperTests
     {
         [TestMethod]
         public void EntityMapper_CompiledFactory_ShouldMapAllTypesWithoutBoxing()
