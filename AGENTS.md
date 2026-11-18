@@ -171,13 +171,13 @@ graph TD
 | **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
 | **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机、实盘增量事件循环、上下文注入、可观测性监控 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
 | **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `ISignalStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
-| **Analysis Layer (绩效分析与报表层)** | 交易事实沉淀、四层量化统计、Alpha信号前向质量评估与多渠道报告呈现 | `ITradingRecorder`, `TradingRecorder`, `TradingResult`, `IAnalysisEngine`, `AnalysisEngine`, `PortfolioStatistics`, `CapitalStatistics`, `TradeStatistics`, `CostStatistics`, `SignalStatistics`, `AnalysisReport`, `ConsoleExporter` |
+| **Analysis Layer (绩效分析与报表层)** | 交易事实沉淀、单路径分析器管线、四层量化统计、Alpha信号前向质量评估与多渠道报告呈现 | `ITradingRecorder`, `TradingRecorder`, `TradingResult`, `IAnalysisEngine`, `AnalysisEngine`, `IAnalyzer`, `AnalyzerBase<T>`, `IAnalysisResult`, `PortfolioAnalyzer`, `CapitalAnalyzer`, `TradeAnalyzer`, `CostAnalyzer`, `SignalAnalyzer`, `PortfolioStatistics`, `CapitalStatistics`, `TradeStatistics`, `CostStatistics`, `SignalStatistics`, `AnalysisReport`, `ConsoleExporter` |
 
 - **数据与执行流向**: (`ITimeseriesRegistry`, `IEventRegistry`, `IFieldRegistry`) → `IEngine` → (`IndicatorRegistry` / `Broker` / `SimulatedExchangeGateway` / `IMonitor`) → `IEngineContext` → 策略层
 - **交易执行流向**: 策略通过 `context.Broker` 发出订单意图 → `Broker` 驱动 `AccountLedger` 完成两阶段预冻结 → 通过 `IExchangeGateway` 路由至 `SimulatedExchangeGateway`（回测）或实盘柜台（实盘）→ 撮合成交回报通过 Open Calls 无锁异步回调通知策略
-- **指标计算流向**: 引擎主时钟驱动 `_indicators.Step(_context)` 批量泵送当前 Bar 行情 → 全市场标的指标池单步单次增量递推更新 → 策略在 `OnUpdate` 中通过 `pool[symbolIndex]` 或 `context.Indicators.Get<T>()` 纳秒直取最新指标值
+- **指标计算流向**: 引擎主时钟驱动 `_indicators.Step(_context)` 批量泵送当前 Bar 行情 → 全市场标的指标池单步单次增量递推更新 → 策略在 `OnUpdate` 中通过 `pool[symbolIndex]` 或 `context.Indicators.Get<T>()` 常数时间直取最新指标值
 - **策略流水线典型流向**: 信号生产 (`ISignalStrategy`) → 组合持仓规划 → 交易风控执行 (`IStrategy` / `RuleStrategyBase`)
-- **事实与分析流向**: 引擎主循环与成交回报流水记账 (`TradingRecorder`) → 终局生成不可变 `TradingResult` → `IAnalysisEngine` 纯函数式驱动各 `*Statistics.Create` → `AnalysisReport` 聚合根 → 终端与多渠道报表呈现。
+- **事实与分析流向**: 引擎主循环与成交回报流水记账 (`TradingRecorder`) → 终局生成不可变 `TradingResult` → `IAnalysisEngine` (`AnalysisEngine`) 单路径调度各 `IAnalyzer` 管线 → `AnalysisReport` 聚合根 → 终端与多渠道报表呈现。
 
 ### 3. 策略协作模型概要
 - **黑板解耦模式**: 通过 `context.Market`（`IMarketState`）统一交换强类型信号与状态，实现生产端（`ISignalStrategy`）与消费端（组合规划/执行策略）正交解耦。
@@ -195,7 +195,7 @@ graph TD
 - `ISignalStrategy`: 纯信号语义契约，专注于信号生产与特征分析，通过黑板（`context.Market`）发布状态、概率分布或打分，无账户与持仓负担。
 - `RuleStrategyBase`: 规则交易便利模板基类，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
 - `IStrategyPipeline`: 组合策略管线契约，定义拓扑添加 `Add`、密封优化 `Compile`、策略展开 `GetStrategies` 与递归最大 `Lookback` 汇总。
-- **流式指标与极简门面调用**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd` 声明全市场标的池并持有极速索引引用，在 `OnUpdate` 中利用 `pool[symbolIndex]` 纳秒级直取或通过 `context.Indicators.Get<T>` 免声明读取，详见 [第六节](#六流式指标与计算属性体系-indicator--computed-property-architecture)。
+- **流式指标与统一门面调用**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd` 声明全市场标的池并持有极速索引引用，在 `OnUpdate` 中利用 `pool[symbolIndex]` 高速直取或通过 `context.Indicators.Get<T>` 免声明读取，详见 [第六节](#六流式指标与计算属性体系-indicator--computed-property-architecture)。
 
 ### 2. 通用强类型黑板 (`IMarketState`)
 - **通用强类型状态容器**: 支持零装箱的 `GetState<T>(key)`、`SetState<T>(state, key)`、`HasState<T>(key)` 与 `Clear()`，用于策略间正交解耦与异步数据交换。
@@ -443,14 +443,15 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | `TradingResult` | `Abstraction/Analysis/TradingResult.cs` | 综合交易结果模型，完整聚合交割单、平仓记录、期末在手持仓、步进资产曲线与每日快照 |
 | `IAnalysisEngine` | `Abstraction/Analysis/IAnalysisEngine.cs` | 绩效分析与评估调度契约，方法 `Analyze(result, options, timeseries)` |
 | `AnalysisEngine` | `Analysis/AnalysisEngine.cs` | 绩效分析调度引擎，统筹装配五大 Statistics，详见专门白皮书 [绩效分析与报表子系统 (docs/analysis.md)](docs/analysis.md) |
-| `PortfolioStatistics` | `Abstraction/Analysis/PortfolioStatistics.cs` | 第一层组合净值与风险统计模型，内置 `PortfolioStatistics.Create` 静态工厂 |
-| `CapitalStatistics` | `Abstraction/Analysis/CapitalStatistics.cs` | 第二层资本利用与敞口统计模型，内置 `CapitalStatistics.Create` 静态工厂 |
-| `TradeStatistics` | `Abstraction/Analysis/TradeStatistics.cs` | 第三层交易行为与执行归因统计模型，内置 `TradeStatistics.Create` 静态工厂 |
-| `CostStatistics` | `Abstraction/Analysis/CostStatistics.cs` | 第四层现实交易成本与损耗统计模型，内置 `CostStatistics.Create` 静态工厂 |
-| `SignalStatistics` | `Abstraction/Analysis/SignalStatistics.cs` | 独立 Alpha 信号前向质量评估模型，内置 `SignalStatistics.Create` 静态工厂 |
-| `AnalysisReport` | `Abstraction/Analysis/AnalysisReport.cs` | 综合分析报告聚合根，包含 `Facts`, `Portfolio`, `Capital`, `Trades`, `Cost`, `Signals` |
+| `PortfolioAnalyzer` | `Analysis/Analyzers/PortfolioAnalyzer.cs` | 垂直切片单文件内聚：第一层组合净值与风险分析器，同文件包含不可变产物 `PortfolioStatistics` (实现 `IAnalysisResult`) 与静态工厂转发 |
+| `CapitalAnalyzer` | `Analysis/Analyzers/CapitalAnalyzer.cs` | 垂直切片单文件内聚：第二层资本利用与敞口分析器，同文件包含不可变产物 `CapitalStatistics` 与静态工厂转发 |
+| `TradeAnalyzer` | `Analysis/Analyzers/TradeAnalyzer.cs` | 垂直切片单文件内聚：第三层交易行为与执行归因分析器，同文件包含不可变产物 `TradeStatistics`、`ExitTimingStatistics` 与静态工厂转发 |
+| `CostAnalyzer` | `Analysis/Analyzers/CostAnalyzer.cs` | 垂直切片单文件内聚：第四层现实交易成本与损耗分析器，同文件包含不可变产物 `CostStatistics` 与静态工厂转发 |
+| `SignalAnalyzer` | `Analysis/Analyzers/SignalAnalyzer.cs` | 垂直切片单文件内聚：第五层独立 Alpha 信号前向质量评估分析器，同文件包含不可变产物 `SignalStatistics`、`SignalHorizonStatistics`、`SignalSampleStatistics` 与静态工厂转发 |
+| `AnalysisReport` | `Abstraction/Analysis/AnalysisReport.cs` | 综合分析报告聚合根，包含 `Facts`, `Portfolio`, `Capital`, `Trades`, `Cost`, `Signals` 与扩展工件黑板 |
+| `IAnalyzer` | `Abstraction/Analysis/IAnalyzer.cs` | 外部扩展分析器契约与 `AnalyzerBase<T>`，支持外部自定义分析测量插件挂载 |
 | `ConsoleExporter` | `Analysis/Exporters/ConsoleExporter.cs` | 基于 Spectre.Console 的控制台绩效分析报表导出器，支持强类型配置开关与深色 HTML 一键落盘 |
-| `IReportExporter` | `Abstraction/Analysis/IReportExporter.cs` | 报表导出器契约，解耦终端与外部交付介质 |
+| `IReportExporter` | `Abstraction/Analysis/IReportExporter.cs` | 报表导出器契约，解耦终端与外部交付介质，详见专门白皮书 [报表导出与呈现子系统开发指南 (docs/exporter.md)](docs/exporter.md) |
 
 ### 2. 实盘与回测双轨运行模型 (Living & Backtesting Dual-Engine Alignment)
 

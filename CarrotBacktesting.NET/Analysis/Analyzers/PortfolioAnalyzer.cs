@@ -1,48 +1,41 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CarrotBacktesting.NET.Abstraction.Analysis;
+using CarrotBacktesting.NET.Abstraction.Data;
 
-namespace CarrotBacktesting.NET.Abstraction.Analysis;
-
-/// <summary>
-/// 自然月度收益率统计。
-/// </summary>
-/// <param name="Year">自然年份。</param>
-/// <param name="Month">自然月份 (1-12)。</param>
-/// <param name="ReturnRate">当月净值收益率。</param>
-public readonly record struct MonthlyReturn(int Year, int Month, double ReturnRate);
+namespace CarrotBacktesting.NET.Analysis.Analyzers;
 
 /// <summary>
-/// 第一层：组合净值与宏观风险统计模型 (Portfolio Statistics)。
-/// 包含收益、波动率、最大回撤、夏普、索提诺、卡玛、月度收益矩阵及基准相对表现。
-/// 内置静态工厂方法 Create，纯函数式高吞吐构建。
+/// 第一层：投资组合净值与风险分析器 (Portfolio Analyzer)。
+/// 计算累计收益、年化复合收益、波动率、下行波动、最大回撤、夏普/索提诺/卡玛比率、VaR 与基准相对指标（Beta/Alpha/信息比率）。
+/// 分析完成后输出只读不可变的 PortfolioStatistics 统计模型。
 /// </summary>
-public sealed record PortfolioStatistics(
-    double TotalReturn,
-    double AnnualizedReturn,
-    double AnnualizedVolatility,
-    double DownsideVolatility,
-    double MaxDrawdown,
-    DateTime MaxDrawdownPeakTime,
-    DateTime MaxDrawdownTroughTime,
-    DateTime? MaxDrawdownRecoveryTime,
-    int MaxDrawdownDurationSteps,
-    double SharpeRatio,
-    double SortinoRatio,
-    double CalmarRatio,
-    double DailyVaR95,
-    double DailyCVaR95,
-    double? BenchmarkReturn,
-    double? Alpha,
-    double? Beta,
-    double? InformationRatio,
-    IReadOnlyList<MonthlyReturn> MonthlyReturns
-)
+public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
 {
+    /// <inheritdoc />
+    public override string Name => "Portfolio";
+
+    /// <inheritdoc />
+    public override PortfolioStatistics? Analyze(
+        TradingResult facts,
+        AnalysisOptions options,
+        ITimeseriesRegistry? timeseries)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        ArgumentNullException.ThrowIfNull(options);
+
+        // 1. 若配置了基准标的，尝试计算基准收益率序列
+        IReadOnlyList<double>? benchmarkReturns = TryCalculateBenchmarkReturns(facts, options, timeseries);
+
+        // 2. 执行量化指标计算
+        return Calculate(facts.EquityCurve, facts.DailySnapshots, options, benchmarkReturns);
+    }
+
     /// <summary>
-    /// 从净值时间序列与日终快照构建组合宏观绩效统计对象。
+    /// 从净值时间序列与日终快照计算并构建组合宏观绩效统计对象。
     /// </summary>
-    public static PortfolioStatistics Create(
+    public static PortfolioStatistics Calculate(
         IReadOnlyList<EquityPoint> equityCurve,
         IReadOnlyList<DailySnapshot> dailySnapshots,
         AnalysisOptions options,
@@ -79,8 +72,9 @@ public sealed record PortfolioStatistics(
         double totalReturn = startEquity > 0 ? (endEquity - startEquity) / startEquity : 0.0;
 
         double totalDays = (endPoint.Time - startPoint.Time).TotalDays;
+        double minYears = 1.0 / annualTradingDays;
         double years = totalDays > 0 ? totalDays / 365.25 : (double)equityCurve.Count / annualTradingDays;
-        if (years <= 0) years = 1.0 / annualTradingDays;
+        if (years < minYears) years = minYears;
 
         double annualizedReturn = (startEquity > 0 && endEquity > 0 && years > 0)
             ? Math.Pow(endEquity / startEquity, 1.0 / years) - 1.0
@@ -97,7 +91,10 @@ public sealed record PortfolioStatistics(
 
         if (returns.Length > 0)
         {
-            double meanReturn = returns.Average();
+            double sumReturn = 0.0;
+            for (int i = 0; i < returns.Length; i++) sumReturn += returns[i];
+            double meanReturn = sumReturn / returns.Length;
+
             if (returns.Length > 1)
             {
                 double sumSq = 0.0;
@@ -182,6 +179,99 @@ public sealed record PortfolioStatistics(
             InformationRatio: infoRatio,
             MonthlyReturns: monthlyReturns
         );
+    }
+
+    private static int ResolveDateIndex(IMarketMetadata metadata, DateTime time)
+    {
+        int idx = metadata.GetDateIndex(time);
+        if (idx >= 0) return idx;
+        return metadata.GetDateIndex(time.Date);
+    }
+
+    private static IReadOnlyList<double>? TryCalculateBenchmarkReturns(
+        TradingResult result,
+        AnalysisOptions options,
+        ITimeseriesRegistry? timeseries)
+    {
+        if (timeseries == null || string.IsNullOrWhiteSpace(options.BenchmarkSymbol))
+        {
+            return null;
+        }
+
+        if (!timeseries.HasField(options.PriceFieldName))
+        {
+            return null;
+        }
+
+        var metadata = timeseries.Metadata;
+        int col = metadata.GetSymbolIndex(options.BenchmarkSymbol);
+        if (col < 0) return null;
+
+        var priceMatrix = timeseries.GetMatrix<double>(options.PriceFieldName);
+        var snapshots = result.DailySnapshots;
+
+        if (snapshots.Count > 1)
+        {
+            var bReturns = new List<double>(snapshots.Count - 1);
+            double? prevPrice = null;
+
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                var time = snapshots[i].Time;
+                int row = ResolveDateIndex(metadata, time);
+                if (row < 0 || row >= priceMatrix.RowCount)
+                {
+                    return null;
+                }
+
+                double currentPrice = priceMatrix[row, col];
+                if (double.IsNaN(currentPrice) || currentPrice <= 0)
+                {
+                    return null;
+                }
+
+                if (prevPrice.HasValue)
+                {
+                    bReturns.Add((currentPrice - prevPrice.Value) / prevPrice.Value);
+                }
+                prevPrice = currentPrice;
+            }
+
+            return bReturns;
+        }
+
+        var equityCurve = result.EquityCurve;
+        if (equityCurve.Count > 1)
+        {
+            var bReturns = new List<double>(equityCurve.Count - 1);
+            double? prevPrice = null;
+
+            for (int i = 0; i < equityCurve.Count; i++)
+            {
+                var time = equityCurve[i].Time;
+                int row = ResolveDateIndex(metadata, time);
+                if (row < 0 || row >= priceMatrix.RowCount)
+                {
+                    return null;
+                }
+
+                double currentPrice = priceMatrix[row, col];
+                if (double.IsNaN(currentPrice) || currentPrice <= 0)
+                {
+                    return null;
+                }
+
+                if (prevPrice.HasValue)
+                {
+                    bReturns.Add((currentPrice - prevPrice.Value) / prevPrice.Value);
+                }
+                prevPrice = currentPrice;
+            }
+
+            return bReturns;
+        }
+
+        return null;
     }
 
     private static double[] ExtractPeriodicReturns(
@@ -280,8 +370,15 @@ public sealed record PortfolioStatistics(
         int annualTradingDays)
     {
         int n = returns.Length;
-        double meanS = returns.Average();
-        double meanB = bReturns.Average();
+        double sumS = 0.0;
+        double sumB = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            sumS += returns[i];
+            sumB += bReturns[i];
+        }
+        double meanS = sumS / n;
+        double meanB = sumB / n;
 
         double cov = 0.0;
         double varB = 0.0;
@@ -326,44 +423,97 @@ public sealed record PortfolioStatistics(
         IReadOnlyList<DailySnapshot>? dailySnapshots,
         IReadOnlyList<EquityPoint> equityCurve)
     {
-        var list = new List<MonthlyReturn>();
-
         if (dailySnapshots != null && dailySnapshots.Count > 0)
         {
-            var groups = dailySnapshots.GroupBy(s => new { s.Time.Year, s.Time.Month })
-                                       .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month);
-
-            double prevMonthEndEquity = dailySnapshots[0].TotalEquity;
-
-            foreach (var group in groups)
-            {
-                var monthPoints = group.OrderBy(p => p.Time).ToList();
-                double monthStart = prevMonthEndEquity > 0 ? prevMonthEndEquity : monthPoints[0].TotalEquity;
-                double monthEnd = monthPoints[^1].TotalEquity;
-                double ret = monthStart > 0 ? (monthEnd - monthStart) / monthStart : 0.0;
-                list.Add(new MonthlyReturn(group.Key.Year, group.Key.Month, ret));
-                prevMonthEndEquity = monthEnd;
-            }
-            return list;
+            return CalculateMonthlyReturnsFromSnapshots(dailySnapshots);
         }
 
         if (equityCurve != null && equityCurve.Count > 0)
         {
-            var groups = equityCurve.GroupBy(p => new { p.Time.Year, p.Time.Month })
-                                    .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month);
+            return CalculateMonthlyReturnsFromEquityCurve(equityCurve);
+        }
 
-            double prevMonthEndEquity = equityCurve[0].TotalEquity;
+        return Array.Empty<MonthlyReturn>();
+    }
 
-            foreach (var group in groups)
+    private static IReadOnlyList<MonthlyReturn> CalculateMonthlyReturnsFromSnapshots(IReadOnlyList<DailySnapshot> snapshots)
+    {
+        var list = new List<MonthlyReturn>();
+        int count = snapshots.Count;
+        if (count == 0) return list;
+
+        double prevMonthEndEquity = snapshots[0].TotalEquity;
+        int currentYear = snapshots[0].Time.Year;
+        int currentMonth = snapshots[0].Time.Month;
+        double currentMonthStart = prevMonthEndEquity;
+        double currentMonthEnd = snapshots[0].TotalEquity;
+
+        for (int i = 1; i < count; i++)
+        {
+            var snap = snapshots[i];
+            int y = snap.Time.Year;
+            int m = snap.Time.Month;
+
+            if (y == currentYear && m == currentMonth)
             {
-                var monthPoints = group.OrderBy(p => p.Time).ToList();
-                double monthStart = prevMonthEndEquity > 0 ? prevMonthEndEquity : monthPoints[0].TotalEquity;
-                double monthEnd = monthPoints[^1].TotalEquity;
-                double ret = monthStart > 0 ? (monthEnd - monthStart) / monthStart : 0.0;
-                list.Add(new MonthlyReturn(group.Key.Year, group.Key.Month, ret));
-                prevMonthEndEquity = monthEnd;
+                currentMonthEnd = snap.TotalEquity;
+            }
+            else
+            {
+                double ret = currentMonthStart > 0 ? (currentMonthEnd - currentMonthStart) / currentMonthStart : 0.0;
+                list.Add(new MonthlyReturn(currentYear, currentMonth, ret));
+
+                prevMonthEndEquity = currentMonthEnd;
+                currentYear = y;
+                currentMonth = m;
+                currentMonthStart = prevMonthEndEquity > 0 ? prevMonthEndEquity : snap.TotalEquity;
+                currentMonthEnd = snap.TotalEquity;
             }
         }
+
+        double lastRet = currentMonthStart > 0 ? (currentMonthEnd - currentMonthStart) / currentMonthStart : 0.0;
+        list.Add(new MonthlyReturn(currentYear, currentMonth, lastRet));
+
+        return list;
+    }
+
+    private static IReadOnlyList<MonthlyReturn> CalculateMonthlyReturnsFromEquityCurve(IReadOnlyList<EquityPoint> curve)
+    {
+        var list = new List<MonthlyReturn>();
+        int count = curve.Count;
+        if (count == 0) return list;
+
+        double prevMonthEndEquity = curve[0].TotalEquity;
+        int currentYear = curve[0].Time.Year;
+        int currentMonth = curve[0].Time.Month;
+        double currentMonthStart = prevMonthEndEquity;
+        double currentMonthEnd = curve[0].TotalEquity;
+
+        for (int i = 1; i < count; i++)
+        {
+            var pt = curve[i];
+            int y = pt.Time.Year;
+            int m = pt.Time.Month;
+
+            if (y == currentYear && m == currentMonth)
+            {
+                currentMonthEnd = pt.TotalEquity;
+            }
+            else
+            {
+                double ret = currentMonthStart > 0 ? (currentMonthEnd - currentMonthStart) / currentMonthStart : 0.0;
+                list.Add(new MonthlyReturn(currentYear, currentMonth, ret));
+
+                prevMonthEndEquity = currentMonthEnd;
+                currentYear = y;
+                currentMonth = m;
+                currentMonthStart = prevMonthEndEquity > 0 ? prevMonthEndEquity : pt.TotalEquity;
+                currentMonthEnd = pt.TotalEquity;
+            }
+        }
+
+        double lastRet = currentMonthStart > 0 ? (currentMonthEnd - currentMonthStart) / currentMonthStart : 0.0;
+        list.Add(new MonthlyReturn(currentYear, currentMonth, lastRet));
 
         return list;
     }
@@ -392,4 +542,81 @@ public sealed record PortfolioStatistics(
             MonthlyReturns: Array.Empty<MonthlyReturn>()
         );
     }
+}
+
+/// <summary>
+/// 自然月度收益率统计。
+/// </summary>
+/// <param name="Year">自然年份。</param>
+/// <param name="Month">自然月份 (1-12)。</param>
+/// <param name="ReturnRate">当月净值收益率。</param>
+public readonly record struct MonthlyReturn(int Year, int Month, double ReturnRate);
+
+/// <summary>
+/// 第一层：组合净值与宏观风险统计模型 (Portfolio Statistics)。
+/// 包含收益、波动率、最大回撤、夏普、索提诺、卡玛、月度收益矩阵及基准相对表现。
+/// 纯数据 Record，实现统一的 IAnalysisResult 契约，支持自描述指标流。
+/// </summary>
+public sealed record PortfolioStatistics(
+    double TotalReturn,
+    double AnnualizedReturn,
+    double AnnualizedVolatility,
+    double DownsideVolatility,
+    double MaxDrawdown,
+    DateTime MaxDrawdownPeakTime,
+    DateTime MaxDrawdownTroughTime,
+    DateTime? MaxDrawdownRecoveryTime,
+    int MaxDrawdownDurationSteps,
+    double SharpeRatio,
+    double SortinoRatio,
+    double CalmarRatio,
+    double DailyVaR95,
+    double DailyCVaR95,
+    double? BenchmarkReturn,
+    double? Alpha,
+    double? Beta,
+    double? InformationRatio,
+    IReadOnlyList<MonthlyReturn> MonthlyReturns
+) : IAnalysisResult
+{
+    /// <inheritdoc />
+    public string Name => "portfolio";
+
+    /// <inheritdoc />
+    public string Title => "组合净值与风险收益统计";
+
+    /// <inheritdoc />
+    public IEnumerable<MetricItem> GetMetrics()
+    {
+        yield return new("累计总收益 (Total Return)", $"{TotalReturn:P2}", "收益指标");
+        yield return new("年化复合收益率 (CAGR)", $"{AnnualizedReturn:P2}", "收益指标");
+        yield return new("年化波动率 (Volatility)", $"{AnnualizedVolatility:P2}", "风险指标");
+        yield return new("年化下行半方差 (Downside Vol)", $"{DownsideVolatility:P2}", "风险指标");
+        yield return new("最大回撤 (Max Drawdown)", $"{MaxDrawdown:P2}", "风险指标");
+        yield return new("最大回撤持续步数", $"{MaxDrawdownDurationSteps} 步", "风险指标");
+        yield return new("夏普比率 (Sharpe Ratio)", $"{SharpeRatio:F2}", "风险收益比");
+        yield return new("索提诺比率 (Sortino Ratio)", $"{SortinoRatio:F2}", "风险收益比");
+        yield return new("卡玛比率 (Calmar Ratio)", $"{CalmarRatio:F2}", "风险收益比");
+        yield return new("日度在险价值 (Daily VaR 95%)", $"{DailyVaR95:P2}", "极值风险");
+        yield return new("日度条件在险价值 (Daily CVaR 95%)", $"{DailyCVaR95:P2}", "极值风险");
+
+        if (BenchmarkReturn.HasValue)
+            yield return new("基准总收益 (Benchmark Return)", $"{BenchmarkReturn.Value:P2}", "基准对比");
+        if (Beta.HasValue)
+            yield return new("贝塔系数 (Beta)", $"{Beta.Value:F2}", "基准对比");
+        if (Alpha.HasValue)
+            yield return new("阿尔法超额 (Alpha)", $"{Alpha.Value:P2}", "基准对比");
+        if (InformationRatio.HasValue)
+            yield return new("信息比率 (Information Ratio)", $"{InformationRatio.Value:F2}", "基准对比");
+    }
+
+    /// <summary>
+    /// 从净值时间序列与日终快照构建组合宏观绩效统计对象（转发至 PortfolioAnalyzer.Calculate）。
+    /// </summary>
+    public static PortfolioStatistics Create(
+        IReadOnlyList<EquityPoint> equityCurve,
+        IReadOnlyList<DailySnapshot> dailySnapshots,
+        AnalysisOptions options,
+        IReadOnlyList<double>? benchmarkReturns = null)
+        => PortfolioAnalyzer.Calculate(equityCurve, dailySnapshots, options, benchmarkReturns);
 }

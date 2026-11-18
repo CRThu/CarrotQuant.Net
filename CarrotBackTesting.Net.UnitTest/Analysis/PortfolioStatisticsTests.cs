@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
+using CarrotBacktesting.NET.Analysis.Analyzers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Analysis;
@@ -407,5 +408,28 @@ public class PortfolioStatisticsTests
         Assert.IsFalse(double.IsInfinity(portfolio.AnnualizedReturn));
         Assert.IsFalse(double.IsNaN(portfolio.AnnualizedVolatility));
         Assert.IsFalse(double.IsNaN(capital.AnnualizedTurnover));
+    }
+
+    [TestMethod]
+    public void Create_SubDailyTimespan_DefendsAgainstExcessiveAnnualizedReturn()
+    {
+        var t0 = new DateTime(2024, 1, 1, 9, 30, 0);
+        var points = new List<EquityPoint>
+        {
+            new(t0, 100000.0, 100000.0, 0, 0, 0, 0),
+            new(t0.AddMinutes(1), 101000.0, 101000.0, 0, 0, 0, 0) // 跨度仅 1 分钟，总收益 1%
+        };
+
+        var options = new AnalysisOptions
+        {
+            AnnualTradingDays = 252
+        };
+
+        var portfolio = PortfolioStatistics.Create(points, Array.Empty<DailySnapshot>(), options);
+
+        // 验证年化收益率受到 minYears 防守，绝对不会溢出为 PositiveInfinity
+        Assert.IsFalse(double.IsInfinity(portfolio.AnnualizedReturn));
+        Assert.IsFalse(double.IsNaN(portfolio.AnnualizedReturn));
+        Assert.IsTrue(portfolio.AnnualizedReturn > 0.0);
     }
 }

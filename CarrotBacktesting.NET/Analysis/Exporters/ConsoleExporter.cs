@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using CarrotBacktesting.NET.Abstraction.Analysis;
+using CarrotBacktesting.NET.Analysis.Analyzers;
 using Spectre.Console;
 
 namespace CarrotBacktesting.NET.Analysis.Exporters;
@@ -26,6 +27,8 @@ public sealed record ConsoleExporterOptions
     public bool ShowExitTiming { get; init; } = true;
     public bool ShowTradeTags { get; init; } = true;
     public bool ShowSignalGroups { get; init; } = true;
+    public bool ShowExtensions { get; init; } = true;
+    public bool ShowCustomArtifacts { get => ShowExtensions; init => ShowExtensions = value; }
 
     // 交付选项
     public bool SaveHtml { get; init; } = false;
@@ -78,7 +81,7 @@ public sealed class ConsoleExporter : IReportExporter
         targetConsole.WriteLine();
         targetConsole.Write(new Rule("[bold cyan]CarrotQuant 量化回测与实盘绩效归因报告[/]").Centered());
 
-        if (_options.ShowPortfolio)
+        if (_options.ShowPortfolio && report.Portfolio != null)
         {
             RenderPortfolio(targetConsole, report.Portfolio);
 
@@ -88,12 +91,12 @@ public sealed class ConsoleExporter : IReportExporter
             }
         }
 
-        if (_options.ShowCapital)
+        if (_options.ShowCapital && report.Capital != null)
         {
             RenderCapital(targetConsole, report.Capital);
         }
 
-        if (_options.ShowTrades)
+        if (_options.ShowTrades && report.Trades != null)
         {
             RenderTrades(targetConsole, report.Trades);
 
@@ -113,7 +116,7 @@ public sealed class ConsoleExporter : IReportExporter
             }
         }
 
-        if (_options.ShowCost)
+        if (_options.ShowCost && report.Cost != null)
         {
             RenderCost(targetConsole, report.Cost);
         }
@@ -125,6 +128,20 @@ public sealed class ConsoleExporter : IReportExporter
             if (_options.ShowSignalGroups && report.Signals.GroupBreakdowns.Count > 0)
             {
                 RenderSignalGroups(targetConsole, report.Signals.GroupBreakdowns);
+            }
+        }
+
+        if (_options.ShowExtensions)
+        {
+            for (int i = 0; i < report.Results.Count; i++)
+            {
+                var res = report.Results[i];
+                if (res is PortfolioStatistics or CapitalStatistics or TradeStatistics or CostStatistics or SignalStatistics)
+                {
+                    continue;
+                }
+
+                RenderGenericResult(targetConsole, res);
             }
         }
 
@@ -171,17 +188,22 @@ public sealed class ConsoleExporter : IReportExporter
             "日度 95% 在险价值 (VaR95)", $"{p.DailyVaR95:P2}"
         );
 
-        if (p.BenchmarkReturn != 0 || p.Beta != 0 || p.Alpha != 0 || p.InformationRatio != 0)
+        if (p.BenchmarkReturn.HasValue || p.Beta.HasValue || p.Alpha.HasValue || p.InformationRatio.HasValue)
         {
-            string benchColor = p.BenchmarkReturn >= 0 ? "springgreen3" : "indianred";
-            string alphaColor = p.Alpha >= 0 ? "springgreen3" : "indianred";
+            string benchColor = (p.BenchmarkReturn ?? 0.0) >= 0 ? "springgreen3" : "indianred";
+            string alphaColor = (p.Alpha ?? 0.0) >= 0 ? "springgreen3" : "indianred";
+            string benchStr = p.BenchmarkReturn.HasValue ? $"{p.BenchmarkReturn.Value:P2}" : "N/A";
+            string betaStr = p.Beta.HasValue ? $"{p.Beta.Value:F2}" : "N/A";
+            string alphaStr = p.Alpha.HasValue ? $"{p.Alpha.Value:P2}" : "N/A";
+            string irStr = p.InformationRatio.HasValue ? $"{p.InformationRatio.Value:F2}" : "N/A";
+
             table.AddRow(
-                "基准累计收益 (Benchmark)", $"[{benchColor}]{p.BenchmarkReturn:P2}[/]",
-                "系统贝塔 (Beta)", $"[yellow1]{p.Beta:F2}[/]"
+                "基准累计收益 (Benchmark)", $"[{benchColor}]{benchStr}[/]",
+                "系统贝塔 (Beta)", $"[yellow1]{betaStr}[/]"
             );
             table.AddRow(
-                "詹森阿尔法 (Alpha)", $"[{alphaColor}]{p.Alpha:P2}[/]",
-                "信息比率 (Information Ratio)", $"[deepskyblue1]{p.InformationRatio:F2}[/]"
+                "詹森阿尔法 (Alpha)", $"[{alphaColor}]{alphaStr}[/]",
+                "信息比率 (Information Ratio)", $"[deepskyblue1]{irStr}[/]"
             );
         }
 
@@ -447,6 +469,30 @@ public sealed class ConsoleExporter : IReportExporter
                 $"T+{sub.PeakHorizonStep}",
                 $"[springgreen3]{avgStr}[/]",
                 $"[deepskyblue1]{winStr}[/]"
+            );
+        }
+
+        console.Write(table);
+    }
+
+    private static void RenderGenericResult(IAnsiConsole console, IAnalysisResult result)
+    {
+        console.Write(new Rule($"[bold yellow]{Markup.Escape(result.Title)} ({Markup.Escape(result.Name)})[/]").LeftJustified());
+
+        var metrics = result.GetMetrics().ToList();
+        if (metrics.Count == 0) return;
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("指标名称 (Metric)");
+        table.AddColumn(new TableColumn("数值 (Value)").RightAligned());
+        table.AddColumn("分类 (Category)");
+
+        foreach (var m in metrics)
+        {
+            table.AddRow(
+                $"[bold]{Markup.Escape(m.Label)}[/]",
+                $"[cyan]{Markup.Escape(m.Value)}[/]",
+                $"{Markup.Escape(m.Category ?? string.Empty)}"
             );
         }
 

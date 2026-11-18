@@ -1,65 +1,42 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
 
-namespace CarrotBacktesting.NET.Abstraction.Analysis;
+namespace CarrotBacktesting.NET.Analysis.Analyzers;
 
 /// <summary>
-/// 信号样本聚合统计模型 (Signal Sample Statistics)。
-/// 统筹指定样本集合（全局样本或月度样本）的有效样本量、胜率、均值、中位数及盈亏比。
+/// 第五层：独立 Alpha 策略信号前向收益分析器 (Signal Analyzer)。
+/// 计算 T+1..T+N 前向收益分布、最优持有周期识别、双口径加权（样本等权 vs 月度时间等权）与分组切片归因。
+/// 分析完成后输出只读不可变的 SignalStatistics 统计模型。
 /// </summary>
-/// <param name="SignalCount">有效样本数量。</param>
-/// <param name="WinRate">胜率 (收益率 > 0 的占比)。</param>
-/// <param name="AvgReturn">平均收益率。</param>
-/// <param name="MedianReturn">中位数收益率。</param>
-/// <param name="AvgWin">平均盈利。</param>
-/// <param name="AvgLoss">平均亏损。</param>
-/// <param name="WinLossRatio">盈亏比 (AvgWin / |AvgLoss|)。</param>
-public readonly record struct SignalSampleStatistics(
-    int SignalCount,
-    double WinRate,
-    double AvgReturn,
-    double MedianReturn,
-    double AvgWin,
-    double AvgLoss,
-    double WinLossRatio
-);
-
-/// <summary>
-/// 单个前向周期（T+Step）的信号多维度评估统计模型 (Signal Horizon Statistics)。
-/// </summary>
-/// <param name="Step">前向步数/天数 (1..N)。</param>
-/// <param name="SampleWeighted">全量样本等权表现 (Global Sample-Weighted)。</param>
-/// <param name="TimeWeighted">时间等权表现 (月度均化，消除单月信号聚集偏差)。</param>
-public sealed record SignalHorizonStatistics(
-    int Step,
-    SignalSampleStatistics SampleWeighted,
-    SignalSampleStatistics TimeWeighted
-);
-
-/// <summary>
-/// 独立 Alpha 信号前向质量统计模型 (Signal Statistics)。
-/// 继承并升级 V3 SignalAnalyzer 核心算法，基于行情矩阵纳秒级提取前向 T+1..T+N 收益分布、双口径加权与最优持有期。
-/// 内置静态工厂方法 Create，纯函数式高吞吐构建。
-/// </summary>
-public sealed record SignalStatistics(
-    int TotalSignals,
-    int HorizonSteps,
-    IReadOnlyList<SignalHorizonStatistics> Horizons,
-    int PeakHorizonStep,
-    IReadOnlyDictionary<string, SignalStatistics> GroupBreakdowns
-)
+public sealed class SignalAnalyzer : AnalyzerBase<SignalStatistics>
 {
+    /// <inheritdoc />
+    public override string Name => "Signals";
+
+    /// <inheritdoc />
+    public override SignalStatistics? Analyze(
+        TradingResult facts,
+        AnalysisOptions options,
+        ITimeseriesRegistry? timeseries)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        ArgumentNullException.ThrowIfNull(options);
+
+        return Calculate(facts.Signals, timeseries, options);
+    }
+
     private sealed record SignalSample(
         SignalRecord Signal,
         double[] ForwardReturns
     );
 
     /// <summary>
-    /// 从策略信号记录集合与只读时序行情矩阵构建信号前向评估统计对象。
+    /// 从策略信号记录集合与只读时序行情矩阵计算并构建信号前向评估统计对象。
     /// </summary>
-    public static SignalStatistics? Create(
+    public static SignalStatistics? Calculate(
         IReadOnlyList<SignalRecord> signals,
         ITimeseriesRegistry? timeseries,
         AnalysisOptions options)
@@ -78,6 +55,13 @@ public sealed record SignalStatistics(
         }
 
         return CalculateCore(signals, timeseries, options, isRoot: true);
+    }
+
+    private static int ResolveDateIndex(IMarketMetadata metadata, DateTime time)
+    {
+        int idx = metadata.GetDateIndex(time);
+        if (idx >= 0) return idx;
+        return metadata.GetDateIndex(time.Date);
     }
 
     private static SignalStatistics? CalculateCore(
@@ -99,12 +83,13 @@ public sealed record SignalStatistics(
             int col = metadata.GetSymbolIndex(sig.Symbol);
             if (col < 0) continue;
 
-            int row = metadata.GetDateIndex(sig.Time.Date);
+            int row = ResolveDateIndex(metadata, sig.Time);
             if (row < 0 || row >= rowCount) continue;
 
             double p0 = matrix[row, col];
             if (double.IsNaN(p0) || p0 <= 0) continue;
 
+            double direction = sig.SignalValue < 0 ? -1.0 : 1.0;
             var fwdReturns = new double[horizonSteps];
             bool hasValid = false;
 
@@ -116,7 +101,7 @@ public sealed record SignalStatistics(
                     double pk = matrix[targetRow, col];
                     if (!double.IsNaN(pk) && pk > 0)
                     {
-                        fwdReturns[k] = (pk - p0) / p0;
+                        fwdReturns[k] = direction * ((pk - p0) / p0);
                         hasValid = true;
                     }
                     else
@@ -198,15 +183,28 @@ public sealed record SignalStatistics(
         var groupBreakdowns = new Dictionary<string, SignalStatistics>(StringComparer.OrdinalIgnoreCase);
         if (isRoot)
         {
-            var groups = signals.Where(s => !string.IsNullOrWhiteSpace(s.SignalGroup) && !string.Equals(s.SignalGroup, "default", StringComparison.OrdinalIgnoreCase))
-                                .GroupBy(s => s.SignalGroup, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var g in groups)
+            var groups = new Dictionary<string, List<SignalRecord>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < signals.Count; i++)
             {
-                var subMetric = CalculateCore(g.ToList(), timeseries, options, isRoot: false);
+                var grp = signals[i].SignalGroup;
+                if (string.IsNullOrWhiteSpace(grp) || string.Equals(grp, "default", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                if (!groups.TryGetValue(grp, out var list))
+                {
+                    list = new List<SignalRecord>();
+                    groups[grp] = list;
+                }
+                list.Add(signals[i]);
+            }
+
+            foreach (var kvp in groups)
+            {
+                var subMetric = CalculateCore(kvp.Value, timeseries, options, isRoot: false);
                 if (subMetric != null)
                 {
-                    groupBreakdowns[g.Key] = subMetric;
+                    groupBreakdowns[kvp.Key] = subMetric;
                 }
             }
         }
@@ -274,21 +272,48 @@ public sealed record SignalStatistics(
 
     private static SignalSampleStatistics ComputeTimeWeightedPerf(List<SignalSampleStatistics> monthlyPerfs, int totalSignalCount)
     {
-        if (monthlyPerfs.Count == 0)
+        int mCount = monthlyPerfs.Count;
+        if (mCount == 0)
         {
             return new SignalSampleStatistics(0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         }
 
-        double avgWinRate = monthlyPerfs.Average(p => p.WinRate);
-        double avgReturn = monthlyPerfs.Average(p => p.AvgReturn);
-        double avgMedian = monthlyPerfs.Average(p => p.MedianReturn);
+        double sumWinRate = 0.0;
+        double sumReturn = 0.0;
+        double sumMedian = 0.0;
 
-        // 仅对存在盈利/亏损样本的月份均化，防止无胜/无负月份稀释平均幅度
-        var winMonths = monthlyPerfs.Where(p => p.AvgWin > 0).ToList();
-        double avgWin = winMonths.Count > 0 ? winMonths.Average(p => p.AvgWin) : 0.0;
+        int winMonthCount = 0;
+        double sumWin = 0.0;
 
-        var lossMonths = monthlyPerfs.Where(p => p.AvgLoss < 0).ToList();
-        double avgLoss = lossMonths.Count > 0 ? lossMonths.Average(p => p.AvgLoss) : 0.0;
+        int lossMonthCount = 0;
+        double sumLoss = 0.0;
+
+        for (int i = 0; i < mCount; i++)
+        {
+            var p = monthlyPerfs[i];
+            sumWinRate += p.WinRate;
+            sumReturn += p.AvgReturn;
+            sumMedian += p.MedianReturn;
+
+            if (p.AvgWin > 0)
+            {
+                winMonthCount++;
+                sumWin += p.AvgWin;
+            }
+
+            if (p.AvgLoss < 0)
+            {
+                lossMonthCount++;
+                sumLoss += p.AvgLoss;
+            }
+        }
+
+        double avgWinRate = sumWinRate / mCount;
+        double avgReturn = sumReturn / mCount;
+        double avgMedian = sumMedian / mCount;
+
+        double avgWin = winMonthCount > 0 ? sumWin / winMonthCount : 0.0;
+        double avgLoss = lossMonthCount > 0 ? sumLoss / lossMonthCount : 0.0;
 
         double winLossRatio = Math.Abs(avgLoss) > 1e-9
             ? avgWin / Math.Abs(avgLoss)
@@ -315,4 +340,83 @@ public sealed record SignalStatistics(
         }
         return (sorted[mid - 1] + sorted[mid]) / 2.0;
     }
+}
+
+/// <summary>
+/// 信号样本聚合统计模型 (Signal Sample Statistics)。
+/// 统筹指定样本集合（全局样本或月度样本）的有效样本量、胜率、均值、中位数及盈亏比。
+/// </summary>
+/// <param name="SignalCount">有效样本数量。</param>
+/// <param name="WinRate">胜率 (收益率 > 0 的占比)。</param>
+/// <param name="AvgReturn">平均收益率。</param>
+/// <param name="MedianReturn">中位数收益率。</param>
+/// <param name="AvgWin">平均盈利。</param>
+/// <param name="AvgLoss">平均亏损。</param>
+/// <param name="WinLossRatio">盈亏比 (AvgWin / |AvgLoss|)。</param>
+public readonly record struct SignalSampleStatistics(
+    int SignalCount,
+    double WinRate,
+    double AvgReturn,
+    double MedianReturn,
+    double AvgWin,
+    double AvgLoss,
+    double WinLossRatio
+);
+
+/// <summary>
+/// 单个前向周期（T+Step）的信号多维度评估统计模型 (Signal Horizon Statistics)。
+/// </summary>
+/// <param name="Step">前向步数/天数 (1..N)。</param>
+/// <param name="SampleWeighted">全量样本等权表现 (Global Sample-Weighted)。</param>
+/// <param name="TimeWeighted">时间等权表现 (月度均化，消除单月信号聚集偏差)。</param>
+public sealed record SignalHorizonStatistics(
+    int Step,
+    SignalSampleStatistics SampleWeighted,
+    SignalSampleStatistics TimeWeighted
+);
+
+/// <summary>
+/// 独立 Alpha 信号前向质量统计模型 (Signal Statistics)。
+/// 基于行情矩阵提取前向 T+1..T+N 收益分布、双口径加权与最优持有期。
+/// 纯数据 Record，实现统一的 IAnalysisResult 契约，支持自描述指标流。
+/// </summary>
+public sealed record SignalStatistics(
+    int TotalSignals,
+    int HorizonSteps,
+    IReadOnlyList<SignalHorizonStatistics> Horizons,
+    int PeakHorizonStep,
+    IReadOnlyDictionary<string, SignalStatistics> GroupBreakdowns
+) : IAnalysisResult
+{
+    /// <inheritdoc />
+    public string Name => "signals";
+
+    /// <inheritdoc />
+    public string Title => "独立 Alpha 信号前向收益评估";
+
+    /// <inheritdoc />
+    public IEnumerable<MetricItem> GetMetrics()
+    {
+        yield return new("总信号样本数 (Total Signals)", $"{TotalSignals}", "信号概况");
+        yield return new("评估前向周期步数 (Horizon Steps)", $"{HorizonSteps} 步", "周期设置");
+        yield return new("最优持有周期推荐 (Peak Horizon)", $"T+{PeakHorizonStep}", "最优决策");
+
+        if (PeakHorizonStep > 0 && PeakHorizonStep <= Horizons.Count)
+        {
+            var best = Horizons[PeakHorizonStep - 1];
+            yield return new($"T+{PeakHorizonStep} 样本等权胜率", $"{best.SampleWeighted.WinRate:P2}", "最优周期表现");
+            yield return new($"T+{PeakHorizonStep} 样本等权平均收益", $"{best.SampleWeighted.AvgReturn:P2}", "最优周期表现");
+            yield return new($"T+{PeakHorizonStep} 时间等权胜率", $"{best.TimeWeighted.WinRate:P2}", "最优周期表现");
+            yield return new($"T+{PeakHorizonStep} 时间等权平均收益", $"{best.TimeWeighted.AvgReturn:P2}", "最优周期表现");
+        }
+    }
+
+    /// <summary>
+    /// 从策略信号记录集合与只读时序行情矩阵构建信号前向评估统计对象（转发至 SignalAnalyzer.Calculate）。
+    /// </summary>
+    public static SignalStatistics? Create(
+        IReadOnlyList<SignalRecord> signals,
+        ITimeseriesRegistry? timeseries,
+        AnalysisOptions options)
+        => SignalAnalyzer.Calculate(signals, timeseries, options);
 }

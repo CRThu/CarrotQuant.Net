@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using CarrotBacktesting.NET.Abstraction.Analysis;
+using CarrotBacktesting.NET.Analysis.Analyzers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Analysis;
@@ -217,5 +218,85 @@ public class SignalStatisticsTests
         var groupB = stats.GroupBreakdowns["GroupB"];
         Assert.AreEqual(1, groupB.TotalSignals);
         Assert.AreEqual(-0.10, groupB.Horizons[0].SampleWeighted.AvgReturn, 1e-4);
+    }
+
+    [TestMethod]
+    public void Create_ShortSignals_ComputesExactSymmetricReturns()
+    {
+        var dates = new List<DateTime>();
+        var t0 = new DateTime(2024, 1, 1);
+        for (int i = 0; i < 5; i++) dates.Add(t0.AddDays(i));
+
+        var symbols = new[] { "sh.600000" };
+        var metadata = new MockMetadata(symbols, dates);
+
+        // 标的价格下跌：100 -> 90 (-10%) -> 70 (-30%)
+        var prices = new double[5, 1]
+        {
+            { 100.0 }, { 90.0 }, { 70.0 }, { 80.0 }, { 85.0 }
+        };
+
+        var timeseries = new MockTimeseriesRegistry(metadata);
+        timeseries.SetMatrix("close", new MockMatrix(prices));
+
+        // 做空信号 SignalValue = -1.0
+        var signal = new SignalRecord(dates[0], "sh.600000", -1.0, "ShortAlpha", "Breakdown");
+
+        var options = new AnalysisOptions { SignalHorizonSteps = 2 };
+        var stats = SignalStatistics.Create(new[] { signal }, timeseries, options);
+
+        Assert.IsNotNull(stats);
+        Assert.AreEqual(1, stats.TotalSignals);
+
+        // T+1: 标的跌 10%，做空信号前向收益应为 +10%
+        Assert.AreEqual(0.10, stats.Horizons[0].SampleWeighted.AvgReturn, 1e-4);
+        Assert.AreEqual(1.0, stats.Horizons[0].SampleWeighted.WinRate, 1e-4);
+
+        // T+2: 标的跌 30%，做空信号前向收益应为 +30%
+        Assert.AreEqual(0.30, stats.Horizons[1].SampleWeighted.AvgReturn, 1e-4);
+        Assert.AreEqual(1.0, stats.Horizons[1].SampleWeighted.WinRate, 1e-4);
+        Assert.AreEqual(2, stats.PeakHorizonStep);
+    }
+
+    [TestMethod]
+    public void Create_TimeWeighted_WithZeroWinOrZeroLossMonths_HandlesGracefully()
+    {
+        var dates = new List<DateTime>
+        {
+            new(2024, 1, 1),
+            new(2024, 1, 2),
+            new(2024, 2, 1),
+            new(2024, 2, 2)
+        };
+        var symbols = new[] { "sh.600000" };
+        var metadata = new MockMetadata(symbols, dates);
+
+        // 1月: 100 -> 110 (+10% 全胜，无亏损)
+        // 2月: 100 -> 90  (-10% 全败，无盈利)
+        var prices = new double[4, 1]
+        {
+            { 100.0 }, { 110.0 }, { 100.0 }, { 90.0 }
+        };
+
+        var timeseries = new MockTimeseriesRegistry(metadata);
+        timeseries.SetMatrix("close", new MockMatrix(prices));
+
+        var sig1 = new SignalRecord(dates[0], "sh.600000", 1.0, "G1", "");
+        var sig2 = new SignalRecord(dates[2], "sh.600000", 1.0, "G1", "");
+
+        var options = new AnalysisOptions { SignalHorizonSteps = 1 };
+        var stats = SignalStatistics.Create(new[] { sig1, sig2 }, timeseries, options);
+
+        Assert.IsNotNull(stats);
+        var tw = stats.Horizons[0].TimeWeighted;
+
+        // 1月 WinRate=1.0, AvgWin=0.10, AvgLoss=0.0
+        // 2月 WinRate=0.0, AvgWin=0.0, AvgLoss=-0.10
+        // TimeWeighted: WinRate = (1.0 + 0.0)/2 = 0.50
+        Assert.AreEqual(0.50, tw.WinRate, 1e-4);
+        Assert.AreEqual(0.00, tw.AvgReturn, 1e-4);
+        Assert.AreEqual(0.10, tw.AvgWin, 1e-4);
+        Assert.AreEqual(-0.10, tw.AvgLoss, 1e-4);
+        Assert.AreEqual(1.0, tw.WinLossRatio, 1e-4);
     }
 }

@@ -17,6 +17,8 @@ CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易�
 - **泛型事件系统**: 用户只需定义 record 类型，框架自动完成 CSV/Parquet → T 的零配置映射。
 - **策略管线**: 支持串联/并联组合模式，引擎启动前通过 `Compile()` 优化拓扑。
 - **Context 黑板模式**: 策略间通过 `IEngineContext` 共享状态与数据，实现策略逻辑与交易执行的解耦。
+- **两阶段绩效分析**: 运行期通过 `TradingRecorder` 低开销沉淀纯交易事实（`TradingResult`），收尾期通过 `AnalysisEngine` 单路径驱动四层量化统计（组合净值、资本利用、交易归因、现实成本）与独立 Alpha 信号前向质量评估。
+- **可插拔报表导出**: 表现层物理隔离，基于 `IReportExporter` 契约与 `GetMetrics()` 自描述指标流实现零耦合通排，支持终端彩色表格仪表盘与单文件深色 HTML 报表持久化（`ConsoleExporter`）。
 
 ---
 
@@ -24,7 +26,7 @@ CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易�
 
 | 目录/项目 | 说明 |
 | :--- | :--- |
-| **CarrotBacktesting.NET** | **核心引擎**。包含数据层接口与实现、引擎抽象、策略接口。 |
+| **CarrotBacktesting.NET** | **核心引擎**。包含数据层、经纪商与撮合、指标体系、引擎驱动、策略抽象、绩效分析与报表导出。 |
 | **CarrotBackTesting.Net.UnitTest** | **单元测试**。覆盖数据层全部组件，含真实测试数据校验。 |
 | **CarrotBackTesting.NET.TestData** | **测试数据集**。CSV/Parquet 格式的 A 股行情与复权因子数据。 |
 | **CarrotBacktesting.NET.Demo** | **回测示例**。 |
@@ -68,6 +70,19 @@ string industry = industryTable["sh.601958"]["board_name"];
 var metalStocks = industryTable.GetKeys("钼"); // 无需记忆列名，全表倒排反查
 ```
 
+### 5. 执行绩效分析与报表导出
+```csharp
+// 运行回测获取事实账本
+TradingResult result = engine.Run();
+
+// 驱动单路径分析管线生成综合报告
+IAnalysisEngine analysisEngine = AnalysisEngine.CreateDefault();
+AnalysisReport report = analysisEngine.Analyze(result);
+
+// 导出控制台仪表盘与深色 HTML 报表
+ConsoleExporter.Default.Export(report);
+```
+
 ---
 
 ## 架构概览
@@ -86,8 +101,18 @@ var metalStocks = industryTable.GetKeys("钼"); // 无需记忆列名，全表�
                    │ │ Broker / Ledger    │ │
                    │ └─────────┬──────────┘ │
                    │           ▼            │
-                   │ ┌────────────────────┐ │
                    │ │ Exchange / Matching│ │
+                   │ └────────────────────┘ │
+                   └────────────┬───────────┘
+                                │ TradingRecorder (Facts)
+                                ▼
+                   ┌────────────────────────┐
+                   │  Analysis & Exporters  │
+                   │ ┌────────────────────┐ │
+                   │ │  AnalysisEngine    │ │
+                   │ └─────────┬──────────┘ │
+                   │           ▼            │
+                   │ │  ConsoleExporter   │ │
                    │ └────────────────────┘ │
                    └────────────────────────┘
 ```
@@ -101,6 +126,8 @@ var metalStocks = industryTable.GetKeys("钼"); // 无需记忆列名，全表�
 - **[核心引擎与执行体系 (docs/engine.md)](docs/engine.md)**: 引擎生命周期五态状态机、主时钟步进流水线、检查点持久化（`ICheckpointable`）。
 - **[流式指标与计算属性开发指南 (docs/indicators.md)](docs/indicators.md)**: 增量流式指标契约（`IStreamIndicator`）、全市场标的数组容器（`IndicatorPool<T>`）、注册中心单步驱动、取价门面与除权因子安全供给。
 - **[策略子系统与管线开发指南 (docs/strategy.md)](docs/strategy.md)**: 统一策略抽象、组合策略管线（串行/并行多核并发）、通用强类型黑板、Roslyn 动态免编译加载。
+- **[绩效分析与量化评估子系统 (docs/analysis.md)](docs/analysis.md)**: 两阶段解耦架构、事实单一事实来源（`TradingResult`）、四层量化统计模型（组合净值、资本利用、交易归因、现实成本）、独立 Alpha 前向质量评估、垂直切片单文件高内聚组织。
+- **[报表导出与呈现子系统开发指南 (docs/exporter.md)](docs/exporter.md)**: `IReportExporter` 契约规范、自描述指标流零耦合渲染机制、`ConsoleExporter` 控制台仪表盘、深色 HTML 报表持久化与自定义导出器扩展。
 - **[配置管理与环境组织 (docs/configuration.md)](docs/configuration.md)**: `SessionConfig` 四大正交支柱、多态数据外链、跨环境基准路径级联解析与参数全量字典。
 - **[底层数据存储与物理格式规范 (docs/data_format.md)](docs/data_format.md)**: 物理目录组织、Table ID 规范、Hive 年月分区、双时间轴契约与自描述缺省回退。
 - **[标准研发工作流 (docs/workflow.md)](docs/workflow.md)**: 演示从数据准备、YAML 配置、策略编写到驱动引擎的标准实战流程。

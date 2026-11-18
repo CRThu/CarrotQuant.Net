@@ -1,26 +1,36 @@
 using System;
 using System.Collections.Generic;
+using CarrotBacktesting.NET.Abstraction.Analysis;
+using CarrotBacktesting.NET.Abstraction.Data;
 
-namespace CarrotBacktesting.NET.Abstraction.Analysis;
+namespace CarrotBacktesting.NET.Analysis.Analyzers;
 
 /// <summary>
-/// 第二层：资本利用与资金敞口统计模型 (Capital Statistics)。
-/// 统筹平均/最大持仓比例、平均/最大保证金占用率、现金闲置率 (Cash Drag) 与年化换手率。
-/// 内置静态工厂方法 Create，纯函数式高吞吐构建。
+/// 第二层：资本利用与杠杆敞口分析器 (Capital Analyzer)。
+/// 计算平均/最大持仓比例、平均/最大保证金占用、现金闲置率与年化换手率。
+/// 分析完成后输出只读不可变的 CapitalStatistics 统计模型。
 /// </summary>
-public sealed record CapitalStatistics(
-    double AveragePositionRatio,
-    double MaxPositionRatio,
-    double AverageMarginRatio,
-    double MaxMarginRatio,
-    double CashDrag,
-    double AnnualizedTurnover
-)
+public sealed class CapitalAnalyzer : AnalyzerBase<CapitalStatistics>
 {
+    /// <inheritdoc />
+    public override string Name => "Capital";
+
+    /// <inheritdoc />
+    public override CapitalStatistics? Analyze(
+        TradingResult facts,
+        AnalysisOptions options,
+        ITimeseriesRegistry? timeseries)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        ArgumentNullException.ThrowIfNull(options);
+
+        return Calculate(facts.DailySnapshots, facts.EquityCurve, facts.Settlements, options);
+    }
+
     /// <summary>
-    /// 从日终快照、净值曲线及交割单流水构建资本利用与敞口统计对象。
+    /// 从日终快照、净值曲线及交割单流水计算并构建资本利用与敞口统计对象。
     /// </summary>
-    public static CapitalStatistics Create(
+    public static CapitalStatistics Calculate(
         IReadOnlyList<DailySnapshot> dailySnapshots,
         IReadOnlyList<EquityPoint> equityCurve,
         IReadOnlyList<SettlementRecord> settlements,
@@ -127,4 +137,46 @@ public sealed record CapitalStatistics(
             AnnualizedTurnover: annualizedTurnover
         );
     }
+}
+
+/// <summary>
+/// 第二层：资本利用与资金敞口统计模型 (Capital Statistics)。
+/// 统筹平均/最大持仓比例、平均/最大保证金占用率、现金闲置率 (Cash Drag) 与年化换手率。
+/// 纯数据 Record，实现统一的 IAnalysisResult 契约，支持自描述指标流。
+/// </summary>
+public sealed record CapitalStatistics(
+    double AveragePositionRatio,
+    double MaxPositionRatio,
+    double AverageMarginRatio,
+    double MaxMarginRatio,
+    double CashDrag,
+    double AnnualizedTurnover
+) : IAnalysisResult
+{
+    /// <inheritdoc />
+    public string Name => "capital";
+
+    /// <inheritdoc />
+    public string Title => "资本利用与敞口分析";
+
+    /// <inheritdoc />
+    public IEnumerable<MetricItem> GetMetrics()
+    {
+        yield return new("平均持仓占比 (Avg Position)", $"{AveragePositionRatio:P2}", "仓位暴露");
+        yield return new("最大持仓占比 (Max Position)", $"{MaxPositionRatio:P2}", "仓位暴露");
+        yield return new("平均保证金占用 (Avg Margin)", $"{AverageMarginRatio:P2}", "杠杆安全");
+        yield return new("最大保证金占用 (Max Margin)", $"{MaxMarginRatio:P2}", "杠杆安全");
+        yield return new("现金闲置率 (Cash Drag)", $"{CashDrag:P2}", "资金效率");
+        yield return new("年化换手率 (Turnover)", $"{AnnualizedTurnover:F2}x", "交易频率");
+    }
+
+    /// <summary>
+    /// 从日终快照、净值曲线及交割单流水构建资本利用与敞口统计对象（转发至 CapitalAnalyzer.Calculate）。
+    /// </summary>
+    public static CapitalStatistics Create(
+        IReadOnlyList<DailySnapshot> dailySnapshots,
+        IReadOnlyList<EquityPoint> equityCurve,
+        IReadOnlyList<SettlementRecord> settlements,
+        AnalysisOptions options)
+        => CapitalAnalyzer.Calculate(dailySnapshots, equityCurve, settlements, options);
 }

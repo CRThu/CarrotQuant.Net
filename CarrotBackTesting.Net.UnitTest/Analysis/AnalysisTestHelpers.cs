@@ -34,12 +34,20 @@ public sealed class MockMetadata : IMarketMetadata
         FieldNames = fieldNames ?? new[] { "close", "open", "high", "low" };
 
         for (int i = 0; i < symbols.Count; i++) _symbolMap[symbols[i]] = i;
-        for (int i = 0; i < tradeDates.Count; i++) _dateMap[tradeDates[i].Date] = i;
+        for (int i = 0; i < tradeDates.Count; i++)
+        {
+            _dateMap[tradeDates[i]] = i;
+            _dateMap.TryAdd(tradeDates[i].Date, i);
+        }
     }
 
     public Type GetFieldType(string fieldName) => typeof(double);
     public int GetSymbolIndex(string symbol) => _symbolMap.TryGetValue(symbol, out int idx) ? idx : -1;
-    public int GetDateIndex(DateTime date) => _dateMap.TryGetValue(date.Date, out int idx) ? idx : -1;
+    public int GetDateIndex(DateTime date)
+    {
+        if (_dateMap.TryGetValue(date, out int idx)) return idx;
+        return _dateMap.TryGetValue(date.Date, out idx) ? idx : -1;
+    }
 }
 
 public sealed class MockTimeseriesRegistry : ITimeseriesRegistry

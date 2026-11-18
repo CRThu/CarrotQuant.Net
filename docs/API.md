@@ -10,13 +10,13 @@
 ## 目录
 - [一、配置层 (CarrotBacktesting.NET.Config)](#一配置层-carrotbacktestingnetconfig)
 - [二、存储调度与数据物理层 (Abstraction.Data & Data)](#二存储调度与数据物理层-abstractiondata--data)
-- [三、内存数据供给层 (ITimeseriesRegistry & ChunkMatrix2D)](#三内存数据供给层-idataprovider--chunkmatrix2d)
+- [三、内存数据供给层 (ITimeseriesRegistry & ChunkMatrix2D)](#三内存数据供给层-itimeseriesregistry--chunkmatrix2d)
 - [四、异构事件流系统 (Event Stream System)](#四异构事件流系统-event-stream-system)
 - [五、标的静态属性与维表系统 (Fields System)](#五标的静态属性与维表系统-fields-system)
 - [六、引擎与黑板上下文 (Engine & Execution Context)](#六引擎与黑板上下文-engine--execution-context)
 - [七、独立指标与计算属性子系统 (Indicators & Computed Properties)](#七独立指标与计算属性子系统-indicators--computed-properties)
 - [八、策略与管线开发 (Strategy & Pipeline)](#八策略与管线开发-strategy--pipeline)
-- [九、流水记录与分析层 (Analysis & Recorder)](#九流水记录与分析层-analysis--recorder)
+- [九、交易事实沉淀与分析层 (Analysis & Recorder)](#九交易事实沉淀与分析层-analysis--recorder)
 
 ---
 
@@ -957,31 +957,34 @@ public interface ITradingRecorder
 - **`DailySnapshot`**: 跨日收盘全景资产与持仓透视快照，包含 `List<PositionSnapshot>`，用于 Barra 风格归因与实盘对账。
 - **`TradingResult`**: 综合不可变结果集，聚合 `Settlements`, `ClosedTrades`, `OpenPositions`, `EquityCurve`, `DailySnapshots`, `Signals`，作为下游绩效分析与报告渲染的单一事实来源。
 
-### 3. 统计模型体系 (Statistics Architecture)
-遵循 QuantConnect Lean 体系与纯函数式 `Create(...)` 静态工厂范式，详见 [绩效分析与报表子系统 (analysis.md)](analysis.md)：
-- **`PortfolioStatistics`**: 第一层组合净值与风险统计（`TotalReturn`, `AnnualizedReturn`, `AnnualizedVolatility`, `DownsideVolatility`, `MaxDrawdown`, `MaxDrawdownPeakTime`, `MaxDrawdownTroughTime`, `MaxDrawdownRecoveryTime`, `MaxDrawdownDurationSteps`, `SharpeRatio`, `SortinoRatio`, `CalmarRatio`, `DailyVaR95`, `DailyCVaR95`, `BenchmarkReturn`, `Alpha`, `Beta`, `InformationRatio`, `MonthlyReturns`）。通过 `PortfolioStatistics.Create(...)` 纯函数式构建。
-- **`CapitalStatistics`**: 第二层资本利用与敞口统计（`AveragePositionRatio`, `MaxPositionRatio`, `AverageMarginRatio`, `MaxMarginRatio`, `CashDrag`, `AnnualizedTurnover`）。通过 `CapitalStatistics.Create(...)` 构建。
-- **`TradeStatistics`**: 第三层交易行为与执行归因（`TotalTrades`, `WinningTrades`, `LosingTrades`, `BreakevenTrades`, `WinRate`, `LongTrades`, `LongWinningTrades`, `LongWinRate`, `ShortTrades`, `ShortWinningTrades`, `ShortWinRate`, `AverageReturn`, `MedianReturn`, `AverageWinReturn`, `AverageLossReturn`, `WinLossRatio`, `ProfitFactor`, `MaxConsecutiveWins`, `MaxConsecutiveLosses`, `AverageHoldingSteps`, `AverageWinHoldingSteps`, `AverageLossHoldingSteps`, `AverageTradeEfficiency` 多空对称 MFE 捕获效率, `MedianTradeEfficiency`, `ExitTiming` 卖点反思走势, `TagBreakdowns`）。通过 `TradeStatistics.Create(...)` 构建。
-- **`CostStatistics`**: 第四层现实交易成本与损耗统计（`TotalCommission`, `TotalSlippage`, `TotalFrictionCost`, `FeeToGrossProfitRatio` 利润侵蚀比, `AverageFrictionPerTrade`）。通过 `CostStatistics.Create(...)` 构建。
-- **`SignalStatistics`**: 独立 Alpha 信号前向质量统计（`TotalSignals`, `HorizonSteps`, `Horizons`, `PeakHorizonStep`, `GroupBreakdowns`）。支持**样本等权 (`SampleWeighted`)** 与 **月度时间等权 (`TimeWeighted`)** 双口径，通过 `SignalStatistics.Create(...)` 构建。
+### 3. 统计模型体系与垂直切片范式 (Statistics & Vertical Slice Architecture)
+遵循垂直切片单文件高内聚设计：计算逻辑归位于 `*Analyzer`（如 `PortfolioAnalyzer.Calculate`），产物 `*Statistics` 作为纯数据不可变 Record（实现 `IAnalysisResult`）在同文件末尾声明，并保留静态 `Create(...)` 转发，详见 [绩效分析与报表子系统 (analysis.md)](analysis.md)：
+- **`PortfolioStatistics`**: 第一层组合净值与风险统计（`TotalReturn`, `AnnualizedReturn`, `AnnualizedVolatility`, `DownsideVolatility`, `MaxDrawdown`, `MaxDrawdownPeakTime`, `MaxDrawdownTroughTime`, `MaxDrawdownRecoveryTime`, `MaxDrawdownDurationSteps`, `SharpeRatio`, `SortinoRatio`, `CalmarRatio`, `DailyVaR95`, `DailyCVaR95`, `BenchmarkReturn`, `Alpha`, `Beta`, `InformationRatio`, `MonthlyReturns`）。由 `PortfolioAnalyzer` 计算构建。
+- **`CapitalStatistics`**: 第二层资本利用与敞口统计（`AveragePositionRatio`, `MaxPositionRatio`, `AverageMarginRatio`, `MaxMarginRatio`, `CashDrag`, `AnnualizedTurnover`）。由 `CapitalAnalyzer` 计算构建。
+- **`TradeStatistics`**: 第三层交易行为与执行归因（`TotalTrades`, `WinningTrades`, `LosingTrades`, `BreakevenTrades`, `WinRate`, `LongTrades`, `LongWinningTrades`, `LongWinRate`, `ShortTrades`, `ShortWinningTrades`, `ShortWinRate`, `AverageReturn`, `MedianReturn`, `AverageWinReturn`, `AverageLossReturn`, `WinLossRatio`, `ProfitFactor`, `MaxConsecutiveWins`, `MaxConsecutiveLosses`, `AverageHoldingSteps`, `AverageWinHoldingSteps`, `AverageLossHoldingSteps`, `AverageTradeEfficiency` 多空对称 MFE 捕获效率, `MedianTradeEfficiency`, `ExitTiming` 卖点反思走势, `TagBreakdowns`）。由 `TradeAnalyzer` 计算构建。
+- **`CostStatistics`**: 第四层现实交易成本与损耗统计（`TotalCommission`, `TotalSlippage`, `TotalFrictionCost`, `FeeToGrossProfitRatio` 利润侵蚀比, `AverageFrictionPerTrade`）。由 `CostAnalyzer` 计算构建。
+- **`SignalStatistics`**: 独立 Alpha 信号前向质量统计（`TotalSignals`, `HorizonSteps`, `Horizons`, `PeakHorizonStep`, `GroupBreakdowns`）。支持**样本等权 (`SampleWeighted`)** 与 **月度时间等权 (`TimeWeighted`)** 双口径，由 `SignalAnalyzer` 计算构建。
 
-### 4. 分析调度引擎与控制台报告 (IAnalysisEngine & ConsoleExporter)
-- **`IAnalysisEngine`**: 统一分析调度契约，方法 `AnalysisReport Analyze(TradingResult result, AnalysisOptions? options = null, ITimeseriesRegistry? timeseries = null);`。
-- **`AnalysisEngine`**: 调度实现类，自适应提取可选基准指数行情并装配五大 Statistics。
-- **`AnalysisReport`**: 综合报告聚合根，暴露 `Facts`, `Portfolio`, `Capital`, `Trades`, `Cost`, `Signals`。
-- **`IReportExporter`**: 报表导出器契约，定义 `void Export(AnalysisReport report)`。
-- **`ConsoleExporter`**: 基于 `Spectre.Console` 的现代表报导出器，支持强类型布尔配置开关与深色 HTML 一键落盘：
+### 4. 统一单路径分析管线 (Single-Path Analyzer Pipeline)
+- **`IAnalysisResult`**: 统一分析产物自描述契约，包含 `string Name`、`string Title` 与 `IEnumerable<MetricItem> GetMetrics()`，供报表与导出器通排通显。
+- **`IAnalysisEngine`**: 统一单路径分析管线契约，暴露 `Analyzers` 只读序列，支持 `Add(IAnalyzer)` 链式注册、`Remove<T>()` 动态剪枝以及 `Analyze(TradingResult, AnalysisOptions?, ITimeseriesRegistry?)` 统一调度。
+- **`AnalysisEngine`**: 管线调度实现类，单一路径驱动所有已注册的 `IAnalyzer`，默认挂载五大标准分析器（`PortfolioAnalyzer`, `CapitalAnalyzer`, `TradeAnalyzer`, `CostAnalyzer`, `SignalAnalyzer`），支持运行期剪枝与替换。
+- **`IAnalyzer` / `AnalyzerBase<TResult>`**: 统一分析器契约与泛型基类，提供 `string Name` 与 `IAnalysisResult? Analyze(TradingResult facts, AnalysisOptions options, ITimeseriesRegistry? timeseries)`。
+- **`AnalysisReport`**: 综合报告聚合根，持有不可变事实 `Facts` 与统一产物列表 `Results`；暴露统一强类型检索 `report.Get<T>()`、统一索引器 `report[name]`、探针 `report.Has<T>()` 以及常用只读门面属性 `Portfolio`, `Capital`, `Trades`, `Cost`, `Signals`。
+- **`IReportExporter`**: 报表导出器契约，定义 `void Export(AnalysisReport report)`，详见专门白皮书 [报表导出与呈现子系统开发指南 (exporter.md)](exporter.md)。
+- **`ConsoleExporter`**: 控制台报表导出器，支持强类型布尔配置开关与深色主题 HTML 报表持久化：
   ```csharp
-  // 默认全局导出全部模块
-  ConsoleExporter.Default.Export(report);
+  // 1. 动态编排管线：剪枝默认信号评估并链式挂载自定义分析器
+  var engine = new AnalysisEngine()
+      .Remove<SignalAnalyzer>()
+      .Add(new MyCustomBrinsonAnalyzer());
 
-  // 定制开关与一键导出 HTML (天然兼容 YAML/JSON 配置绑定)
-  var exporter = new ConsoleExporter(new ConsoleExporterOptions
-  {
-      ShowSignals = false,       // 屏蔽 Alpha 信号评估
-      ShowMonthlyReturns = false,// 屏蔽逐月矩阵
-      SaveHtml = true,
-      HtmlOutputPath = "output/summary.html"
-  });
-  exporter.Export(report);
+  var report = engine.Analyze(result);
+
+  // 2. 强类型直取分析结果（统一接口）
+  var portfolio = report.Portfolio; // 快捷门面
+  var brinson   = report.Get<BrinsonResult>(); // 统一泛型直取
+
+  // 3. 控制台导出呈现 (支持自定义模块开关)
+  ConsoleExporter.Default.Export(report);
   ```

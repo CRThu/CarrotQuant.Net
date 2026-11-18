@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
+using CarrotBacktesting.NET.Analysis.Analyzers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Analysis;
@@ -344,5 +345,107 @@ public class TradeStatisticsTests
         Assert.AreEqual(1, stats.BreakevenTrades);
         Assert.AreEqual(4, stats.MaxConsecutiveWins);
         Assert.AreEqual(3, stats.MaxConsecutiveLosses);
+    }
+
+    [TestMethod]
+    public void Create_AllBreakevenTrades_HandlesGracefully()
+    {
+        var t0 = new DateTime(2024, 1, 1);
+        var trades = new List<Trade>
+        {
+            new("s", TradeSide.Long, t0, 10, t0.AddDays(1), 10, 100m, 1, 0.0, 0.0, 0, 0, 1, "", ""),
+            new("s", TradeSide.Long, t0.AddDays(1), 10, t0.AddDays(2), 10, 100m, 1, 0.0, 0.0, 0, 0, 1, "", "")
+        };
+
+        var stats = TradeStatistics.Create(trades, new AnalysisOptions());
+
+        Assert.AreEqual(2, stats.TotalTrades);
+        Assert.AreEqual(0, stats.WinningTrades);
+        Assert.AreEqual(0, stats.LosingTrades);
+        Assert.AreEqual(2, stats.BreakevenTrades);
+        Assert.AreEqual(0.0, stats.WinRate);
+        Assert.AreEqual(0.0, stats.WinLossRatio);
+        Assert.AreEqual(0.0, stats.ProfitFactor);
+        Assert.AreEqual(0, stats.MaxConsecutiveWins);
+        Assert.AreEqual(0, stats.MaxConsecutiveLosses);
+    }
+
+    [TestMethod]
+    public void Create_MixedLongAndShortExitTiming_ComputesExactContinuationProbability()
+    {
+        var dates = new List<DateTime>();
+        for (int i = 0; i < 10; i++) dates.Add(new DateTime(2024, 1, 1).AddDays(i));
+        var symbols = new[] { "sh.600000", "sz.000001" };
+        var metadata = new MockMetadata(symbols, dates);
+
+        // sh.600000 (多头标的): 持续上涨 10, 12, 14, 16...
+        // sz.000001 (空头标的): 持续下跌 100, 90, 80, 70...
+        var prices = new double[10, 2];
+        for (int i = 0; i < 10; i++)
+        {
+            prices[i, 0] = 10.0 + i * 2.0;
+            prices[i, 1] = 100.0 - i * 10.0;
+        }
+
+        var timeseries = new MockTimeseriesRegistry(metadata);
+        timeseries.SetMatrix("close", new MockMatrix(prices));
+
+        // Trade 1 (多头): 在 Day 1 @ 12 平仓。后续 Day 2 @ 14 (+16.67%), Day 3 @ 16 (+33.33%)。走势继续上涨（卖早了，ret > 0）
+        var tradeLong = new Trade("sh.600000", TradeSide.Long, dates[0], 10.0, dates[1], 12.0, 100m, 1.0, 200.0, 0.20, 0, 0, 1, "", "");
+
+        // Trade 2 (空头): 在 Day 1 @ 90 平仓。后续 Day 2 @ 80 ((90-80)/90 = +11.11%), Day 3 @ 70 ((90-70)/90 = +22.22%)。走势继续下跌（平空平早了，ret > 0）
+        var tradeShort = new Trade("sz.000001", TradeSide.Short, dates[0], 100.0, dates[1], 90.0, 100m, 1.0, 1000.0, 0.10, 0, 0, 1, "", "");
+
+        var options = new AnalysisOptions { ExitTimingSteps = 2 };
+        var stats = TradeStatistics.Create(new[] { tradeLong, tradeShort }, options, timeseries);
+
+        Assert.IsNotNull(stats.ExitTiming);
+        var et = stats.ExitTiming;
+
+        Assert.AreEqual(2, et.HorizonSteps);
+        Assert.AreEqual(2, et.ValidTradesCount);
+
+        // 两笔交易在平仓后均出现同向持续走势（多头继续涨，空头继续跌），踏空/平早概率均为 100%
+        Assert.AreEqual(1.0, et.WinRates[0], 1e-4);
+        Assert.AreEqual(1.0, et.WinRates[1], 1e-4);
+
+        // 验证多空平均后续踏空收益率均为正
+        Assert.IsTrue(et.AverageReturns[0] > 0.0);
+        Assert.IsTrue(et.AverageReturns[1] > 0.0);
+    }
+
+    [TestMethod]
+    public void Create_IntradayTradesWithDetailedTimes_ResolvesDateIndexCorrectly()
+    {
+        var dates = new List<DateTime>
+        {
+            new(2024, 1, 1, 9, 31, 0),
+            new(2024, 1, 1, 9, 32, 0),
+            new(2024, 1, 1, 9, 33, 0),
+            new(2024, 1, 1, 9, 34, 0),
+            new(2024, 1, 1, 9, 35, 0)
+        };
+        var symbols = new[] { "sh.600000" };
+        var metadata = new MockMetadata(symbols, dates);
+
+        var prices = new double[5, 1]
+        {
+            { 10.0 }, { 12.0 }, { 15.0 }, { 14.0 }, { 13.0 }
+        };
+
+        var timeseries = new MockTimeseriesRegistry(metadata);
+        timeseries.SetMatrix("close", new MockMatrix(prices));
+
+        // 入场于 09:31 @ 10.0，平仓于 09:34 @ 14.0，持仓期间最高为 09:33 @ 15.0
+        // maxPotentialProfit = (15 - 10) * 100 = 500, realized = (14 - 10) * 100 = 400 -> eff = 400/500 = 80%
+        var trade = new Trade("sh.600000", TradeSide.Long, dates[0], 10.0, dates[3], 14.0, 100m, 1.0, 400.0, 0.40, 0, 0, 3, "", "");
+
+        var options = new AnalysisOptions { ExitTimingSteps = 1 };
+        var stats = TradeStatistics.Create(new[] { trade }, options, timeseries);
+
+        Assert.IsNotNull(stats.AverageTradeEfficiency);
+        Assert.AreEqual(0.80, stats.AverageTradeEfficiency.Value, 1e-4);
+        Assert.IsNotNull(stats.ExitTiming);
+        Assert.AreEqual(1, stats.ExitTiming.ValidTradesCount);
     }
 }

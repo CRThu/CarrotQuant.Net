@@ -42,12 +42,37 @@ public sealed class AnalysisOptions
 }
 
 /// <summary>
-/// 绩效分析与统计引擎核心契约。
+/// 绩效分析与统计引擎核心契约（统一分析管线调度器）。
+/// 纯粹通过一路径驱动注册的分析器管线（IAnalyzer），支持任意分析器的动态注册、替换与移除。
 /// </summary>
 public interface IAnalysisEngine
 {
     /// <summary>
-    /// 传入不可变的交易事实账本与可选行情矩阵，执行全景量化分析并产出强类型报告。
+    /// 获取当前管线中已注册的分析器只读列表。
+    /// </summary>
+    IReadOnlyList<IAnalyzer> Analyzers { get; }
+
+    /// <summary>
+    /// 向管线中添加分析器（支持链式调用）。
+    /// </summary>
+    /// <param name="analyzer">待挂载的分析器实例。</param>
+    /// <returns>返回分析引擎自身以支持流式调用。</returns>
+    IAnalysisEngine Add(IAnalyzer analyzer);
+
+    /// <summary>
+    /// 注册分析器（Add 的语义别名，兼容历史契约）。
+    /// </summary>
+    IAnalysisEngine RegisterAnalyzer(IAnalyzer analyzer) => Add(analyzer);
+
+    /// <summary>
+    /// 从管线中移除指定类型的分析器（例如移除默认的 SignalAnalyzer）。
+    /// </summary>
+    /// <typeparam name="T">待移除的分析器具体类型。</typeparam>
+    /// <returns>返回分析引擎自身以支持流式调用。</returns>
+    IAnalysisEngine Remove<T>() where T : IAnalyzer;
+
+    /// <summary>
+    /// 传入不可变的交易事实账本与可选行情矩阵，单路径调度管线执行全景量化分析并产出聚合报告。
     /// </summary>
     /// <param name="result">回测或实盘沉淀的事实账本数据集。</param>
     /// <param name="options">分析配置参数（为 null 时采用默认配置）。</param>
