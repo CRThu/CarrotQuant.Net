@@ -105,7 +105,7 @@ public class StrategyPipelineFactoryTests
         public decimal GetAvailablePosition(string symbol) => 0m;
         public double AvailableCash => 0.0;
         public double TotalEquity => 0.0;
-        public CarrotBacktesting.NET.Indicators.IndicatorRegistry Indicators => throw new NotImplementedException();
+        public CarrotBacktesting.NET.Abstraction.Indicators.IIndicatorRegistry Indicators => throw new NotImplementedException();
         public double GetClose(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
         public double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post) => double.NaN;
         public double GetOpen(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;

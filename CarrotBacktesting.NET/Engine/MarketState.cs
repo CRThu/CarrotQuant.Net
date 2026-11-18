@@ -7,32 +7,60 @@ namespace CarrotBacktesting.NET.Engine;
 /// <summary>
 /// 市场状态黑板（Market State Blackboard）权威默认实现。
 /// 基于 <see cref="ConcurrentDictionary{TKey, TValue}"/> 实现多核并行管线下的绝对线程安全。
-/// 契约支持默认按强类型全名作为权威单例索引，并支持按自定义 Key 进行多实例命名空间隔离。
+/// 支持引用类型与值类型（struct / record struct），并维护每个状态的最后更新逻辑时间戳。
 /// </summary>
 public sealed class MarketState : IMarketState
 {
-    private readonly ConcurrentDictionary<string, object> _states = new(StringComparer.Ordinal);
+    private sealed record StateEntry(object Value, DateTime UpdatedTime);
+
+    private readonly ConcurrentDictionary<string, StateEntry> _states = new(StringComparer.Ordinal);
 
     /// <inheritdoc />
-    public T? GetState<T>(string? key = null) where T : class
+    public T? GetState<T>(string? key = null)
     {
         var actualKey = ResolveKey<T>(key);
-        return _states.TryGetValue(actualKey, out var obj) ? obj as T : null;
+        if (_states.TryGetValue(actualKey, out var entry) && entry.Value is T val)
+        {
+            return val;
+        }
+        return default;
     }
 
     /// <inheritdoc />
-    public void SetState<T>(T state, string? key = null) where T : class
+    public void SetState<T>(T state, string? key = null)
+    {
+        SetState(state, DateTime.UtcNow, key);
+    }
+
+    /// <inheritdoc />
+    public void SetState<T>(T state, DateTime timestamp, string? key = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         var actualKey = ResolveKey<T>(key);
-        _states[actualKey] = state;
+        _states[actualKey] = new StateEntry(state, timestamp);
     }
 
     /// <inheritdoc />
-    public bool HasState<T>(string? key = null) where T : class
+    public bool TryGetState<T>(out T? state, out DateTime updatedTime, string? key = null)
     {
         var actualKey = ResolveKey<T>(key);
-        return _states.TryGetValue(actualKey, out var obj) && obj is T;
+        if (_states.TryGetValue(actualKey, out var entry) && entry.Value is T val)
+        {
+            state = val;
+            updatedTime = entry.UpdatedTime;
+            return true;
+        }
+
+        state = default;
+        updatedTime = DateTime.MinValue;
+        return false;
+    }
+
+    /// <inheritdoc />
+    public bool HasState<T>(string? key = null)
+    {
+        var actualKey = ResolveKey<T>(key);
+        return _states.TryGetValue(actualKey, out var entry) && entry.Value is T;
     }
 
     /// <inheritdoc />

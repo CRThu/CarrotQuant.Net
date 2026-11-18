@@ -1,12 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Runtime.Loader;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Strategy;
-using CarrotBacktesting.NET.Scripting;
 
 namespace CarrotBacktesting.NET.Strategy;
 
@@ -19,7 +16,7 @@ namespace CarrotBacktesting.NET.Strategy;
 public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
 {
     private readonly List<IStrategy> _strategies = new();
-    private readonly List<AssemblyLoadContext> _dynamicContexts = new();
+    private readonly List<IDisposable> _disposables = new();
     private IStrategy[] _compiledStrategies = Array.Empty<IStrategy>();
     private bool _isCompiled = false;
     private int _sealedLookback = 200;
@@ -68,39 +65,31 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     }
 
     /// <summary>
-    /// 从 C# 源码文件或代码字符串动态编译并加载策略，热插拔添加至当前管线。
+    /// 注册与当前管线生命周期绑定的外部托管/非托管资源。
+    /// 在管线调用 <see cref="Dispose"/> 时按序统一触发释放。
     /// </summary>
-    public IStrategyPipeline AddFromSource(string sourceOrFilePath, string? typeName = null, params object[] constructorArgs)
+    /// <param name="disposable">待释放资源对象。</param>
+    public IStrategyPipeline RegisterDisposable(IDisposable disposable)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourceOrFilePath);
+        ArgumentNullException.ThrowIfNull(disposable);
 
         if (_isCompiled)
         {
-            throw new InvalidOperationException("策略管线已被 Compile 密封固化，禁止在运行期动态追加子策略。");
+            throw new InvalidOperationException("策略管线已被 Compile 密封固化，禁止在运行期注册生命周期资源。");
         }
 
-        var (strategy, alc) = File.Exists(sourceOrFilePath)
-            ? RoslynStrategyCompiler.CompileFile(sourceOrFilePath, typeName, constructorArgs)
-            : RoslynStrategyCompiler.CompileSource(sourceOrFilePath, typeName, constructorArgs);
-
-        _dynamicContexts.Add(alc);
-        return Add(strategy);
+        _disposables.Add(disposable);
+        return this;
     }
 
     /// <summary>
-    /// 注册由外部（如 YAML 工厂或脚本加载器）动态编译的程序集上下文，纳入当前管线的统一生命周期管理。
+    /// 注册与当前管线生命周期绑定的清理回调委托（例如动态程序集卸载、临时句柄释放等）。
     /// </summary>
-    /// <param name="alc">可回收程序集加载上下文。</param>
-    public void RegisterDynamicContext(AssemblyLoadContext alc)
+    /// <param name="onDispose">管线释放时执行的清理操作。</param>
+    public IStrategyPipeline RegisterOnDispose(Action onDispose)
     {
-        ArgumentNullException.ThrowIfNull(alc);
-
-        if (_isCompiled)
-        {
-            throw new InvalidOperationException("策略管线已被 Compile 密封固化，禁止在运行期注册动态上下文。");
-        }
-
-        _dynamicContexts.Add(alc);
+        ArgumentNullException.ThrowIfNull(onDispose);
+        return RegisterDisposable(new ActionDisposable(onDispose));
     }
 
     /// <summary>
@@ -225,7 +214,8 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     }
 
     /// <summary>
-    /// 释放动态 Roslyn 编译加载的上下文资源（CollectibleAssemblyLoadContext）及子策略资源。
+    /// 递归释放子策略资源并清理注册的生命周期对象。
+    /// 若子策略实现了 <see cref="IDisposable"/>，将触发对等释放。
     /// </summary>
     public void Dispose()
     {
@@ -238,22 +228,29 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
             }
         }
 
-        // 2. 卸载由当前管线持有的动态编译程序集上下文
-        foreach (var alc in _dynamicContexts)
+        // 2. 释放注册的外部生命周期资源（如动态程序集卸载委托等）
+        foreach (var disposable in _disposables)
         {
             try
             {
-                alc.Unload();
+                disposable.Dispose();
             }
-            catch (InvalidOperationException)
+            catch
             {
-                // 忽略已处于卸载状态的上下文异常
+                // 防御释放异常
             }
         }
-        _dynamicContexts.Clear();
+        _disposables.Clear();
 
-        // 3. 清理策略引用集合，解除对已卸载类型的托管强引用以协助 GC 完全回收程序集
+        // 3. 清理策略引用集合，解除强引用以协助 GC 回收
         _strategies.Clear();
         _compiledStrategies = Array.Empty<IStrategy>();
+    }
+
+    private sealed class ActionDisposable : IDisposable
+    {
+        private Action? _action;
+        public ActionDisposable(Action action) => _action = action;
+        public void Dispose() => System.Threading.Interlocked.Exchange(ref _action, null)?.Invoke();
     }
 }

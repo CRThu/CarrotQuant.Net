@@ -22,7 +22,7 @@ public interface IBroker
     /// 获取当前账户的总动态资产权益（可用现金 + 持仓浮动市值/占用保证金 + 未实现盈亏）。
     /// </summary>
     /// <returns>账户总权益。</returns>
-    double GetTotalEquity() => GetCash();
+    double GetTotalEquity();
 
     /// <summary>
     /// 获取指定品种的当前持仓数量。
@@ -36,13 +36,13 @@ public interface IBroker
     /// </summary>
     /// <param name="symbol">品种代码。</param>
     /// <returns>可用持仓数量。</returns>
-    decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
+    decimal GetAvailablePosition(string symbol);
 
     /// <summary>
     /// 获取当前账户中所有活跃持仓的只读快照字典。
     /// </summary>
     /// <returns>代码与持仓数量的映射字典。</returns>
-    IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
+    IReadOnlyDictionary<string, decimal> GetPositions();
 
     /// <summary>
     /// 提交一个新的订单请求。

@@ -256,7 +256,10 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
         private class FakeBroker : IBroker
         {
             public double GetCash() => 100000.0;
+            public double GetTotalEquity() => GetCash();
             public decimal GetPosition(string symbol) => 0m;
+            public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
+            public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
             public string SubmitOrder(OrderRequest request) => "ord-1";
             public void CancelOrder(string orderId) { }
             public OrderStatus GetOrderStatus(string orderId) => OrderStatus.Filled;

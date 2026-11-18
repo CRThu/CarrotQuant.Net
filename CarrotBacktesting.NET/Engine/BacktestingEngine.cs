@@ -11,6 +11,7 @@ using CarrotBacktesting.NET.Abstraction.Indicators;
 using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Analysis;
 using CarrotBacktesting.NET.Config;
+using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Engine.Broker;
 using CarrotBacktesting.NET.Engine.Exchange;
 using CarrotBacktesting.NET.Indicators;
@@ -27,6 +28,7 @@ namespace CarrotBacktesting.NET.Engine
     {
         private readonly ITimeseriesRegistry _timeseries;
         private readonly IBroker _broker;
+        private readonly IAccountSnapshotProvider? _snapshotProvider;
         private readonly ISimulatedExchange? _simExchange;
         private readonly IStrategyPipeline _pipeline;
         private readonly IEventRegistry _events;
@@ -80,7 +82,7 @@ namespace CarrotBacktesting.NET.Engine
         /// </summary>
         public TradingResult GetResult()
         {
-            var endingPositions = (_broker as Broker.Broker)?.GetActivePositions() ?? Array.Empty<PositionSnapshot>();
+            var endingPositions = _snapshotProvider?.GetActivePositions() ?? Array.Empty<PositionSnapshot>();
             return _recorder.GetResult(endingPositions);
         }
 
@@ -123,7 +125,8 @@ namespace CarrotBacktesting.NET.Engine
         {
             _timeseries = timeseries ?? throw new ArgumentNullException(nameof(timeseries));
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _simExchange = simExchange ?? ((broker as Broker.Broker)?.Gateway as ISimulatedExchange);
+            _snapshotProvider = broker as IAccountSnapshotProvider;
+            _simExchange = simExchange ?? (broker as ISimulatedExchange) ?? ((broker as Broker.Broker)?.Gateway as ISimulatedExchange);
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
             _config = config ?? new EngineConfig();
             _monitor = monitor ?? NullMonitor.Instance;
@@ -146,19 +149,20 @@ namespace CarrotBacktesting.NET.Engine
 
         /// <summary>
         /// 便捷静态工厂：根据整体会话配置与数据供给装配回测引擎。
+        /// 若未传入 timeseries，将自动依据 sessionConfig.Data 闭环装配时序、事件与维表数据层。
         /// </summary>
         /// <param name="sessionConfig">会话级总配置。</param>
-        /// <param name="timeseries">时序行情供给源。</param>
+        /// <param name="timeseries">时序行情供给源（可选，缺省由 sessionConfig.Data 自动构建）。</param>
         /// <param name="pipeline">外部构建或传入的策略管线（若为空则依据 sessionConfig.Pipeline 动态组装）。</param>
-        /// <param name="events">事件注册表（可选）。</param>
-        /// <param name="fields">维表注册表（可选）。</param>
+        /// <param name="events">事件注册表（可选，缺省由 sessionConfig.Data.Events 自动构建）。</param>
+        /// <param name="fields">维表注册表（可选，缺省由 sessionConfig.Data.Fields 自动构建）。</param>
         /// <param name="market">市场黑板（可选）。</param>
         /// <param name="monitor">监控接口（可选）。</param>
         /// <param name="recorder">交易事实记录器（可选）。</param>
         /// <returns>已装配就绪的 BacktestingEngine 实例。</returns>
         public static BacktestingEngine Create(
             SessionConfig sessionConfig,
-            ITimeseriesRegistry timeseries,
+            ITimeseriesRegistry? timeseries = null,
             IStrategyPipeline? pipeline = null,
             IEventRegistry? events = null,
             IFieldRegistry? fields = null,
@@ -167,10 +171,21 @@ namespace CarrotBacktesting.NET.Engine
             ITradingRecorder? recorder = null)
         {
             ArgumentNullException.ThrowIfNull(sessionConfig);
-            ArgumentNullException.ThrowIfNull(timeseries);
 
-            var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker, fields);
-            var broker = new Broker.Broker(simGateway, sessionConfig.Broker, fields);
+            ITimeseriesRegistry activeTimeseries = timeseries!;
+            IEventRegistry? activeEvents = events;
+            IFieldRegistry? activeFields = fields;
+
+            if (activeTimeseries == null)
+            {
+                var data = DataLayerFactory.Create(sessionConfig.Data, sessionConfig.Engine.StartDate, sessionConfig.Engine.EndDate, isLive: false);
+                activeTimeseries = data.Timeseries;
+                activeEvents ??= data.Events;
+                activeFields ??= data.Fields;
+            }
+
+            var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker, activeFields);
+            var broker = new Broker.Broker(simGateway, sessionConfig.Broker, activeFields);
 
             IStrategyPipeline activePipeline;
             if (pipeline != null)
@@ -187,11 +202,11 @@ namespace CarrotBacktesting.NET.Engine
             }
 
             return new BacktestingEngine(
-                timeseries,
+                activeTimeseries,
                 broker,
                 activePipeline,
-                events,
-                fields,
+                activeEvents,
+                activeFields,
                 market,
                 sessionConfig.Engine,
                 monitor,
@@ -328,9 +343,9 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.1.1 跨日检测与日终快照沉淀
                     if (currentTime.Date != _lastDate)
                     {
-                        if (_lastDate != DateTime.MinValue && _broker is Broker.Broker bPrev && i > startIndex)
+                        if (_lastDate != DateTime.MinValue && _snapshotProvider != null && i > startIndex)
                         {
-                            _recorder.RecordDailySnapshot(bPrev.CreateDailySnapshot(tradeDates[i - 1]));
+                            _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(tradeDates[i - 1]));
                         }
                         _lastDate = currentTime.Date;
                         if (_hasAdjustments && _events.HasNewEvents(currentTime, _adjustConfig.Table))
@@ -361,9 +376,9 @@ namespace CarrotBacktesting.NET.Engine
                     _pipeline.OnUpdate(_context);
 
                     // 5.6 记录当前时间步净值点
-                    if (_broker is Broker.Broker realBroker)
+                    if (_snapshotProvider != null)
                     {
-                        _recorder.RecordStep(realBroker.CreateEquityPoint(currentTime));
+                        _recorder.RecordStep(_snapshotProvider.CreateEquityPoint(currentTime));
                     }
 
                     // 5.7 上报执行进度
@@ -377,9 +392,9 @@ namespace CarrotBacktesting.NET.Engine
                 }
 
                 // 记录最终交易日收盘快照
-                if (_broker is Broker.Broker endBroker && endIndex >= startIndex)
+                if (_snapshotProvider != null && endIndex >= startIndex)
                 {
-                    _recorder.RecordDailySnapshot(endBroker.CreateDailySnapshot(tradeDates[endIndex]));
+                    _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(tradeDates[endIndex]));
                 }
 
                 // 6. 正常收尾触发策略终止

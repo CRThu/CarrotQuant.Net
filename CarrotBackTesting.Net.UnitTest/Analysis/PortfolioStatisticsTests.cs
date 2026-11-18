@@ -14,12 +14,12 @@ public class PortfolioStatisticsTests
     public void Create_EmptyEquityCurve_ReturnsEmptyMetrics()
     {
         var options = new AnalysisOptions();
-        var portfolio = PortfolioStatistics.Create(
+        var portfolio = PortfolioAnalyzer.Calculate(
             Array.Empty<EquityPoint>(),
             Array.Empty<DailySnapshot>(),
             options
         );
-        var capital = CapitalStatistics.Create(
+        var capital = CapitalAnalyzer.Calculate(
             Array.Empty<DailySnapshot>(),
             Array.Empty<EquityPoint>(),
             Array.Empty<SettlementRecord>(),
@@ -55,12 +55,12 @@ public class PortfolioStatisticsTests
             AnnualTradingDays = 252
         };
 
-        var portfolio = PortfolioStatistics.Create(
+        var portfolio = PortfolioAnalyzer.Calculate(
             points,
             Array.Empty<DailySnapshot>(),
             options
         );
-        var capital = CapitalStatistics.Create(
+        var capital = CapitalAnalyzer.Calculate(
             Array.Empty<DailySnapshot>(),
             points,
             Array.Empty<SettlementRecord>(),
@@ -112,7 +112,7 @@ public class PortfolioStatisticsTests
         };
 
         var options = new AnalysisOptions();
-        var capital = CapitalStatistics.Create(
+        var capital = CapitalAnalyzer.Calculate(
             Array.Empty<DailySnapshot>(),
             points,
             settlements,
@@ -138,7 +138,7 @@ public class PortfolioStatisticsTests
         var benchmarkReturns = new List<double> { 0.01, -0.005, 0.015 };
 
         var options = new AnalysisOptions { RiskFreeRate = 0.0 };
-        var portfolio = PortfolioStatistics.Create(
+        var portfolio = PortfolioAnalyzer.Calculate(
             Array.Empty<EquityPoint>(),
             snapshots,
             options,
@@ -165,7 +165,7 @@ public class PortfolioStatisticsTests
         };
 
         var options = new AnalysisOptions();
-        var portfolio = PortfolioStatistics.Create(points, Array.Empty<DailySnapshot>(), options);
+        var portfolio = PortfolioAnalyzer.Calculate(points, Array.Empty<DailySnapshot>(), options);
 
         Assert.AreEqual(0.0, portfolio.MaxDrawdown);
         Assert.AreEqual(0, portfolio.MaxDrawdownDurationSteps);
@@ -183,7 +183,7 @@ public class PortfolioStatisticsTests
         };
 
         var options = new AnalysisOptions();
-        var portfolio = PortfolioStatistics.Create(points, Array.Empty<DailySnapshot>(), options);
+        var portfolio = PortfolioAnalyzer.Calculate(points, Array.Empty<DailySnapshot>(), options);
 
         Assert.AreEqual(0.0, portfolio.TotalReturn);
         Assert.AreEqual(0.0, portfolio.AnnualizedVolatility);
@@ -197,7 +197,7 @@ public class PortfolioStatisticsTests
     {
         var points = new[] { new EquityPoint(DateTime.Now, 100.0, 100.0, 0, 0, 0, 0) };
         var options = new AnalysisOptions();
-        var portfolio = PortfolioStatistics.Create(points, Array.Empty<DailySnapshot>(), options);
+        var portfolio = PortfolioAnalyzer.Calculate(points, Array.Empty<DailySnapshot>(), options);
 
         Assert.AreEqual(0.0, portfolio.TotalReturn);
         Assert.AreEqual(0.0, portfolio.AnnualizedVolatility);
@@ -216,8 +216,8 @@ public class PortfolioStatisticsTests
         };
 
         var options = new AnalysisOptions();
-        var portfolio = PortfolioStatistics.Create(points, Array.Empty<DailySnapshot>(), options);
-        var capital = CapitalStatistics.Create(Array.Empty<DailySnapshot>(), points, Array.Empty<SettlementRecord>(), options);
+        var portfolio = PortfolioAnalyzer.Calculate(points, Array.Empty<DailySnapshot>(), options);
+        var capital = CapitalAnalyzer.Calculate(Array.Empty<DailySnapshot>(), points, Array.Empty<SettlementRecord>(), options);
 
         // 最终净值 <= 0 时年化收益置为 -100%
         Assert.AreEqual(-1.0, portfolio.AnnualizedReturn);
@@ -262,7 +262,7 @@ public class PortfolioStatisticsTests
             AnnualTradingDays = 252
         };
 
-        var portfolio = PortfolioStatistics.Create(
+        var portfolio = PortfolioAnalyzer.Calculate(
             equityCurve,
             Array.Empty<DailySnapshot>(),
             options,
@@ -326,7 +326,7 @@ public class PortfolioStatisticsTests
             new(t0.AddDays(3), 85000.0, 85000.0, 0, 0, 0, 0)
         };
 
-        var portfolio = PortfolioStatistics.Create(points, Array.Empty<DailySnapshot>(), new AnalysisOptions());
+        var portfolio = PortfolioAnalyzer.Calculate(points, Array.Empty<DailySnapshot>(), new AnalysisOptions());
 
         Assert.AreEqual(0.20, portfolio.MaxDrawdown, 1e-4);
         Assert.AreEqual(t0, portfolio.MaxDrawdownPeakTime);
@@ -348,7 +348,7 @@ public class PortfolioStatisticsTests
             new(new DateTime(2024, 3, 31), 118800.0, 118800.0, 0, 0, 0, 0, Array.Empty<PositionSnapshot>())
         };
 
-        var portfolio = PortfolioStatistics.Create(Array.Empty<EquityPoint>(), snapshots, new AnalysisOptions());
+        var portfolio = PortfolioAnalyzer.Calculate(Array.Empty<EquityPoint>(), snapshots, new AnalysisOptions());
 
         Assert.AreEqual(3, portfolio.MonthlyReturns.Count);
 
@@ -379,7 +379,7 @@ public class PortfolioStatisticsTests
         };
 
         // 传入 null 作为 dailySnapshots，验证不会触发 NullReferenceException 并降级使用 equityCurve
-        var portfolio = PortfolioStatistics.Create(points, null!, new AnalysisOptions());
+        var portfolio = PortfolioAnalyzer.Calculate(points, null!, new AnalysisOptions());
 
         Assert.AreEqual(0.05, portfolio.TotalReturn, 1e-4);
         Assert.AreEqual(1, portfolio.MonthlyReturns.Count);
@@ -401,8 +401,8 @@ public class PortfolioStatisticsTests
             AnnualTradingDays = 0 // 极端无效值，测试除以零防御
         };
 
-        var portfolio = PortfolioStatistics.Create(points, Array.Empty<DailySnapshot>(), badOptions);
-        var capital = CapitalStatistics.Create(Array.Empty<DailySnapshot>(), points, Array.Empty<SettlementRecord>(), badOptions);
+        var portfolio = PortfolioAnalyzer.Calculate(points, Array.Empty<DailySnapshot>(), badOptions);
+        var capital = CapitalAnalyzer.Calculate(Array.Empty<DailySnapshot>(), points, Array.Empty<SettlementRecord>(), badOptions);
 
         Assert.IsFalse(double.IsNaN(portfolio.AnnualizedReturn));
         Assert.IsFalse(double.IsInfinity(portfolio.AnnualizedReturn));
@@ -425,7 +425,7 @@ public class PortfolioStatisticsTests
             AnnualTradingDays = 252
         };
 
-        var portfolio = PortfolioStatistics.Create(points, Array.Empty<DailySnapshot>(), options);
+        var portfolio = PortfolioAnalyzer.Calculate(points, Array.Empty<DailySnapshot>(), options);
 
         // 验证年化收益率受到 minYears 防守，绝对不会溢出为 PositiveInfinity
         Assert.IsFalse(double.IsInfinity(portfolio.AnnualizedReturn));

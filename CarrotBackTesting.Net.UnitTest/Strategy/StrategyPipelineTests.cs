@@ -4,6 +4,7 @@ using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Engine;
+using CarrotBacktesting.NET.Scripting;
 using CarrotBacktesting.NET.Strategy;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -15,7 +16,10 @@ public class StrategyPipelineTests
     private class FakeBroker : IBroker
     {
         public double GetCash() => 100000.0;
+        public double GetTotalEquity() => GetCash();
         public decimal GetPosition(string symbol) => 0m;
+        public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
+        public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
         public string SubmitOrder(OrderRequest request) => "ord-1";
         public void CancelOrder(string orderId) { }
         public OrderStatus GetOrderStatus(string orderId) => OrderStatus.Filled;
@@ -49,7 +53,7 @@ public class StrategyPipelineTests
             Market = market;
         }
 
-        public CarrotBacktesting.NET.Indicators.IndicatorRegistry Indicators => throw new NotImplementedException();
+        public CarrotBacktesting.NET.Abstraction.Indicators.IIndicatorRegistry Indicators => throw new NotImplementedException();
         public double GetClose(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
         public double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post) => double.NaN;
         public double GetOpen(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
@@ -585,11 +589,11 @@ public class StrategyPipelineTests
     }
 
     [TestMethod]
-    public void StrategyPipeline_AddFromSource_InlineCodeAndFile_ShouldLoadAndCompile()
+    public void StrategyPipeline_DynamicStrategyCompilation_ShouldIntegrateWithLifecycle()
     {
         using var pipeline = StrategyPipeline.Sequential();
 
-        // 1. 从字符串代码加载
+        // 1. 从字符串代码编译
         const string inlineCode = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Abstraction.Engine;
@@ -598,10 +602,11 @@ public class InlineStrategy : IStrategy {
     public int Lookback => 75;
     public void OnUpdate(IEngineContext context) { }
 }";
-        pipeline.AddFromSource(inlineCode);
+        var (s1, alc1) = RoslynStrategyCompiler.CompileSource(inlineCode);
+        pipeline.Add(s1).RegisterOnDispose(() => alc1.Unload());
         Assert.AreEqual(75, pipeline.Lookback);
 
-        // 2. 从临时源码文件加载
+        // 2. 从临时源码文件编译
         var tempFile = Path.Combine(Path.GetTempPath(), $"SourceStrategy_{Guid.NewGuid():N}.cs");
         const string fileCode = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
@@ -614,7 +619,8 @@ public class FileStrategy : IStrategy {
         File.WriteAllText(tempFile, fileCode);
         try
         {
-            pipeline.AddFromSource(tempFile);
+            var (s2, alc2) = RoslynStrategyCompiler.CompileFile(tempFile);
+            pipeline.Add(s2).RegisterOnDispose(() => alc2.Unload());
             Assert.AreEqual(120, pipeline.Lookback);
 
             pipeline.Compile();
@@ -663,22 +669,22 @@ public class FileStrategy : IStrategy {
     }
 
     [TestMethod]
-    public void StrategyPipeline_Compiled_AddFromSourceAndRegisterContext_ThrowsInvalidOperationException()
+    public void StrategyPipeline_Compiled_RegisterOnDispose_ThrowsInvalidOperationException()
     {
         using var pipeline = StrategyPipeline.Sequential();
         pipeline.Add(new StepTraceStrategy("Leaf", 50, new List<string>()));
         pipeline.Compile();
 
-        // 密封后尝试 AddFromSource 应立即拦截
+        // 密封后尝试 RegisterOnDispose 应立即拦截
         Assert.ThrowsException<InvalidOperationException>(() =>
         {
-            pipeline.AddFromSource("public class Test : IStrategy { public string Name => \"T\"; public int Lookback => 1; public void OnUpdate(IEngineContext c) {} }");
+            pipeline.RegisterOnDispose(() => { });
         });
 
-        // 密封后尝试 RegisterDynamicContext 应立即拦截
+        // 密封后尝试 Add 应立即拦截
         Assert.ThrowsException<InvalidOperationException>(() =>
         {
-            pipeline.RegisterDynamicContext(new System.Runtime.Loader.AssemblyLoadContext("TestAlc", isCollectible: true));
+            pipeline.Add(new StepTraceStrategy("Leaf2", 10, new List<string>()));
         });
     }
 }

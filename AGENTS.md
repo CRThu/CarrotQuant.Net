@@ -273,9 +273,10 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | `ICheckpointable` | `Abstraction/Engine/ICheckpointable.cs` | 检查点持久化能力正交契约，支持 `SaveCheckpoint` / `RestoreCheckpoint` 与断点续跑 |
 | `BacktestingEngine` | `Engine/BacktestingEngine.cs` | 回测驱动单一权威内核，实现 `IEngine` 与 `ICheckpointable`，统筹时间步切片裁剪、缓存滑动、跨日结算驱动、事件派发与策略生命周期 |
 | `LivingEngine` | `Engine/LivingEngine.cs` | 实盘事件驱动执行引擎，支持异步行情监听、实时 Bar 追加与实时风险监控 |
-| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry`, `IndicatorRegistry`、当期极简取价门面及权威账户持仓门面 |
+| `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry`, `IIndicatorRegistry`、当期极简取价门面及权威账户持仓门面 |
 | `EngineContext` | `Engine/EngineContext.cs` | 策略运行上下文权威实现，单例常驻，热路径零堆分配（零 GC），支持类型化插件与扩展组件注入 |
-| `IndicatorRegistry` | `Indicators/IndicatorRegistry.cs` | 全局指标注册中心具象类，统一管理全市场标的池，热路径无锁单次泵送，对策略屏蔽内部步进方法 |
+| `IIndicatorRegistry` | `Abstraction/Indicators/IIndicatorRegistry.cs` | 全局指标注册中心统一契约，定义声明式指标注册与查询门面 |
+| `IndicatorRegistry` | `Indicators/IndicatorRegistry.cs` | 全局指标注册中心权威实现，实现 `IIndicatorRegistry`，统一管理全市场标的池，热路径单次泵送与步进更新 |
 | `IMarketState` | `Abstraction/Engine/IMarketState.cs` | 市场黑板上下文，支持策略间跨层异步状态共享 |
 | `MarketState` | `Engine/MarketState.cs` | 通用强类型黑板实现，基于 ConcurrentDictionary 保证并发安全与类型单例索引 |
 | `IMonitor` | `Abstraction/Engine/IMonitor.cs` | 统一监控抽象，管理日志输出、指标采集与告警 |
@@ -359,8 +360,15 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 > 💡 详细增量流式经典指标库、数值计算特性与双模极速开发实战详见专门白皮书 [流式指标与计算属性开发指南 (docs/indicators.md)](docs/indicators.md)。
 
-### 1. 三位一体核心实体模型
-CarrotQuant .NET 彻底根除无多态价值的冗余镜像接口（`IIndicatorRegistry` / `IIndicatorPool`），收敛为 3 个核心实体：
+### 1. 指标体系分层契约与核心实体模型
+CarrotQuant .NET 遵循瘦契约与分层隔离原则，指标体系收敛为以下核心模型：
+- **`IIndicatorRegistry` (`Abstraction/Indicators/IIndicatorRegistry.cs`)**:
+  - 全局指标注册中心契约，面向策略与上下文暴露 `GetOrAdd`、`Add`、`GetPool` 与 `Get` 门面；对策略层屏蔽内部引擎时间步驱动与重置方法。
+- **`IndicatorRegistry` (`Indicators/IndicatorRegistry.cs`)**:
+  - 全局指标注册中心权威实现，实现 `IIndicatorRegistry`；
+  - 引擎内部持有具象类引用，直接执行 `_indicators.Step(_context)` 泵送；
+  - 基于显式双重检查锁定（DCL）实现并发线程安全，杜绝多线程竞争创建多余标的池（幽灵指标池）；
+  - 维护写时复制（COW）不可变快照数组 `volatile IndicatorPool[] _activePools`，主循环每步执行局部变量快照读取，100% 纯无锁推进且零 GC。
 - **`IStreamIndicator` (`Abstraction/Indicators/IStreamIndicator.cs`)**:
   - 增量流式指标顶层接口契约，单一输入入口 `Update(open, high, low, close, volume)`，以 5 个原生 `double` 寄存器参数对齐单值与复合指标需求，严格零装箱；
   - 属性暴露最新值 `Value` / `Current`、预热指示 `IsReady`，支持重置状态机 `Reset()`；
@@ -369,10 +377,6 @@ CarrotQuant .NET 彻底根除无多态价值的冗余镜像接口（`IIndicatorR
   - 全市场标的指标池连续扁平容器，非泛型基类 `IndicatorPool` 统筹 Name、Count 与 PriceMode，泛型具体类 `IndicatorPool<T>` 内部直接持有连续平铺数组 `T[] _instances`；
   - 热路径提供与原生数组等同的纳秒级寻址 `pool[symbolIndex]`（CPU L2 Cache 极致亲和），并支持标的代码寻址 `pool[symbol]`；
   - 引擎调度方法 `Step(context)` 与 `Reset()` 设为 `internal`，在引擎主循环内部流转，外部策略代码完全不可见，杜绝策略误调导致状态污染。
-- **`IndicatorRegistry` (`Indicators/IndicatorRegistry.cs`)**:
-  - 全局指标注册中心，直接以具象类挂载于 `IEngineContext.Indicators`，彻底消灭虚派发表（V-Table）查找开销，赋能 JIT 激进内联；
-  - 基于显式双重检查锁定（DCL）实现并发线程安全，杜绝多线程竞争创建多余标的池（幽灵指标池）；
-  - 维护写时复制（COW）不可变快照数组 `volatile IndicatorPool[] _activePools`，主循环每步执行局部变量快照读取，100% 纯无锁推进且零 GC。
 
 ### 2. 增量流式经典指标库与数值特性
 所有指标基于严格的 $O(1)$ 增量递推物理公式，单 Bar 仅需固定次数常数浮点运算，百万步运算仅需数毫秒：

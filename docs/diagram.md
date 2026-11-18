@@ -129,11 +129,13 @@ graph TD
         IMonitor[IMonitor]
 
         subgraph IndicatorSubsystem [Indicator Subsystem - 流式指标与计算属性体系]
+            IIndicatorRegistry[IIndicatorRegistry]
             IndicatorRegistry[IndicatorRegistry]
             IndicatorPoolBase[IndicatorPool]
             IndicatorPoolTyped[IndicatorPool&lt;T&gt;]
             IStreamIndicator[IStreamIndicator]
 
+            IndicatorRegistry --> IIndicatorRegistry
             IndicatorRegistry --> IndicatorPoolBase
             IndicatorPoolBase -->|泛型派生| IndicatorPoolTyped
             IndicatorPoolTyped --> IStreamIndicator

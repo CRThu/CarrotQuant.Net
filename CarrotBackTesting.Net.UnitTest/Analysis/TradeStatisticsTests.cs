@@ -14,11 +14,11 @@ public class TradeStatisticsTests
     public void Create_EmptyTrades_ReturnsEmptyMetrics()
     {
         var options = new AnalysisOptions();
-        var trades = TradeStatistics.Create(
+        var trades = TradeAnalyzer.Calculate(
             Array.Empty<Trade>(),
             options
         );
-        var cost = CostStatistics.Create(
+        var cost = CostAnalyzer.Calculate(
             Array.Empty<SettlementRecord>(),
             Array.Empty<Trade>()
         );
@@ -56,8 +56,8 @@ public class TradeStatisticsTests
         };
 
         var options = new AnalysisOptions();
-        var stats = TradeStatistics.Create(trades, options);
-        var cost = CostStatistics.Create(settlements, trades);
+        var stats = TradeAnalyzer.Calculate(trades, options);
+        var cost = CostAnalyzer.Calculate(settlements, trades);
 
         // 1. 基础笔数与胜率
         Assert.AreEqual(6, stats.TotalTrades);
@@ -119,7 +119,7 @@ public class TradeStatisticsTests
             new("sh.600000", TradeSide.Long, t0.AddDays(2), 10.0, t0.AddDays(3), 12.0, 100m, 1.0, 200.0, 0.20, 5.0, 0.0, 1, "", "")
         };
 
-        var stats = TradeStatistics.Create(trades, new AnalysisOptions());
+        var stats = TradeAnalyzer.Calculate(trades, new AnalysisOptions());
 
         Assert.AreEqual(1.0, stats.WinRate);
         Assert.AreEqual(999.0, stats.WinLossRatio);
@@ -135,7 +135,7 @@ public class TradeStatisticsTests
             new("sh.600000", TradeSide.Long, t0, 10.0, t0.AddDays(1), 9.0, 100m, 1.0, -100.0, -0.10, 5.0, 0.0, 1, "", "")
         };
 
-        var stats = TradeStatistics.Create(trades, new AnalysisOptions());
+        var stats = TradeAnalyzer.Calculate(trades, new AnalysisOptions());
 
         Assert.AreEqual(0.0, stats.WinRate);
         Assert.AreEqual(0.0, stats.WinLossRatio);
@@ -182,7 +182,7 @@ public class TradeStatisticsTests
             ""
         );
 
-        var stats = TradeStatistics.Create(new[] { trade }, new AnalysisOptions(), timeseries);
+        var stats = TradeAnalyzer.Calculate(new[] { trade }, new AnalysisOptions(), timeseries);
 
         Assert.IsNotNull(stats.AverageTradeEfficiency);
         Assert.AreEqual(0.75, stats.AverageTradeEfficiency.Value, 1e-4);
@@ -199,7 +199,7 @@ public class TradeStatisticsTests
             new("sh.600000", TradeSide.Long, t0.AddDays(2), 10.0, t0.AddDays(3), 11.0, 100m, 1.0, 100.0, 0.10, 0, 0, 1, "", "")
         };
 
-        var stats = TradeStatistics.Create(trades, new AnalysisOptions());
+        var stats = TradeAnalyzer.Calculate(trades, new AnalysisOptions());
 
         Assert.AreEqual(1, stats.BreakevenTrades);
         // 中间被打断，最大连续盈利应为 1
@@ -229,7 +229,7 @@ public class TradeStatisticsTests
         var trade3 = new Trade("sh.600000", TradeSide.Long, dates[7], 17.0, dates[8], 18.0, 100m, 1.0, 100.0, 0.0588, 0, 0, 1, "", "");
 
         var options = new AnalysisOptions { ExitTimingSteps = 3 };
-        var stats = TradeStatistics.Create(new[] { trade1, trade2, trade3 }, options, timeseries);
+        var stats = TradeAnalyzer.Calculate(new[] { trade1, trade2, trade3 }, options, timeseries);
 
         Assert.IsNotNull(stats.ExitTiming);
         var et = stats.ExitTiming;
@@ -295,7 +295,7 @@ public class TradeStatisticsTests
         var tShort = new Trade("sz.000001", TradeSide.Short, dates[0], 100.0, dates[3], 70.0, 10m, 1.0, 300.0, 0.30, 0, 0, 3, "", "");
 
         // 两个样本：偶数中位数分支
-        var stats2 = TradeStatistics.Create(new[] { tLong, tShort }, new AnalysisOptions(), timeseries);
+        var stats2 = TradeAnalyzer.Calculate(new[] { tLong, tShort }, new AnalysisOptions(), timeseries);
         Assert.IsNotNull(stats2.AverageTradeEfficiency);
         Assert.IsNotNull(stats2.MedianTradeEfficiency);
         Assert.AreEqual((0.50 + 0.75) / 2.0, stats2.AverageTradeEfficiency.Value, 1e-4);
@@ -306,7 +306,7 @@ public class TradeStatisticsTests
         var tLong2 = new Trade("sh.600000", TradeSide.Long, dates[1], 12.0, dates[2], 19.0, 10m, 1.0, 70.0, 0.5833, 0, 0, 1, "", "");
 
         // 三个样本：奇数中位数分支 (0.50, 0.75, 1.00) -> 中位数为 0.75
-        var stats3 = TradeStatistics.Create(new[] { tLong, tShort, tLong2 }, new AnalysisOptions(), timeseries);
+        var stats3 = TradeAnalyzer.Calculate(new[] { tLong, tShort, tLong2 }, new AnalysisOptions(), timeseries);
         Assert.IsNotNull(stats3.AverageTradeEfficiency);
         Assert.IsNotNull(stats3.MedianTradeEfficiency);
         Assert.AreEqual((0.50 + 0.75 + 1.00) / 3.0, stats3.AverageTradeEfficiency.Value, 1e-4);
@@ -337,7 +337,7 @@ public class TradeStatisticsTests
             new("s", TradeSide.Long, t0, 10, t0, 9, 1m, 1, -15.0, -0.1, 0, 0, 1, "", "")
         };
 
-        var stats = TradeStatistics.Create(trades, new AnalysisOptions());
+        var stats = TradeAnalyzer.Calculate(trades, new AnalysisOptions());
 
         Assert.AreEqual(11, stats.TotalTrades);
         Assert.AreEqual(5, stats.WinningTrades);
@@ -357,7 +357,7 @@ public class TradeStatisticsTests
             new("s", TradeSide.Long, t0.AddDays(1), 10, t0.AddDays(2), 10, 100m, 1, 0.0, 0.0, 0, 0, 1, "", "")
         };
 
-        var stats = TradeStatistics.Create(trades, new AnalysisOptions());
+        var stats = TradeAnalyzer.Calculate(trades, new AnalysisOptions());
 
         Assert.AreEqual(2, stats.TotalTrades);
         Assert.AreEqual(0, stats.WinningTrades);
@@ -397,7 +397,7 @@ public class TradeStatisticsTests
         var tradeShort = new Trade("sz.000001", TradeSide.Short, dates[0], 100.0, dates[1], 90.0, 100m, 1.0, 1000.0, 0.10, 0, 0, 1, "", "");
 
         var options = new AnalysisOptions { ExitTimingSteps = 2 };
-        var stats = TradeStatistics.Create(new[] { tradeLong, tradeShort }, options, timeseries);
+        var stats = TradeAnalyzer.Calculate(new[] { tradeLong, tradeShort }, options, timeseries);
 
         Assert.IsNotNull(stats.ExitTiming);
         var et = stats.ExitTiming;
@@ -441,7 +441,7 @@ public class TradeStatisticsTests
         var trade = new Trade("sh.600000", TradeSide.Long, dates[0], 10.0, dates[3], 14.0, 100m, 1.0, 400.0, 0.40, 0, 0, 3, "", "");
 
         var options = new AnalysisOptions { ExitTimingSteps = 1 };
-        var stats = TradeStatistics.Create(new[] { trade }, options, timeseries);
+        var stats = TradeAnalyzer.Calculate(new[] { trade }, options, timeseries);
 
         Assert.IsNotNull(stats.AverageTradeEfficiency);
         Assert.AreEqual(0.80, stats.AverageTradeEfficiency.Value, 1e-4);

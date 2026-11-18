@@ -2,7 +2,6 @@ using System;
 using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Indicators;
-using CarrotBacktesting.NET.Indicators;
 
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
@@ -64,7 +63,7 @@ public interface IEngineContext
     /// <summary>
     /// 获取全局指标注册中心，统筹增量流式指标池的注册、多策略共享与引擎步进泵送。
     /// </summary>
-    IndicatorRegistry Indicators { get; }
+    IIndicatorRegistry Indicators { get; }
 
     #region 当期账户与持仓权威门面 (Account & Position SSOT Facades)
 

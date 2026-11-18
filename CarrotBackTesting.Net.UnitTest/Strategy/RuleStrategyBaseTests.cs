@@ -18,8 +18,11 @@ public class RuleStrategyBaseTests
 
         public void SetPosition(string symbol, decimal quantity) => _positions[symbol] = quantity;
         public decimal GetPosition(string symbol) => _positions.TryGetValue(symbol, out var q) ? q : 0m;
+        public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
+        public IReadOnlyDictionary<string, decimal> GetPositions() => _positions;
 
         public double GetCash() => 100000.0;
+        public double GetTotalEquity() => GetCash();
         public string SubmitOrder(OrderRequest request) => "ord-1";
         public void CancelOrder(string orderId) { }
         public OrderStatus GetOrderStatus(string orderId) => OrderStatus.Filled;
@@ -53,7 +56,7 @@ public class RuleStrategyBaseTests
             Market = market;
         }
 
-        public CarrotBacktesting.NET.Indicators.IndicatorRegistry Indicators => throw new NotImplementedException();
+        public CarrotBacktesting.NET.Abstraction.Indicators.IIndicatorRegistry Indicators => throw new NotImplementedException();
         public double GetClose(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
         public double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post) => double.NaN;
         public double GetOpen(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;

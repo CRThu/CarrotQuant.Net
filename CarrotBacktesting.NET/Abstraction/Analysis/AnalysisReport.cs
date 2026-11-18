@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using CarrotBacktesting.NET.Analysis.Analyzers;
 
 namespace CarrotBacktesting.NET.Abstraction.Analysis;
 

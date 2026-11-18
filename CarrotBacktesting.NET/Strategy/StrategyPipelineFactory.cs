@@ -132,7 +132,10 @@ public static class StrategyPipelineFactory
                 : Path.Combine(baseDirectory, node.Source);
 
             var (compiledStrategy, alc) = CarrotBacktesting.NET.Scripting.RoslynStrategyCompiler.CompileFile(sourcePath, node.Type);
-            parentPipeline.RegisterDynamicContext(alc);
+            parentPipeline.RegisterOnDispose(() =>
+            {
+                try { alc.Unload(); } catch (InvalidOperationException) { }
+            });
             strategy = compiledStrategy;
         }
         // 3. 指定了已存在/已加载的策略类型名称 (type)

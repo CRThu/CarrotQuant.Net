@@ -75,8 +75,11 @@ namespace CarrotBacktesting.NET.Engine
         /// <inheritdoc />
         public IMarketState Market { get; }
 
-        /// <inheritdoc />
+        /// <inheritdoc cref="IEngineContext.Indicators" />
         public IndicatorRegistry Indicators { get; internal set; }
+
+        /// <inheritdoc />
+        IIndicatorRegistry IEngineContext.Indicators => Indicators;
 
         /// <inheritdoc />
         public decimal GetPosition(string symbol) => Broker.GetPosition(symbol);

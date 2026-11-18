@@ -13,10 +13,10 @@ public class SignalStatisticsTests
     public void Create_EmptySignalsOrNullTimeseries_ReturnsNull()
     {
         var options = new AnalysisOptions();
-        var res1 = SignalStatistics.Create(Array.Empty<SignalRecord>(), null, options);
+        var res1 = SignalAnalyzer.Calculate(Array.Empty<SignalRecord>(), null, options);
         Assert.IsNull(res1);
 
-        var res2 = SignalStatistics.Create(
+        var res2 = SignalAnalyzer.Calculate(
             new[] { new SignalRecord(DateTime.Now, "sh.600000", 1.0, "GroupA", "") },
             null,
             options
@@ -55,7 +55,7 @@ public class SignalStatisticsTests
             SignalHorizonSteps = 4
         };
 
-        var stats = SignalStatistics.Create(new[] { signal }, timeseries, options);
+        var stats = SignalAnalyzer.Calculate(new[] { signal }, timeseries, options);
 
         Assert.IsNotNull(stats);
         Assert.AreEqual(1, stats.TotalSignals);
@@ -104,7 +104,7 @@ public class SignalStatisticsTests
         timeseries.SetMatrix("close", new MockMatrix(prices));
 
         var signal = new SignalRecord(dates[0], "sh.600000", 1.0, "TestGroup", "");
-        var stats = SignalStatistics.Create(new[] { signal }, timeseries, new AnalysisOptions { SignalHorizonSteps = 3 });
+        var stats = SignalAnalyzer.Calculate(new[] { signal }, timeseries, new AnalysisOptions { SignalHorizonSteps = 3 });
 
         Assert.IsNotNull(stats);
         // T+1 (Day 1) 为 NaN，样本计数为 0
@@ -160,7 +160,7 @@ public class SignalStatisticsTests
             SignalHorizonSteps = 2
         };
 
-        var stats = SignalStatistics.Create(new[] { sig1, sig2, sig3 }, timeseries, options);
+        var stats = SignalAnalyzer.Calculate(new[] { sig1, sig2, sig3 }, timeseries, options);
 
         Assert.IsNotNull(stats);
         Assert.AreEqual(3, stats.TotalSignals);
@@ -243,7 +243,7 @@ public class SignalStatisticsTests
         var signal = new SignalRecord(dates[0], "sh.600000", -1.0, "ShortAlpha", "Breakdown");
 
         var options = new AnalysisOptions { SignalHorizonSteps = 2 };
-        var stats = SignalStatistics.Create(new[] { signal }, timeseries, options);
+        var stats = SignalAnalyzer.Calculate(new[] { signal }, timeseries, options);
 
         Assert.IsNotNull(stats);
         Assert.AreEqual(1, stats.TotalSignals);
@@ -285,7 +285,7 @@ public class SignalStatisticsTests
         var sig2 = new SignalRecord(dates[2], "sh.600000", 1.0, "G1", "");
 
         var options = new AnalysisOptions { SignalHorizonSteps = 1 };
-        var stats = SignalStatistics.Create(new[] { sig1, sig2 }, timeseries, options);
+        var stats = SignalAnalyzer.Calculate(new[] { sig1, sig2 }, timeseries, options);
 
         Assert.IsNotNull(stats);
         var tw = stats.Horizons[0].TimeWeighted;

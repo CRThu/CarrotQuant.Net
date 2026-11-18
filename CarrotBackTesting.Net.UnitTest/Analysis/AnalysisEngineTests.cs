@@ -541,34 +541,26 @@ public class AnalysisEngineTests
             new(time1, "600000.SH", "ord-2", OrderDirection.Sell, 11.0, 1000m, 11000.0, 5.5, 0.0, 100994.5, "TagB")
         };
 
-        // 1. PortfolioAnalyzer.Calculate vs PortfolioStatistics.Create
+        // 1. PortfolioAnalyzer.Calculate
         var port1 = PortfolioAnalyzer.Calculate(equityCurve, snapshots, options);
-        var port2 = PortfolioStatistics.Create(equityCurve, snapshots, options);
-        Assert.AreEqual(port1.TotalReturn, port2.TotalReturn, 1e-9);
-        Assert.AreEqual(port1.AnnualizedReturn, port2.AnnualizedReturn, 1e-9);
+        Assert.IsNotNull(port1);
 
-        // 2. CapitalAnalyzer.Calculate vs CapitalStatistics.Create
+        // 2. CapitalAnalyzer.Calculate
         var cap1 = CapitalAnalyzer.Calculate(snapshots, equityCurve, settlements, options);
-        var cap2 = CapitalStatistics.Create(snapshots, equityCurve, settlements, options);
-        Assert.AreEqual(cap1.AnnualizedTurnover, cap2.AnnualizedTurnover, 1e-9);
+        Assert.IsNotNull(cap1);
 
-        // 3. TradeAnalyzer.Calculate vs TradeStatistics.Create
+        // 3. TradeAnalyzer.Calculate
         var trd1 = TradeAnalyzer.Calculate(trades, options);
-        var trd2 = TradeStatistics.Create(trades, options);
-        Assert.AreEqual(trd1.TotalTrades, trd2.TotalTrades);
-        Assert.AreEqual(trd1.WinRate, trd2.WinRate, 1e-9);
+        Assert.IsNotNull(trd1);
+        Assert.AreEqual(1, trd1.TotalTrades);
 
-        // 4. CostAnalyzer.Calculate vs CostStatistics.Create
+        // 4. CostAnalyzer.Calculate
         var cst1 = CostAnalyzer.Calculate(settlements, trades);
-        var cst2 = CostStatistics.Create(settlements, trades);
-        Assert.AreEqual(cst1.TotalCommission, cst2.TotalCommission, 1e-9);
-        Assert.AreEqual(cst1.TotalSlippage, cst2.TotalSlippage, 1e-9);
+        Assert.IsNotNull(cst1);
 
-        // 5. SignalAnalyzer.Calculate vs SignalStatistics.Create (空信号守恒)
+        // 5. SignalAnalyzer.Calculate (空信号守恒)
         var sig1 = SignalAnalyzer.Calculate(Array.Empty<SignalRecord>(), null, options);
-        var sig2 = SignalStatistics.Create(Array.Empty<SignalRecord>(), null, options);
         Assert.IsNull(sig1);
-        Assert.IsNull(sig2);
 
         // 6. 独立 Analyzer 实例方法直接执行验证
         var pAnalyzer = new PortfolioAnalyzer();

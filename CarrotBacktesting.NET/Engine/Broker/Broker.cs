@@ -13,7 +13,7 @@ namespace CarrotBacktesting.NET.Engine.Broker;
 /// 面向策略层的统一入口，统领本地资产账本、多空持仓均价、两阶段预冻结与订单生命周期状态机。
 /// 严格基于依赖倒置：通过通用接口 IExchangeGateway 路由订单，回测与实盘 100% 共享完全一致的单一内核代码。
 /// </summary>
-public sealed class Broker : IBroker
+public sealed class Broker : IBroker, IAccountSnapshotProvider
 {
     private readonly IExchangeGateway _gateway;
     private readonly BrokerConfig _config;
