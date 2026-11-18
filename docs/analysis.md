@@ -464,20 +464,33 @@ var brinson = report.Get<BrinsonResult>();
 
 ### 5. 声明式配置对齐 (YAML 驱动)
 
-分析管线支持通过 YAML 声明式配置装配：
+分析管线与报表导出器支持通过 YAML 声明式配置驱动装配（由 `AnalysisConfig` 与 `AnalysisEngineFactory` 统筹）：
 
 ```yaml
 analysis:
-  risk_free_rate: 0.02
-  benchmark_symbol: "sh.000300"
-  price_field_name: "close"
+  options:
+    risk_free_rate: 0.02
+    annual_trading_days: 252
+    benchmark_symbol: "sh.000300"
+    price_field_name: "close"
+    exit_timing_steps: 20
+    signal_horizon_steps: 30
   analyzers:
-    - portfolio
-    - capital
-    - trades
-    - cost
-    # - signals           # 注释即可移除
-    - brinson_attribution # 注册外部扩展分析器
+    - type: "portfolio"
+    - type: "capital"
+    - type: "trades"
+    - type: "cost"
+    # - type: "signals"   # 注释或设 enabled: false 即可移除
+    - type: "BrinsonAttributionAnalyzer" # 注册外部扩展分析器
+  exporters:
+    - type: "console"
+      params:
+        save_html: true
+        html_output_path: "output/summary.html"
+    - type: "json"
+      params:
+        output_path: "output/report.json"
+        indented: true
 ```
 
 ---
@@ -495,17 +508,21 @@ CarrotQuant.NET 遵循**表现层物理隔离**原则，分析内核（`Analysis
 var engine = new BacktestingEngine(context);
 TradingResult result = engine.Run();
 
-// 1. 分析引擎单路径执行分析管线，生成只读不可变聚合根
-IAnalysisEngine analysisEngine = AnalysisEngine.CreateDefault();
-AnalysisReport report = analysisEngine.Analyze(result);
+// 方式 1：声明式配置驱动装配与一键导出 (AnalysisConfig & AnalysisEngineFactory)
+AnalysisConfig config = sessionConfig.Analysis ?? new AnalysisConfig();
+IAnalysisEngine analysisEngine = AnalysisEngineFactory.Create(config);
 
-// 2. 委托独立导出器完成终端打印与 HTML 报表生成
-IReportExporter exporter = new ConsoleExporter(new ConsoleExporterOptions
-{
-    SaveHtml = true,
-    HtmlOutputPath = "output/summary.html"
-});
-exporter.Export(report);
+// 方式 1.1：一站式分析并按配置自动完成终端/HTML/JSON全渠道导出
+AnalysisReport report = analysisEngine.AnalyzeAndExport(result, config);
+
+// 方式 1.2：分步分析与内聚导出
+// AnalysisReport report = analysisEngine.Analyze(result, config.Options.ToOptions());
+// config.Export(report);
+
+// 方式 2：纯代码显式装配
+IAnalysisEngine defaultEngine = new AnalysisEngine();
+AnalysisReport directReport = defaultEngine.Analyze(result);
+ConsoleExporter.Default.Export(directReport);
 ```
 
 

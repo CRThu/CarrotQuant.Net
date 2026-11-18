@@ -5,11 +5,12 @@ namespace CarrotBacktesting.NET.Config
 {
     /// <summary>
     /// 全局会话配置根（SessionConfig Root）。
-    /// 作为全任务总配置（All-in-one Configuration）的一体化管理契约，统筹四大正交子系统：
+    /// 作为全任务总配置（All-in-one Configuration）的一体化管理契约，统筹五大正交子系统：
     /// 1. <see cref="Engine"/>: 引擎运行模式与起止时间 (<see cref="EngineConfig"/>)
     /// 2. <see cref="Broker"/>: 虚拟经纪商资金、费率与风控 (<see cref="BrokerConfig"/>)
     /// 3. <see cref="Data"/>: 数据层物理存储与时序/事件/维表挂载 (<see cref="DataConfig"/>)
     /// 4. <see cref="Pipeline"/>: 策略流水线拓扑编排 (<see cref="PipelineConfiguration"/>)
+    /// 5. <see cref="Analysis"/>: 绩效分析与报表导出配置 (<see cref="AnalysisConfig"/>)
     /// </summary>
     public class SessionConfig
     {
@@ -32,6 +33,11 @@ namespace CarrotBacktesting.NET.Config
         /// 策略流水线配置（可选）。支持直接内嵌配置对象，也支持赋值为外部共享配置文件的相对路径（如 "shared/pipeline.yaml"）。
         /// </summary>
         public PipelineConfiguration? Pipeline { get; set; }
+
+        /// <summary>
+        /// 绩效分析与报表导出配置（可选）。支持直接内嵌配置对象，也支持赋值为外部共享配置文件的相对路径（如 "shared/analysis.yaml"）。
+        /// </summary>
+        public AnalysisConfig? Analysis { get; set; }
 
         #region 统一门面方法 (Unified Facade APIs)
 

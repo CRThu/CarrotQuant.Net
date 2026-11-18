@@ -19,14 +19,15 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 ## 一、配置设计规范
 
 1. **蛇形命名标准 (`snake_case`)**：配置参数采用标准蛇形命名（如 `start_date`, `initial_cash`, `table_id`；策略管线节点参数遵循驼峰或原样保留）。
-2. **“四大支柱”浅嵌套结构**：
+2. **“五大支柱”浅嵌套结构**：
    - **`engine:`**：运行环境与生命周期（模式、起止时间）；
    - **`broker:`**：账户资金、交易制度、成本滑点、风控与资产乘数；
    - **`data:`**：时序数据、事件流、静态维表；
-   - **`pipeline:`**：（可选）策略流水线拓扑编排、多 Alpha 生产与执行阶段。
+   - **`pipeline:`**：（可选）策略流水线拓扑编排、多 Alpha 生产与执行阶段；
+   - **`analysis:`**：（可选）绩效分析算法参数、分析器管线节点与报表导出器配置。
    - 保持两层以内结构，避免深层缩进导致的排版与解析错误。
 3. **多态统一入口**：
-   - `data` 与 `pipeline` 字段均支持多态赋值：直接赋字符串表示引用外部独立 yaml 文件相对路径；直接赋映射对象表示直接内嵌配置。
+   - `data`、`pipeline` 与 `analysis` 字段均支持多态赋值：直接赋字符串表示引用外部独立 yaml 文件相对路径；直接赋映射对象表示直接内嵌配置。
 4. **单一事实来源与零隐式逻辑**：
    - 系统计算严格遵循配置给定值，绝不在底层隐式猜列或自动回退查维表；
    - 动态特化一律由用户显式挂载对应的 Hook 承载。
@@ -59,7 +60,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `margin_rate` | `MarginRate` | `double` | 否 | `1.0` | 默认保证金率。股票全额现货为 `1.0`，期货按杠杆率填写（如 10 倍杠杆填 `0.1`）。 |
 | `time_zone_id` | `TimeZoneId` | `string` | 否 | `"UTC"` | 交易所清算时区标识（遵循 IANA 标准如 `"Asia/Shanghai"`、`"America/New_York"` 或 `"UTC"`）。用于确定交易所本地自然日 00:00:00 换日与 T+N 持仓划转时刻。 |
 
-### 3. `data` 统一入口 (`DataConfig`)
+### 3. `data` 数据层统一配置 (`DataConfig`)
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
@@ -69,7 +70,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `events` | `Events` | `List<EventStreamConfig>` | 否 | `[]` | 异构事件流列表（稀疏数据），用于挂载复权因子、公告、龙虎榜等 KV 数据。 |
 | `fields` | `Fields` | `List<FieldTableConfig>` | 否 | `[]` | 标的静态属性与维表列表，用于挂载概念、行业、静态属性等平铺维表。 |
 
-### 3. `timeseries` 时序项配置 (`TimeseriesConfig`)
+#### 3.1 `timeseries` 时序项配置 (`TimeseriesConfig`)
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
@@ -90,7 +91,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 > 1. **默认严禁 NULL（Zero-Tolerance）**：Parquet 文件中所有列（含时间戳、标的代码、价格、指标等）默认 100% 严禁出现 NULL。一旦出现非法缺失，立即抛出强类型 `InvalidDataException`（给出列名、缺失总行数、占比以及前 5 个损坏样本行号）。
 > 2. **显式白名单放行**：仅当字段名配置在 `nullable_fields` 白名单中时才跳过检查。放行后，浮点类型严格置 IEEE 754 硬件 `NaN`，文本置空字符串 `""`，日期置 `DateTime.MinValue`，整型置 `0`。
 
-### 4. `events` 事件项配置 (`EventStreamConfig`)
+#### 3.2 `events` 事件项配置 (`EventStreamConfig`)
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
@@ -99,7 +100,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `time_zone` | `TimeZone` | `string?` | 否 | `null` | 事件数据源时间戳时区标识符（遵循 IANA 标准如 `"Asia/Shanghai"`、`"UTC"`）。 |
 | `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
 
-### 5. `fields` 标的静态维表配置 (`FieldTableConfig`)
+#### 3.3 `fields` 标的静态维表配置 (`FieldTableConfig`)
 
 | YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
 | :--- | :--- | :--- | :---: | :--- | :--- |
@@ -107,6 +108,91 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `table_id` | `TableId` | `string` | 是 | - | 维表物理存储表的唯一标识符（如 `"ashare.industry.eastmoney"`）。 |
 | `key_column` | `KeyColumn` | `string?` | 否 | `null` | 主键列名。缺省时优先自动推断 `symbol` 列；若无 `symbol` 则采用首列。 |
 | `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
+
+### 4. `pipeline` 策略流水线编排配置 (`PipelineConfiguration` & `StrategyNodeConfiguration`)
+
+用于定义策略层级拓扑、阶段划分、并行执行与策略节点。支持内嵌或外链 `pipeline: "shared/pipeline.yaml"`。
+
+| YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| `pipeline` | `Pipeline` | `string` \| `Mapping` | 否 | - | **多态统一入口**：字符串路径指向外部管线配置；映射对象直接内嵌。 |
+| `name` | `Name` | `string?` | 否 | `null` | 管线或阶段名称（用于日志追踪与可观测性看板展示）。 |
+| `mode` | `Mode` | `PipelineMode` | 否 | `"sequential"` | 管线执行拓扑模式：`"sequential"`（串行有序执行，适用于有因果依赖的阶段）、`"parallel"`（多策略独立执行）。 |
+| `concurrent` | `Concurrent` | `bool` | 否 | `false` | 是否开启多核并发驱动（仅当 `mode: "parallel"` 且包含子管线时生效）。开启后使用 `Parallel.For` 零 GC 线程池并行计算多个 Alpha。 |
+| `pipeline` | `Pipeline` | `List<StrategyNodeConfiguration>?` | 否 | `null` | 递归嵌套子管线节点列表（存在此字段时表示该节点为复合子阶段）。 |
+| `source` | `Source` | `string?` | 否 | `null` | C# 策略源代码物理文件相对路径（如 `"strategies/MomentumAlpha.cs"`）。Roslyn 运行时动态热编译为原生机器码，支持免构建免重启。 |
+| `type` | `Type` | `string?` | 否 | `null` | 策略类名或全限定类型名称（如 `"MyQuant.Strategies.PortfolioPlanner"` 或短类名）。 |
+| `params` | `Params` | `Dictionary<string, object>?` | 否 | `null` | 策略超参数注入字典。启动时自动反射类型转换并注入到对应策略类的同名可写属性中。 |
+
+### 5. `analysis` 绩效分析与报表导出配置 (`AnalysisConfig`)
+
+统筹绩效分析算法选项（无风险利率、基准标的）、分析器管线节点（`analyzers`）与报表导出器（`exporters`）。支持内嵌或外链 `analysis: "shared/analysis.yaml"`。
+
+#### 5.1 全局分析算法选项 (`options: AnalysisOptionsConfig`)
+
+| YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| `risk_free_rate` | `RiskFreeRate` | `double` | 否 | `0.02` | 年化无风险利率（用于夏普比率、索提诺比率超额收益折算），默认 2%。 |
+| `annual_trading_days` | `AnnualTradingDays` | `int` | 否 | `252` | 全年基准交易日数（用于日收益率年化折算），日频默认为 252。 |
+| `exit_timing_steps` | `ExitTimingSteps` | `int` | 否 | `20` | 卖点时机反思前向考察步数（平仓后 T+1..T+N 的价格走势评估）。设为 0 或负数则禁用该项。 |
+| `signal_horizon_steps`| `SignalHorizonSteps`| `int` | 否 | `30` | 独立 Alpha 信号前向收益分布评估周期步数。设为 0 或负数则禁用该项。 |
+| `benchmark_symbol` | `BenchmarkSymbol` | `string?` | 否 | `null` | 比较基准标的代码（如 `"sh.000300"`）。为空表示不计算 Beta/Alpha/信息比率等相对收益指标。 |
+| `price_field_name` | `PriceFieldName` | `string` | 否 | `"close"` | 用于基准盯市与前向收益计算的时序行情字段名。 |
+
+#### 5.2 分析器管线节点 (`analyzers: List<AnalyzerNodeConfig>`)
+
+分析器节点配置列表。**约定优于配置**：缺省或为空时默认装配官方全部五大分析器。
+
+| YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| `type` | `Type` | `string` | 是 | - | 分析器类型标识（支持官方短名称或自定义实现 `IAnalyzer` 的完整类名）。 |
+| `enabled` | `Enabled` | `bool` | 否 | `true` | 是否启用该分析器。设为 `false` 可临时从计算管线中跳过，零开销。 |
+| `params` | `Params` | `Dictionary<string, object>?` | 否 | `null` | 分析器自定义注入参数（若分析器具备对应公有属性）。 |
+
+##### 官方内置分析器权威短名称字典：
+
+| 官方短名称 (`type`) | 对应实现类型 | 架构层级 | 分析产物模型 | 核心量化指标覆盖范围 |
+| :--- | :--- | :--- | :--- | :--- |
+| `portfolio` | `PortfolioAnalyzer` | 第一层：宏观组合 | `PortfolioStatistics` | 累计收益率、年化收益率、年化波动率、下行波动率、最大回撤及恢复期、夏普比率、索提诺比率、卡玛比率、日度 VaR95 / CVaR95、基准收益、Alpha、Beta、信息比率、逐月收益率矩阵。 |
+| `capital` | `CapitalAnalyzer` | 第二层：资本利用 | `CapitalStatistics` | 资金占用率（平均/峰值）、现金闲置率、保证金占用（多空）、总资产换手率、多空头敞口绝对市值、多空平均杠杆倍数。 |
+| `trades` | `TradeAnalyzer` | 第三层：交易行为 | `TradeStatistics` | 交易总笔数、多空胜率、盈亏比、最大单笔盈亏、平均持仓周期、盈利/亏损周期比、多空最大不利偏离（MAE）、最大有利前向波幅（MFE）、Exit Timing 卖点时机反思、策略/交易 Tag 分组统计。 |
+| `cost` | `CostAnalyzer` | 第四层：现实摩擦 | `CostStatistics` | 累计佣金手续费、累计滑点冲击损耗、总交易摩擦开销、摩擦成本占毛利润侵蚀比（Cost Erosion Ratio）。 |
+| `signals` | `SignalAnalyzer` | 第五层：独立 Alpha | `SignalStatistics` | 信号触发总频次、多持有期（Horizon 1..N）前向胜率、前向收益均值与分位数分布、最优前向持有周期识别（Optimal Holding Period）。 |
+
+#### 5.3 报表导出器管线节点 (`exporters: List<ExporterNodeConfig>`)
+
+报表导出器节点配置列表。**约定优于配置**：缺省或为空时默认装配官方控制台导出器（`ConsoleExporter.Default`）。
+
+| YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| `type` | `Type` | `string` | 是 | - | 导出器类型标识：`"console"`（控制台仪表盘/HTML）、`"json"`（结构化数据持久化）或自定义全类名。 |
+| `enabled` | `Enabled` | `bool` | 否 | `true` | 是否启用该导出器。设为 `false` 可静默禁用。 |
+| `params` | `Params` | `Dictionary<string, object>?` | 否 | `null` | 导出器专用参数字典（支持蛇形下划线与驼峰自动映射）。 |
+
+##### 5.3.1 官方控制台与 HTML 导出器 (`ConsoleExporter`) 专属参数全字典 (`params:`)
+
+| 参数键名 (`params`) | 对应属性 | 类型 | 默认值 | 说明与呈现效果 |
+| :--- | :--- | :--- | :---: | :--- |
+| `show_portfolio` | `ShowPortfolio` | `bool` | `true` | 是否渲染第一层：组合净值与宏观风险面板（含累计收益、夏普、回撤、VaR）。 |
+| `show_capital` | `ShowCapital` | `bool` | `true` | 是否渲染第二层：资本利用与敞口特征面板（含持仓率、保证金、换手率）。 |
+| `show_trades` | `ShowTrades` | `bool` | `true` | 是否渲染第三层：交易行为与微观归因面板（含胜率、盈亏比、持仓时间）。 |
+| `show_cost` | `ShowCost` | `bool` | `true` | 是否渲染第四层：现实成本与摩擦损耗面板（含佣金、滑点、毛利侵蚀比）。 |
+| `show_signals` | `ShowSignals` | `bool` | `true` | 是否渲染第五层：独立 Alpha 信号前向质量面板（含最优周期、收益分布）。 |
+| `show_monthly_returns` | `ShowMonthlyReturns` | `bool` | `true` | 是否在控制台渲染逐月收益率矩阵热力表格（绿涨红跌）。 |
+| `show_trade_efficiency` | `ShowTradeEfficiency` | `bool` | `true` | 是否渲染交易微观执行效率面板（MFE 有利前向波幅、MAE 不利偏离）。 |
+| `show_exit_timing` | `ShowExitTiming` | `bool` | `true` | 是否渲染平仓卖点时机反思面板（评估平仓后 1~N 日行情是否被踏空）。 |
+| `show_trade_tags` | `ShowTradeTags` | `bool` | `true` | 是否按开仓 Tag 与平仓 Tag 渲染细分维度的胜率与盈亏分布面板。 |
+| `show_signal_groups` | `ShowSignalGroups` | `bool` | `true` | 是否按 Signal Tag 渲染各信号分组前向持有收益分布。 |
+| `show_extensions` | `ShowExtensions` | `bool` | `true` | 是否渲染第三方自定义扩展分析产物面板（自描述指标网格）。 |
+| `save_html` | `SaveHtml` | `bool` | `false` | 是否将控制台全彩富文本实时转录为单文件深色 HTML 报表。 |
+| `html_output_path` | `HtmlOutputPath` | `string` | `"summary.html"` | 转录生成的深色 HTML 报表保存物理路径（支持相对路径自动级联归一化）。 |
+
+##### 5.3.2 官方 JSON 数据持久化导出器 (`JsonReportExporter`) 专属参数全字典 (`params:`)
+
+| 参数键名 (`params`) | 对应属性 | 类型 | 默认值 | 说明与功能 |
+| :--- | :--- | :--- | :---: | :--- |
+| `output_path` | `OutputPath` | `string` | `"report.json"` | JSON 持久化报告输出文件路径（必填项，支持相对路径自动级联解析归一化）。 |
+| `indented` | `Indented` | `bool` | `true` | 输出的 JSON 文本是否进行格式化缩进排版（设为 `false` 可减小约 30% 体积）。 |
 
 ---
 
@@ -171,9 +257,11 @@ config.Broker.OnCalculateFee = (order, turnover) =>
 my_project/
 ├── configs/
 │   ├── shared/
-│   │   └── data_production.yaml    # 共享数据区配置（平铺以 root: 开头）
-│   ├── strategy_alpha_1.yaml       # 策略 1 主配置
-│   └── strategy_cta_2.yaml         # 策略 2 主配置
+│   │   ├── data_production.yaml    # 共享数据区配置（平铺以 root: 开头）
+│   │   ├── pipeline_alpha.yaml     # 共享 Alpha 策略流水线编排拓扑
+│   │   └── analysis_standard.yaml  # 共享绩效分析算法与报表导出配置
+│   ├── strategy_alpha_1.yaml       # 策略 1 主回测配置（仅关注起止时间与初始资金）
+│   └── strategy_cta_2.yaml         # 策略 2 主回测配置
 └── data/                           # 物理数据仓库
 ```
 
@@ -196,8 +284,76 @@ fields:
     table_id: "ashare.concept.eastmoney"
 ```
 
-### 2. 主策略配置文件 (`strategy_alpha_1.yaml`)
-主策略配置包含运行参数、交易经纪商设置，并通过 `data` 字段指向外部共享数据配置文件：
+### 2. 独立共享策略管线配置 (`shared/pipeline_alpha.yaml`)
+平铺 `PipelineConfiguration` 拓扑，支持串行/并行自由嵌套、Roslyn 源码热重载与参数反射注入：
+
+```yaml
+name: ProductionMasterPipeline
+mode: sequential                    # 顶层为串行管线 (sequential | parallel)
+pipeline:
+  # 阶段 1：多因子并发计算 (利用多核 CPU 线程池)
+  - name: SignalStage
+    mode: parallel
+    concurrent: true
+    pipeline:
+      - source: "strategies/MomentumAlpha.cs"  # Roslyn 源码热重载免编译
+        params:
+          Period: 14
+          Threshold: 0.02
+      - type: "MyQuant.Strategies.ReversionAlpha" # 已编译策略类
+        params:
+          Window: 60
+
+  # 阶段 2：全市场截面选股与持仓规划 (串行执行)
+  - type: "MyQuant.Strategies.PortfolioPlanner"
+    params:
+      TopK: 20
+
+  # 阶段 3：风控与下单执行 (串行执行)
+  - type: "CarrotBacktesting.NET.Strategy.RuleStrategyBase"
+    params:
+      Lookback: 200
+```
+
+### 3. 独立共享绩效分析配置 (`shared/analysis_standard.yaml`)
+平铺 `AnalysisConfig`，统筹全局算法参数、启用的分析器列表与报表导出渠道：
+
+```yaml
+options:
+  risk_free_rate: 0.02              # 2% 年化无风险利率
+  annual_trading_days: 252          # 日频交易日折算基准
+  benchmark_symbol: "sh.000300"     # 沪深300作为比较基准
+  price_field_name: "close"         # 用于前向收益与基准盯市的字段名
+  exit_timing_steps: 20             # 卖点时机反思评估 20 步
+  signal_horizon_steps: 30          # Alpha 信号前向收益评估 30 步
+
+# 启用的分析器（缺省时自动装配官方五大分析器）
+analyzers:
+  - type: "portfolio"
+  - type: "capital"
+  - type: "trades"
+  - type: "cost"
+  - type: "signals"
+
+# 启用的报表导出渠道
+exporters:
+  # 控制台交互式彩色仪表盘 + 单文件深色 HTML 报表持久化
+  - type: "console"
+    params:
+      show_monthly_returns: true
+      show_trade_efficiency: true
+      show_exit_timing: true
+      save_html: true
+      html_output_path: "output/summary.html"
+  # 结构化数据标准 JSON 持久化（支持离线脱机反序列化加载）
+  - type: "json"
+    params:
+      output_path: "output/report.json"
+      indented: true
+```
+
+### 4. 主策略会话配置文件 (`strategy_alpha_1.yaml`)
+主策略配置统筹运行参数与交易经纪商设置，并通过多态外链字段（`data`, `pipeline`, `analysis`）引用共享配置文件：
 
 ```yaml
 engine:
@@ -215,6 +371,8 @@ broker:
   check_limit: true
 
 data: "shared/data_production.yaml"
+pipeline: "shared/pipeline_alpha.yaml"
+analysis: "shared/analysis_standard.yaml"
 ```
 
 ---
@@ -241,7 +399,7 @@ flowchart TD
 
 ## 六、直接内嵌配置模式 (Inline)
 
-针对独立实验脚本或单元测试，系统支持单文件内嵌配置：
+针对独立实验脚本或单元测试，系统支持单文件内嵌全量配置：
 
 ```yaml
 engine:
@@ -263,6 +421,32 @@ data:
   events:
     - name: "adjustments"
       table_id: "ashare.adj_factor.baostock"
+
+pipeline:
+  name: "InlineDualMaPipeline"
+  mode: "sequential"
+  pipeline:
+    - type: "MyQuant.Strategies.DualMovingAverageStrategy"
+      params:
+        ShortPeriod: 5
+        LongPeriod: 20
+
+analysis:
+  options:
+    risk_free_rate: 0.02
+    benchmark_symbol: "sh.000300"
+  analyzers:
+    - type: "portfolio"
+    - type: "trades"
+  exporters:
+    - type: "console"
+      params:
+        save_html: true
+        html_output_path: "output/summary.html"
+    - type: "json"
+      params:
+        output_path: "output/report.json"
+        indented: true
 ```
 
 加载器根据 YAML 节点类型（标量字符串或字典映射）自动解析对应配置模型。

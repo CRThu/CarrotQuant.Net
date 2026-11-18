@@ -13,9 +13,12 @@
   - [2. 完整配置选项对照 (ConsoleExporterOptions)](#2-完整配置选项对照-consoleexporteroptions)
   - [3. 预设模式 (SummaryOnly)](#3-预设模式-summaryonly)
   - [4. 深色 HTML 报表持久化](#4-深色-html-报表持久化)
-- [五、自定义导出器扩展实现范式](#五自定义导出器扩展实现范式)
-  - [1. JSON 结构化报表导出器 (JsonReportExporter)](#1-json-结构化报表导出器-jsonreportexporter)
-  - [2. CSV 明细导出器 (CsvReportExporter)](#2-csv-明细导出器-csvreportexporter)
+- [五、内置 JSON 报表持久化与还原 (JsonReportExporter)](#五内置-json-报表持久化与还原-jsonreportexporter)
+  - [1. 流畅门面 API (Extension & Static Facades)](#1-流畅门面-api-extension--static-facades)
+  - [2. 标准导出器挂载 (JsonReportExporter)](#2-标准导出器挂载-jsonreportexporter)
+- [六、声明式导出与配置驱动 (AnalysisConfig.Export)](#六声明式导出与配置驱动-analysisconfigexport)
+- [七、自定义导出器扩展实现范式](#七自定义导出器扩展实现范式)
+  - [1. CSV 明细导出器范例 (CsvReportExporter)](#1-csv-明细导出器范例-csvreportexporter)
 
 ---
 
@@ -174,57 +177,96 @@ new ConsoleExporter(ConsoleExporterOptions.SummaryOnly).Export(report);
 
 ---
 
-## 五、自定义导出器扩展实现范式
+## 五、内置 JSON 报表持久化与还原 (JsonReportExporter)
 
-当需要将分析结果对接下游数据库、数据管道或告警通知时，只需实现 `IReportExporter` 接口。
+系统内置了标准 JSON 导出器（`JsonReportExporter`），作为持久化与脱机还原的单一事实来源（SSOT）：
+既实现 `IReportExporter` 作为标准导出插件，又暴露静态 `Save` / `Load` / `ToJson` / `FromJson` 能力。
+支持将 `AnalysisReport` 的**原始交易事实账本（净值曲线、每日快照、平仓流水、交割单、信号）**与**各层量化分析统计**完整无损地持久化为标准 UTF-8 蛇形命名（`snake_case`）JSON 文件，并支持脱机反序列化还原。
 
-### 1. JSON 结构化报表导出器 (JsonReportExporter)
-
-以下代码展示了如何消费 `AnalysisReport.Results` 与 `GetMetrics()` 快速构建通用的 JSON 报表落盘器：
+### 1. 静态持久化与还原 API (Static Facades)
 
 ```csharp
-using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
 using CarrotBacktesting.NET.Abstraction.Analysis;
+using CarrotBacktesting.NET.Analysis.Exporters;
 
-namespace CarrotBacktesting.NET.Analysis.Exporters;
+// 1. 序列化持久化落盘
+JsonReportExporter.Save(report, "output/report.json", indented: true);
+string jsonString = JsonReportExporter.ToJson(report, indented: true);
 
-public sealed class JsonReportExporter : IReportExporter
-{
-    private readonly string _outputPath;
+// 2. 离线脱机反序列化加载（完全脱离回测计算上下文）
+AnalysisReport restored = JsonReportExporter.Load("output/report.json");
+AnalysisReport direct = JsonReportExporter.FromJson(jsonString);
 
-    public JsonReportExporter(string outputPath = "report.json")
-    {
-        _outputPath = outputPath;
-    }
-
-    public void Export(AnalysisReport report)
-    {
-        var exportDict = new Dictionary<string, object>();
-
-        foreach (var result in report.Results)
-        {
-            var metricsDict = new Dictionary<string, string>();
-            foreach (var metric in result.GetMetrics())
-            {
-                metricsDict[metric.Label] = metric.Value;
-            }
-
-            exportDict[result.Name] = new
-            {
-                Title = result.Title,
-                Metrics = metricsDict
-            };
-        }
-
-        string json = JsonSerializer.Serialize(exportDict, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(_outputPath, json);
-    }
-}
+// 3. 还原后的报告可直接提供给导出器脱机呈现
+ConsoleExporter.Default.Export(restored);
 ```
 
-### 2. CSV 明细导出器 (CsvReportExporter)
+### 2. 标准导出器挂载 (JsonReportExporter)
+
+```csharp
+using CarrotBacktesting.NET.Analysis.Exporters;
+
+// 作为 IReportExporter 挂载到导出管线
+var jsonExporter = new JsonReportExporter("output/backtest_result.json", indented: true);
+jsonExporter.Export(report);
+```
+
+---
+
+## 六、声明式导出与配置驱动 (AnalysisConfig.Export)
+
+在工程化回测中，导出器通常通过 YAML 配置文件声明式管理。系统将导出器的装配与调度直接内聚在 `AnalysisConfig` 与统一的 `AnalysisEngineFactory` 中，消除冗余的装配细节：
+
+```csharp
+using CarrotBacktesting.NET.Config;
+using CarrotBacktesting.NET.Analysis;
+
+// 1. 加载或内嵌 AnalysisConfig
+var config = AnalysisConfig.Load("configs/analysis.yaml");
+
+// 方式 A（最简一行驱动）：由配置对象内聚驱动全量已启用导出器执行
+config.Export(report);
+
+// 方式 B（一站式分析并导出）：由分析引擎执行管线并自动按配置完成多渠道导出
+IAnalysisEngine engine = AnalysisEngineFactory.Create(config);
+AnalysisReport report = engine.AnalyzeAndExport(facts, config);
+
+// 方式 C（显式获取实例列表）：通过工厂或配置获取 IReportExporter 序列
+IReadOnlyList<IReportExporter> exporters = config.CreateExporters();
+```
+
+### 1. 对应 YAML 配置范例
+```yaml
+exporters:
+  - type: "console"
+    params:
+      show_capital: false
+      save_html: true
+      html_output_path: "output/summary.html"
+  - type: "json"
+    params:
+      output_path: "output/report.json"
+      indented: true
+  - type: "MyNamespace.CustomExporter, MyAssembly"
+    params:
+      custom_param: 100
+```
+
+### 2. 工厂装配规则与特性
+1. **约定优于配置**：当 `config == null` 或 `config.Exporters` 为空时，默认返回 `ConsoleExporter.Default`，零配置直接使用；
+2. **官方短名称派发**：
+   - `"console"` / `"consoleexporter"` -> 实例化 `ConsoleExporter`，并通过 `ConfigPropertyInjector` 安全注入 `ConsoleExporterOptions` 参数；
+   - `"json"` / `"jsonexporter"` / `"jsonreportexporter"` -> 实例化 `JsonReportExporter`，提取 `output_path` 与 `indented` 参数；
+3. **通用反射加载**：支持通过短类名（当前 AppDomain 扫描）或完整限定名载入任意实现了 `IReportExporter` 的外部类型；
+4. **路径自动归一化**：导出器中声明的相对输出路径（如 `output_path`, `html_output_path`）将自动以配置文件的所在物理目录（`baseDirectory`）为基准合并为绝对路径，杜绝工作目录漂移问题。
+
+---
+
+## 七、自定义导出器扩展实现范式
+
+当需要将分析结果对接第三方下游数据库、自定义数据管道或 Webhook 告警通知时，只需实现 `IReportExporter` 契约。
+
+### 1. CSV 明细导出器范例 (CsvReportExporter)
 
 将所有指标平铺为 CSV 键值对，便于直接导入 Excel 或数据分析工具：
 

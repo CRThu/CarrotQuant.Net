@@ -148,6 +148,27 @@ namespace CarrotBacktesting.NET.Config
                 config.Pipeline = PipelineConfigLoader.FromYaml(intermediateYaml);
             }
 
+            // 3. 处理 analysis 节点多态（外链文件路径 vs 内嵌对象）
+            if (rawConfig.Analysis is string externalAnalysisPath && !string.IsNullOrWhiteSpace(externalAnalysisPath))
+            {
+                string fullAnalysisPath = Path.IsPathRooted(externalAnalysisPath)
+                    ? externalAnalysisPath
+                    : Path.GetFullPath(Path.Combine(effectiveBaseDir, externalAnalysisPath));
+
+                if (!File.Exists(fullAnalysisPath))
+                {
+                    throw new FileNotFoundException($"External analysis configuration file not found: {fullAnalysisPath}");
+                }
+
+                config.Analysis = AnalysisConfigLoader.Load(fullAnalysisPath);
+            }
+            else if (rawConfig.Analysis != null)
+            {
+                // 内嵌 analysis 配置
+                string intermediateYaml = YamlSerializer.Serialize(rawConfig.Analysis);
+                config.Analysis = AnalysisConfigLoader.FromYaml(intermediateYaml, effectiveBaseDir);
+            }
+
             return config;
         }
 
@@ -157,6 +178,7 @@ namespace CarrotBacktesting.NET.Config
             public BrokerConfig? Broker { get; set; }
             public object? Data { get; set; }
             public object? Pipeline { get; set; }
+            public object? Analysis { get; set; }
         }
 
         private class DataWrapper

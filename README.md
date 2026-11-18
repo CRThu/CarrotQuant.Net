@@ -3,13 +3,13 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0+-512BD4.svg)](https://dotnet.microsoft.com/download)
 
-CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易与回测框架，采用 **三层分离架构**（数据层 / 引擎层 / 策略层），支持回测与实盘双引擎。
+CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易与回测框架，采用契约解耦的**多层分离架构**（数据层 / 经纪商与交易所撮合层 / 引擎与指标层 / 策略层 / 绩效分析与报表呈现层），支持回测与实盘双引擎。
 
 ---
 
 ## 核心特性
 
-- **三层分离架构**: 数据层 / 引擎层 / 策略层通过接口契约解耦，各层可独立演进。
+- **多层解耦架构**: 数据层 / 经纪商撮合层 / 引擎层 / 策略层 / 绩效分析层通过纯瘦契约解耦，同层物理隔离，各层可独立演进。
 - **双格式数据源**: 统一支持 CSV 与 Parquet 格式，通过 `IStorageResolver` 屏蔽物理存储差异。
 - **稠密矩阵 + 稀疏事件**: `ITimeseriesRegistry` 提供高性能二维时序矩阵（`GetMatrix`）与单标的一维序列（`GetSeries`）访问，`IEventTable` 提供点查与强类型流式 LINQ。
 - **计算属性与极速复权**: `IEngineContext` 提供当期零分配极速取价门面（统一 `double`，仅当期，默认后复权），除权表全量极速滚动预热 + 跨模态覆盖校验；交易所撮合 100% 走真实未复权价格（Raw）。
@@ -87,38 +87,54 @@ ConsoleExporter.Default.Export(report);
 
 ## 架构概览
 
+```mermaid
+graph TD
+    subgraph DataLayer [1. Data Layer - 数据层]
+        Timeseries["时序时态矩阵 (ITimeseriesRegistry / ChunkMatrix2D 二维稠密内存)"]
+        Events["异构离散事件流 (IEventRegistry / IEventTable 强类型零装箱)"]
+        Fields["标的静态维表 (IFieldRegistry / IFieldTable 双向倒排索引)"]
+    end
+
+    subgraph BrokerExchangeLayer [2. Broker & Exchange Layer - 经纪商与交易所层]
+        Broker["客户端经纪商 (IBroker & AccountLedger 资产财务账本)"]
+        Exchange["集中撮合仿真 (IExchangeGateway & OrderBook 标的桶化订单簿)"]
+        Broker -->|两阶段预冻结发单| Exchange
+    end
+
+    subgraph EngineLayer [3. Engine & Execution Layer - 引擎与驱动层]
+        Engine["回测与实盘引擎 (IEngine & IEngineContext 统一门面)"]
+        Indicators["流式指标体系 (IndicatorRegistry & IndicatorPool 全市场单步递推)"]
+        Indicators --> Engine
+    end
+
+    subgraph StrategyLayer [4. Strategy Layer - 策略层]
+        Pipeline["组合管线拓扑 (StrategyPipeline: 串行因果 / 多核并发 Alpha)"]
+        Blackboard["强类型黑板解耦 (IMarketState 跨策略状态与信号发布)"]
+        Strategies["策略实现 (IStrategy / ISignalStrategy / RuleStrategyBase)"]
+        Strategies --> Pipeline
+        Strategies --> Blackboard
+    end
+
+    subgraph AnalysisLayer [5. Analysis & Reporting Layer - 绩效分析与报表呈现层]
+        Recorder["事实记账沉淀 (TradingRecorder -> 不可变交易事实账本 TradingResult)"]
+        Analysis["单路径分析管线 (IAnalysisEngine: 组合/资本/交易/摩擦/信号五层量化)"]
+        Exporters["多渠道报表呈现 (ConsoleExporter 终端彩色与深色HTML / JsonReportExporter 持久化)"]
+        Recorder --> Analysis
+        Analysis --> Exporters
+    end
+
+    DataLayer -->|零拷贝/切片供给| EngineLayer
+    EngineLayer -->|主时钟步进 & 行情注入| StrategyLayer
+    StrategyLayer -->|发出报单意图| Broker
+    Exchange -->|撮合成交回报更新持仓| Broker
+    EngineLayer -->|每步流水记账| Recorder
 ```
-  Data Layer               Engine Layer               Strategy Layer
-┌──────────────┐         ┌─────────────┐             ┌─────────────┐
-│ITimeseriesReg│────────▶│   IEngine   │────────────▶│  IStrategy   │
-│IEventRegistry│         │IEngineCtx   │             │ IStrategyPipe│
-│IFieldRegistry│         └──────┬──────┘             └──────┬──────┘
-└──────────────┘                │                           │
-                                ▼                           ▼
-                   ┌────────────────────────┐   context.Broker
-                   │ Broker & Exchange Layer│◀──────────────┘
-                   │ ┌────────────────────┐ │
-                   │ │ Broker / Ledger    │ │
-                   │ └─────────┬──────────┘ │
-                   │           ▼            │
-                   │ │ Exchange / Matching│ │
-                   │ └────────────────────┘ │
-                   └────────────┬───────────┘
-                                │ TradingRecorder (Facts)
-                                ▼
-                   ┌────────────────────────┐
-                   │  Analysis & Exporters  │
-                   │ ┌────────────────────┐ │
-                   │ │  AnalysisEngine    │ │
-                   │ └─────────┬──────────┘ │
-                   │           ▼            │
-                   │ │  ConsoleExporter   │ │
-                   │ └────────────────────┘ │
-                   └────────────────────────┘
-```
+
+详细类图、组件关系与业务时序见专著：👉 **[系统全景架构拓扑 (docs/diagram.md)](docs/diagram.md)**。
 
 ## 文档导航 (Wiki)
 
+- **[系统全景架构拓扑 (docs/diagram.md)](docs/diagram.md)**: 完整的 Mermaid 六层解耦拓扑、组件归属与核心业务数据流向图。
 - **[系统架构与研发红线 (AGENTS.md)](AGENTS.md)**: 框架总纲，涵盖分层架构设计、数字孪生模型、性能分级与研发红线。
 - **[数据层内存架构与供给体系 (docs/data.md)](docs/data.md)**: `ChunkMatrix2D` 连续内存矩阵、4096 行分块轮转缓存、`EventTable` 表达式树零装箱映射、`FieldTable` 动态倒排选股与元数据推断。
 - **[客户端经纪商与账户账本体系 (docs/broker.md)](docs/broker.md)**: `IBroker` 契约、`AccountLedger` 纯财务账本、两阶段挂单冻结状态机、零现金卖出平仓、T+N 跨日清算与实盘对账。
