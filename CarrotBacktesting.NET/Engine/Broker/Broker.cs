@@ -24,7 +24,7 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
 
     private readonly Dictionary<string, BrokerOrderRecord> _orders = new(StringComparer.Ordinal);
     private long _orderSequence = 0;
-    private DateTime _currentTime = DateTime.MinValue;
+    private MarketTime _currentTime = MarketTime.MinValue;
 
     public event Action<string, OrderStatus>? OnOrderStatusChanged;
     public event Action<ExecutionReport>? OnTrade;
@@ -41,7 +41,7 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
     /// <summary>
     /// 获取经纪商当前推进的全局时间戳。
     /// </summary>
-    public DateTime CurrentTime => _currentTime;
+    public MarketTime CurrentTime => _currentTime;
 
     public Broker(IExchangeGateway gateway, BrokerConfig config, IFieldRegistry? fields = null)
     {
@@ -86,7 +86,7 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
     /// <param name="time">当前时间戳。</param>
     /// <param name="priceResolver">可选的价格解析委托。</param>
     /// <returns>净值点。</returns>
-    public EquityPoint CreateEquityPoint(DateTime time, Func<string, double>? priceResolver = null)
+    public EquityPoint CreateEquityPoint(MarketTime time, Func<string, double>? priceResolver = null)
     {
         lock (_syncLock)
         {
@@ -106,7 +106,7 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
     /// <param name="time">快照时间戳。</param>
     /// <param name="priceResolver">可选的价格解析委托。</param>
     /// <returns>日终资产与持仓快照。</returns>
-    public DailySnapshot CreateDailySnapshot(DateTime time, Func<string, double>? priceResolver = null)
+    public DailySnapshot CreateDailySnapshot(MarketTime time, Func<string, double>? priceResolver = null)
     {
         lock (_syncLock)
         {
@@ -258,7 +258,7 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
     }
 
     /// <inheritdoc />
-    public void Step(DateTime currentTime)
+    public void Step(MarketTime currentTime)
     {
         lock (_syncLock)
         {
@@ -267,7 +267,7 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
             {
                 sim.SetCurrentTime(currentTime);
             }
-            DateTime exchangeDate = ToExchangeDate(currentTime);
+            MarketTime exchangeDate = ToExchangeDate(currentTime);
             _ledger.ProcessDayRollover(exchangeDate);
         }
     }
@@ -365,7 +365,7 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
                 report = report with { Commission = commission };
             }
 
-            DateTime exchangeDate = ToExchangeDate(report.Time);
+            MarketTime exchangeDate = ToExchangeDate(report.Time);
             _ledger.CommitFill(
                 report,
                 ord.Request.IsBuy,
@@ -443,16 +443,13 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
         }
     }
 
-    private DateTime ToExchangeDate(DateTime time)
+    private MarketTime ToExchangeDate(MarketTime time)
     {
-        if (_timeZone == TimeZoneInfo.Utc)
+        if (_timeZone.Equals(TimeZoneInfo.Utc))
         {
             return time.Date;
         }
-        DateTime utcTime = time.Kind == DateTimeKind.Utc
-            ? time
-            : (time.Kind == DateTimeKind.Local ? time.ToUniversalTime() : DateTime.SpecifyKind(time, DateTimeKind.Utc));
-        return TimeZoneInfo.ConvertTimeFromUtc(utcTime, _timeZone).Date;
+        return time.ToExchangeTime(_timeZone).Date;
     }
 
     private double GetMultiplier(string symbol)

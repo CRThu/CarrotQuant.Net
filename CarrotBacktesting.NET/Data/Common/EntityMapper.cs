@@ -142,6 +142,7 @@ namespace CarrotBacktesting.NET.Data
             if (targetType == typeof(long)) return typeof(EntityMapper).GetMethod(nameof(ParseLong), BindingFlags.Public | BindingFlags.Static)!;
             if (targetType == typeof(int)) return typeof(EntityMapper).GetMethod(nameof(ParseInt), BindingFlags.Public | BindingFlags.Static)!;
             if (targetType == typeof(bool)) return typeof(EntityMapper).GetMethod(nameof(ParseBool), BindingFlags.Public | BindingFlags.Static)!;
+            if (targetType == typeof(MarketTime)) return typeof(EntityMapper).GetMethod(nameof(ParseMarketTime), BindingFlags.Public | BindingFlags.Static)!;
             if (targetType == typeof(DateTime)) return typeof(EntityMapper).GetMethod(nameof(ParseDateTime), BindingFlags.Public | BindingFlags.Static)!;
 
             // 2. 可空值类型 (Nullable<T>) 原生支持，避免 Convert.ChangeType 抛出 InvalidCastException
@@ -151,6 +152,7 @@ namespace CarrotBacktesting.NET.Data
             if (targetType == typeof(long?)) return typeof(EntityMapper).GetMethod(nameof(ParseNullableLong), BindingFlags.Public | BindingFlags.Static)!;
             if (targetType == typeof(int?)) return typeof(EntityMapper).GetMethod(nameof(ParseNullableInt), BindingFlags.Public | BindingFlags.Static)!;
             if (targetType == typeof(bool?)) return typeof(EntityMapper).GetMethod(nameof(ParseNullableBool), BindingFlags.Public | BindingFlags.Static)!;
+            if (targetType == typeof(MarketTime?)) return typeof(EntityMapper).GetMethod(nameof(ParseNullableMarketTime), BindingFlags.Public | BindingFlags.Static)!;
             if (targetType == typeof(DateTime?)) return typeof(EntityMapper).GetMethod(nameof(ParseNullableDateTime), BindingFlags.Public | BindingFlags.Static)!;
 
             return typeof(EntityMapper).GetMethod(nameof(ParseFallback), BindingFlags.Public | BindingFlags.Static)!
@@ -203,15 +205,19 @@ namespace CarrotBacktesting.NET.Data
             throw new InvalidDataException($"Cannot parse value '{s}' to bool for parameter '{paramName}'.");
         }
 
+        public static MarketTime ParseMarketTime(string s, string paramName)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return MarketTime.MinValue;
+            if (MarketTime.TryParse(s.AsSpan(), sourceTimeZone: null, out var mt))
+                return mt;
+            throw new InvalidDataException($"Cannot parse value '{s}' to MarketTime for parameter '{paramName}'.");
+        }
+
         public static DateTime ParseDateTime(string s, string paramName)
         {
             if (string.IsNullOrWhiteSpace(s)) return DateTime.MinValue;
-            if (long.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out long ts))
-                return DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime;
-            if (DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt))
-                return dt;
-            if (DateTime.TryParse(s, out DateTime dtLocal))
-                return dtLocal;
+            if (MarketTime.TryParse(s.AsSpan(), sourceTimeZone: null, out var mt))
+                return mt.ToDateTime();
             throw new InvalidDataException($"Cannot parse value '{s}' to DateTime for parameter '{paramName}'.");
         }
 
@@ -259,15 +265,19 @@ namespace CarrotBacktesting.NET.Data
             throw new InvalidDataException($"Cannot parse value '{s}' to bool? for parameter '{paramName}'.");
         }
 
+        public static MarketTime? ParseNullableMarketTime(string s, string paramName)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            if (MarketTime.TryParse(s.AsSpan(), sourceTimeZone: null, out var mt))
+                return mt;
+            throw new InvalidDataException($"Cannot parse value '{s}' to MarketTime? for parameter '{paramName}'.");
+        }
+
         public static DateTime? ParseNullableDateTime(string s, string paramName)
         {
             if (string.IsNullOrWhiteSpace(s)) return null;
-            if (long.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out long ts))
-                return DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime;
-            if (DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt))
-                return dt;
-            if (DateTime.TryParse(s, out DateTime dtLocal))
-                return dtLocal;
+            if (MarketTime.TryParse(s.AsSpan(), sourceTimeZone: null, out var mt))
+                return mt.ToDateTime();
             throw new InvalidDataException($"Cannot parse value '{s}' to DateTime? for parameter '{paramName}'.");
         }
 

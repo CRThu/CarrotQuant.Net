@@ -11,7 +11,7 @@ namespace CarrotBacktesting.NET.Engine;
 /// </summary>
 public sealed class MarketState : IMarketState
 {
-    private sealed record StateEntry(object Value, DateTime UpdatedTime);
+    private sealed record StateEntry(object Value, MarketTime UpdatedTime);
 
     private readonly ConcurrentDictionary<string, StateEntry> _states = new(StringComparer.Ordinal);
 
@@ -29,11 +29,11 @@ public sealed class MarketState : IMarketState
     /// <inheritdoc />
     public void SetState<T>(T state, string? key = null)
     {
-        SetState(state, DateTime.UtcNow, key);
+        SetState(state, MarketTime.UtcNow, key);
     }
 
     /// <inheritdoc />
-    public void SetState<T>(T state, DateTime timestamp, string? key = null)
+    public void SetState<T>(T state, MarketTime timestamp, string? key = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         var actualKey = ResolveKey<T>(key);
@@ -41,7 +41,7 @@ public sealed class MarketState : IMarketState
     }
 
     /// <inheritdoc />
-    public bool TryGetState<T>(out T? state, out DateTime updatedTime, string? key = null)
+    public bool TryGetState<T>(out T? state, out MarketTime updatedTime, string? key = null)
     {
         var actualKey = ResolveKey<T>(key);
         if (_states.TryGetValue(actualKey, out var entry) && entry.Value is T val)
@@ -52,7 +52,7 @@ public sealed class MarketState : IMarketState
         }
 
         state = default;
-        updatedTime = DateTime.MinValue;
+        updatedTime = MarketTime.MinValue;
         return false;
     }
 

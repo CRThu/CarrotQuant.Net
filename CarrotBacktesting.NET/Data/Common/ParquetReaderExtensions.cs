@@ -278,17 +278,31 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 批量读取 RowGroup 中的日期/时间列并转换为统一的 DateTime 数组（保真保留时间精度）。
+        /// 批量读取 RowGroup 中的日期/时间列并转换为统一的 MarketTime 数组（保真保留时间精度与 64 位物理刻度）。
         /// 自动适配 DateTime、DateTimeOffset、long（毫秒时间戳）以及文本日期。
         /// 默认严禁 NULL 值；除非字段显式在 nullableFields 集合中声明，否则一旦检测到 NULL 立即抛出详细诊断异常。
         /// </summary>
-        public static DateTime[] ReadDateColumn(
+        public static MarketTime[] ReadTimeColumn(
             this ParquetRowGroupReader groupReader,
             DataField field,
             int rowCount,
             IReadOnlySet<string>? nullableFields = null)
         {
-            var dates = new DateTime[rowCount];
+            return ReadTimeColumn(groupReader, field, rowCount, sourceTimeZone: null, nullableFields);
+        }
+
+        /// <summary>
+        /// 批量读取 RowGroup 中的日期/时间列并转换为统一的 MarketTime 数组（支持指定业务时区映射）。
+        /// 自动适配 DateTime、DateTimeOffset、long（毫秒时间戳）以及文本日期。
+        /// </summary>
+        public static MarketTime[] ReadTimeColumn(
+            this ParquetRowGroupReader groupReader,
+            DataField field,
+            int rowCount,
+            TimeZoneInfo? sourceTimeZone,
+            IReadOnlySet<string>? nullableFields = null)
+        {
+            var times = new MarketTime[rowCount];
             var clrType = field.ClrType;
             bool isNullable = field.IsNullable;
             bool isAllowedNull = nullableFields?.Contains(field.Name) ?? false;
@@ -324,16 +338,25 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (!isNullable || def[i] > 0)
                     {
-                        dates[i] = dtArr[valIdx++];
+                        DateTime dt = dtArr[valIdx++];
+                        if (sourceTimeZone != null)
+                        {
+                            DateTime unspecified = DateTime.SpecifyKind(dt, DateTimeKind.Unspecified);
+                            times[i] = new MarketTime(TimeZoneInfo.ConvertTimeToUtc(unspecified, sourceTimeZone).Ticks);
+                        }
+                        else
+                        {
+                            times[i] = new MarketTime(dt.Ticks);
+                        }
                     }
                     else
                     {
                         CheckNull(i);
-                        dates[i] = DateTime.MinValue;
+                        times[i] = MarketTime.MinValue;
                     }
                 }
                 ThrowIfInvalid();
-                return dates;
+                return times;
             }
 
             if (clrType == typeof(DateTimeOffset))
@@ -346,16 +369,17 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (!isNullable || def[i] > 0)
                     {
-                        dates[i] = dtoArr[valIdx++].DateTime;
+                        DateTimeOffset dto = dtoArr[valIdx++];
+                        times[i] = sourceTimeZone != null ? new MarketTime(dto.UtcTicks) : new MarketTime(dto.DateTime.Ticks);
                     }
                     else
                     {
                         CheckNull(i);
-                        dates[i] = DateTime.MinValue;
+                        times[i] = MarketTime.MinValue;
                     }
                 }
                 ThrowIfInvalid();
-                return dates;
+                return times;
             }
 
             if (clrType == typeof(long))
@@ -368,16 +392,17 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (!isNullable || def[i] > 0)
                     {
-                        dates[i] = DateTimeOffset.FromUnixTimeMilliseconds(tsArr[valIdx++]).DateTime;
+                        var mt = MarketTime.FromUnixTimeMilliseconds(tsArr[valIdx++]);
+                        times[i] = sourceTimeZone != null ? mt : new MarketTime(mt.ToDateTime().Ticks);
                     }
                     else
                     {
                         CheckNull(i);
-                        dates[i] = DateTime.MinValue;
+                        times[i] = MarketTime.MinValue;
                     }
                 }
                 ThrowIfInvalid();
-                return dates;
+                return times;
             }
 
             if (clrType == typeof(ReadOnlyMemory<char>))
@@ -385,19 +410,20 @@ namespace CarrotBacktesting.NET.Data
                 var strArr = groupReader.ReadStringColumn(field, rowCount, nullableFields);
                 for (int i = 0; i < rowCount; i++)
                 {
-                    if (!string.IsNullOrEmpty(strArr[i]) && DateTime.TryParse(strArr[i], CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                    string? s = strArr[i];
+                    if (!string.IsNullOrEmpty(s) && MarketTime.TryParse(s.AsSpan(), sourceTimeZone, out var mt))
                     {
-                        dates[i] = dt;
+                        times[i] = sourceTimeZone != null ? mt : new MarketTime(mt.ToDateTime().Ticks);
                     }
                     else
                     {
-                        dates[i] = DateTime.MinValue;
+                        times[i] = MarketTime.MinValue;
                     }
                 }
-                return dates;
+                return times;
             }
 
-            throw new NotSupportedException($"Parquet column type '{clrType}' is not supported by ReadDateColumn.");
+            throw new NotSupportedException($"Parquet column type '{clrType}' is not supported by ReadTimeColumn.");
         }
     }
 }

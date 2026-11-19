@@ -5,7 +5,7 @@
 ---
 
 ## 目录
-- [一、设计哲学与第一性原理 (Philosophy & First Principles)](#一设计哲学与第一性原理-philosophy--first-principles)
+- [一、设计哲学与流式驱动机制 (Design Philosophy & Streaming Architecture)](#一设计哲学与流式驱动机制-design-philosophy--streaming-architecture)
 - [二、核心契约与实体模型 (Core Contracts & Entity Model)](#二核心契约与实体模型-core-contracts--entity-model)
 - [三、经典流式指标库与数值特性 (Stream Indicator Library)](#三经典流式指标库与数值特性-stream-indicator-library)
 - [四、引擎主时钟驱动与步进隔离 (Engine Step Pipeline & Isolation)](#四引擎主时钟驱动与步进隔离-engine-step-pipeline--isolation)
@@ -15,7 +15,7 @@
 
 ---
 
-## 一、设计哲学与第一性原理 (Philosophy & First Principles)
+## 一、设计哲学与流式驱动机制 (Design Philosophy & Streaming Architecture)
 
 在严肃量化投研与生产交易中，传统指标库常常陷入两大陷阱：
 1. **全量切片重算（Full-slice recalculation）**：每来一根 Bar 就对全历史序列跑一次滑动窗口重算，复杂度随时间步单调递增，高频回测迅速退化为不可接受的几十分钟甚至数小时；

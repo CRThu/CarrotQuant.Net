@@ -16,7 +16,7 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 核心构造函数，接收不可变表元数据与统一调度器。
         /// </summary>
-        public CsvTimeseriesSource(TableMetadata metadata, IStorageResolver resolver, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
+        public CsvTimeseriesSource(TableMetadata metadata, IStorageResolver resolver, MarketTime? startDate = null, MarketTime? endDate = null, string? timeZone = null)
             : base(metadata, resolver, startDate, endDate, timeZone)
         {
             if (_metadata.Partition != PartitionMode.Symbol)
@@ -28,7 +28,7 @@ namespace CarrotBacktesting.NET.Data
             }
 
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var dateSet = new HashSet<DateTime>();
+            var dateSet = new HashSet<MarketTime>();
             var csvFiles = _resolver.ResolvePhysicalFiles(_metadata, null, _startDate, _endDate);
 
             foreach (var file in csvFiles)
@@ -48,8 +48,8 @@ namespace CarrotBacktesting.NET.Data
 
                 while (reader.Read())
                 {
-                    DateTime dt = reader.ParseDate(dateColIdx, _sourceTimeZone);
-                    if (dt != DateTime.MinValue)
+                    MarketTime dt = reader.ParseTime(dateColIdx, _sourceTimeZone);
+                    if (dt != MarketTime.MinValue)
                     {
                         dateSet.Add(dt);
                     }
@@ -64,9 +64,9 @@ namespace CarrotBacktesting.NET.Data
         protected override int ReadRawSeriesFromFile<T>(
             string symbol,
             string fieldName,
-            DateTime minDate,
-            DateTime maxDate,
-            ref DateTime[] rawDates,
+            MarketTime minDate,
+            MarketTime maxDate,
+            ref MarketTime[] rawDates,
             ref T[] rawValues)
         {
             var csvFiles = _resolver.ResolvePhysicalFiles(_metadata, symbol, minDate, maxDate);
@@ -86,8 +86,8 @@ namespace CarrotBacktesting.NET.Data
 
                 while (reader.Read())
                 {
-                    DateTime rowDate = reader.ParseDate(dateColIdx, _sourceTimeZone);
-                    if (rowDate == DateTime.MinValue) continue;
+                    MarketTime rowDate = reader.ParseTime(dateColIdx, _sourceTimeZone);
+                    if (rowDate == MarketTime.MinValue) continue;
 
                     EnsureCapacity(ref rawDates, ref rawValues, count);
 

@@ -120,7 +120,7 @@ public class SimulatedExchangeGatewayTests
     public void Step_EmptyOrderBook_ShouldReturnQuickly()
     {
         var gateway = new SimulatedExchangeGateway(new BrokerConfig());
-        var dates = new List<DateTime> { DateTime.UtcNow };
+        var dates = new List<MarketTime> { MarketTime.UtcNow };
         var metadata = new DynamicMarketMetadata(new[] { "s" }, dates);
         using var matrix = new ChunkMatrix2D<double>(1, 1024, 1);
         var registry = new DummyTimeseriesRegistry(matrix, metadata);
@@ -148,7 +148,7 @@ public class SimulatedExchangeGatewayTests
         using var matrix = new ChunkMatrix2D<double>(1, 1024, 1);
         matrix[0, 0] = 9.3;
 
-        var dates = new List<DateTime> { new DateTime(2025, 1, 2) };
+        var dates = new List<MarketTime> { new MarketTime(2025, 1, 2) };
         var metadata = new DynamicMarketMetadata(new[] { "sh.600000" }, dates);
         var registry = new DummyTimeseriesRegistry(matrix, metadata);
 

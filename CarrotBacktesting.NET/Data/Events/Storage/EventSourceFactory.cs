@@ -18,8 +18,8 @@ namespace CarrotBacktesting.NET.Data
         public static IEventTable Create(
             TableMetadata metadata,
             IStorageResolver resolver,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(metadata);
@@ -39,8 +39,8 @@ namespace CarrotBacktesting.NET.Data
         public static IEventTable Create(
             IStorageResolver resolver,
             string tableId,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);
@@ -56,8 +56,8 @@ namespace CarrotBacktesting.NET.Data
         public static IEventTable Create(
             string storageRoot,
             string tableId,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             IReadOnlySet<string>? nullableFields = null)
         {
             return Create(new StorageResolver(storageRoot), tableId, startDate, endDate, nullableFields);

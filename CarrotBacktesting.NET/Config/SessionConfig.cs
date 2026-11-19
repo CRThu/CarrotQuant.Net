@@ -76,8 +76,8 @@ namespace CarrotBacktesting.NET.Config
     public class EngineConfig
     {
         public string Mode { get; set; } = "backtest";
-        public DateTime? StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
+        public MarketTime? StartDate { get; set; }
+        public MarketTime? EndDate { get; set; }
     }
 
     /// <summary>

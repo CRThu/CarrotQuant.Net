@@ -33,7 +33,7 @@ public class StrategyPipelineTests
 
     private class FakeEngineContext : IEngineContext
     {
-        public DateTime CurrentTime { get; set; } = DateTime.UtcNow;
+        public MarketTime CurrentTime { get; set; } = MarketTime.MinValue;
         public int CurrentIndex { get; set; } = 0;
         public ITimeseriesRegistry Timeseries => throw new NotImplementedException();
         public IEventRegistry Events => throw new NotImplementedException();

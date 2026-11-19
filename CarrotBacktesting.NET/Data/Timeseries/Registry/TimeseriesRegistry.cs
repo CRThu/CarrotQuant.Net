@@ -172,7 +172,7 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 门面级时序行追加：向指定字段追加截面数据并同步推进元数据时间轴。
         /// </summary>
-        public void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged
+        public void AppendRow<T>(string fieldName, MarketTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged
         {
             var fieldType = _metadata.GetFieldType(fieldName);
             if (fieldType != typeof(T))

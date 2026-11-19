@@ -34,7 +34,7 @@ namespace CarrotBacktesting.NET.Engine
         private bool _resolvedVolume;
 
         /// <inheritdoc />
-        public DateTime CurrentTime { get; internal set; }
+        public MarketTime CurrentTime { get; internal set; }
 
         /// <inheritdoc />
         public int CurrentIndex { get; internal set; }
@@ -45,7 +45,7 @@ namespace CarrotBacktesting.NET.Engine
         /// <param name="index">当前时步索引。</param>
         /// <param name="time">当前时步时间戳。</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void UpdateStep(int index, DateTime time)
+        internal void UpdateStep(int index, MarketTime time)
         {
             CurrentIndex = index;
             CurrentTime = time;
@@ -140,7 +140,7 @@ namespace CarrotBacktesting.NET.Engine
             }
 
             CurrentIndex = -1;
-            CurrentTime = DateTime.MinValue;
+            CurrentTime = MarketTime.MinValue;
 
             int symbolCount = timeseries.Metadata.Symbols.Count;
             _dailyFactors = new double[symbolCount];

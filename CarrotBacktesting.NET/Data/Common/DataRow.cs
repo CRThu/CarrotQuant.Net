@@ -17,7 +17,7 @@ namespace CarrotBacktesting.NET.Data
         public string Key { get; }
 
         /// <inheritdoc />
-        public DateTime? Timestamp { get; }
+        public MarketTime? Timestamp { get; }
 
         /// <summary>
         /// 底层原始字符串数组（供 EntityMapper 预编译委托高速投影）。
@@ -30,7 +30,7 @@ namespace CarrotBacktesting.NET.Data
         /// <inheritdoc />
         public int Count => _values.Length;
 
-        public DataRow(string key, DateTime? timestamp, string[] values, Dictionary<string, int> ordinals)
+        public DataRow(string key, MarketTime? timestamp, string[] values, Dictionary<string, int> ordinals)
         {
             Key = key ?? string.Empty;
             Timestamp = timestamp;
@@ -123,19 +123,14 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
-        public DateTime GetDateTime(string columnName, DateTime defaultValue = default)
+        public MarketTime GetTime(string columnName, MarketTime defaultValue = default)
         {
             string val = GetString(columnName);
             if (string.IsNullOrWhiteSpace(val)) return defaultValue;
 
-            if (long.TryParse(val, NumberStyles.Any, CultureInfo.InvariantCulture, out long ts))
+            if (MarketTime.TryParse(val.AsSpan(), sourceTimeZone: null, out var mt))
             {
-                return DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime;
-            }
-
-            if (DateTime.TryParse(val, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime result))
-            {
-                return result;
+                return mt;
             }
 
             return defaultValue;

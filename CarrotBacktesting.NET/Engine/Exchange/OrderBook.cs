@@ -98,7 +98,7 @@ internal sealed class SimulatedOrder
 {
     public string OrderId { get; }
     public OrderRequest Request { get; }
-    public DateTime SubmitTime { get; }
+    public MarketTime SubmitTime { get; }
     public OrderStatus Status { get; set; } = OrderStatus.Submitted;
 
     public double FrozenCash { get; set; }
@@ -109,7 +109,7 @@ internal sealed class SimulatedOrder
     public double MarginRate { get; set; }
     public int SettleDays { get; set; }
 
-    public SimulatedOrder(string orderId, OrderRequest request, DateTime submitTime)
+    public SimulatedOrder(string orderId, OrderRequest request, MarketTime submitTime)
     {
         OrderId = orderId;
         Request = request;

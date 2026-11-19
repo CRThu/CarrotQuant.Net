@@ -15,12 +15,12 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
     {
         private class SimpleMockMetadata : IMarketMetadata
         {
-            public IReadOnlyList<DateTime> TradeDates { get; } = new List<DateTime> { DateTime.UtcNow };
+            public IReadOnlyList<MarketTime> TradeDates { get; } = new List<MarketTime> { MarketTime.UnixEpoch };
             public IReadOnlyList<string> Symbols { get; } = new List<string> { "sh.600000", "sz.000001", "sh.600519" };
             public IReadOnlyList<string> FieldNames { get; } = new List<string> { "close", "volume", "open", "high", "low" };
 
             public Type GetFieldType(string fieldName) => typeof(double);
-            public int GetDateIndex(DateTime date) => 0;
+            public int GetDateIndex(MarketTime date) => 0;
 
             public int GetSymbolIndex(string symbol)
             {

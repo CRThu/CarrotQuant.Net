@@ -280,11 +280,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.AreEqual(2, sourceAsia.TradeDates.Count);
 
                 // 北京时间 09:30:00 对应 UTC 01:30:00
-                DateTime expectedUtc1 = new DateTime(2025, 1, 2, 1, 30, 0, DateTimeKind.Utc);
-                DateTime expectedUtc2 = new DateTime(2025, 1, 2, 2, 0, 0, DateTimeKind.Utc);
+                MarketTime expectedUtc1 = new MarketTime(2025, 1, 2, 1, 30, 0);
+                MarketTime expectedUtc2 = new MarketTime(2025, 1, 2, 2, 0, 0);
                 Assert.AreEqual(expectedUtc1, sourceAsia.TradeDates[0]);
                 Assert.AreEqual(expectedUtc2, sourceAsia.TradeDates[1]);
-                Assert.AreEqual(DateTimeKind.Utc, sourceAsia.TradeDates[0].Kind);
+                Assert.AreEqual(DateTimeKind.Utc, sourceAsia.TradeDates[0].ToUtcDateTime().Kind);
 
                 // 2. 验证 ReadSymbolSeries 能够正常按 UTC 索引读取
                 double[] dest = new double[2];

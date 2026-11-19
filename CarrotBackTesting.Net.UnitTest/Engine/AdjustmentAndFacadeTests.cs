@@ -106,21 +106,21 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 2024-08-01: sz.000001 因子为 1.2
             // sh.600000 故意在除权表中不留任何记录（有行情无因子），用于触发 Warning！
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "back_adj_factor", 0 } };
-            var eventData = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
+            var eventData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
 
-            var d1 = new DateTime(2024, 6, 1);
+            var d1 = new MarketTime(2024, 6, 1);
             eventData[d1] = new Dictionary<string, List<DataRow>>
             {
                 ["sh.600519"] = new List<DataRow> { new DataRow("sh.600519", d1, new[] { "2.5" }, ordinals) }
             };
 
-            var d2 = new DateTime(2024, 8, 1);
+            var d2 = new MarketTime(2024, 8, 1);
             eventData[d2] = new Dictionary<string, List<DataRow>>
             {
                 ["sz.000001"] = new List<DataRow> { new DataRow("sz.000001", d2, new[] { "1.2" }, ordinals) }
             };
 
-            var d3 = new DateTime(2024, 12, 1);
+            var d3 = new MarketTime(2024, 12, 1);
             eventData[d3] = new Dictionary<string, List<DataRow>>
             {
                 ["sh.600519"] = new List<DataRow> { new DataRow("sh.600519", d3, new[] { "3.0" }, ordinals) }
@@ -200,9 +200,9 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 构造除权表: 包含 2026-05-20 的首条除权事件（2025 年无任何除权记录）
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "back_adj_factor", 0 } };
-            var eventData = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
+            var eventData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
 
-            var d2026 = new DateTime(2026, 5, 20);
+            var d2026 = new MarketTime(2026, 5, 20);
             eventData[d2026] = new Dictionary<string, List<DataRow>>
             {
                 ["sz.001234"] = new List<DataRow> { new DataRow("sz.001234", d2026, new[] { "1.5" }, ordinals) }
@@ -361,15 +361,15 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 2025-01-02: 初始因子 1.0
             // 2025-01-03: 盘中/跨日发生除权事件，因子跃迁为 2.0！
             var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "back_adj_factor", 0 } };
-            var eventData = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
+            var eventData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
 
-            var d1 = new DateTime(2025, 1, 2);
+            var d1 = new MarketTime(2025, 1, 2);
             eventData[d1] = new Dictionary<string, List<DataRow>>
             {
                 ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d1, new[] { "1.0" }, ordinals) }
             };
 
-            var d2 = new DateTime(2025, 1, 3);
+            var d2 = new MarketTime(2025, 1, 3);
             eventData[d2] = new Dictionary<string, List<DataRow>>
             {
                 ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d2, new[] { "2.0" }, ordinals) }
@@ -494,18 +494,23 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
         private class SimpleMarketMetadata : IMarketMetadata
         {
-            public IReadOnlyList<DateTime> TradeDates { get; }
+            public IReadOnlyList<MarketTime> TradeDates { get; }
             public IReadOnlyList<string> Symbols { get; }
             public IReadOnlyList<string> FieldNames { get; } = new List<string> { "close", "open", "volume" };
 
-            public SimpleMarketMetadata(IReadOnlyList<DateTime> dates, IReadOnlyList<string> symbols)
+            public SimpleMarketMetadata(IReadOnlyList<MarketTime> dates, IReadOnlyList<string> symbols)
             {
                 TradeDates = dates;
                 Symbols = symbols;
             }
 
+            public SimpleMarketMetadata(IReadOnlyList<DateTime> dates, IReadOnlyList<string> symbols)
+                : this(dates.Select(d => (MarketTime)d).ToList(), symbols)
+            {
+            }
+
             public Type GetFieldType(string fieldName) => typeof(double);
-            public int GetDateIndex(DateTime date)
+            public int GetDateIndex(MarketTime date)
             {
                 for (int i = 0; i < TradeDates.Count; i++)
                 {

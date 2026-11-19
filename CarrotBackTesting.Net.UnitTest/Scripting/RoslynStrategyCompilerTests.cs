@@ -31,7 +31,7 @@ public class RoslynStrategyCompilerTests
 
     private class FakeEngineContext : IEngineContext
     {
-        public DateTime CurrentTime { get; set; } = DateTime.UtcNow;
+        public MarketTime CurrentTime { get; set; } = MarketTime.MinValue;
         public int CurrentIndex { get; set; } = 0;
         public CarrotBacktesting.NET.Abstraction.Data.ITimeseriesRegistry Timeseries => throw new NotImplementedException();
         public CarrotBacktesting.NET.Abstraction.Data.IEventRegistry Events => throw new NotImplementedException();

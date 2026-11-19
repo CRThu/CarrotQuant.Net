@@ -38,9 +38,9 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         /// 供策略在 OnUpdate 中按需轻量探测，规避无事件时的无效遍历与开销。
         /// 默认实现返回 false。
         /// </summary>
-        /// <param name="time">要检查的逻辑时间戳。</param>
+        /// <param name="time">要检查的逻辑市场时间。</param>
         /// <param name="tableName">可选的事件表名。缺省为空时探测所有已注册的事件表。</param>
         /// <returns>若存在事件则返回 true，否则返回 false。</returns>
-        bool HasNewEvents(DateTime time, string? tableName = null) => false;
+        bool HasNewEvents(MarketTime time, string? tableName = null) => false;
     }
 }

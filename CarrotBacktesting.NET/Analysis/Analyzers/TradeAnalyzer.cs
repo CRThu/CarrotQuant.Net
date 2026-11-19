@@ -260,7 +260,7 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
         return (sortedArray[mid - 1] + sortedArray[mid]) / 2.0;
     }
 
-    private static int ResolveDateIndex(IMarketMetadata metadata, DateTime time)
+    private static int ResolveDateIndex(IMarketMetadata metadata, MarketTime time)
     {
         int idx = metadata.GetDateIndex(time);
         if (idx >= 0) return idx;

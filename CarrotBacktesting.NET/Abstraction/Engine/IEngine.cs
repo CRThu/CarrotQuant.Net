@@ -49,7 +49,7 @@ public interface IEngine
     /// <summary>
     /// 获取当前驱动的逻辑时间（回测中为虚拟时间，实盘中为实时时间）。
     /// </summary>
-    DateTime CurrentTime { get; }
+    MarketTime CurrentTime { get; }
 
     /// <summary>
     /// 同步阻塞驱动引擎运行，直至任务完成或终止。

@@ -15,9 +15,9 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         string Key { get; }
 
         /// <summary>
-        /// 数据行时间戳（时态事件包含具体日期，静态维表则为 null）。
+        /// 数据行时间戳（时态事件包含具体时间，静态维表则为 null）。
         /// </summary>
-        DateTime? Timestamp { get; }
+        MarketTime? Timestamp { get; }
 
         /// <summary>
         /// 获取所有可用列名列表。
@@ -75,9 +75,9 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         bool GetBoolean(string columnName, bool defaultValue = false);
 
         /// <summary>
-        /// 获取日期时间值。遵循双时间轴契约：优先按 Unix 毫秒时间戳解析，其次按标准日期格式文本解析。
+        /// 获取市场时间值。
         /// </summary>
-        DateTime GetDateTime(string columnName, DateTime defaultValue = default);
+        MarketTime GetTime(string columnName, MarketTime defaultValue = default);
 
         /// <summary>
         /// 尝试获取列值。

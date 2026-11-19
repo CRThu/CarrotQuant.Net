@@ -89,7 +89,7 @@ public enum OrderOffset
 /// <param name="FillQuantity">实际成交数量。</param>
 /// <param name="Commission">该笔成交产生的手续费。</param>
 /// <param name="Time">成交时间。</param>
-public record ExecutionReport(string OrderId, string Symbol, double FillPrice, decimal FillQuantity, double Commission, DateTime Time);
+public record ExecutionReport(string OrderId, string Symbol, double FillPrice, decimal FillQuantity, double Commission, MarketTime Time);
 
 /// <summary>
 /// 表示持仓变更事件。
@@ -98,7 +98,7 @@ public record ExecutionReport(string OrderId, string Symbol, double FillPrice, d
 /// <param name="NewQuantity">调整后的新持仓数量。</param>
 /// <param name="AveragePrice">当前持仓的平均成本价（可选）。</param>
 /// <param name="Time">变更发生的时间。</param>
-public record PositionEvent(string Symbol, decimal NewQuantity, double AveragePrice, DateTime Time);
+public record PositionEvent(string Symbol, decimal NewQuantity, double AveragePrice, MarketTime Time);
 
 /// <summary>
 /// 表示一个交易品种的实时订单簿（Depth）快照。
@@ -113,7 +113,7 @@ public class Orderbook
     /// <summary>
     /// 获取或设置该快照产生的时间戳。
     /// </summary>
-    public DateTime Timestamp { get; init; }
+    public MarketTime Timestamp { get; init; }
 
     /// <summary>
     /// 获取或设置买盘档位列表。

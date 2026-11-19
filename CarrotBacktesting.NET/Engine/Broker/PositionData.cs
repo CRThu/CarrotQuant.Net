@@ -39,7 +39,7 @@ internal sealed class PositionData
     /// <summary>
     /// 首次建仓开仓时间。
     /// </summary>
-    public DateTime OpenTime { get; set; } = DateTime.MinValue;
+    public MarketTime OpenTime { get; set; } = MarketTime.MinValue;
 
     /// <summary>
     /// 开仓策略标签。
@@ -60,4 +60,4 @@ internal sealed class PositionData
 /// <summary>
 /// 在途交收份额批次模型。
 /// </summary>
-internal sealed record PendingLot(decimal Quantity, DateTime AvailableDate);
+internal sealed record PendingLot(decimal Quantity, MarketTime AvailableDate);

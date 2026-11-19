@@ -43,8 +43,8 @@ namespace CarrotBacktesting.NET.Data
         public static ITimeseriesRegistry Create(
             IStorageResolver resolver,
             TimeseriesConfig config,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             bool isLive = false)
         {
             ArgumentNullException.ThrowIfNull(resolver);
@@ -90,8 +90,8 @@ namespace CarrotBacktesting.NET.Data
         public static ITimeseriesRegistry Create(
             string storageRoot,
             TimeseriesConfig config,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             bool isLive = false)
         {
             return Create(new StorageResolver(storageRoot), config, startDate, endDate, isLive);

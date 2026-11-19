@@ -67,14 +67,14 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
-        public IReadOnlyList<string> ResolvePhysicalFiles(string tableId, string? symbol = null, DateTime? startDate = null, DateTime? endDate = null)
+        public IReadOnlyList<string> ResolvePhysicalFiles(string tableId, string? symbol = null, MarketTime? startDate = null, MarketTime? endDate = null)
         {
             var metadata = GetMetadata(tableId);
             return ResolvePhysicalFiles(metadata, symbol, startDate, endDate);
         }
 
         /// <inheritdoc />
-        public IReadOnlyList<string> ResolvePhysicalFiles(TableMetadata metadata, string? symbol = null, DateTime? startDate = null, DateTime? endDate = null)
+        public IReadOnlyList<string> ResolvePhysicalFiles(TableMetadata metadata, string? symbol = null, MarketTime? startDate = null, MarketTime? endDate = null)
         {
             ArgumentNullException.ThrowIfNull(metadata);
             string ext = metadata.FileExtension;

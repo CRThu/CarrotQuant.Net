@@ -7,7 +7,7 @@ namespace CarrotBacktesting.NET.Data
     /// <summary>
     /// 市场行情时间序列数据日历对齐组件。
     /// 将离散物理记录投射至全局权威交易日历网格，物理缺失单元格严格置 NaN（整型采用 DolphinDB/Kdb+ 标准哨兵值 MinValue）。
-    /// 遵循第一性原理：数据层忠实反映物理数据真相，零业务状态假设，零跨文件倒查。
+    /// 数据层忠实反映物理数据序列，无业务状态假设，不执行跨文件倒查。
     /// </summary>
     public static class MarketDataAligner
     {
@@ -69,10 +69,10 @@ namespace CarrotBacktesting.NET.Data
         /// <param name="recordValues">原始物理文件记录的指标数值（必须与 recordDates 等长）</param>
         /// <param name="destination">目标输出内存块</param>
         public static void AlignAndFill<T>(
-            IReadOnlyList<DateTime> globalTradeDates,
+            IReadOnlyList<MarketTime> globalTradeDates,
             int startIndex,
             int length,
-            ReadOnlySpan<DateTime> recordDates,
+            ReadOnlySpan<MarketTime> recordDates,
             ReadOnlySpan<T> recordValues,
             Span<T> destination) where T : unmanaged
         {
@@ -99,7 +99,7 @@ namespace CarrotBacktesting.NET.Data
                 return;
             }
 
-            DateTime windowStartDate = globalTradeDates[startIndex];
+            MarketTime windowStartDate = globalTradeDates[startIndex];
             int rawIdx = 0;
 
             // 快速跳过窗口起始日之前的历史记录
@@ -111,7 +111,7 @@ namespace CarrotBacktesting.NET.Data
             // 双游标流式扫描日历
             for (int i = 0; i < length && rawIdx < recordDates.Length; i++)
             {
-                DateTime curDate = globalTradeDates[startIndex + i];
+                MarketTime curDate = globalTradeDates[startIndex + i];
 
                 // 跳过非交易日杂质行或重复记录
                 while (rawIdx < recordDates.Length && recordDates[rawIdx] < curDate)

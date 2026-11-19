@@ -44,7 +44,7 @@ namespace CarrotBacktesting.NET.Engine
 
         private bool _hasAdjustments = false;
         private IEventTable? _adjTable;
-        private DateTime _lastDate = DateTime.MinValue;
+        private MarketTime _lastDate = MarketTime.MinValue;
 
         private const uint StateMagic = 0x43514254; // "CQBT"
         private const int StateVersion = 1;
@@ -88,7 +88,7 @@ namespace CarrotBacktesting.NET.Engine
         }
 
         /// <inheritdoc />
-        public DateTime CurrentTime => _context.CurrentTime;
+        public MarketTime CurrentTime => _context.CurrentTime;
 
         /// <summary>
         /// 获取当前引擎持有的策略运行上下文。
@@ -272,7 +272,7 @@ namespace CarrotBacktesting.NET.Engine
 
                 if (_config.StartDate.HasValue)
                 {
-                    DateTime start = _config.StartDate.Value;
+                    MarketTime start = _config.StartDate.Value;
                     startIndex = FindFirstDateIndex(tradeDates, start);
                     if (startIndex < 0 || startIndex >= tradeDates.Count)
                     {
@@ -284,8 +284,8 @@ namespace CarrotBacktesting.NET.Engine
 
                 if (_config.EndDate.HasValue)
                 {
-                    DateTime end = _config.EndDate.Value;
-                    if (end.TimeOfDay == TimeSpan.Zero)
+                    MarketTime end = _config.EndDate.Value;
+                    if ((end.Ticks % TimeSpan.TicksPerDay) == 0)
                     {
                         end = end.Date.AddDays(1).AddTicks(-1);
                     }
@@ -317,7 +317,7 @@ namespace CarrotBacktesting.NET.Engine
                 _pipeline.OnStart(_context);
 
                 int totalSteps = endIndex - startIndex + 1;
-                _lastDate = DateTime.MinValue;
+                _lastDate = MarketTime.MinValue;
                 long runStartTimestamp = Stopwatch.GetTimestamp();
 
                 // 5. 核心时间步驱动循环（热路径零分配）
@@ -337,7 +337,7 @@ namespace CarrotBacktesting.NET.Engine
                         }
                     }
 
-                    DateTime currentTime = tradeDates[i];
+                    MarketTime currentTime = tradeDates[i];
 
                     // 5.1 更新上下文
                     _context.UpdateStep(i, currentTime);
@@ -345,7 +345,7 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.1.1 跨日检测与日终快照沉淀
                     if (currentTime.Date != _lastDate)
                     {
-                        if (_lastDate != DateTime.MinValue && _snapshotProvider != null && i > startIndex)
+                        if (_lastDate != MarketTime.MinValue && _snapshotProvider != null && i > startIndex)
                         {
                             _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(tradeDates[i - 1]));
                         }
@@ -438,7 +438,7 @@ namespace CarrotBacktesting.NET.Engine
             }
         }
 
-        private void DispatchEvents(DateTime currentTime)
+        private void DispatchEvents(MarketTime currentTime)
         {
             var tableNames = _events.GetTableNames();
             for (int t = 0; t < tableNames.Count; t++)
@@ -477,7 +477,7 @@ namespace CarrotBacktesting.NET.Engine
         /// 预热除权因子数组，从全历史第一条除权事件极速滚动至起测日（StartDate），
         /// 并执行行情与因子的跨模态覆盖校验（有行情无因子精准 Warning 告警）。
         /// </summary>
-        private void PrewarmAdjustments(DateTime startDate)
+        private void PrewarmAdjustments(MarketTime startDate)
         {
             if (!_adjustConfig.Mode.Equals("post", StringComparison.OrdinalIgnoreCase))
             {
@@ -528,7 +528,7 @@ namespace CarrotBacktesting.NET.Engine
             }
 
             // 2. 统计除权表中每只标的首次提供复权因子的最早日期（用于一一对应严格校验）
-            var firstAdjDates = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            var firstAdjDates = new Dictionary<string, MarketTime>(StringComparer.OrdinalIgnoreCase);
             foreach (var date in _adjTable.Dates)
             {
                 if (_adjTable.TryGetDay(date, out var dayEvents) && dayEvents != null)
@@ -555,7 +555,7 @@ namespace CarrotBacktesting.NET.Engine
                 string symbol = _timeseries.Metadata.Symbols[s];
 
                 // 寻找该标的首次出现有效价格的日期（上市日或首次交易日）
-                DateTime? firstTradeDate = null;
+                MarketTime? firstTradeDate = null;
                 if (closeMatrix != null && s < closeMatrix.Width)
                 {
                     int rowCount = closeMatrix.RowCount;
@@ -598,7 +598,7 @@ namespace CarrotBacktesting.NET.Engine
             _context.SetDailyFactors(factors);
         }
 
-        private void UpdateDailyFactors(DateTime currentTime)
+        private void UpdateDailyFactors(MarketTime currentTime)
         {
             if (_adjTable == null) return;
             if (_adjTable.TryGetDay(currentTime.Date, out var dayEvents) && dayEvents != null)
@@ -757,7 +757,7 @@ namespace CarrotBacktesting.NET.Engine
 
                 _ = reader.ReadInt32(); // 忽略旧状态，恢复后保持 Idle
                 int restoredIndex = reader.ReadInt32();
-                DateTime restoredTime = new DateTime(reader.ReadInt64(), DateTimeKind.Utc);
+                MarketTime restoredTime = MarketTime.FromTicks(reader.ReadInt64());
                 _progress = reader.ReadDouble();
 
                 _context.UpdateStep(restoredIndex, restoredTime);
@@ -768,7 +768,7 @@ namespace CarrotBacktesting.NET.Engine
 
         #region 二分查找工具 (Binary Search Helpers)
 
-        private static int FindFirstDateIndex(IReadOnlyList<DateTime> dates, DateTime target)
+        private static int FindFirstDateIndex(IReadOnlyList<MarketTime> dates, MarketTime target)
         {
             int low = 0;
             int high = dates.Count - 1;
@@ -790,7 +790,7 @@ namespace CarrotBacktesting.NET.Engine
             return result;
         }
 
-        private static int FindLastDateIndex(IReadOnlyList<DateTime> dates, DateTime target)
+        private static int FindLastDateIndex(IReadOnlyList<MarketTime> dates, MarketTime target)
         {
             int low = 0;
             int high = dates.Count - 1;

@@ -188,7 +188,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             using var defaultSource = (TimeseriesSourceBase)TimeseriesSourceFactory.Create(parquetRoot, tableId);
             Assert.IsNull(defaultSource.SourceTimeZone);
             Assert.IsTrue(defaultSource.TradeDates.Count > 0);
-            DateTime defaultFirstDate = defaultSource.TradeDates[0];
+            MarketTime defaultFirstDate = defaultSource.TradeDates[0];
 
             // 2. 带 Asia/Shanghai (+8) 时区加载
             using var tzSource = (TimeseriesSourceBase)TimeseriesSourceFactory.Create(parquetRoot, tableId, timeZone: "Asia/Shanghai");
@@ -197,8 +197,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(defaultSource.TradeDates.Count, tzSource.TradeDates.Count);
 
             // Parquet 物理列存储的是 Unix 毫秒时间戳，在指定时区模式下保留精确的 UTC 时间戳
-            Assert.AreEqual(DateTimeKind.Utc, tzSource.TradeDates[0].Kind);
-            Assert.AreEqual(new DateTime(2021, 1, 4, 7, 0, 0, DateTimeKind.Utc), tzSource.TradeDates[0]);
+            Assert.AreEqual(DateTimeKind.Utc, tzSource.TradeDates[0].ToUtcDateTime().Kind);
+            Assert.AreEqual((MarketTime)new DateTime(2021, 1, 4, 7, 0, 0, DateTimeKind.Utc), tzSource.TradeDates[0]);
         }
 
         public class NonNullableSample

@@ -18,8 +18,8 @@ namespace CarrotBacktesting.NET.Data
         public IEventTable LoadTable(
             TableMetadata metadata,
             IStorageResolver resolver,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(metadata);
@@ -48,8 +48,8 @@ namespace CarrotBacktesting.NET.Data
                 .ToDictionary(x => x.f, x => x.idx, StringComparer.OrdinalIgnoreCase);
 
             var files = resolver.ResolvePhysicalFiles(metadata, null, startDate, endDate);
-            var data = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
-            var globalEvents = new Dictionary<DateTime, List<DataRow>>();
+            var data = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
+            var globalEvents = new Dictionary<MarketTime, List<DataRow>>();
 
             foreach (var filePath in files)
             {
@@ -71,7 +71,7 @@ namespace CarrotBacktesting.NET.Data
                         using var groupReader = reader.OpenRowGroupReader(g);
                         int rowCount = (int)groupReader.RowCount;
                         string[] symbols = symField != null ? groupReader.ReadStringColumn(symField, rowCount, effectiveNullableFields) : new string[rowCount];
-                        DateTime[] dates = dtField != null ? groupReader.ReadDateColumn(dtField, rowCount, effectiveNullableFields) : new DateTime[rowCount];
+                        MarketTime[] dates = dtField != null ? groupReader.ReadTimeColumn(dtField, rowCount, effectiveNullableFields) : new MarketTime[rowCount];
                         string?[]?[] valueArrays = new string?[valueColumns.Count][];
                         for (int v = 0; v < valueColumns.Count; v++)
                         {
@@ -82,7 +82,7 @@ namespace CarrotBacktesting.NET.Data
                         for (int r = 0; r < rowCount; r++)
                         {
                             string symbol = symbols[r] ?? "";
-                            DateTime date = dates[r];
+                            MarketTime date = dates[r];
 
                             var values = new string[valueColumns.Count];
                             for (int v = 0; v < valueColumns.Count; v++)
@@ -133,8 +133,8 @@ namespace CarrotBacktesting.NET.Data
         public IEventTable LoadTable(
             IStorageResolver resolver,
             string tableId,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);

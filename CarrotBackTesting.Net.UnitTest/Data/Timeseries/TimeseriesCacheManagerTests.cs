@@ -696,13 +696,13 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         private class MockTimeseriesSource : ITimeseriesSource
         {
             private readonly List<string> _symbols;
-            private readonly List<DateTime> _dates;
+            private readonly List<MarketTime> _dates;
 
             public MockTimeseriesSource(string[] symbols, int dateCount)
             {
                 _symbols = new List<string>(symbols);
-                _dates = new List<DateTime>(dateCount);
-                var baseDate = new DateTime(2020, 1, 1);
+                _dates = new List<MarketTime>(dateCount);
+                var baseDate = new MarketTime(new DateTime(2020, 1, 1).Ticks);
                 for (int i = 0; i < dateCount; i++)
                 {
                     _dates.Add(baseDate.AddDays(i));
@@ -711,11 +711,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             public IReadOnlyList<string> Symbols => _symbols;
             public IReadOnlyList<string> FieldNames => new List<string> { "close" };
-            public IReadOnlyList<DateTime> TradeDates => _dates;
+            public IReadOnlyList<MarketTime> TradeDates => _dates;
 
             public Type GetFieldType(string fieldName) => typeof(double);
             public int GetSymbolIndex(string symbol) => _symbols.IndexOf(symbol);
-            public int GetDateIndex(DateTime date) => _dates.IndexOf(date);
+            public int GetDateIndex(MarketTime date) => _dates.IndexOf(date);
 
             public void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged
             {

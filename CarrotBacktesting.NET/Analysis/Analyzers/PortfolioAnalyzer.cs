@@ -181,7 +181,7 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
         );
     }
 
-    private static int ResolveDateIndex(IMarketMetadata metadata, DateTime time)
+    private static int ResolveDateIndex(IMarketMetadata metadata, MarketTime time)
     {
         int idx = metadata.GetDateIndex(time);
         if (idx >= 0) return idx;
@@ -305,7 +305,7 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
         return Array.Empty<double>();
     }
 
-    private static (double MaxDD, DateTime PeakTime, DateTime TroughTime, DateTime? RecoveryTime, int DurationSteps) CalculateDrawdown(
+    private static (double MaxDD, MarketTime PeakTime, MarketTime TroughTime, MarketTime? RecoveryTime, int DurationSteps) CalculateDrawdown(
         IReadOnlyList<EquityPoint> equityCurve)
     {
         double maxDD = 0.0;
@@ -334,9 +334,9 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
             }
         }
 
-        DateTime peakTime = equityCurve[maxDDPeakIndex].Time;
-        DateTime troughTime = equityCurve[maxDDTroughIndex].Time;
-        DateTime? recoveryTime = null;
+        MarketTime peakTime = equityCurve[maxDDPeakIndex].Time;
+        MarketTime troughTime = equityCurve[maxDDTroughIndex].Time;
+        MarketTime? recoveryTime = null;
         int recoveryIndex = -1;
 
         if (maxDD > 1e-9)

@@ -14,7 +14,7 @@ public interface IEventSource
     IEventTable LoadTable(
         IStorageResolver resolver, 
         string tableId, 
-        DateTime? startDate = null, 
-        DateTime? endDate = null,
+        MarketTime? startDate = null, 
+        MarketTime? endDate = null,
         IReadOnlySet<string>? nullableFields = null);
 }

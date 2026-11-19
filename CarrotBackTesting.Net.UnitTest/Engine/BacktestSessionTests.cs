@@ -54,11 +54,11 @@ public class BacktestSessionTests
 
     private static (SessionConfig Config, BacktestingEngine Engine, DummyStrategy Strategy) CreateTestEngine()
     {
-        var dates = new List<DateTime>
+        var dates = new List<MarketTime>
         {
-            new DateTime(2025, 1, 1),
-            new DateTime(2025, 1, 2),
-            new DateTime(2025, 1, 3)
+            new MarketTime(2025, 1, 1),
+            new MarketTime(2025, 1, 2),
+            new MarketTime(2025, 1, 3)
         };
         var symbols = new List<string> { "sh.600000" };
         var metadata = new DynamicMarketMetadata(symbols, dates);

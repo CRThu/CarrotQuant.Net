@@ -13,7 +13,7 @@ public class ChangeMaskAndEventDetectionTests
     private TimeseriesRegistry CreateTestRegistry()
     {
         var symbols = new[] { "sh.600000" };
-        var dates = new[] { DateTime.Today };
+        var dates = new MarketTime[] { MarketTime.FromDateTime(DateTime.Today) };
         var fieldTypes = new Dictionary<string, Type> { { "close", typeof(double) } };
         var metadata = new DynamicMarketMetadata(symbols, dates, fieldTypes);
         return new TimeseriesRegistry(metadata, (fieldName, type) => null!);
@@ -145,32 +145,32 @@ public class ChangeMaskAndEventDetectionTests
 
     private class MockEventTable : IEventTable
     {
-        private readonly HashSet<DateTime> _dates;
+        private readonly HashSet<MarketTime> _dates;
 
-        public MockEventTable(string name, IEnumerable<DateTime> dates)
+        public MockEventTable(string name, IEnumerable<MarketTime> dates)
         {
             Name = name;
-            _dates = new HashSet<DateTime>(dates);
+            _dates = new HashSet<MarketTime>(dates.Select(d => d.Date));
         }
 
         public string Name { get; }
         public int Count => _dates.Count;
-        public IEnumerable<DateTime> Dates => _dates;
-        public bool ContainsDate(DateTime date) => _dates.Contains(date.Date);
+        public IEnumerable<MarketTime> Dates => _dates;
+        public bool ContainsDate(MarketTime date) => _dates.Contains(date.Date);
 
-        public IReadOnlyDictionary<string, IReadOnlyList<IDataRow>> this[DateTime date] => throw new NotImplementedException();
-        public IDataRow this[DateTime date, string key] => throw new NotImplementedException();
-        public bool TryGetDay(DateTime date, out IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>? dayMap) => throw new NotImplementedException();
-        public IReadOnlyList<IDataRow> GetRows(DateTime timestamp, string key) => throw new NotImplementedException();
-        public bool TryGet(DateTime timestamp, string key, out IReadOnlyList<IDataRow> rows) => throw new NotImplementedException();
-        public bool TryGetFirst(DateTime timestamp, string key, out IDataRow? row) => throw new NotImplementedException();
-        public bool TryGetGlobal(DateTime timestamp, out IReadOnlyList<IDataRow> globalRows) => throw new NotImplementedException();
-        public T Get<T>(DateTime timestamp, string key) where T : class => throw new NotImplementedException();
-        public bool TryGet<T>(DateTime timestamp, string key, out T? value) where T : class => throw new NotImplementedException();
-        public IEnumerable<T> As<T>(DateTime timestamp) where T : class => throw new NotImplementedException();
+        public IReadOnlyDictionary<string, IReadOnlyList<IDataRow>> this[MarketTime date] => throw new NotImplementedException();
+        public IDataRow this[MarketTime date, string key] => throw new NotImplementedException();
+        public bool TryGetDay(MarketTime date, out IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>? dayMap) => throw new NotImplementedException();
+        public IReadOnlyList<IDataRow> GetRows(MarketTime timestamp, string key) => throw new NotImplementedException();
+        public bool TryGet(MarketTime timestamp, string key, out IReadOnlyList<IDataRow> rows) => throw new NotImplementedException();
+        public bool TryGetFirst(MarketTime timestamp, string key, out IDataRow? row) => throw new NotImplementedException();
+        public bool TryGetGlobal(MarketTime timestamp, out IReadOnlyList<IDataRow> globalRows) => throw new NotImplementedException();
+        public T Get<T>(MarketTime timestamp, string key) where T : class => throw new NotImplementedException();
+        public bool TryGet<T>(MarketTime timestamp, string key, out T? value) where T : class => throw new NotImplementedException();
+        public IEnumerable<T> As<T>(MarketTime timestamp) where T : class => throw new NotImplementedException();
         public IEnumerable<T> As<T>(string key) where T : class => throw new NotImplementedException();
         public IEnumerable<T> As<T>() where T : class => throw new NotImplementedException();
-        public IEnumerator<KeyValuePair<DateTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>> GetEnumerator() => throw new NotImplementedException();
+        public IEnumerator<KeyValuePair<MarketTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>> GetEnumerator() => throw new NotImplementedException();
         IEnumerator IEnumerable.GetEnumerator() => throw new NotImplementedException();
     }
 
@@ -178,8 +178,8 @@ public class ChangeMaskAndEventDetectionTests
     public void EventRegistry_HasNewEvents_Detection()
     {
         var registry = new EventRegistry();
-        var date1 = new DateTime(2025, 5, 20);
-        var date2 = new DateTime(2025, 5, 21);
+        var date1 = new MarketTime(2025, 5, 20);
+        var date2 = new MarketTime(2025, 5, 21);
 
         // 空注册中心
         Assert.IsFalse(registry.HasNewEvents(date1));
@@ -195,7 +195,7 @@ public class ChangeMaskAndEventDetectionTests
         // 全局探测
         Assert.IsTrue(registry.HasNewEvents(date1));
         Assert.IsTrue(registry.HasNewEvents(date2));
-        Assert.IsFalse(registry.HasNewEvents(new DateTime(2025, 5, 22)));
+        Assert.IsFalse(registry.HasNewEvents(new MarketTime(2025, 5, 22)));
 
         // 单表过滤探测
         Assert.IsTrue(registry.HasNewEvents(date1, "suspension"));

@@ -12,27 +12,27 @@ namespace CarrotBacktesting.NET.Data
     /// </summary>
     public class EventTable : IEventTable
     {
-        private readonly Dictionary<DateTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>> _dayMaps;
-        private readonly Dictionary<DateTime, IReadOnlyList<IDataRow>> _globalEvents;
-        private readonly DateTime[] _sortedDates;
+        private readonly Dictionary<MarketTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>> _dayMaps;
+        private readonly Dictionary<MarketTime, IReadOnlyList<IDataRow>> _globalEvents;
+        private readonly MarketTime[] _sortedDates;
         private readonly IReadOnlyList<string> _valueColumns;
         private readonly ConcurrentDictionary<Type, object> _factoryCache = new();
 
         public string Name { get; }
         public int Count => _dayMaps.Count;
-        public IEnumerable<DateTime> Dates => _sortedDates;
+        public IEnumerable<MarketTime> Dates => _sortedDates;
 
         public EventTable(
             string name,
             IReadOnlyList<string> valueColumns,
-            Dictionary<DateTime, Dictionary<string, List<DataRow>>> data,
-            Dictionary<DateTime, List<DataRow>>? globalEvents = null)
+            Dictionary<MarketTime, Dictionary<string, List<DataRow>>> data,
+            Dictionary<MarketTime, List<DataRow>>? globalEvents = null)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
             _valueColumns = valueColumns ?? throw new ArgumentNullException(nameof(valueColumns));
             ArgumentNullException.ThrowIfNull(data);
 
-            _dayMaps = new Dictionary<DateTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>(data.Count);
+            _dayMaps = new Dictionary<MarketTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>(data.Count);
             foreach (var (date, dayDict) in data)
             {
                 var frozenDay = new Dictionary<string, IReadOnlyList<IDataRow>>(dayDict.Count, StringComparer.OrdinalIgnoreCase);
@@ -46,7 +46,7 @@ namespace CarrotBacktesting.NET.Data
                 _dayMaps[date.Date] = frozenDay;
             }
 
-            _globalEvents = new Dictionary<DateTime, IReadOnlyList<IDataRow>>();
+            _globalEvents = new Dictionary<MarketTime, IReadOnlyList<IDataRow>>();
             if (globalEvents != null)
             {
                 foreach (var (date, list) in globalEvents)
@@ -65,7 +65,7 @@ namespace CarrotBacktesting.NET.Data
             _sortedDates = _dayMaps.Keys.OrderBy(d => d).ToArray();
         }
 
-        public IReadOnlyDictionary<string, IReadOnlyList<IDataRow>> this[DateTime date]
+        public IReadOnlyDictionary<string, IReadOnlyList<IDataRow>> this[MarketTime date]
         {
             get
             {
@@ -77,7 +77,7 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        public IDataRow this[DateTime date, string key]
+        public IDataRow this[MarketTime date, string key]
         {
             get
             {
@@ -89,12 +89,12 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        public bool TryGetDay(DateTime date, out IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>? dayMap)
+        public bool TryGetDay(MarketTime date, out IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>? dayMap)
         {
             return _dayMaps.TryGetValue(date.Date, out dayMap);
         }
 
-        public bool TryGet(DateTime timestamp, string key, out IReadOnlyList<IDataRow> rows)
+        public bool TryGet(MarketTime timestamp, string key, out IReadOnlyList<IDataRow> rows)
         {
             if (_dayMaps.TryGetValue(timestamp.Date, out var dayMap) && dayMap.TryGetValue(key, out var r))
             {
@@ -105,7 +105,7 @@ namespace CarrotBacktesting.NET.Data
             return false;
         }
 
-        public IReadOnlyList<IDataRow> GetRows(DateTime timestamp, string key)
+        public IReadOnlyList<IDataRow> GetRows(MarketTime timestamp, string key)
         {
             if (TryGet(timestamp, key, out var rows))
             {
@@ -114,7 +114,7 @@ namespace CarrotBacktesting.NET.Data
             return Array.Empty<IDataRow>();
         }
 
-        public bool TryGetFirst(DateTime timestamp, string key, out IDataRow? row)
+        public bool TryGetFirst(MarketTime timestamp, string key, out IDataRow? row)
         {
             if (TryGet(timestamp, key, out var rows) && rows.Count > 0)
             {
@@ -125,7 +125,7 @@ namespace CarrotBacktesting.NET.Data
             return false;
         }
 
-        public bool TryGetGlobal(DateTime timestamp, out IReadOnlyList<IDataRow> globalRows)
+        public bool TryGetGlobal(MarketTime timestamp, out IReadOnlyList<IDataRow> globalRows)
         {
             if (_globalEvents.TryGetValue(timestamp.Date, out var g) && g.Count > 0)
             {
@@ -136,11 +136,11 @@ namespace CarrotBacktesting.NET.Data
             return false;
         }
 
-        public bool ContainsDate(DateTime date) => _dayMaps.ContainsKey(date.Date) || _globalEvents.ContainsKey(date.Date);
+        public bool ContainsDate(MarketTime date) => _dayMaps.ContainsKey(date.Date) || _globalEvents.ContainsKey(date.Date);
 
         #region 强类型即时点查与流式 LINQ
 
-        public T Get<T>(DateTime timestamp, string key) where T : class
+        public T Get<T>(MarketTime timestamp, string key) where T : class
         {
             if (TryGet<T>(timestamp, key, out var value) && value != null)
             {
@@ -149,7 +149,7 @@ namespace CarrotBacktesting.NET.Data
             throw new KeyNotFoundException($"Key '{key}' not found on {timestamp:yyyy-MM-dd} in event stream '{Name}'.");
         }
 
-        public bool TryGet<T>(DateTime timestamp, string key, out T? value) where T : class
+        public bool TryGet<T>(MarketTime timestamp, string key, out T? value) where T : class
         {
             if (TryGetFirst(timestamp, key, out var row) && row is DataRow dataRow)
             {
@@ -161,7 +161,7 @@ namespace CarrotBacktesting.NET.Data
             return false;
         }
 
-        public IEnumerable<T> As<T>(DateTime timestamp) where T : class
+        public IEnumerable<T> As<T>(MarketTime timestamp) where T : class
         {
             if (_dayMaps.TryGetValue(timestamp.Date, out var dayMap))
             {
@@ -226,7 +226,7 @@ namespace CarrotBacktesting.NET.Data
 
         #endregion
 
-        public IEnumerator<KeyValuePair<DateTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>> GetEnumerator()
+        public IEnumerator<KeyValuePair<MarketTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>> GetEnumerator()
         {
             return _dayMaps.GetEnumerator();
         }

@@ -14,7 +14,7 @@ public interface IEngineContext
     /// <summary>
     /// 获取当前回测或运行的逻辑时间点（例如交易日或 Bar 的开始时间）。
     /// </summary>
-    DateTime CurrentTime { get; }
+    MarketTime CurrentTime { get; }
 
     /// <summary>
     /// 获取当前循环的索引位置（对应 <see cref="ITimeseriesRegistry"/> 的行索引）。

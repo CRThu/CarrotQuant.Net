@@ -56,9 +56,9 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
-        public bool HasNewEvents(DateTime time, string? tableName = null)
+        public bool HasNewEvents(MarketTime time, string? tableName = null)
         {
-            DateTime date = time.Date;
+            MarketTime date = time.Date;
             if (!string.IsNullOrWhiteSpace(tableName))
             {
                 lock (_syncLock)

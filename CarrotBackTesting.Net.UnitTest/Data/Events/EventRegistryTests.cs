@@ -23,7 +23,7 @@ public class EventRegistryTests
     public void RegisterAndRetrieve_ShouldWork()
     {
         var registry = new EventRegistry();
-        var emptySymbolData = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
+        var emptySymbolData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
         var table = new EventTable("adjustments", new[] { "back_adj_factor" }, emptySymbolData);
 
         registry.Register("adjustments", table);
@@ -54,7 +54,7 @@ public class EventRegistryTests
         var registry = new EventRegistry();
         Assert.IsFalse(registry.HasTable("adjustments"));
 
-        var emptySymbolData = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
+        var emptySymbolData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
         var table = new EventTable("adjustments", new[] { "back_adj_factor" }, emptySymbolData);
         registry.Register("adjustments", table);
 

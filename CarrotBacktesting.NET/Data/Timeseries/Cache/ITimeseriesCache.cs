@@ -32,10 +32,10 @@ namespace CarrotBacktesting.NET.Data
         public int RowCount { get; set; }
 
         [JsonPropertyName("start_date")]
-        public DateTime? StartDate { get; set; }
+        public MarketTime? StartDate { get; set; }
 
         [JsonPropertyName("end_date")]
-        public DateTime? EndDate { get; set; }
+        public MarketTime? EndDate { get; set; }
 
         [JsonPropertyName("symbols")]
         public List<string> Symbols { get; set; } = new();
@@ -110,7 +110,7 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 将非托管内存矩阵全量写入分块持久化存储。
         /// </summary>
-        void WriteMatrix<T>(string fieldName, ChunkMatrix2D<T> matrix, IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates) where T : unmanaged;
+        void WriteMatrix<T>(string fieldName, ChunkMatrix2D<T> matrix, IReadOnlyList<string> symbols, IReadOnlyList<MarketTime> tradeDates) where T : unmanaged;
 
         /// <summary>
         /// 单分块原地精准重刷（仅重写指定页索引的 chunk_{pageIndex}.bin，历史分块物理零触碰）。
@@ -129,7 +129,7 @@ namespace CarrotBacktesting.NET.Data
             string fieldName, 
             int deltaRows, 
             Action<int, Span<T>> rowProvider, 
-            IReadOnlyList<DateTime> newTradeDates) where T : unmanaged;
+            IReadOnlyList<MarketTime> newTradeDates) where T : unmanaged;
 
         /// <summary>
         /// 清空或删除指定字段的所有持久化数据。

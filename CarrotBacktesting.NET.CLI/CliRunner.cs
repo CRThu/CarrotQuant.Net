@@ -54,8 +54,8 @@ public static class CliRunner
         }
 
         // 解析可选的覆盖参数
-        DateTime? overrideStartDate = null;
-        DateTime? overrideEndDate = null;
+        MarketTime? overrideStartDate = null;
+        MarketTime? overrideEndDate = null;
         bool noExport = false;
 
         while (index < args.Length)
@@ -65,7 +65,7 @@ public static class CliRunner
             {
                 case "--start-date":
                 case "-s":
-                    if (index >= args.Length || !DateTime.TryParse(args[index++], CultureInfo.InvariantCulture, DateTimeStyles.None, out var sDate))
+                    if (index >= args.Length || !MarketTime.TryParse(args[index++], null, out var sDate))
                     {
                         stderr.WriteLine("[错误] --start-date 参数缺少有效日期值 (格式如: 2024-01-01)。");
                         return ExitInvalidArgs;
@@ -75,7 +75,7 @@ public static class CliRunner
 
                 case "--end-date":
                 case "-e":
-                    if (index >= args.Length || !DateTime.TryParse(args[index++], CultureInfo.InvariantCulture, DateTimeStyles.None, out var eDate))
+                    if (index >= args.Length || !MarketTime.TryParse(args[index++], null, out var eDate))
                     {
                         stderr.WriteLine("[错误] --end-date 参数缺少有效日期值 (格式如: 2024-12-31)。");
                         return ExitInvalidArgs;

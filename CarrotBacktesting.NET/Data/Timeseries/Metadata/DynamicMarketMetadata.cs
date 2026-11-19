@@ -12,10 +12,10 @@ namespace CarrotBacktesting.NET.Data
     public class DynamicMarketMetadata : IMarketMetadata
     {
         private readonly List<string> _symbols;
-        private readonly List<DateTime> _tradeDates;
+        private readonly List<MarketTime> _tradeDates;
         private readonly List<string> _fieldNames;
         private readonly ConcurrentDictionary<string, int> _symbolMap = new(StringComparer.OrdinalIgnoreCase);
-        private readonly ConcurrentDictionary<DateTime, int> _dateMap = new();
+        private readonly ConcurrentDictionary<MarketTime, int> _dateMap = new();
         private readonly ConcurrentDictionary<string, Type> _fieldTypes = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _gate = new();
 
@@ -44,7 +44,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
-        public IReadOnlyList<DateTime> TradeDates
+        public IReadOnlyList<MarketTime> TradeDates
         {
             get
             {
@@ -68,7 +68,7 @@ namespace CarrotBacktesting.NET.Data
                 _symbolMap[_symbols[i]] = i;
             }
 
-            _tradeDates = new List<DateTime>(baseMetadata.TradeDates);
+            _tradeDates = new List<MarketTime>(baseMetadata.TradeDates);
             for (int i = 0; i < _tradeDates.Count; i++)
             {
                 _dateMap[_tradeDates[i]] = i;
@@ -84,7 +84,7 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 直接从初始列表构造。
         /// </summary>
-        public DynamicMarketMetadata(IEnumerable<string> symbols, IEnumerable<DateTime> tradeDates, IDictionary<string, Type>? fieldTypes = null)
+        public DynamicMarketMetadata(IEnumerable<string> symbols, IEnumerable<MarketTime> tradeDates, IDictionary<string, Type>? fieldTypes = null)
         {
             _symbols = new List<string>(symbols ?? Array.Empty<string>());
             for (int i = 0; i < _symbols.Count; i++)
@@ -92,7 +92,7 @@ namespace CarrotBacktesting.NET.Data
                 _symbolMap[_symbols[i]] = i;
             }
 
-            _tradeDates = new List<DateTime>(tradeDates ?? Array.Empty<DateTime>());
+            _tradeDates = new List<MarketTime>(tradeDates ?? Array.Empty<MarketTime>());
             for (int i = 0; i < _tradeDates.Count; i++)
             {
                 _dateMap[_tradeDates[i]] = i;
@@ -110,7 +110,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
-        public int AppendDate(DateTime date)
+        public int AppendDate(MarketTime date)
         {
             if (_dateMap.TryGetValue(date, out int existingIndex))
             {
@@ -170,7 +170,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
-        public int GetDateIndex(DateTime date)
+        public int GetDateIndex(MarketTime date)
         {
             return _dateMap.TryGetValue(date, out int idx) ? idx : -1;
         }

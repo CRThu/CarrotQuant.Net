@@ -57,7 +57,7 @@ public sealed class SignalAnalyzer : AnalyzerBase<SignalStatistics>
         return CalculateCore(signals, timeseries, options, isRoot: true);
     }
 
-    private static int ResolveDateIndex(IMarketMetadata metadata, DateTime time)
+    private static int ResolveDateIndex(IMarketMetadata metadata, MarketTime time)
     {
         int idx = metadata.GetDateIndex(time);
         if (idx >= 0) return idx;

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using YamlDotNet.Core;
+using YamlDotNet.Core.Events;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -33,6 +35,7 @@ public static class YamlSerializer
         return Serializers.GetOrAdd(convention.GetType(), _ =>
             new SerializerBuilder()
                 .WithNamingConvention(convention)
+                .WithTypeConverter(new MarketTimeYamlConverter())
                 .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
                 .Build());
     }
@@ -42,8 +45,35 @@ public static class YamlSerializer
         return Deserializers.GetOrAdd(convention.GetType(), _ =>
             new DeserializerBuilder()
                 .WithNamingConvention(convention)
+                .WithTypeConverter(new MarketTimeYamlConverter())
                 .IgnoreUnmatchedProperties()
                 .Build());
+    }
+
+    private sealed class MarketTimeYamlConverter : IYamlTypeConverter
+    {
+        public bool Accepts(Type type) => type == typeof(MarketTime) || type == typeof(MarketTime?);
+
+        public object? ReadYaml(IParser parser, Type type, ObjectDeserializer rootDeserializer)
+        {
+            var scalar = parser.Consume<Scalar>();
+            if (string.IsNullOrWhiteSpace(scalar.Value))
+            {
+                return type == typeof(MarketTime?) ? null : MarketTime.MinValue;
+            }
+            return MarketTime.Parse(scalar.Value);
+        }
+
+        public void WriteYaml(IEmitter emitter, object? value, Type type, ObjectSerializer serializer)
+        {
+            if (value is null)
+            {
+                emitter.Emit(new Scalar("null"));
+                return;
+            }
+            var mt = (MarketTime)value;
+            emitter.Emit(new Scalar(mt.ToString()));
+        }
     }
 
     /// <summary>

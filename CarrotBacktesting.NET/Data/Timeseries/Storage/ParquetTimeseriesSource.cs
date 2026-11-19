@@ -24,7 +24,7 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 核心构造函数，接收不可变表元数据与统一调度器。
         /// </summary>
-        public ParquetTimeseriesSource(TableMetadata metadata, IStorageResolver resolver, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null, IReadOnlySet<string>? nullableFields = null)
+        public ParquetTimeseriesSource(TableMetadata metadata, IStorageResolver resolver, MarketTime? startDate = null, MarketTime? endDate = null, string? timeZone = null, IReadOnlySet<string>? nullableFields = null)
             : base(metadata, resolver, startDate, endDate, timeZone)
         {
             var resolverFields = metadata.NullableFields;
@@ -43,7 +43,7 @@ namespace CarrotBacktesting.NET.Data
                 _nullableFields = merged;
             }
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var dateSet = new HashSet<DateTime>();
+            var dateSet = new HashSet<MarketTime>();
 
             try
             {
@@ -84,9 +84,9 @@ namespace CarrotBacktesting.NET.Data
         protected override int ReadRawSeriesFromFile<T>(
             string symbol,
             string fieldName,
-            DateTime minDate,
-            DateTime maxDate,
-            ref DateTime[] rawDates,
+            MarketTime minDate,
+            MarketTime maxDate,
+            ref MarketTime[] rawDates,
             ref T[] rawValues)
         {
             var parquetFiles = _resolver.ResolvePhysicalFiles(_metadata, symbol, minDate, maxDate);
@@ -109,7 +109,7 @@ namespace CarrotBacktesting.NET.Data
 
                 for (int r = range.StartRow; r < endRow; r++)
                 {
-                    DateTime rowDate = cache.Dates[r];
+                    MarketTime rowDate = cache.Dates[r];
 
                     EnsureCapacity(ref rawDates, ref rawValues, count);
 
@@ -327,67 +327,6 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        private static List<DateTime> ConvertToDateTimes(object columnData, TimeZoneInfo? sourceTimeZone)
-        {
-            var dates = new List<DateTime>();
-            if (columnData is long[] tsArr)
-            {
-                foreach (var ts in tsArr)
-                {
-                    DateTime dt = sourceTimeZone != null
-                        ? DateTimeOffset.FromUnixTimeMilliseconds(ts).UtcDateTime
-                        : DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime;
-                    dates.Add(dt);
-                }
-            }
-            else if (columnData is DateTime[] dtArr)
-            {
-                foreach (var dt in dtArr)
-                {
-                    dates.Add(NormalizeDateTime(dt, sourceTimeZone));
-                }
-            }
-            else if (columnData is DateTimeOffset[] dtoArr)
-            {
-                foreach (var dto in dtoArr)
-                {
-                    DateTime dt = sourceTimeZone != null
-                        ? dto.UtcDateTime
-                        : dto.DateTime;
-                    dates.Add(dt);
-                }
-            }
-            else if (columnData is ReadOnlyMemory<char>[] romArr)
-            {
-                foreach (var rom in romArr)
-                {
-                    if (DateTime.TryParse(rom.Span, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt) ||
-                        DateTime.TryParse(rom.Span, out dt))
-                    {
-                        dates.Add(NormalizeDateTime(dt, sourceTimeZone));
-                    }
-                }
-            }
-            return dates;
-        }
-
-        private static DateTime NormalizeDateTime(DateTime dt, TimeZoneInfo? sourceTimeZone)
-        {
-            if (sourceTimeZone != null)
-            {
-                if (dt.Kind == DateTimeKind.Unspecified)
-                {
-                    return TimeZoneInfo.ConvertTimeToUtc(dt, sourceTimeZone);
-                }
-                if (dt.Kind == DateTimeKind.Local)
-                {
-                    return dt.ToUniversalTime();
-                }
-                return dt;
-            }
-            return dt;
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static T ConvertArrayValue<T>(Array arr, int index) where T : unmanaged
         {
@@ -439,7 +378,7 @@ namespace CarrotBacktesting.NET.Data
         private sealed class YearCache : IDisposable
         {
             public string FilePath { get; }
-            public DateTime[] Dates { get; private set; } = Array.Empty<DateTime>();
+            public MarketTime[] Dates { get; private set; } = Array.Empty<MarketTime>();
             public Dictionary<string, (int StartRow, int RowCount)> StockRanges { get; } = new(StringComparer.OrdinalIgnoreCase);
 
             private readonly Dictionary<string, Array> _columns = new(StringComparer.OrdinalIgnoreCase);
@@ -480,7 +419,7 @@ namespace CarrotBacktesting.NET.Data
                     ?? throw new InvalidOperationException($"Required datetime column not found in {FilePath}");
 
                 StockRanges.Clear();
-                var dateList = new List<DateTime>();
+                var dateList = new List<MarketTime>();
                 var symPool = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var symLookup = symPool.GetAlternateLookup<ReadOnlySpan<char>>();
 
@@ -528,8 +467,8 @@ namespace CarrotBacktesting.NET.Data
                         }
                     }
 
-                    var dtData = ReadColumnFromGroup(groupReader, dtField, _nullableFields);
-                    dateList.AddRange(ConvertToDateTimes(dtData, _sourceTimeZone));
+                    MarketTime[] dtData = groupReader.ReadTimeColumn(dtField, (int)groupReader.RowCount, _sourceTimeZone, _nullableFields);
+                    dateList.AddRange(dtData);
                 }
 
                 if (currentSym != null && currentRow > currentBlockStart)

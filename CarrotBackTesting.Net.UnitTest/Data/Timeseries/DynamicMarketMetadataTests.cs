@@ -13,7 +13,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestDynamicMarketMetadata_AppendDate_And_AppendSymbol()
         {
             var initialSymbols = new[] { "000001.SZ", "600000.SH" };
-            var initialDates = new[] { new DateTime(2025, 1, 1), new DateTime(2025, 1, 2) };
+            var initialDates = new MarketTime[] { new(2025, 1, 1), new(2025, 1, 2) };
             var fieldTypes = new Dictionary<string, Type> { { "close", typeof(double) } };
 
             var metadata = new DynamicMarketMetadata(initialSymbols, initialDates, fieldTypes);
@@ -57,10 +57,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             public IReadOnlyList<string> Symbols { get; } = new[] { "000001.SZ" };
             public IReadOnlyList<string> FieldNames { get; } = new[] { "close" };
-            public IReadOnlyList<DateTime> TradeDates { get; } = new[] { new DateTime(2025, 1, 1) };
+            public IReadOnlyList<MarketTime> TradeDates { get; } = new MarketTime[] { new MarketTime(new DateTime(2025, 1, 1).Ticks) };
             public Type GetFieldType(string fieldName) => typeof(double);
             public int GetSymbolIndex(string symbol) => symbol == "000001.SZ" ? 0 : -1;
-            public int GetDateIndex(DateTime date) => date == new DateTime(2025, 1, 1) ? 0 : -1;
+            public int GetDateIndex(MarketTime date) => date.Ticks == new DateTime(2025, 1, 1).Ticks ? 0 : -1;
         }
 
         [TestMethod]

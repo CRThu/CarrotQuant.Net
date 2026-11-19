@@ -58,89 +58,51 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 解析当前行指定列的日期时间。
-        /// 自动适配 DateTime、Unix 毫秒时间戳以及 ISO 8601 / Invariant / Local 文本日期格式。
-        /// 若指定了数据源时区 sourceTimeZone，则将无时区本地时间精确映射为全局物理唯一的 UTC 时间；
-        /// 若未指定时区，则保持原有默认日期并保留 Date 精度。
+        /// 从 CSV 当前行读取并解析为强类型 64-bit UTC 市场时间标量 <see cref="MarketTime"/>。
+        /// 零堆分配，单点权威时间解析。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DateTime ParseDate(this CsvDataReader reader, int colIdx, TimeZoneInfo? sourceTimeZone = null)
+        public static MarketTime ParseTime(this CsvDataReader reader, int colIdx, TimeZoneInfo? sourceTimeZone = null)
         {
-            if (colIdx < 0 || reader.IsDBNull(colIdx)) return DateTime.MinValue;
+            if (colIdx < 0 || reader.IsDBNull(colIdx)) return MarketTime.MinValue;
 
             Type fieldType = reader.GetFieldType(colIdx);
             if (fieldType == typeof(DateTime))
             {
                 DateTime dtVal = reader.GetDateTime(colIdx);
-                if (sourceTimeZone != null)
-                {
-                    return dtVal.Kind == DateTimeKind.Unspecified
-                        ? TimeZoneInfo.ConvertTimeToUtc(dtVal, sourceTimeZone)
-                        : dtVal.ToUniversalTime();
-                }
-                return dtVal;
+                return MarketTime.FromExchange(dtVal, sourceTimeZone);
             }
 
             if (fieldType == typeof(long))
             {
                 long tsVal = reader.GetInt64(colIdx);
-                return sourceTimeZone != null
-                    ? DateTimeOffset.FromUnixTimeMilliseconds(tsVal).UtcDateTime
-                    : DateTimeOffset.FromUnixTimeMilliseconds(tsVal).DateTime;
+                return MarketTime.FromUnixTimeMilliseconds(tsVal);
             }
 
-            string dtStr = reader.GetString(colIdx);
-            if (string.IsNullOrWhiteSpace(dtStr)) return DateTime.MinValue;
+            ReadOnlySpan<char> span = reader.GetFieldSpan(colIdx);
+            if (span.IsEmpty || span.IsWhiteSpace()) return MarketTime.MinValue;
 
-            if (long.TryParse(dtStr, out long ts))
-            {
-                return sourceTimeZone != null
-                    ? DateTimeOffset.FromUnixTimeMilliseconds(ts).UtcDateTime
-                    : DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime;
-            }
-
-            DateTime parsed;
-            if (DateTime.TryParse(dtStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
-            {
-                parsed = dt;
-            }
-            else if (DateTime.TryParse(dtStr, out var dtLocal))
-            {
-                parsed = dtLocal;
-            }
-            else
-            {
-                return DateTime.MinValue;
-            }
-
-            if (sourceTimeZone != null)
-            {
-                return parsed.Kind == DateTimeKind.Unspecified
-                    ? TimeZoneInfo.ConvertTimeToUtc(parsed, sourceTimeZone)
-                    : parsed.ToUniversalTime();
-            }
-
-            return parsed;
+            return MarketTime.TryParse(span, sourceTimeZone, out var mt) ? mt : MarketTime.MinValue;
         }
 
         /// <summary>
-        /// 联合解析当前行的时间戳，优先从 datetime 列获取，缺失时回退至 timestamp 列。
+        /// 联合解析当前行的时间戳，返回 <see cref="MarketTime"/>。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DateTime ParseDate(this CsvDataReader reader, int dtIdx, int tsIdx, TimeZoneInfo? sourceTimeZone = null)
+        public static MarketTime ParseTime(this CsvDataReader reader, int dtIdx, int tsIdx, TimeZoneInfo? sourceTimeZone = null)
         {
             if (dtIdx >= 0)
             {
-                DateTime dt = reader.ParseDate(dtIdx, sourceTimeZone);
-                if (dt != DateTime.MinValue) return dt;
+                MarketTime mt = reader.ParseTime(dtIdx, sourceTimeZone);
+                if (mt != MarketTime.MinValue) return mt;
             }
 
             if (tsIdx >= 0)
             {
-                return reader.ParseDate(tsIdx, sourceTimeZone);
+                return reader.ParseTime(tsIdx, sourceTimeZone);
             }
 
-            return DateTime.MinValue;
+            return MarketTime.MinValue;
         }
 
         /// <summary>

@@ -20,14 +20,19 @@ public class BacktestingEngineRecorderIntegrationTests
 {
     private class SimpleMetadata : IMarketMetadata
     {
-        public IReadOnlyList<DateTime> TradeDates { get; }
+        public IReadOnlyList<MarketTime> TradeDates { get; }
         public IReadOnlyList<string> Symbols { get; }
         public IReadOnlyList<string> FieldNames { get; } = new[] { "close", "open", "high", "low", "volume" };
 
-        public SimpleMetadata(IReadOnlyList<DateTime> dates, IReadOnlyList<string> symbols)
+        public SimpleMetadata(IReadOnlyList<MarketTime> dates, IReadOnlyList<string> symbols)
         {
             TradeDates = dates;
             Symbols = symbols;
+        }
+
+        public SimpleMetadata(IReadOnlyList<DateTime> dates, IReadOnlyList<string> symbols)
+            : this(dates.Select(d => (MarketTime)d).ToList(), symbols)
+        {
         }
 
         public int GetSymbolIndex(string symbol)
@@ -36,7 +41,7 @@ public class BacktestingEngineRecorderIntegrationTests
             return -1;
         }
 
-        public int GetDateIndex(DateTime date)
+        public int GetDateIndex(MarketTime date)
         {
             for (int i = 0; i < TradeDates.Count; i++) if (TradeDates[i] == date) return i;
             return -1;

@@ -219,7 +219,7 @@ namespace CarrotBacktesting.NET.Data
             string fieldName,
             ChunkMatrix2D<T> matrix,
             IReadOnlyList<string> symbols,
-            IReadOnlyList<DateTime> tradeDates) where T : unmanaged
+            IReadOnlyList<MarketTime> tradeDates) where T : unmanaged
         {
             ArgumentNullException.ThrowIfNull(matrix);
             ArgumentNullException.ThrowIfNull(symbols);
@@ -259,9 +259,10 @@ namespace CarrotBacktesting.NET.Data
             var dateStrings = new List<string>(tradeDates.Count);
             for (int i = 0; i < tradeDates.Count; i++)
             {
-                dateStrings.Add(tradeDates[i].TimeOfDay == TimeSpan.Zero
-                    ? tradeDates[i].ToString("yyyy-MM-dd")
-                    : tradeDates[i].ToString("yyyy-MM-dd HH:mm:ss"));
+                var mt = tradeDates[i];
+                dateStrings.Add((mt.Ticks % TimeSpan.TicksPerDay) == 0
+                    ? mt.ToString("yyyy-MM-dd")
+                    : mt.ToString("yyyy-MM-dd HH:mm:ss"));
             }
 
             var chunkWidths = new List<int>(neededPages);
@@ -366,7 +367,7 @@ namespace CarrotBacktesting.NET.Data
             string fieldName,
             int deltaRows,
             Action<int, Span<T>> rowProvider,
-            IReadOnlyList<DateTime> newTradeDates) where T : unmanaged
+            IReadOnlyList<MarketTime> newTradeDates) where T : unmanaged
         {
             if (deltaRows <= 0) return;
             ArgumentNullException.ThrowIfNull(rowProvider);
@@ -427,9 +428,10 @@ namespace CarrotBacktesting.NET.Data
             meta.EndDate = newTradeDates[^1];
             for (int i = 0; i < newTradeDates.Count; i++)
             {
-                meta.TradeDates.Add(newTradeDates[i].TimeOfDay == TimeSpan.Zero
-                    ? newTradeDates[i].ToString("yyyy-MM-dd")
-                    : newTradeDates[i].ToString("yyyy-MM-dd HH:mm:ss"));
+                var mt = newTradeDates[i];
+                meta.TradeDates.Add((mt.Ticks % TimeSpan.TicksPerDay) == 0
+                    ? mt.ToString("yyyy-MM-dd")
+                    : mt.ToString("yyyy-MM-dd HH:mm:ss"));
             }
 
             int targetNeededPages = targetRowCount > 0 ? (int)(((long)targetRowCount + _pageSize - 1) / _pageSize) : 0;

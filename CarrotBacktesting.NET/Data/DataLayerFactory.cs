@@ -20,8 +20,8 @@ namespace CarrotBacktesting.NET.Data
         /// <returns>已装配完成的时序、事件与维表注册中心元组。</returns>
         public static (ITimeseriesRegistry Timeseries, IEventRegistry Events, IFieldRegistry Fields) Create(
             DataConfig config,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             bool isLive = false)
         {
             ArgumentNullException.ThrowIfNull(config);

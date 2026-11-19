@@ -22,7 +22,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
     private readonly Dictionary<string, IDataRow> _currentBars = new(StringComparer.Ordinal);
     private readonly object _syncLock = new();
 
-    private DateTime _currentTime = DateTime.MinValue;
+    private MarketTime _currentTime = MarketTime.MinValue;
 
     public event Action<ExecutionReport>? OnExecution;
     public event Action<string, OrderStatus>? OnOrderStateChanged;
@@ -47,7 +47,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
         {
             double basePrice = GetBasePriceForOrder(request);
             double multiplier = GetMultiplier(request.Symbol);
-            DateTime tradeTime = _currentTime != DateTime.MinValue ? _currentTime : DateTime.UtcNow;
+            MarketTime tradeTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
             _currentBars.TryGetValue(request.Symbol, out var currentBar);
             var matchResult = _matcher.EvaluateImmediateOrder(request, basePrice, currentBar, multiplier, tradeTime);
@@ -112,7 +112,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
     }
 
     /// <inheritdoc />
-    public void Step(DateTime currentTime, ITimeseriesRegistry timeseries, int currentIndex)
+    public void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex)
     {
         ArgumentNullException.ThrowIfNull(timeseries);
 
@@ -183,7 +183,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
     }
 
     /// <inheritdoc />
-    public void SetCurrentTime(DateTime currentTime)
+    public void SetCurrentTime(MarketTime currentTime)
     {
         lock (_syncLock)
         {
@@ -192,7 +192,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
     }
 
     /// <inheritdoc />
-    public void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null)
+    public void OnMarketData(string symbol, double price, MarketTime time, IDataRow? bar = null)
     {
         if (string.IsNullOrWhiteSpace(symbol) || price <= 0.0 || double.IsNaN(price) || double.IsInfinity(price))
         {
@@ -205,9 +205,9 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
         lock (_syncLock)
         {
             _marketPrices[symbol] = price;
-            DateTime tradeTime = time != DateTime.MinValue
+            MarketTime tradeTime = time != MarketTime.MinValue
                 ? time
-                : (_currentTime != DateTime.MinValue ? _currentTime : DateTime.UtcNow);
+                : (_currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch);
             _currentTime = tradeTime;
 
             if (bar != null)
@@ -230,7 +230,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
         string symbol,
         double marketPrice,
         IDataRow? bar,
-        DateTime tradeTime,
+        MarketTime tradeTime,
         ref List<ExecutionReport>? fillReports,
         ref List<string>? rejectedOrders)
     {

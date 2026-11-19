@@ -1499,7 +1499,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         {
             if (broker.Gateway is ISimulatedExchange sim)
             {
-                DateTime effectiveTime = broker.CurrentTime != DateTime.MinValue ? broker.CurrentTime : DateTime.UtcNow;
+                MarketTime effectiveTime = broker.CurrentTime != MarketTime.MinValue ? broker.CurrentTime : MarketTime.UtcNow;
                 sim.OnMarketData(symbol, price, effectiveTime, bar);
             }
         }
@@ -1510,7 +1510,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             {
                 if (basePrice > 0.0 && !double.IsNaN(basePrice) && !double.IsInfinity(basePrice))
                 {
-                    DateTime effectiveTime = broker.CurrentTime != DateTime.MinValue ? broker.CurrentTime : DateTime.UtcNow;
+                    MarketTime effectiveTime = broker.CurrentTime != MarketTime.MinValue ? broker.CurrentTime : MarketTime.UtcNow;
                     sim.OnMarketData(request.Symbol, basePrice, effectiveTime, bar);
                 }
                 else if (double.IsNaN(basePrice) || double.IsInfinity(basePrice))

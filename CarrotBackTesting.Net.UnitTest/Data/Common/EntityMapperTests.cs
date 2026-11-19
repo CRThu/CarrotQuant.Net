@@ -122,7 +122,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(42, row.GetInt("int_col"));
             Assert.AreEqual(9876543210L, row.GetLong("long_col"));
             Assert.IsTrue(row.GetBoolean("bool_col"));
-            Assert.AreEqual(new DateTime(2025, 10, 1), row.GetDateTime("date_col"));
+            Assert.AreEqual(new MarketTime(2025, 10, 1), row.GetTime("date_col"));
 
             // 属性检查与 TryGetValue
             Assert.IsTrue(row.ContainsColumn("str_col"));
@@ -138,7 +138,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(888L, row.GetLong("non_existent", 888L));
             Assert.AreEqual("fallback", row.GetString("non_existent", "fallback"));
             Assert.IsFalse(row.GetBoolean("non_existent"));
-            Assert.AreEqual(default(DateTime), row.GetDateTime("non_existent"));
+            Assert.AreEqual(default(MarketTime), row.GetTime("non_existent"));
 
             // 越界键抛出 KeyNotFoundException
             Assert.ThrowsException<KeyNotFoundException>(() =>
@@ -195,9 +195,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var values = new string[] { "1625097600000", "2021-07-01", "not_a_number" };
             var row = new DataRow(values, ordinals);
 
-            var dtMs = row.GetDateTime("ms_ts");
-            var dtIso = row.GetDateTime("iso_date");
-            var dtInvalid = row.GetDateTime("invalid_ts", new DateTime(1999, 1, 1));
+            var dtMs = row.GetTime("ms_ts");
+            var dtIso = row.GetTime("iso_date");
+            var dtInvalid = row.GetTime("invalid_ts", new MarketTime(1999, 1, 1));
 
             Assert.AreEqual(2021, dtMs.Year);
             Assert.AreEqual(7, dtMs.Month);
@@ -207,7 +207,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(7, dtIso.Month);
             Assert.AreEqual(1, dtIso.Day);
 
-            Assert.AreEqual(new DateTime(1999, 1, 1), dtInvalid);
+            Assert.AreEqual(new MarketTime(1999, 1, 1), dtInvalid);
         }
 
         [TestMethod]
@@ -341,6 +341,34 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var exDate = Assert.ThrowsException<System.IO.InvalidDataException>(() => factory(dirtyDate));
             StringAssert.Contains(exDate.Message, "not_a_date");
             StringAssert.Contains(exDate.Message, "Date");
+        }
+
+        [TestMethod]
+        public void EntityMapper_And_DataRow_WithTimezoneOffsets_ShouldPreserveWallClockTimeAndBeHostTimezoneAgnostic()
+        {
+            var columns = new List<string> { "name", "price", "weight", "count", "timestamp", "is_active", "date" };
+            var ctor = EntityMapper.ResolveConstructor<MultiTypeEntity>(columns);
+            var factory = EntityMapper.GetOrCreateCompiledFactory<MultiTypeEntity>(ctor, columns);
+
+            // 包含 +08:00 偏移的日期字符串
+            var rawValues = new string[]
+            {
+                "AAPL", "150.0", "1.5", "10", "1000", "true", "2024-01-02T15:00:00+08:00"
+            };
+
+            var entity = factory(rawValues);
+            Assert.AreEqual(new DateTime(2024, 1, 2, 15, 0, 0), entity.Date);
+            Assert.AreEqual(new TimeSpan(15, 0, 0), entity.Date.TimeOfDay);
+
+            // DataRow 点查测试
+            var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["date"] = 0
+            };
+            var row = new DataRow(new[] { "2024-01-02T15:00:00+08:00" }, ordinals);
+            CarrotBacktesting.NET.MarketTime mt = row.GetTime("date");
+            Assert.AreEqual(new DateTime(2024, 1, 2, 15, 0, 0), (DateTime)mt);
+            Assert.AreEqual(new TimeSpan(15, 0, 0), mt.TimeOfDay);
         }
     }
 }

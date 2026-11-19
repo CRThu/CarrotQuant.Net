@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CarrotBacktesting.NET;
 using CarrotBacktesting.NET.Data;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -11,18 +12,18 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestAlignAndFill_NormalRecords_MatchesDates()
         {
-            var globalDates = new List<DateTime>
+            var globalDates = new List<MarketTime>
             {
                 new(2025, 1, 6),
                 new(2025, 1, 7),
                 new(2025, 1, 8),
             };
 
-            var recordDates = new[]
+            var recordDates = new MarketTime[]
             {
-                new DateTime(2025, 1, 6),
-                new DateTime(2025, 1, 7),
-                new DateTime(2025, 1, 8),
+                new(2025, 1, 6),
+                new(2025, 1, 7),
+                new(2025, 1, 8),
             };
 
             var recordValues = new[] { 10.0, 11.0, 12.0 };
@@ -44,8 +45,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestAlignAndFill_MissingDates_StrictlyFillsNaN()
         {
-            // 物理源数据在 1月8日 与 1月9日 缺失（停牌/无交易），按第一性原理严格保留为 NaN
-            var globalDates = new List<DateTime>
+            // 物理源数据在 1月8日 与 1月9日 缺失（停牌/无交易），严格填充为 NaN
+            var globalDates = new List<MarketTime>
             {
                 new(2025, 1, 6),
                 new(2025, 1, 7),
@@ -54,11 +55,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 new(2025, 1, 10),
             };
 
-            var recordDates = new[]
+            var recordDates = new MarketTime[]
             {
-                new DateTime(2025, 1, 6),
-                new DateTime(2025, 1, 7),
-                new DateTime(2025, 1, 10),
+                new(2025, 1, 6),
+                new(2025, 1, 7),
+                new(2025, 1, 10),
             };
 
             var recordValues = new[] { 10.0, 11.0, 15.0 };
@@ -82,11 +83,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestAlignAndFill_IntradayMinutes_MissingMinutes_StrictlyFillsNaN()
         {
-            var t0 = new DateTime(2025, 1, 6, 9, 30, 0);
-            var t1 = new DateTime(2025, 1, 6, 9, 31, 0);
-            var t2 = new DateTime(2025, 1, 6, 9, 32, 0);
+            var t0 = new MarketTime(2025, 1, 6, 9, 30, 0);
+            var t1 = new MarketTime(2025, 1, 6, 9, 31, 0);
+            var t2 = new MarketTime(2025, 1, 6, 9, 32, 0);
 
-            var globalDates = new List<DateTime> { t0, t1, t2 };
+            var globalDates = new List<MarketTime> { t0, t1, t2 };
             // t1 分钟缺失（停牌/无成交）
             var recordDates = new[] { t0, t2 };
             var recordValues = new[] { 10.0, 10.2 };
@@ -108,14 +109,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestAlignAndFill_EmptyRecords_StrictlyFillsNaN()
         {
-            var globalDates = new List<DateTime> { new(2025, 1, 6), new(2025, 1, 7) };
+            var globalDates = new List<MarketTime> { new(2025, 1, 6), new(2025, 1, 7) };
             double[] priceDest = new double[2];
 
             MarketDataAligner.AlignAndFill<double>(
                 globalDates,
                 0,
                 2,
-                ReadOnlySpan<DateTime>.Empty,
+                ReadOnlySpan<MarketTime>.Empty,
                 ReadOnlySpan<double>.Empty,
                 priceDest);
 
@@ -127,7 +128,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestAlignAndFill_PreIpoAndPostDelist_StrictlyFillsNaN()
         {
             // 未上市与退市交易日（物理无数据），全时段自动保持为 NaN
-            var globalDates = new List<DateTime>
+            var globalDates = new List<MarketTime>
             {
                 new(2025, 1, 6), // 未上市
                 new(2025, 1, 7), // 上市首日
@@ -135,7 +136,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 new(2025, 1, 9), // 退市后
             };
 
-            var recordDates = new[] { new DateTime(2025, 1, 7), new DateTime(2025, 1, 8) };
+            var recordDates = new MarketTime[] { new(2025, 1, 7), new(2025, 1, 8) };
             var recordValues = new[] { 20.0, 21.0 };
             double[] dest = new double[4];
 
@@ -157,7 +158,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestAlignAndFill_NonTradingCalendarDirtyDates_NeverStallsCursor()
         {
             // 验证当物理源数据中包含非交易日记录（如周末公告点、重复点）时，游标绝不挂死，正常对齐
-            var globalDates = new List<DateTime>
+            var globalDates = new List<MarketTime>
             {
                 new(2025, 1, 6), // 周一
                 new(2025, 1, 7), // 周二 (缺失)
@@ -165,12 +166,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             };
 
             // 原始记录包含了非交易日的周末脏记录 (2025-01-05) 以及周一的重复记录
-            var rawDates = new[]
+            var rawDates = new MarketTime[]
             {
-                new DateTime(2025, 1, 5), // 周日 (非交易日)
-                new DateTime(2025, 1, 6), // 周一
-                new DateTime(2025, 1, 6), // 周一重复记录
-                new DateTime(2025, 1, 8), // 周三
+                new(2025, 1, 5), // 周日 (非交易日)
+                new(2025, 1, 6), // 周一
+                new(2025, 1, 6), // 周一重复记录
+                new(2025, 1, 8), // 周三
             };
             var rawValues = new[] { 9.0, 10.0, 10.5, 12.0 };
             double[] dest = new double[3];
@@ -194,7 +195,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestAlignAndFill_WindowSlice_SkipsPriorRecords()
         {
-            var globalDates = new List<DateTime>
+            var globalDates = new List<MarketTime>
             {
                 new(2025, 1, 6),
                 new(2025, 1, 7),
@@ -202,12 +203,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 new(2025, 1, 9),
             };
 
-            var recordDates = new[]
+            var recordDates = new MarketTime[]
             {
-                new DateTime(2025, 1, 6),
-                new DateTime(2025, 1, 7),
-                new DateTime(2025, 1, 8),
-                new DateTime(2025, 1, 9),
+                new(2025, 1, 6),
+                new(2025, 1, 7),
+                new(2025, 1, 8),
+                new(2025, 1, 9),
             };
             var recordValues = new[] { 1.0, 2.0, 3.0, 4.0 };
 
@@ -276,32 +277,32 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [ExpectedException(typeof(ArgumentOutOfRangeException))]
         public void TestAlignAndFill_StartIndexNegative_ThrowsException()
         {
-            var dates = new List<DateTime> { DateTime.Today };
-            MarketDataAligner.AlignAndFill(dates, -1, 1, Array.Empty<DateTime>(), Array.Empty<double>(), new double[1]);
+            var dates = new List<MarketTime> { MarketTime.FromDateTime(DateTime.Today) };
+            MarketDataAligner.AlignAndFill(dates, -1, 1, Array.Empty<MarketTime>(), Array.Empty<double>(), new double[1]);
         }
 
         [TestMethod]
         [ExpectedException(typeof(ArgumentOutOfRangeException))]
         public void TestAlignAndFill_WindowExceedsGlobalDates_ThrowsException()
         {
-            var dates = new List<DateTime> { DateTime.Today };
-            MarketDataAligner.AlignAndFill(dates, 0, 2, Array.Empty<DateTime>(), Array.Empty<double>(), new double[2]);
+            var dates = new List<MarketTime> { MarketTime.FromDateTime(DateTime.Today) };
+            MarketDataAligner.AlignAndFill(dates, 0, 2, Array.Empty<MarketTime>(), Array.Empty<double>(), new double[2]);
         }
 
         [TestMethod]
         [ExpectedException(typeof(ArgumentException))]
         public void TestAlignAndFill_DestinationLengthMismatch_ThrowsException()
         {
-            var dates = new List<DateTime> { DateTime.Today };
-            MarketDataAligner.AlignAndFill(dates, 0, 1, Array.Empty<DateTime>(), Array.Empty<double>(), new double[2]);
+            var dates = new List<MarketTime> { MarketTime.FromDateTime(DateTime.Today) };
+            MarketDataAligner.AlignAndFill(dates, 0, 1, Array.Empty<MarketTime>(), Array.Empty<double>(), new double[2]);
         }
 
         [TestMethod]
         [ExpectedException(typeof(ArgumentException))]
         public void TestAlignAndFill_RecordDatesValuesMismatch_ThrowsException()
         {
-            var dates = new List<DateTime> { DateTime.Today };
-            MarketDataAligner.AlignAndFill(dates, 0, 1, new[] { DateTime.Today }, Array.Empty<double>(), new double[1]);
+            var dates = new List<MarketTime> { MarketTime.FromDateTime(DateTime.Today) };
+            MarketDataAligner.AlignAndFill(dates, 0, 1, new[] { MarketTime.FromDateTime(DateTime.Today) }, Array.Empty<double>(), new double[1]);
         }
 
         [TestMethod]
@@ -320,4 +321,3 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
     }
 }
-

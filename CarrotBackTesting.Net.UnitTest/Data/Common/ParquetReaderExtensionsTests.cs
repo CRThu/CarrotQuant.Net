@@ -142,7 +142,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public async Task ReadDateColumn_AllFormats_ShouldPreserveFullPrecision()
+        public async Task ReadTimeColumn_AllFormats_ShouldPreserveFullPrecision()
         {
             var testDate = new DateTime(2025, 6, 18, 14, 30, 45);
             long unixMillis = new DateTimeOffset(2025, 6, 18, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
@@ -159,7 +159,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 {
                     DtCol = testDate.AddDays(1),
                     UnixMillisCol = unixMillis + 86400000L,
-                    StrDateCol = "invalid-date-string" // 测试解析失败回退 DateTime.MinValue
+                    StrDateCol = "invalid-date-string" // 测试解析失败回退 MarketTime.MinValue
                 }
             };
 
@@ -178,19 +178,19 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
                 // 1. DateTime 保留完整精度
                 var dtField = schema.FindDataFieldIgnoreCase("DtCol")!;
-                var dates1 = groupReader.ReadDateColumn(dtField, rowCount);
-                Assert.AreEqual(testDate, dates1[0]);
+                var dates1 = groupReader.ReadTimeColumn(dtField, rowCount);
+                Assert.AreEqual((MarketTime)testDate, dates1[0]);
 
                 // 2. Unix Milliseconds (long)
                 var tsField = schema.FindDataFieldIgnoreCase("UnixMillisCol")!;
-                var dates2 = groupReader.ReadDateColumn(tsField, rowCount);
-                Assert.AreEqual(new DateTime(2025, 6, 18, 0, 0, 0), dates2[0]);
+                var dates2 = groupReader.ReadTimeColumn(tsField, rowCount);
+                Assert.AreEqual(new MarketTime(2025, 6, 18, 0, 0, 0), dates2[0]);
 
                 // 3. String Date 保留完整精度
                 var strDateField = schema.FindDataFieldIgnoreCase("StrDateCol")!;
-                var dates3 = groupReader.ReadDateColumn(strDateField, rowCount);
-                Assert.AreEqual(new DateTime(2025, 6, 18, 10, 0, 0), dates3[0]);
-                Assert.AreEqual(DateTime.MinValue, dates3[1], "非法格式日期文本必须安全回退至 DateTime.MinValue");
+                var dates3 = groupReader.ReadTimeColumn(strDateField, rowCount);
+                Assert.AreEqual(new MarketTime(2025, 6, 18, 10, 0, 0), dates3[0]);
+                Assert.AreEqual(MarketTime.MinValue, dates3[1], "非法格式日期文本必须安全回退至 MarketTime.MinValue");
             }
             finally
             {
@@ -199,7 +199,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public async Task ReadDateColumn_UnsupportedType_ThrowsNotSupportedException()
+        public async Task ReadTimeColumn_UnsupportedType_ThrowsNotSupportedException()
         {
             var data = new List<AllTypesSample>
             {
@@ -217,7 +217,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 var intField = reader.Schema.FindDataFieldIgnoreCase("IntVal")!;
                 Assert.ThrowsException<NotSupportedException>(() =>
                 {
-                    groupReader.ReadDateColumn(intField, (int)groupReader.RowCount);
+                    groupReader.ReadTimeColumn(intField, (int)groupReader.RowCount);
                 });
             }
             finally
@@ -301,7 +301,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public async Task ReadDateColumn_WithNull_ThrowsWhenNotAllowed_AndSucceedsWhenAllowed()
+        public async Task ReadTimeColumn_WithNull_ThrowsWhenNotAllowed_AndSucceedsWhenAllowed()
         {
             var data = new List<NullableDateSample>
             {
@@ -323,15 +323,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 // 1. 未声明白名单：抛出方案 C 诊断异常
                 var ex = Assert.ThrowsException<InvalidDataException>(() =>
                 {
-                    groupReader.ReadDateColumn(dtField, rowCount);
+                    groupReader.ReadTimeColumn(dtField, rowCount);
                 });
                 Assert.IsTrue(ex.Message.Contains("NullableDt") && ex.Message.Contains("共 1/2 行无效") && ex.Message.Contains("[0]"));
 
                 // 2. 显式声明白名单：允许并通过并填 MinValue
                 var allow = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "NullableDt" };
-                var dates = groupReader.ReadDateColumn(dtField, rowCount, allow);
-                Assert.AreEqual(DateTime.MinValue, dates[0]);
-                Assert.AreEqual(new DateTime(2025, 1, 2), dates[1]);
+                var dates = groupReader.ReadTimeColumn(dtField, rowCount, allow);
+                Assert.AreEqual(MarketTime.MinValue, dates[0]);
+                Assert.AreEqual(new MarketTime(2025, 1, 2), dates[1]);
             }
             finally
             {
@@ -404,7 +404,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void ReadDateColumn_ParsesDatePrecisionSuccessfully()
+        public void ReadTimeColumn_ParsesDatePrecisionSuccessfully()
         {
             string filePath = GetTestParquetFile();
             using var fs = File.OpenRead(filePath);
@@ -416,14 +416,129 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 Assert.IsTrue(rowCount > 0);
 
                 var dtField = reader.Schema.FindDataFieldIgnoreCase("date", "datetime", "timestamp")!;
-                DateTime[] dates = groupReader.ReadDateColumn(dtField, rowCount);
+                MarketTime[] dates = groupReader.ReadTimeColumn(dtField, rowCount);
                 Assert.AreEqual(rowCount, dates.Length);
                 Assert.AreEqual(2024, dates[0].Year);
-                Assert.AreEqual(new TimeSpan(15, 0, 0), dates[0].TimeOfDay); // 保真读取物理文件的真实时间戳精度
+                // 未指定时区：保真保留原始钟表时间 15:00:00（绝不读宿主机本地时区）
+                Assert.AreEqual(new TimeSpan(15, 0, 0), dates[0].TimeOfDay);
+
+                // 若传入数据源业务时区（Asia/Shanghai），则准确归一化为 07:00:00 UTC
+                var tzShanghai = TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai");
+                MarketTime[] localDates = groupReader.ReadTimeColumn(dtField, rowCount, tzShanghai);
+                Assert.AreEqual(new TimeSpan(7, 0, 0), localDates[0].TimeOfDay);
+
+                // 若传入 UTC 时区，同样归一化为 07:00:00 UTC
+                MarketTime[] utcDates = groupReader.ReadTimeColumn(dtField, rowCount, TimeZoneInfo.Utc);
+                Assert.AreEqual(new TimeSpan(7, 0, 0), utcDates[0].TimeOfDay);
             }
             finally
             {
-                reader.DisposeAsync().GetAwaiter().GetResult();
+                reader.DisposeSync();
+            }
+        }
+
+        public class TimezoneSample
+        {
+            public string TradeTime { get; set; } = "";
+        }
+
+        [TestMethod]
+        public async Task ReadTimeColumn_WithTimezoneOffsets_ShouldPreserveWallClockTimeAndBeHostTimezoneAgnostic()
+        {
+            // 构造包含显式时区偏移 (+08:00, -05:00) 的 Parquet 数据流
+            var data = new List<TimezoneSample>
+            {
+                new() { TradeTime = "2024-01-02T15:00:00.000+08:00" },
+                new() { TradeTime = "2024-01-02T09:30:00.000-05:00" }
+            };
+
+            using var ms = new MemoryStream();
+            await ParquetSerializer.SerializeAsync(data, ms);
+            ms.Position = 0;
+
+            var reader = ParquetReaderExtensions.OpenParquetReaderSync(ms);
+            try
+            {
+                using var groupReader = reader.OpenRowGroupReader(0);
+                var dtField = reader.Schema.FindDataFieldIgnoreCase("TradeTime")!;
+                MarketTime[] dates = groupReader.ReadTimeColumn(dtField, 2);
+
+                Assert.AreEqual(2, dates.Length);
+                Assert.AreEqual(new MarketTime(2024, 1, 2, 15, 0, 0), dates[0]);
+                Assert.AreEqual(new TimeSpan(15, 0, 0), dates[0].TimeOfDay);
+
+                Assert.AreEqual(new MarketTime(2024, 1, 2, 9, 30, 0), dates[1]);
+                Assert.AreEqual(new TimeSpan(9, 30, 0), dates[1].TimeOfDay);
+
+                // 指定 UTC 时区读取
+                MarketTime[] utcDates = groupReader.ReadTimeColumn(dtField, 2, TimeZoneInfo.Utc);
+                Assert.AreEqual(new MarketTime(2024, 1, 2, 7, 0, 0), utcDates[0]);
+                Assert.AreEqual(new MarketTime(2024, 1, 2, 14, 30, 0), utcDates[1]);
+            }
+            finally
+            {
+                reader.DisposeSync();
+            }
+        }
+
+        public class MultiTypeTimeSample
+        {
+            public DateTime DtCol { get; set; }
+            public DateTimeOffset DtoCol { get; set; }
+            public long TsCol { get; set; }
+            public string StrCol { get; set; } = "";
+        }
+
+        [TestMethod]
+        public async Task ReadTimeColumn_CrossTypes_WithSourceTimeZone_ShouldAlignToIdenticalUtcInstant()
+        {
+            // 同一绝对物理时刻：北京时间 2024-01-02 15:00:00 -> UTC 2024-01-02 07:00:00
+            // Unix 毫秒时间戳: 1704178800000
+            long unixMs = 1704178800000L;
+            var tzShanghai = TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai");
+
+            var data = new List<MultiTypeTimeSample>
+            {
+                new()
+                {
+                    DtCol = new DateTime(2024, 1, 2, 15, 0, 0, DateTimeKind.Unspecified),
+                    DtoCol = new DateTimeOffset(2024, 1, 2, 15, 0, 0, TimeSpan.FromHours(8)),
+                    TsCol = unixMs,
+                    StrCol = "2024-01-02T15:00:00.000+08:00"
+                }
+            };
+
+            using var ms = new MemoryStream();
+            await ParquetSerializer.SerializeAsync(data, ms);
+            ms.Position = 0;
+
+            var reader = ParquetReaderExtensions.OpenParquetReaderSync(ms);
+            try
+            {
+                using var groupReader = reader.OpenRowGroupReader(0);
+                var schema = reader.Schema;
+
+                var dtField = schema.FindDataFieldIgnoreCase("DtCol")!;
+                var tsField = schema.FindDataFieldIgnoreCase("TsCol")!;
+                var strField = schema.FindDataFieldIgnoreCase("StrCol")!;
+
+                MarketTime[] datesDt = groupReader.ReadTimeColumn(dtField, 1, tzShanghai);
+                MarketTime[] datesTs = groupReader.ReadTimeColumn(tsField, 1, tzShanghai);
+                MarketTime[] datesStr = groupReader.ReadTimeColumn(strField, 1, tzShanghai);
+
+                MarketTime expectedUtc = new MarketTime(2024, 1, 2, 7, 0, 0);
+
+                // 验证各种数据类型在配置了同一 sourceTimeZone 时，100% 严格对齐至完全相同的物理时刻
+                Assert.AreEqual(expectedUtc, datesDt[0]);
+                Assert.AreEqual(expectedUtc, datesTs[0]);
+                Assert.AreEqual(expectedUtc, datesStr[0]);
+
+                Assert.AreEqual(datesDt[0].Ticks, datesTs[0].Ticks);
+                Assert.AreEqual(datesDt[0].Ticks, datesStr[0].Ticks);
+            }
+            finally
+            {
+                reader.DisposeSync();
             }
         }
     }

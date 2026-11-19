@@ -32,7 +32,7 @@ public enum TradeSide : byte
 /// <param name="TotalMarketValue">持仓总名义市值。</param>
 /// <param name="UnrealizedPnL">全账户持仓未实现收益（总浮动盈亏）。</param>
 public readonly record struct EquityPoint(
-    DateTime Time,
+    MarketTime Time,
     double TotalEquity,
     double AvailableCash,
     double FrozenCash,
@@ -91,7 +91,7 @@ public sealed record PositionSnapshot(
 /// <param name="UnrealizedPnL">全账户未实现收益（总浮盈）。</param>
 /// <param name="Positions">当前持仓标的明细集合。</param>
 public sealed record DailySnapshot(
-    DateTime Time,
+    MarketTime Time,
     double TotalEquity,
     double AvailableCash,
     double FrozenCash,
@@ -127,7 +127,7 @@ public sealed record DailySnapshot(
 /// <param name="BalanceCash">交割后可用现金余额。</param>
 /// <param name="OrderTag">策略归因标签。</param>
 public sealed record SettlementRecord(
-    DateTime Time,
+    MarketTime Time,
     string Symbol,
     string OrderId,
     OrderDirection Direction,
@@ -161,9 +161,9 @@ public sealed record SettlementRecord(
 public sealed record Trade(
     string Symbol,
     TradeSide Side,
-    DateTime EntryTime,
+    MarketTime EntryTime,
     double EntryPrice,
-    DateTime ExitTime,
+    MarketTime ExitTime,
     double ExitPrice,
     decimal Quantity,
     double Multiplier,
@@ -185,7 +185,7 @@ public sealed record Trade(
 /// <param name="SignalGroup">信号组别或分类。</param>
 /// <param name="Reason">信号触发原因。</param>
 public sealed record SignalRecord(
-    DateTime Time,
+    MarketTime Time,
     string Symbol,
     double SignalValue,
     string SignalGroup,

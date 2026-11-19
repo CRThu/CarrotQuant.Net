@@ -16,12 +16,12 @@ namespace CarrotBacktesting.NET.Data
         protected readonly TableMetadata _metadata;
         protected readonly IStorageResolver _resolver;
         protected readonly string _tableId;
-        protected readonly DateTime? _startDate;
-        protected readonly DateTime? _endDate;
+        protected readonly MarketTime? _startDate;
+        protected readonly MarketTime? _endDate;
         protected readonly TimeZoneInfo? _sourceTimeZone;
         protected List<string> _symbols = new();
         protected Dictionary<string, int>? _symbolMap;
-        protected List<DateTime> _tradeDates = new();
+        protected List<MarketTime> _tradeDates = new();
         private bool _disposed;
 
         /// <inheritdoc />
@@ -31,7 +31,7 @@ namespace CarrotBacktesting.NET.Data
         public IReadOnlyList<string> FieldNames => _metadata.FieldNames;
 
         /// <inheritdoc />
-        public IReadOnlyList<DateTime> TradeDates => _tradeDates;
+        public IReadOnlyList<MarketTime> TradeDates => _tradeDates;
 
         /// <summary>
         /// 数据源配置的时区信息（若未配置则为 null）。
@@ -44,8 +44,8 @@ namespace CarrotBacktesting.NET.Data
         protected TimeseriesSourceBase(
             TableMetadata metadata,
             IStorageResolver resolver,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             string? timeZone = null)
         {
             _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
@@ -86,7 +86,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
-        public int GetDateIndex(DateTime date)
+        public int GetDateIndex(MarketTime date)
         {
             return _tradeDates.BinarySearch(date);
         }
@@ -107,11 +107,11 @@ namespace CarrotBacktesting.NET.Data
                 throw new ArgumentException($"Destination span length ({destination.Length}) must match requested length ({length}).");
             }
 
-            DateTime minDate = _tradeDates[startIndex];
-            DateTime maxDate = _tradeDates[startIndex + length - 1];
+            MarketTime minDate = _tradeDates[startIndex];
+            MarketTime maxDate = _tradeDates[startIndex + length - 1];
 
             int capacity = Math.Max(length, 16);
-            DateTime[] rawDates = ArrayPool<DateTime>.Shared.Rent(capacity);
+            MarketTime[] rawDates = ArrayPool<MarketTime>.Shared.Rent(capacity);
             T[] rawValues = ArrayPool<T>.Shared.Rent(capacity);
 
             try
@@ -133,7 +133,7 @@ namespace CarrotBacktesting.NET.Data
                             !EqualityComparer<T>.Default.Equals(rawValues[i], rawValues[i - 1]))
                         {
                             throw new InvalidDataException(
-                                $"标的 '{symbol}' 在时间戳 {rawDates[i]:yyyy-MM-dd HH:mm:ss.fff} 存在冲突的重复记录 ({rawValues[i - 1]} vs {rawValues[i]})，数据完整性损坏，严禁隐式覆盖。");
+                                $"标的 '{symbol}' 在时间戳 {rawDates[i]} 存在冲突的重复记录 ({rawValues[i - 1]} vs {rawValues[i]})，数据完整性损坏，严禁隐式覆盖。");
                         }
                     }
 
@@ -147,7 +147,7 @@ namespace CarrotBacktesting.NET.Data
                                 !EqualityComparer<T>.Default.Equals(rawValues[i], rawValues[i - 1]))
                             {
                                 throw new InvalidDataException(
-                                    $"标的 '{symbol}' 在时间戳 {rawDates[i]:yyyy-MM-dd HH:mm:ss.fff} 存在冲突的重复记录 ({rawValues[i - 1]} vs {rawValues[i]})，数据完整性损坏，严禁隐式覆盖。");
+                                    $"标的 '{symbol}' 在时间戳 {rawDates[i]} 存在冲突的重复记录 ({rawValues[i - 1]} vs {rawValues[i]})，数据完整性损坏，严禁隐式覆盖。");
                             }
                         }
                     }
@@ -164,7 +164,7 @@ namespace CarrotBacktesting.NET.Data
             }
             finally
             {
-                ArrayPool<DateTime>.Shared.Return(rawDates);
+                ArrayPool<MarketTime>.Shared.Return(rawDates);
                 ArrayPool<T>.Shared.Return(rawValues);
             }
         }
@@ -175,24 +175,24 @@ namespace CarrotBacktesting.NET.Data
         protected abstract int ReadRawSeriesFromFile<T>(
             string symbol,
             string fieldName,
-            DateTime minDate,
-            DateTime maxDate,
-            ref DateTime[] rawDates,
+            MarketTime minDate,
+            MarketTime maxDate,
+            ref MarketTime[] rawDates,
             ref T[] rawValues) where T : unmanaged;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        protected static void EnsureCapacity<T>(ref DateTime[] dates, ref T[] values, int requiredCount)
+        protected static void EnsureCapacity<T>(ref MarketTime[] dates, ref T[] values, int requiredCount)
         {
             if (requiredCount >= dates.Length)
             {
                 int newCapacity = dates.Length * 2;
-                DateTime[] newDates = ArrayPool<DateTime>.Shared.Rent(newCapacity);
+                MarketTime[] newDates = ArrayPool<MarketTime>.Shared.Rent(newCapacity);
                 T[] newValues = ArrayPool<T>.Shared.Rent(newCapacity);
 
                 Array.Copy(dates, newDates, dates.Length);
                 Array.Copy(values, newValues, values.Length);
 
-                ArrayPool<DateTime>.Shared.Return(dates);
+                ArrayPool<MarketTime>.Shared.Return(dates);
                 ArrayPool<T>.Shared.Return(values);
 
                 dates = newDates;

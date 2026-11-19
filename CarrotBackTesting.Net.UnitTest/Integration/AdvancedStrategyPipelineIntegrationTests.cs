@@ -42,7 +42,7 @@ public class AdvancedStrategyPipelineIntegrationTests
 
     #region 1. 生产-消费模式与强类型黑板解耦
 
-    public record AlphaScoreSignal(string Symbol, double Score, DateTime Time);
+    public record AlphaScoreSignal(string Symbol, double Score, MarketTime Time);
 
     private class AlphaProducerStrategy : IStrategy
     {

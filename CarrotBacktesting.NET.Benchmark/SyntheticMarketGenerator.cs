@@ -13,7 +13,7 @@ namespace CarrotBacktesting.NET.Benchmark;
 public sealed class SyntheticMarketGenerator : ITimeseriesSource
 {
     private readonly List<string> _symbols;
-    private readonly List<DateTime> _tradeDates;
+    private readonly List<MarketTime> _tradeDates;
     private readonly List<string> _fields = new() { "close", "open", "high", "low", "volume", "amount" };
 
     /// <summary>
@@ -33,8 +33,8 @@ public sealed class SyntheticMarketGenerator : ITimeseriesSource
             _symbols.Add("sym_" + i.ToString("D4"));
         }
 
-        _tradeDates = new List<DateTime>(timeSteps);
-        var baseTime = new DateTime(2025, 1, 2, 9, 30, 0);
+        _tradeDates = new List<MarketTime>(timeSteps);
+        var baseTime = new MarketTime(2025, 1, 2, 9, 30, 0);
         for (int i = 0; i < timeSteps; i++)
         {
             _tradeDates.Add(isMinute ? baseTime.AddMinutes(i) : baseTime.AddDays(i));
@@ -45,7 +45,7 @@ public sealed class SyntheticMarketGenerator : ITimeseriesSource
     public IReadOnlyList<string> Symbols => _symbols;
 
     /// <inheritdoc />
-    public IReadOnlyList<DateTime> TradeDates => _tradeDates;
+    public IReadOnlyList<MarketTime> TradeDates => _tradeDates;
 
     /// <inheritdoc />
     public IReadOnlyList<string> FieldNames => _fields;
@@ -67,7 +67,7 @@ public sealed class SyntheticMarketGenerator : ITimeseriesSource
 
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int GetDateIndex(DateTime date) => _tradeDates.BinarySearch(date);
+    public int GetDateIndex(MarketTime date) => _tradeDates.BinarySearch(date);
 
     /// <inheritdoc />
     public void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged

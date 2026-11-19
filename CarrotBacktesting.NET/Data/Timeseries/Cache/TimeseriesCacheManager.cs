@@ -109,7 +109,7 @@ namespace CarrotBacktesting.NET.Data
         private ChunkMatrix2D<T>? _matrix;
         private int _totalRows;
         private int _committedRowCount;
-        private readonly List<DateTime> _uncommittedDates = new();
+        private readonly List<MarketTime> _uncommittedDates = new();
         private bool _isDirty;
         private bool _disposed;
         private readonly object _gate = new();
@@ -385,7 +385,7 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         /// <param name="timestamp">当前时间步物理时间戳。</param>
         /// <param name="rowValues">当日/当前时间步全市场个股截面数据，长度必须等于代码总数。</param>
-        public void AppendRow(DateTime timestamp, ReadOnlySpan<T> rowValues)
+        public void AppendRow(MarketTime timestamp, ReadOnlySpan<T> rowValues)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             EnsureLoaded();
@@ -428,9 +428,9 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public void AppendRow(ReadOnlySpan<T> rowValues)
         {
-            DateTime date = _totalRows < _metadata.TradeDates.Count
+            MarketTime date = _totalRows < _metadata.TradeDates.Count
                 ? _metadata.TradeDates[_totalRows]
-                : (_totalRows > 0 ? _metadata.TradeDates[^1].AddDays(1) : DateTime.Today);
+                : (_totalRows > 0 ? _metadata.TradeDates[^1].AddDays(1) : MarketTime.UnixEpoch);
             AppendRow(date, rowValues);
         }
 

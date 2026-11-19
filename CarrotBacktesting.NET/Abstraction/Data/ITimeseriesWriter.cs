@@ -16,7 +16,7 @@ public interface ITimeseriesWriter
     /// <param name="fieldName">字段名称（例如 "close"、"volume"）。</param>
     /// <param name="timestamp">当前时间步的时间戳/交易日。</param>
     /// <param name="rowValues">全市场标的在该时间步的截面数据，长度必须等于代码总数。</param>
-    void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
+    void AppendRow<T>(string fieldName, MarketTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
 
     /// <summary>
     /// 新增挂牌标的扩列（广播通知所有活跃字段拓宽列并填充 NaN 哨兵）。

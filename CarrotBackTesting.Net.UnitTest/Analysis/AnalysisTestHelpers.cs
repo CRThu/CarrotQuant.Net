@@ -22,12 +22,12 @@ public sealed class MockMetadata : IMarketMetadata
 {
     public IReadOnlyList<string> Symbols { get; }
     public IReadOnlyList<string> FieldNames { get; }
-    public IReadOnlyList<DateTime> TradeDates { get; }
+    public IReadOnlyList<MarketTime> TradeDates { get; }
 
     private readonly Dictionary<string, int> _symbolMap = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<DateTime, int> _dateMap = new();
+    private readonly Dictionary<MarketTime, int> _dateMap = new();
 
-    public MockMetadata(IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates, IReadOnlyList<string>? fieldNames = null)
+    public MockMetadata(IReadOnlyList<string> symbols, IReadOnlyList<MarketTime> tradeDates, IReadOnlyList<string>? fieldNames = null)
     {
         Symbols = symbols;
         TradeDates = tradeDates;
@@ -41,9 +41,14 @@ public sealed class MockMetadata : IMarketMetadata
         }
     }
 
+    public MockMetadata(IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates, IReadOnlyList<string>? fieldNames = null)
+        : this(symbols, System.Linq.Enumerable.ToList(System.Linq.Enumerable.Select(tradeDates, d => (MarketTime)d)), fieldNames)
+    {
+    }
+
     public Type GetFieldType(string fieldName) => typeof(double);
     public int GetSymbolIndex(string symbol) => _symbolMap.TryGetValue(symbol, out int idx) ? idx : -1;
-    public int GetDateIndex(DateTime date)
+    public int GetDateIndex(MarketTime date)
     {
         if (_dateMap.TryGetValue(date, out int idx)) return idx;
         return _dateMap.TryGetValue(date.Date, out idx) ? idx : -1;

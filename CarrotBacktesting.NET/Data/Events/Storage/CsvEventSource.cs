@@ -19,8 +19,8 @@ namespace CarrotBacktesting.NET.Data
         public IEventTable LoadTable(
             TableMetadata metadata,
             IStorageResolver resolver,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(metadata);
@@ -32,8 +32,8 @@ namespace CarrotBacktesting.NET.Data
                 .ToDictionary(x => x.f, x => x.idx, StringComparer.OrdinalIgnoreCase);
 
             var files = resolver.ResolvePhysicalFiles(metadata, null, startDate, endDate);
-            var data = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
-            var globalEvents = new Dictionary<DateTime, List<DataRow>>();
+            var data = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
+            var globalEvents = new Dictionary<MarketTime, List<DataRow>>();
 
             foreach (var filePath in files)
             {
@@ -48,7 +48,7 @@ namespace CarrotBacktesting.NET.Data
                 while (reader.Read())
                 {
                     string symbol = symIdx >= 0 ? reader.GetString(symIdx) : "";
-                    DateTime date = reader.ParseDate(dtIdx, tsIdx);
+                    MarketTime date = reader.ParseTime(dtIdx, tsIdx);
 
                     var values = new string[valueColumns.Count];
                     for (int i = 0; i < valueColumns.Count; i++)
@@ -93,8 +93,8 @@ namespace CarrotBacktesting.NET.Data
         public IEventTable LoadTable(
             IStorageResolver resolver,
             string tableId,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             IReadOnlySet<string>? nullableFields = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);

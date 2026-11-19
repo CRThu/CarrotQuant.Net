@@ -15,8 +15,8 @@ namespace CarrotBacktesting.NET.Data
         public static ITimeseriesSource Create(
             TableMetadata metadata,
             IStorageResolver resolver,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             string? timeZone = null,
             IReadOnlySet<string>? nullableFields = null)
         {
@@ -37,8 +37,8 @@ namespace CarrotBacktesting.NET.Data
         public static ITimeseriesSource Create(
             IStorageResolver resolver,
             string tableId,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             string? timeZone = null,
             IReadOnlySet<string>? nullableFields = null)
         {
@@ -55,8 +55,8 @@ namespace CarrotBacktesting.NET.Data
         public static ITimeseriesSource Create(
             string storageRoot,
             string tableId,
-            DateTime? startDate = null,
-            DateTime? endDate = null,
+            MarketTime? startDate = null,
+            MarketTime? endDate = null,
             string? timeZone = null,
             IReadOnlySet<string>? nullableFields = null)
         {

@@ -10,7 +10,7 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 /// <param name="Total">总步数。</param>
 /// <param name="CurrentTime">当前时间戳。</param>
 /// <param name="Elapsed">已耗费物理时间。</param>
-public readonly record struct EngineProgress(int Current, int Total, DateTime CurrentTime, TimeSpan Elapsed)
+public readonly record struct EngineProgress(int Current, int Total, MarketTime CurrentTime, TimeSpan Elapsed)
 {
     /// <summary>
     /// 获取当前任务完成百分比（0.0 ~ 1.0）。

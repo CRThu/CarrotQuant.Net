@@ -33,7 +33,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
         private static ITimeseriesRegistry CreateMockRegistry()
         {
-            var dates = new[] { new DateTime(2025, 1, 1), new DateTime(2025, 1, 2) };
+            var dates = new[] { new MarketTime(2025, 1, 1), new MarketTime(2025, 1, 2) };
             var symbols = new[] { "sh.600000" };
             var meta = new DynamicMarketMetadata(symbols, dates);
             return new MockTimeseriesRegistry(meta);

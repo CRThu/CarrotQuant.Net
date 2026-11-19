@@ -50,7 +50,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public int UpdateCount { get; private set; }
             public bool Started { get; private set; }
             public bool Stopped { get; private set; }
-            public List<DateTime> ExecutedTimes { get; } = new();
+            public List<MarketTime> ExecutedTimes { get; } = new();
 
             public void OnStart(IEngineContext context) => Started = true;
             public void OnStop(IEngineContext context) => Stopped = true;
@@ -117,7 +117,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         private class EventTrackingStrategy : IStrategy
         {
             public string Name => "EventTrackingStrategy";
-            public List<(string table, int count, DateTime time)> ReceivedEvents { get; } = new();
+            public List<(string table, int count, MarketTime time)> ReceivedEvents { get; } = new();
 
             public void OnUpdate(IEngineContext context) { }
 
@@ -127,10 +127,10 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             }
         }
 
-        private static (MockTimeseriesRegistry ts, List<DateTime> dates) CreateTestTimeseries(int daysCount, DateTime? startDate = null)
+        private static (MockTimeseriesRegistry ts, List<MarketTime> dates) CreateTestTimeseries(int daysCount, MarketTime? startDate = null)
         {
-            var start = startDate ?? new DateTime(2025, 1, 1);
-            var dates = new List<DateTime>(daysCount);
+            var start = startDate ?? new MarketTime(2025, 1, 1);
+            var dates = new List<MarketTime>(daysCount);
             for (int i = 0; i < daysCount; i++)
             {
                 dates.Add(start.AddDays(i));
@@ -230,8 +230,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             Assert.AreEqual(EngineStatus.Completed, engine.Status);
             Assert.AreEqual(5, strategy.UpdateCount); // 3, 4, 5, 6, 7 (共5天)
-            Assert.AreEqual(new DateTime(2025, 1, 3), strategy.ExecutedTimes[0]);
-            Assert.AreEqual(new DateTime(2025, 1, 7), strategy.ExecutedTimes[^1]);
+            Assert.AreEqual((MarketTime)new DateTime(2025, 1, 3), strategy.ExecutedTimes[0]);
+            Assert.AreEqual((MarketTime)new DateTime(2025, 1, 7), strategy.ExecutedTimes[^1]);
         }
 
         [TestMethod]
@@ -289,10 +289,10 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_MinuteLevelData_EndDateWithZeroTime_ShouldIncludeEntireDay()
         {
             // 构造 3 天，每天 4 根分钟 Bar（09:30, 10:30, 13:30, 15:00）
-            var dates = new List<DateTime>();
-            var day1 = new DateTime(2025, 1, 2);
-            var day2 = new DateTime(2025, 1, 3);
-            var day3 = new DateTime(2025, 1, 6);
+            var dates = new List<MarketTime>();
+            var day1 = new MarketTime(2025, 1, 2);
+            var day2 = new MarketTime(2025, 1, 3);
+            var day3 = new MarketTime(2025, 1, 6);
 
             foreach (var d in new[] { day1, day2, day3 })
             {
@@ -444,7 +444,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             {
                 ["sh.600000"] = new List<DataRow> { row }
             };
-            var dataDict = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>
+            var dataDict = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>
             {
                 [eventDate] = dayMap
             };
@@ -463,7 +463,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(1, strategy.ReceivedEvents.Count);
             Assert.AreEqual("adj_factor", strategy.ReceivedEvents[0].table);
             Assert.AreEqual(1, strategy.ReceivedEvents[0].count);
-            Assert.AreEqual(eventDate, strategy.ReceivedEvents[0].time);
+            Assert.AreEqual((MarketTime)eventDate, strategy.ReceivedEvents[0].time);
         }
 
         [TestMethod]
@@ -826,7 +826,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var utc2 = TimeZoneInfo.ConvertTimeToUtc(dt2_ny_afterhours, tz); // 2025-01-03 00:30:00 UTC (跨越了 UTC 午夜！)
             var utc3 = TimeZoneInfo.ConvertTimeToUtc(dt3_ny_day2, tz); // 2025-01-03 14:30:00 UTC
 
-            var dates = new List<DateTime> { utc1, utc2, utc3 };
+            var dates = new List<MarketTime> { (MarketTime)utc1, (MarketTime)utc2, (MarketTime)utc3 };
             var meta = new DynamicMarketMetadata(new[] { "AAPL" }, dates);
             var ts = new MockTimeseriesRegistry(meta);
 
@@ -853,11 +853,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         [TestMethod]
         public void Run_ExecutionReport_Time_ShouldMatchCurrentStepTimePrecisely()
         {
-            var dates = new List<DateTime>
+            var dates = new List<MarketTime>
             {
-                new DateTime(2025, 1, 2, 9, 30, 0),
-                new DateTime(2025, 1, 2, 10, 0, 0),
-                new DateTime(2025, 1, 2, 14, 55, 0)
+                new MarketTime(2025, 1, 2, 9, 30, 0),
+                new MarketTime(2025, 1, 2, 10, 0, 0),
+                new MarketTime(2025, 1, 2, 14, 55, 0)
             };
             var meta = new DynamicMarketMetadata(new[] { "sh.600000" }, dates);
             var ts = new MockTimeseriesRegistry(meta);
@@ -1003,7 +1003,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void EmptyTradeDates_ShouldLogWarningAndComplete()
         {
             // 构造 0 个交易日的空时序元数据
-            var metadata = new DynamicMarketMetadata(new[] { "sh.600000" }, Array.Empty<DateTime>(), new Dictionary<string, Type> { { "close", typeof(double) } });
+            var metadata = new DynamicMarketMetadata(new[] { "sh.600000" }, Array.Empty<MarketTime>(), new Dictionary<string, Type> { { "close", typeof(double) } });
             using var emptyTs = new TimeseriesRegistry(metadata, (sym, f) => null!);
             var broker = CreateBroker(new BrokerConfig());
             var pipeline = StrategyPipeline.Sequential();
@@ -1072,11 +1072,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var eventDate = dates[1];
             var ordinals = new Dictionary<string, int> { ["rate"] = 0 };
             var row = new DataRow(string.Empty, eventDate, new[] { "0.025" }, ordinals);
-            var globalDict = new Dictionary<DateTime, List<DataRow>>
+            var globalDict = new Dictionary<MarketTime, List<DataRow>>
             {
                 [eventDate] = new List<DataRow> { row }
             };
-            var dataDict = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
+            var dataDict = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
             var eventTable = new EventTable("macro_rate", new[] { "rate" }, dataDict, globalDict);
             var eventRegistry = new EventRegistry();
             eventRegistry.Register("macro_rate", eventTable);

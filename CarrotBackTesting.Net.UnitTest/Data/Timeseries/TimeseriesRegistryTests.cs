@@ -195,11 +195,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const string fieldName = "close";
 
             var mockSource = new MockTimeseriesSource();
-            mockSource.DatesList.AddRange(new[]
+            mockSource.DatesList.AddRange(new MarketTime[]
             {
-                new DateTime(2021, 1, 4),
-                new DateTime(2021, 1, 5),
-                new DateTime(2021, 1, 6)
+                new(2021, 1, 4),
+                new(2021, 1, 5),
+                new(2021, 1, 6)
             });
 
             mockSource.SymbolsList.AddRange(new[] { "sh.600000", "sz.000001" });
@@ -501,7 +501,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void ITimeseriesScheduler_PagingInterface_IsSeparatedFromReadOnlyTimeseriesRegistry()
         {
-            var meta = new CarrotBacktesting.NET.Data.DynamicMarketMetadata(new[] { "sh.600000" }, new[] { DateTime.UtcNow });
+            var meta = new CarrotBacktesting.NET.Data.DynamicMarketMetadata(new[] { "sh.600000" }, new MarketTime[] { MarketTime.UtcNow });
             var registry = new CarrotBacktesting.NET.Data.TimeseriesRegistry(meta, (f, t) => null!);
 
             // 验证实现了调度契约
@@ -537,15 +537,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         private class MockTimeseriesSource : ITimeseriesSource
         {
             public List<string> SymbolsList { get; } = new();
-            public List<DateTime> DatesList { get; } = new();
+            public List<MarketTime> DatesList { get; } = new();
             public List<string> FieldsList { get; } = new() { "close" };
             public IReadOnlyList<string> Symbols => SymbolsList;
             public IReadOnlyList<string> FieldNames => FieldsList;
-            public IReadOnlyList<DateTime> TradeDates => DatesList;
+            public IReadOnlyList<MarketTime> TradeDates => DatesList;
 
             public Type GetFieldType(string fieldName) => typeof(double);
             public int GetSymbolIndex(string symbol) => SymbolsList.IndexOf(symbol);
-            public int GetDateIndex(DateTime date) => DatesList.IndexOf(date);
+            public int GetDateIndex(MarketTime date) => DatesList.IndexOf(date);
 
             public void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged
             {

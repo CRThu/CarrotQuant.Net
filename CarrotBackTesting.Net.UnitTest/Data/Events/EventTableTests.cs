@@ -103,7 +103,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 2. foreach 遍历 Dates 并验证时间单调递增有序
             int dateCount = 0;
-            DateTime prevDate = DateTime.MinValue;
+            MarketTime prevDate = MarketTime.MinValue;
             foreach (var date in table.Dates)
             {
                 Assert.IsTrue(date.Year >= 2015);
@@ -113,9 +113,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
             Assert.AreEqual(table.Count, dateCount);
 
-            // 3. foreach 直接遍历 Table (KeyValuePair<DateTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>)
+            // 3. foreach 直接遍历 Table (KeyValuePair<MarketTime, IReadOnlyDictionary<string, IReadOnlyList<IDataRow>>>)
             int tableEnumCount = 0;
-            DateTime prevTableDate = DateTime.MinValue;
+            MarketTime prevTableDate = MarketTime.MinValue;
             foreach (var (date, dayMap) in table)
             {
                 Assert.IsTrue(date >= prevTableDate, $"Table enumerator should be ordered chronologically: {date} vs {prevTableDate}");
@@ -174,7 +174,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var resolver = new StorageResolver(csvRoot);
 
             var dynTable = EventSourceFactory.Create(resolver, "ashare.adj_factor.baostock");
-            var dt = new DateTime(2021, 7, 21);
+            MarketTime dt = new MarketTime(2021, 7, 21);
 
             // 1. Table 级别 API 测试
             Assert.AreEqual("ashare.adj_factor.baostock", dynTable.Name);
@@ -209,11 +209,11 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 3. 全局广播事件覆盖
             var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "type", 0 } };
-            var globalData = new Dictionary<DateTime, List<DataRow>>
+            var globalData = new Dictionary<MarketTime, List<DataRow>>
             {
                 { dt, new List<DataRow> { new DataRow("", dt, new[] { "holiday" }, colMap) } }
             };
-            var emptySymbolData = new Dictionary<DateTime, Dictionary<string, List<DataRow>>>();
+            var emptySymbolData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
             var globalTable = new EventTable("market_news", new[] { "type" }, emptySymbolData, globalData);
 
             Assert.IsTrue(globalTable.TryGetGlobal(dt, out var gRows));

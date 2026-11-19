@@ -85,7 +85,7 @@ public class ConsoleMonitor : IMonitor, IProgress<EngineProgress>
     /// <summary>
     /// 输出当前步数、总步数与基于物理耗时自适应计算的吞吐速率。
     /// </summary>
-    public void ReportProgress(int currentStep, int totalSteps, DateTime currentTime, TimeSpan elapsed)
+    public void ReportProgress(int currentStep, int totalSteps, MarketTime currentTime, TimeSpan elapsed)
     {
         double elapsedSec = elapsed.TotalSeconds;
         double speed = elapsedSec > 0.0 ? currentStep / elapsedSec : 0.0;
@@ -99,7 +99,7 @@ public class ConsoleMonitor : IMonitor, IProgress<EngineProgress>
     /// <param name="totalSteps">总步数。</param>
     /// <param name="currentTime">当前逻辑时钟。</param>
     /// <param name="barsPerSecond">执行吞吐速率（Bar/s）。</param>
-    public void ReportProgress(int currentStep, int totalSteps, DateTime currentTime, double barsPerSecond)
+    public void ReportProgress(int currentStep, int totalSteps, MarketTime currentTime, double barsPerSecond)
     {
         if (!_showProgress || totalSteps <= 0) return;
 

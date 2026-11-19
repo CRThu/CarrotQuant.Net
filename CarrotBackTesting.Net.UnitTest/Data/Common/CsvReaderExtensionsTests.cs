@@ -71,37 +71,37 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void ParseDate_ParsesDateTimeAndTimestampCorrectly()
+        public void ParseTime_ParsesDateTimeAndTimestampCorrectly()
         {
             string csv = "dt_col,ts_col\n2024-01-02 09:30:00,1704153600000\n";
             using var reader = CreateReader(csv);
             Assert.IsTrue(reader.Read());
 
-            DateTime dtFromDate = reader.ParseDate(0);
-            Assert.AreEqual(new DateTime(2024, 1, 2, 9, 30, 0), dtFromDate);
+            MarketTime dtFromDate = reader.ParseTime(0);
+            Assert.AreEqual(new MarketTime(2024, 1, 2, 9, 30, 0), dtFromDate);
 
-            DateTime dtFromTs = reader.ParseDate(1);
-            Assert.AreEqual(new DateTime(2024, 1, 2, 0, 0, 0), dtFromTs);
+            MarketTime dtFromTs = reader.ParseTime(1);
+            Assert.AreEqual(new MarketTime(2024, 1, 2, 0, 0, 0), dtFromTs);
 
-            DateTime dtInvalid = reader.ParseDate(-1);
-            Assert.AreEqual(DateTime.MinValue, dtInvalid);
+            MarketTime dtInvalid = reader.ParseTime(-1);
+            Assert.AreEqual(MarketTime.MinValue, dtInvalid);
         }
 
         [TestMethod]
-        public void ParseDate_DualColumns_PrefersDateTimeWithTimestampFallback()
+        public void ParseTime_DualColumns_PrefersDateTimeWithTimestampFallback()
         {
             string csv = "datetime,timestamp\n2024-01-02,1704240000000\n,1704153600000\n";
             using var reader = CreateReader(csv);
 
             // Row 1: Both exist, datetime takes precedence
             Assert.IsTrue(reader.Read());
-            DateTime dt1 = reader.ParseDate(0, 1);
-            Assert.AreEqual(new DateTime(2024, 1, 2), dt1);
+            MarketTime dt1 = reader.ParseTime(0, 1);
+            Assert.AreEqual(new MarketTime(2024, 1, 2), dt1);
 
             // Row 2: datetime is empty, falls back to timestamp
             Assert.IsTrue(reader.Read());
-            DateTime dt2 = reader.ParseDate(0, 1);
-            Assert.AreEqual(new DateTime(2024, 1, 2), dt2);
+            MarketTime dt2 = reader.ParseTime(0, 1);
+            Assert.AreEqual(new MarketTime(2024, 1, 2), dt2);
         }
 
         [TestMethod]
@@ -149,6 +149,61 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(long.MinValue, reader.ReadValue<long>(2));
             Assert.AreEqual(int.MinValue, reader.ReadValue<int>(3));
             Assert.AreEqual(short.MinValue, reader.ReadValue<short>(4));
+        }
+
+        [TestMethod]
+        public void ParseTime_WithTimezoneOffsets_ShouldPreserveWallClockTimeAndBeHostTimezoneAgnostic()
+        {
+            // 测试包含各种时区偏移 (+08:00, -05:00, Z) 的 ISO 8601 文本
+            string csv = "cst_time,est_time,utc_time\n" +
+                         "2024-01-02T15:00:00.000+08:00,2024-01-02T09:30:00.000-05:00,2024-01-02T07:00:00.000Z\n";
+            using var reader = CreateReader(csv);
+            Assert.IsTrue(reader.Read());
+
+            // 1. 未指定 sourceTimeZone 时：保真保留原始钟表时间，绝不受宿主机本地时区污染
+            MarketTime cst = reader.ParseTime(0);
+            Assert.AreEqual(new MarketTime(2024, 1, 2, 15, 0, 0), cst);
+            Assert.AreEqual(new TimeSpan(15, 0, 0), cst.TimeOfDay);
+
+            MarketTime est = reader.ParseTime(1);
+            Assert.AreEqual(new MarketTime(2024, 1, 2, 9, 30, 0), est);
+            Assert.AreEqual(new TimeSpan(9, 30, 0), est.TimeOfDay);
+
+            MarketTime utc = reader.ParseTime(2);
+            Assert.AreEqual(new MarketTime(2024, 1, 2, 7, 0, 0), utc);
+
+            // 2. 指定 sourceTimeZone 时：数据源时间被权威归一化为 UTC 市场时间 (07:00:00 UTC)
+            var tzShanghai = TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai");
+            MarketTime cstShanghai = reader.ParseTime(0, tzShanghai);
+            Assert.AreEqual(new MarketTime(2024, 1, 2, 7, 0, 0), cstShanghai);
+
+            MarketTime cstUtc = reader.ParseTime(0, TimeZoneInfo.Utc);
+            Assert.AreEqual(new MarketTime(2024, 1, 2, 7, 0, 0), cstUtc);
+        }
+
+        [TestMethod]
+        public void ParseTime_CrossTypes_WithSourceTimeZone_ShouldAlignToIdenticalUtcInstant()
+        {
+            // 第一列为 long (Unix 毫秒戳 1704178800000 = 2024-01-02 07:00:00 UTC)
+            // 第二列为 string (2024-01-02 15:00:00，无时区文本，源时区为上海)
+            // 第三列为 string (2024-01-02T15:00:00.000+08:00，自带时区)
+            string csv = "ts_col,str_local_col,str_iso_col\n" +
+                         "1704178800000,2024-01-02 15:00:00,2024-01-02T15:00:00.000+08:00\n";
+            using var reader = CreateReader(csv);
+            Assert.IsTrue(reader.Read());
+
+            var tzShanghai = TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai");
+            MarketTime dtTs = reader.ParseTime(0, tzShanghai);
+            MarketTime dtStrLocal = reader.ParseTime(1, tzShanghai);
+            MarketTime dtStrIso = reader.ParseTime(2, tzShanghai);
+
+            MarketTime expectedUtc = new MarketTime(2024, 1, 2, 7, 0, 0);
+            Assert.AreEqual(expectedUtc, dtTs);
+            Assert.AreEqual(expectedUtc, dtStrLocal);
+            Assert.AreEqual(expectedUtc, dtStrIso);
+
+            Assert.AreEqual(dtTs.Ticks, dtStrLocal.Ticks);
+            Assert.AreEqual(dtTs.Ticks, dtStrIso.Ticks);
         }
     }
 }

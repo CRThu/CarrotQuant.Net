@@ -20,8 +20,9 @@ public interface IMarketMetadata
     /// <summary>
     /// 获取交易日历（升序排列）。
     /// 顺序与 Buffer 的 RowIndex（行索引）严格一一对应。
+    /// 采用严格 64 位绝对时间标量 <see cref="MarketTime"/>。
     /// </summary>
-    IReadOnlyList<DateTime> TradeDates { get; }
+    IReadOnlyList<MarketTime> TradeDates { get; }
     
     /// <summary>
     /// 获取指定字段的 CLR 逻辑类型。
@@ -40,17 +41,17 @@ public interface IMarketMetadata
     /// <summary>
     /// 获取指定交易日对应的行索引。
     /// </summary>
-    /// <param name="date">交易日期。</param>
+    /// <param name="date">交易时间戳。</param>
     /// <returns>行索引，若不存在则返回 -1。</returns>
-    int GetDateIndex(DateTime date);
+    int GetDateIndex(MarketTime date);
 
     /// <summary>
     /// 原子追加新的交易时间戳（时步推进）。
     /// 默认抛出 <see cref="NotSupportedException"/>，由支持动态推进的元数据实现重写。
     /// </summary>
-    /// <param name="date">新增的交易日或时间戳。</param>
+    /// <param name="date">新增的交易时间戳。</param>
     /// <returns>新增时间戳对应的行索引。</returns>
-    int AppendDate(DateTime date) => throw new NotSupportedException("当前元数据实例不支持动态追加交易时间戳。");
+    int AppendDate(MarketTime date) => throw new NotSupportedException("当前元数据实例不支持动态追加交易时间戳。");
 
     /// <summary>
     /// 原子追加新的标的代码（新标的上市扩列）。

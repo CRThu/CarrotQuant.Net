@@ -33,7 +33,7 @@ internal sealed class MatchingEngine
         double basePrice,
         IDataRow? bar,
         double multiplier,
-        DateTime tradeTime)
+        MarketTime tradeTime)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -83,7 +83,7 @@ internal sealed class MatchingEngine
         SimulatedOrder order,
         double marketPrice,
         IDataRow? bar,
-        DateTime tradeTime)
+        MarketTime tradeTime)
     {
         ArgumentNullException.ThrowIfNull(order);
 
@@ -199,7 +199,7 @@ internal readonly struct MatchResult
     public double FillPrice { get; }
     public decimal FillQuantity { get; }
     public double Commission { get; }
-    public DateTime Time { get; }
+    public MarketTime Time { get; }
 
     private MatchResult(
         bool isFilled,
@@ -209,7 +209,7 @@ internal readonly struct MatchResult
         double fillPrice,
         decimal fillQuantity,
         double commission,
-        DateTime time)
+        MarketTime time)
     {
         IsFilled = isFilled;
         IsPending = isPending;
@@ -221,18 +221,18 @@ internal readonly struct MatchResult
         Time = time;
     }
 
-    public static MatchResult Filled(double fillPrice, decimal fillQuantity, DateTime time, double commission = 0.0) =>
+    public static MatchResult Filled(double fillPrice, decimal fillQuantity, MarketTime time, double commission = 0.0) =>
         new(true, false, false, null, fillPrice, fillQuantity, commission, time);
 
-    public static MatchResult Filled(double fillPrice, decimal fillQuantity, double commission, DateTime time) =>
+    public static MatchResult Filled(double fillPrice, decimal fillQuantity, double commission, MarketTime time) =>
         new(true, false, false, null, fillPrice, fillQuantity, commission, time);
 
     public static MatchResult PendingQueue() =>
-        new(false, true, false, null, 0.0, 0m, 0.0, DateTime.MinValue);
+        new(false, true, false, null, 0.0, 0m, 0.0, MarketTime.MinValue);
 
     public static MatchResult NoFill() =>
-        new(false, false, false, null, 0.0, 0m, 0.0, DateTime.MinValue);
+        new(false, false, false, null, 0.0, 0m, 0.0, MarketTime.MinValue);
 
     public static MatchResult Rejected(string reason) =>
-        new(false, false, true, reason, 0.0, 0m, 0.0, DateTime.MinValue);
+        new(false, false, true, reason, 0.0, 0m, 0.0, MarketTime.MinValue);
 }

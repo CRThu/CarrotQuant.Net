@@ -17,7 +17,7 @@ public interface IAccountSnapshotProvider
     /// <param name="time">当前时间戳。</param>
     /// <param name="priceResolver">可选的价格解析委托。</param>
     /// <returns>时间步净值点。</returns>
-    EquityPoint CreateEquityPoint(DateTime time, Func<string, double>? priceResolver = null);
+    EquityPoint CreateEquityPoint(MarketTime time, Func<string, double>? priceResolver = null);
 
     /// <summary>
     /// 权威生成当前时点的日终全景资产与持仓快照。
@@ -25,7 +25,7 @@ public interface IAccountSnapshotProvider
     /// <param name="time">快照时间戳。</param>
     /// <param name="priceResolver">可选的价格解析委托。</param>
     /// <returns>日终全景资产与持仓快照。</returns>
-    DailySnapshot CreateDailySnapshot(DateTime time, Func<string, double>? priceResolver = null);
+    DailySnapshot CreateDailySnapshot(MarketTime time, Func<string, double>? priceResolver = null);
 
     /// <summary>
     /// 获取当前账户中所有活跃持仓（非零）的快照列表。

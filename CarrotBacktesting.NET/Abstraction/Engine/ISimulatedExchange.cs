@@ -21,7 +21,7 @@ public interface ISimulatedExchange : IExchangeGateway
     /// 设置当前仿真交易所的物理时间戳（由外部引擎或经纪商在时间步驱动时同步）。
     /// </summary>
     /// <param name="currentTime">当前全局物理时间戳。</param>
-    void SetCurrentTime(DateTime currentTime);
+    void SetCurrentTime(MarketTime currentTime);
 
     /// <summary>
     /// 回测时间步时钟推进。
@@ -30,7 +30,7 @@ public interface ISimulatedExchange : IExchangeGateway
     /// <param name="currentTime">当前时间步的全局物理时间戳。</param>
     /// <param name="timeseries">全局时序注册表，用于获取当前时间步的标的价格与行情数据。</param>
     /// <param name="currentIndex">当前时间步在时序注册表中的行索引。</param>
-    void Step(DateTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
+    void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
 
     /// <summary>
     /// 反应式行情数据到达驱动（供单测、离散 Tick、逐笔行情回放等事件流驱动仿真撮合）。
@@ -40,5 +40,5 @@ public interface ISimulatedExchange : IExchangeGateway
     /// <param name="price">最新基准价格。</param>
     /// <param name="time">行情发生的时间戳。</param>
     /// <param name="bar">当前时间步行情数据行（可选，供流动性与涨跌停拦截校验）。</param>
-    void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null);
+    void OnMarketData(string symbol, double price, MarketTime time, IDataRow? bar = null);
 }

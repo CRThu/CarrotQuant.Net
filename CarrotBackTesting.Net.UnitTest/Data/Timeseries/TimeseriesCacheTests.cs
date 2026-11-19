@@ -59,8 +59,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"sh.60000{c:D2}");
 
-            var tradeDates = new List<DateTime>();
-            var startDate = new DateTime(2020, 1, 1);
+            var tradeDates = new List<MarketTime>();
+            var startDate = new MarketTime(2020, 1, 1);
             for (int r = 0; r < totalRows; r++) tradeDates.Add(startDate.AddDays(r));
 
             using var buffer = new ChunkMatrix2D<double>(width, pageSize, totalRows);
@@ -127,8 +127,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"sz.00000{c:D2}");
 
-            var tradeDates = new List<DateTime>();
-            var baseDate = new DateTime(2021, 1, 1);
+            var tradeDates = new List<MarketTime>();
+            var baseDate = new MarketTime(2021, 1, 1);
             for (int r = 0; r < initialRows; r++) tradeDates.Add(baseDate.AddDays(r));
 
             // 初始写入 1000 行
@@ -145,7 +145,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 增量追加 500 行
-            var newDates = new List<DateTime>();
+            var newDates = new List<MarketTime>();
             for (int r = 0; r < appendRows; r++)
             {
                 newDates.Add(baseDate.AddDays(initialRows + r));
@@ -192,8 +192,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
-            var tradeDates = new List<DateTime>();
-            var baseDate = new DateTime(2021, 1, 1);
+            var tradeDates = new List<MarketTime>();
+            var baseDate = new MarketTime(2021, 1, 1);
             for (int r = 0; r < initialRows; r++) tradeDates.Add(baseDate.AddDays(r));
 
             using (var initBuffer = new ChunkMatrix2D<float>(width, pageSize, initialRows))
@@ -208,7 +208,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 store.WriteMatrix(fieldName, initBuffer, symbols, tradeDates);
             }
 
-            var newDates = new List<DateTime>();
+            var newDates = new List<MarketTime>();
             for (int r = 0; r < appendRows; r++) newDates.Add(baseDate.AddDays(initialRows + r));
 
             store.AppendRows<float>(fieldName, appendRows, (rowIdx, destSpan) =>
@@ -236,7 +236,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var store = new TimeseriesCache(_tempDir, tableId, 1024);
 
             using var buffer = new ChunkMatrix2D<double>(5, 1024, 10);
-            store.WriteMatrix(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new DateTime[10]);
+            store.WriteMatrix(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new MarketTime[10]);
 
             // 写入的是 double，尝试作为 long 加载应抛出强类型异常
             Assert.ThrowsException<InvalidOperationException>(() => store.LoadMatrix<long>(fieldName));
@@ -250,7 +250,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var store = new TimeseriesCache(_tempDir, tableId, 1024);
 
             using var buffer = new ChunkMatrix2D<double>(5, 1024, 10);
-            store.WriteMatrix(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new DateTime[10]);
+            store.WriteMatrix(fieldName, buffer, new[] { "s1", "s2", "s3", "s4", "s5" }, new MarketTime[10]);
 
             // 篡改文件大小模拟损坏
             string chunkPath = Path.Combine(store.GetFieldStoreDir(fieldName), "chunk_0.bin");
@@ -266,8 +266,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var store = new TimeseriesCache(_tempDir, tableId, 1024);
 
             using var buffer = new ChunkMatrix2D<double>(2, 1024, 5);
-            store.WriteMatrix("close", buffer, new[] { "s1", "s2" }, new DateTime[5]);
-            store.WriteMatrix("open", buffer, new[] { "s1", "s2" }, new DateTime[5]);
+            store.WriteMatrix("close", buffer, new[] { "s1", "s2" }, new MarketTime[5]);
+            store.WriteMatrix("open", buffer, new[] { "s1", "s2" }, new MarketTime[5]);
 
             Assert.IsTrue(store.HasField("close"));
             Assert.IsTrue(store.HasField("open"));
@@ -294,8 +294,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
-            var dates = new List<DateTime>();
-            for (int r = 0; r < rows; r++) dates.Add(new DateTime(2022, 1, 1).AddDays(r));
+            var dates = new List<MarketTime>();
+            for (int r = 0; r < rows; r++) dates.Add(new MarketTime(2022, 1, 1).AddDays(r));
 
             using (var buffer = new ChunkMatrix2D<double>(width, pageSize, rows))
             {
@@ -344,8 +344,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
-            var dates = new List<DateTime>();
-            for (int r = 0; r < rows; r++) dates.Add(new DateTime(2023, 1, 1).AddDays(r));
+            var dates = new List<MarketTime>();
+            for (int r = 0; r < rows; r++) dates.Add(new MarketTime(2023, 1, 1).AddDays(r));
 
             using (var buffer = new ChunkMatrix2D<float>(width, pageSize, rows))
             {
@@ -388,8 +388,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "lz4");
 
             var symbols = new List<string> { "s_ipo_late", "s_delisted", "s_normal", "s_halted", "s_all_nan" };
-            var dates = new List<DateTime>();
-            for (int r = 0; r < totalRows; r++) dates.Add(new DateTime(2021, 1, 1).AddDays(r));
+            var dates = new List<MarketTime>();
+            for (int r = 0; r < totalRows; r++) dates.Add(new MarketTime(2021, 1, 1).AddDays(r));
 
             using (var buffer = new ChunkMatrix2D<double>(width, pageSize, totalRows))
             {
@@ -459,8 +459,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "lz4");
 
             var symbols = new List<string> { "s0", "s1", "s2", "s3" };
-            var dates = new List<DateTime>();
-            for (int r = 0; r < totalRows; r++) dates.Add(new DateTime(2021, 1, 1).AddDays(r));
+            var dates = new List<MarketTime>();
+            for (int r = 0; r < totalRows; r++) dates.Add(new MarketTime(2021, 1, 1).AddDays(r));
 
             // 1. 初始构建 3 个分块的缓存
             using (var buffer = new ChunkMatrix2D<double>(width, pageSize, totalRows))
@@ -564,8 +564,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "lz4");
 
             var initialSymbols = new List<string> { "s0", "s1" };
-            var dates = new List<DateTime>();
-            for (int r = 0; r < totalRows; r++) dates.Add(new DateTime(2021, 1, 1).AddDays(r));
+            var dates = new List<MarketTime>();
+            for (int r = 0; r < totalRows; r++) dates.Add(new MarketTime(2021, 1, 1).AddDays(r));
 
             // 1. 初始构建 2 列分块
             using (var buffer = new ChunkMatrix2D<double>(initialWidth, pageSize, totalRows))
@@ -642,7 +642,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var store = new TimeseriesCache(_tempDir, tableId, 1024);
 
             var symbols = new List<string> { "sh.600000", "sh.600001" };
-            var dates = new List<DateTime> { DateTime.Today };
+            var dates = new List<MarketTime> { MarketTime.UtcNow };
             using (var buffer = new ChunkMatrix2D<double>(2, 1024, 1))
             {
                 buffer[0, 0] = 1.0;
@@ -675,7 +675,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const string tableId = "rewrite_invalid_idx";
             var store = new TimeseriesCache(_tempDir, tableId, 64);
             var symbols = new List<string> { "sh.600000" };
-            var dates = new List<DateTime> { DateTime.Today };
+            var dates = new List<MarketTime> { MarketTime.UtcNow };
 
             using (var buffer = new ChunkMatrix2D<double>(1, 64, 1))
             {
@@ -701,8 +701,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const string tableId = "try_read_chunk_table";
             var store = new TimeseriesCache(_tempDir, tableId, 16, "lz4");
             var symbols = new List<string> { "sh.600000", "sz.000001" };
-            var dates = new List<DateTime>();
-            for (int i = 0; i < 35; i++) dates.Add(DateTime.Today.AddDays(i));
+            var dates = new List<MarketTime>();
+            for (int i = 0; i < 35; i++) dates.Add(MarketTime.UtcNow.AddDays(i));
 
             using (var buffer = new ChunkMatrix2D<double>(2, 16, 35))
             {
@@ -744,7 +744,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         {
             var store = new TimeseriesCache(_tempDir, "table_corrupt", 16, "lz4");
             var symbols = new[] { "sh.600000" };
-            var dates = new[] { DateTime.Today };
+            var dates = new[] { MarketTime.UtcNow };
 
             using (var buffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
             {
@@ -794,7 +794,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var symbols = new[] { "sh.600000" };
 
             // 1. 验证纯日线 (TimeOfDay == 0) 输出格式为 yyyy-MM-dd
-            var dailyDate = new DateTime(2025, 1, 6);
+            var dailyDate = new MarketTime(2025, 1, 6);
             using (var dailyBuffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
             {
                 dailyBuffer[0, 0] = 10.0;
@@ -807,7 +807,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual("2025-01-06", dailyMeta.TradeDates[0]);
 
             // 2. 验证分钟线/日内 (TimeOfDay != 0) 输出格式为 yyyy-MM-dd HH:mm:ss
-            var minuteDate = new DateTime(2025, 1, 6, 9, 30, 0);
+            var minuteDate = new MarketTime(2025, 1, 6, 9, 30, 0);
             using (var minuteBuffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
             {
                 minuteBuffer[0, 0] = 10.5;
@@ -820,7 +820,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual("2025-01-06 09:30:00", minuteMeta.TradeDates[0]);
 
             // 3. 验证追加带时分秒的新行 (AppendRows)
-            var newMinuteDate = new DateTime(2025, 1, 6, 9, 31, 0);
+            var newMinuteDate = new MarketTime(2025, 1, 6, 9, 31, 0);
             store.AppendRows<double>("close_minute", 1, (row, span) => span[0] = 10.6, new[] { newMinuteDate });
 
             var appendedMeta = store.ReadMetadata("close_minute");

@@ -331,7 +331,7 @@ internal sealed class AccountLedger
         int settleDays,
         double unfreezeCash,
         decimal unfreezePosition,
-        DateTime exchangeDate,
+        MarketTime exchangeDate,
         out PositionEvent posEvent)
     {
         CommitFill(
@@ -354,7 +354,7 @@ internal sealed class AccountLedger
         int settleDays,
         double unfreezeCash,
         decimal unfreezePosition,
-        DateTime exchangeDate,
+        MarketTime exchangeDate,
         string orderTag,
         out PositionEvent posEvent,
         out Trade? closedTrade,
@@ -400,7 +400,7 @@ internal sealed class AccountLedger
 
             double initialNotional = (double)closeQty * pos.AverageCost * multiplier;
             double returnRate = initialNotional > 0.0 ? closeRealizedPnL / initialNotional : 0.0;
-            DateTime entryTime = pos.OpenTime != DateTime.MinValue ? pos.OpenTime : report.Time;
+            MarketTime entryTime = pos.OpenTime != MarketTime.MinValue ? pos.OpenTime : report.Time;
             int holdingSteps = Math.Max(1, (int)(report.Time - entryTime).TotalMinutes);
 
             closedTrade = new Trade(
@@ -433,7 +433,7 @@ internal sealed class AccountLedger
             if (pos.TotalQuantity == 0m)
             {
                 pos.AverageCost = 0.0;
-                pos.OpenTime = DateTime.MinValue;
+                pos.OpenTime = MarketTime.MinValue;
                 pos.OpenTag = string.Empty;
                 if (openQty == 0m && pos.PendingLots.Count == 0 && pos.FrozenQuantity == 0m)
                 {
@@ -479,7 +479,7 @@ internal sealed class AccountLedger
                 decimal newAbsQty = currentAbsQty + openQty;
                 pos.AverageCost = ((double)currentAbsQty * pos.AverageCost + (double)openQty * report.FillPrice) / (double)newAbsQty;
 
-                if (pos.OpenTime == DateTime.MinValue)
+                if (pos.OpenTime == MarketTime.MinValue)
                 {
                     pos.OpenTime = report.Time;
                     pos.OpenTag = orderTag ?? string.Empty;
@@ -530,9 +530,9 @@ internal sealed class AccountLedger
     /// <summary>
     /// 推进交易所本地日切清算：将已到期的 T+N 在途持仓划转为可用持仓。
     /// </summary>
-    public void ProcessDayRollover(DateTime exchangeDate)
+    public void ProcessDayRollover(MarketTime exchangeDate)
     {
-        DateTime targetDate = exchangeDate.Date;
+        MarketTime targetDate = exchangeDate.Date;
         foreach (var pos in _positions.Values)
         {
             if (pos.PendingLots.Count == 0) continue;

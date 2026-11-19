@@ -22,8 +22,8 @@ namespace CarrotBacktesting.NET.Data
         public static IEventRegistry Create(
             IStorageResolver resolver,
             IEnumerable<EventStreamConfig>? configs = null,
-            DateTime? startDate = null,
-            DateTime? endDate = null)
+            MarketTime? startDate = null,
+            MarketTime? endDate = null)
         {
             ArgumentNullException.ThrowIfNull(resolver);
 
@@ -54,8 +54,8 @@ namespace CarrotBacktesting.NET.Data
         public static IEventRegistry Create(
             string storageRoot,
             IEnumerable<EventStreamConfig>? configs = null,
-            DateTime? startDate = null,
-            DateTime? endDate = null)
+            MarketTime? startDate = null,
+            MarketTime? endDate = null)
         {
             return Create(new StorageResolver(storageRoot), configs, startDate, endDate);
         }
