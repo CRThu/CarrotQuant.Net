@@ -22,11 +22,6 @@ namespace CarrotBacktesting.NET.Data
         private readonly IReadOnlySet<string> _nullableFields;
 
         /// <summary>
-        /// 是否检测到物理数据按时间截面交错存放（存在非连续标的交替）。
-        /// </summary>
-        public bool IsInterleaved => _cachePool.Values.Any(c => c.IsInterleaved);
-
-        /// <summary>
         /// 核心构造函数，接收不可变表元数据与统一调度器。
         /// </summary>
         public ParquetTimeseriesSource(TableMetadata metadata, IStorageResolver resolver, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null, IReadOnlySet<string>? nullableFields = null)
@@ -58,7 +53,7 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (!File.Exists(file)) continue;
 
-                    var cache = new YearCache(file, _sourceTimeZone, _nullableFields);
+                    var cache = new YearCache(file, _sourceTimeZone, _nullableFields, _metadata.TableId);
                     _cachePool[file] = cache;
 
                     foreach (var sym in cache.StockRanges.Keys)
@@ -104,27 +99,23 @@ namespace CarrotBacktesting.NET.Data
                     continue;
                 }
 
-                if (!cache.StockRanges.TryGetValue(symbol, out var ranges))
+                if (!cache.StockRanges.TryGetValue(symbol, out var range))
                 {
                     continue; // 无个股数据或停牌
                 }
 
                 Array colArray = cache.GetColumnData(fieldName);
-                for (int i = 0; i < ranges.Count; i++)
+                int endRow = range.StartRow + range.RowCount;
+
+                for (int r = range.StartRow; r < endRow; r++)
                 {
-                    var range = ranges[i];
-                    int endRow = range.StartRow + range.RowCount;
+                    DateTime rowDate = cache.Dates[r];
 
-                    for (int r = range.StartRow; r < endRow; r++)
-                    {
-                        DateTime rowDate = cache.Dates[r];
+                    EnsureCapacity(ref rawDates, ref rawValues, count);
 
-                        EnsureCapacity(ref rawDates, ref rawValues, count);
-
-                        rawDates[count] = rowDate;
-                        rawValues[count] = ConvertArrayValue<T>(colArray, r);
-                        count++;
-                    }
+                    rawDates[count] = rowDate;
+                    rawValues[count] = ConvertArrayValue<T>(colArray, r);
+                    count++;
                 }
             }
 
@@ -449,8 +440,7 @@ namespace CarrotBacktesting.NET.Data
         {
             public string FilePath { get; }
             public DateTime[] Dates { get; private set; } = Array.Empty<DateTime>();
-            public Dictionary<string, List<(int StartRow, int RowCount)>> StockRanges { get; } = new(StringComparer.OrdinalIgnoreCase);
-            public bool IsInterleaved { get; private set; }
+            public Dictionary<string, (int StartRow, int RowCount)> StockRanges { get; } = new(StringComparer.OrdinalIgnoreCase);
 
             private readonly Dictionary<string, Array> _columns = new(StringComparer.OrdinalIgnoreCase);
             private readonly ParquetReader _parquetReader;
@@ -458,12 +448,14 @@ namespace CarrotBacktesting.NET.Data
             private readonly DataField[] _dataFields;
             private readonly TimeZoneInfo? _sourceTimeZone;
             private readonly IReadOnlySet<string>? _nullableFields;
+            private readonly string? _tableId;
 
-            public YearCache(string filePath, TimeZoneInfo? sourceTimeZone = null, IReadOnlySet<string>? nullableFields = null)
+            public YearCache(string filePath, TimeZoneInfo? sourceTimeZone = null, IReadOnlySet<string>? nullableFields = null, string? tableId = null)
             {
                 FilePath = filePath;
                 _sourceTimeZone = sourceTimeZone;
                 _nullableFields = nullableFields;
+                _tableId = tableId;
                 _fs = File.OpenRead(filePath);
                 try
                 {
@@ -496,7 +488,6 @@ namespace CarrotBacktesting.NET.Data
                 ReadOnlyMemory<char> currentSymMem = ReadOnlyMemory<char>.Empty;
                 int currentBlockStart = 0;
                 int currentRow = 0;
-                bool isInterleaved = false;
 
                 for (int i = 0; i < _parquetReader.RowGroupCount; i++)
                 {
@@ -515,20 +506,21 @@ namespace CarrotBacktesting.NET.Data
                             {
                                 if (currentSym != null)
                                 {
-                                    AddStockRange(currentSym, currentBlockStart, currentRow - currentBlockStart);
+                                    StockRanges[currentSym] = (currentBlockStart, currentRow - currentBlockStart);
                                 }
 
-                                if (!isInterleaved && symLookup.Contains(m.Span))
+                                if (symLookup.Contains(m.Span))
                                 {
-                                    isInterleaved = true;
-                                    Console.WriteLine($"[WARN] 时序数据表 '{FilePath}' 检测到数据存在非连续交错存储 (如标的 '{m}')。时序读取为非连续跨步访问，加载性能会受到硬件 Cache Miss 限制。建议上游 ETL 按 (symbol, datetime) 聚簇排序，或开启本地二进制分块缓存 (.cache)。");
+                                    string symName = m.ToString();
+                                    string tableInfo = !string.IsNullOrEmpty(_tableId) ? $"'{_tableId}' " : "";
+                                    throw new InvalidDataException(
+                                        $"Parquet 时序数据表 {tableInfo}(文件: '{FilePath}') 检测到标的 '{symName}' 存在非连续交错存储 (Interleaved)。" +
+                                        $"时序引擎底层二维矩阵 ChunkMatrix2D 契约要求物理数据必须按标的聚集聚簇存储 (Clustered by Symbol)。" +
+                                        $"请在上游 ETL 脚本中补充执行: df.sort_values(['symbol', 'datetime']).to_parquet(...)");
                                 }
 
-                                if (!symLookup.TryGetValue(m.Span, out currentSym))
-                                {
-                                    currentSym = m.ToString();
-                                    symLookup.Add(currentSym);
-                                }
+                                currentSym = m.ToString();
+                                symLookup.Add(currentSym);
                                 currentSymMem = m;
                                 currentBlockStart = currentRow;
                             }
@@ -542,21 +534,10 @@ namespace CarrotBacktesting.NET.Data
 
                 if (currentSym != null && currentRow > currentBlockStart)
                 {
-                    AddStockRange(currentSym, currentBlockStart, currentRow - currentBlockStart);
+                    StockRanges[currentSym] = (currentBlockStart, currentRow - currentBlockStart);
                 }
 
                 Dates = dateList.ToArray();
-                IsInterleaved = isInterleaved;
-
-                void AddStockRange(string sym, int start, int count)
-                {
-                    if (!StockRanges.TryGetValue(sym, out var list))
-                    {
-                        list = new List<(int StartRow, int RowCount)>(1);
-                        StockRanges[sym] = list;
-                    }
-                    list.Add((start, count));
-                }
             }
 
             public Array GetColumnData(string fieldName)

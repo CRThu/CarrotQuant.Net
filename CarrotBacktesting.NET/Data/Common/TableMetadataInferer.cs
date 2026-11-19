@@ -58,9 +58,10 @@ namespace CarrotBacktesting.NET.Data
 
             string fileNameWithoutExt = Path.GetFileNameWithoutExtension(sampleFile);
 
+            TableCategory category = preCategory ?? TableCategory.Timeseries;
             PartitionMode partition = prePartition ?? (fileNameWithoutExt.Equals("data", StringComparison.OrdinalIgnoreCase)
                 ? PartitionMode.None
-                : PartitionMode.Symbol);
+                : (category == TableCategory.Timeseries && format == StorageFormat.Csv ? PartitionMode.Symbol : PartitionMode.None));
 
             var fieldNames = new List<string>();
             var fieldTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
@@ -107,7 +108,6 @@ namespace CarrotBacktesting.NET.Data
                 }
             }
 
-            TableCategory category = preCategory ?? TableCategory.Timeseries;
             IReadOnlySet<string> nullableFields = preNullableFields ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             return new TableMetadata(tableId, tableDir, metadataPath, format, layout, fieldNames, fieldTypes, category, partition, nullableFields);

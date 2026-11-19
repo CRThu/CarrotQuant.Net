@@ -235,7 +235,7 @@ public interface IMarketMetadata
   void ReadSymbolSeries<T>(string symbol, string fieldName, int startIndex, int length, Span<T> destination) where T : unmanaged;
   ```
 - **`TimeseriesSourceBase`**: 抽象基类（模板方法模式），收敛参数边界检查、ArrayPool 内存池租借与自适应翻倍扩容、时间戳排序、以及 `MarketDataAligner.AlignAndFill` 全局交易日历投射与 NaN 哨兵填充管线。
-  - `CsvTimeseriesSource`: 继承基类，基于 Sylvan.Data.Csv 流式解析提供高性能无装箱行提取。
+  - `CsvTimeseriesSource`: 继承基类，遵循 `PartitionMode.Symbol` 强制规范（`{symbol}.csv`），标的代码 100% 权威绑定物理文件名，基于 Sylvan.Data.Csv 流式解析提供高性能无装箱行提取。
   - `ParquetTimeseriesSource`: 继承基类，基于 Parquet 列式存储与 YearCache 列缓存提供列切片按需提取。
 - **`TimeseriesSourceFactory`**: 时序数据源工厂类，依据 `TableMetadata.Format` 强类型枚举自动派发构建对应数据源：
   ```csharp

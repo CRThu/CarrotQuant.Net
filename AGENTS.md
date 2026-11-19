@@ -87,7 +87,7 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 - `TimeseriesSourceBase`: 模板方法抽象基类，收敛参数边界检查、ArrayPool 内存池租借与自适应翻倍扩容、时间戳排序、以及 `MarketDataAligner.AlignAndFill` 全局交易日历投射与 NaN 哨兵填充管线。
 - `TimeseriesSourceFactory`: 时序数据源工厂，根据 `StorageResolver.GetFormat(tableId)` 自动派发构建 `CsvTimeseriesSource` 或 `ParquetTimeseriesSource`，调用端零物理格式耦合。
 - `ReadSymbolSeries<T>(symbol, fieldName, startIndex, length, destination)`: 直接写入调用方提供的内存块，严格零拷贝；`T : unmanaged` 约束兼容 MMF/连续内存布局。
-- `CsvTimeseriesSource`: 支持 Hive 分区 `{root}/{table_id}/year={yyyy}/{symbol}.csv` 与 Flat 结构；基于 Sylvan.Data.Csv 流式解析，泛型分发 `ValueConverter<T>` 零装箱转换。
+- `CsvTimeseriesSource`: 遵循 `PartitionMode.Symbol` 强制标准规范，支持 Hive 分区 `{root}/{table_id}/year={yyyy}/{symbol}.csv` 与 Flat 结构；基于 Sylvan.Data.Csv 流式解析，标的代码权威绑定文件名，行内绝无 symbol 列比对与分配开销，泛型分发 `ValueConverter<T>` 零装箱转换。
 - `ParquetTimeseriesSource`: 支持按年/月分区 `{root}/{table_id}/year={yyyy}/[month={mm}/]data.parquet` 或单文件；基于 `YearCache` 按需列缓存解压，通过 `Unsafe.As` 零拷贝转换。**实行全局严格零空值（Zero-Tolerance NULL）契约**：默认全表全列严禁 NULL，一旦在解包中检测到未在白名单中的字段存在 NULL，立即以方案 C（统计损坏总数 + 占比 + 打印前 5 个损坏样本行号）抛出强类型 `InvalidDataException` 阻断加载；仅对在 `metadata.json` 或 `TimeseriesConfig.NullableFields` 白名单中显式声明的字段放行并安全映射为 NaN/默认哨兵。
 - **统一稠密矩阵载体**：系统统一采用 `ChunkMatrix2D<T>`（`IReadOnlyMatrix2D<T>`）作为全市场稠密数据载体。横向截面快照统一由行切片（`ReadOnlyRowView<T>`）提供，纵向时序统一由列切片（`ReadOnlyColumnView<T>`）提供，回测与实盘统一由 Matrix 供给。
 

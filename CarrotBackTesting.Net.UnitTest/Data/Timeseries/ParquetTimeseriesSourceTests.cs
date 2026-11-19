@@ -777,9 +777,6 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
                 using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
 
-                // 验证标准连续聚簇存储未触发交错标记
-                Assert.IsFalse(((ParquetTimeseriesSource)source).IsInterleaved);
-
                 // 1. 验证交易日历与零点纯日期守恒
                 Assert.AreEqual(3, source.TradeDates.Count);
                 Assert.AreEqual(d0, source.TradeDates[0]);
@@ -807,7 +804,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public async Task ParquetTimeseriesSource_InterleavedCrossSectionalData_DetectsInterleavedAndExtractsAccurately()
+        public async Task ParquetTimeseriesSource_InterleavedCrossSectionalData_ThrowsInvalidDataException()
         {
             string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_interleaved_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDir);
@@ -851,24 +848,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 }
                 """);
 
-                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+                // 必须在预先扫描阶段直接抛出 InvalidDataException 阻断加载，并提示上游 Python 修复命令
+                var ex = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+                });
 
-                // 1. 验证首次发现交错时即标记性能降级
-                Assert.IsTrue(((ParquetTimeseriesSource)source).IsInterleaved);
-
-                // 2. 验证数据不抛异常，且多标的数据精准完整提取
-                Assert.AreEqual(2, source.Symbols.Count);
-                Assert.AreEqual(2, source.TradeDates.Count);
-
-                double[] closes1 = new double[2];
-                source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes1);
-                Assert.AreEqual(10.0, closes1[0], 1e-4);
-                Assert.AreEqual(10.1, closes1[1], 1e-4);
-
-                double[] closes2 = new double[2];
-                source.ReadSymbolSeries("sz.000001", "Close", 0, 2, closes2);
-                Assert.AreEqual(20.0, closes2[0], 1e-4);
-                Assert.AreEqual(20.1, closes2[1], 1e-4);
+                StringAssert.Contains(ex.Message, "非连续交错存储");
+                StringAssert.Contains(ex.Message, "df.sort_values");
             }
             finally
             {

@@ -198,7 +198,7 @@ namespace CarrotBacktesting.NET.Data
                     StorageFormat format = ParseFormat(metadata.format);
                     StorageLayout layout = ParseLayout(metadata.layout);
                     TableCategory category = ParseCategory(metadata.category);
-                    PartitionMode partition = ParsePartition(metadata.partition);
+                    PartitionMode partition = ParsePartition(metadata.partition, category, format);
 
                     var fieldNames = metadata.schema.Keys.ToList();
                     var fieldTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
@@ -273,9 +273,14 @@ namespace CarrotBacktesting.NET.Data
             };
         }
 
-        private static PartitionMode ParsePartition(string? partitionStr)
+        private static PartitionMode ParsePartition(string? partitionStr, TableCategory category = TableCategory.Timeseries, StorageFormat format = StorageFormat.Parquet)
         {
-            if (string.IsNullOrWhiteSpace(partitionStr)) return PartitionMode.None;
+            if (string.IsNullOrWhiteSpace(partitionStr))
+            {
+                return category == TableCategory.Timeseries && format == StorageFormat.Csv
+                    ? PartitionMode.Symbol
+                    : PartitionMode.None;
+            }
             return partitionStr.Trim().ToLowerInvariant() switch
             {
                 "symbol" => PartitionMode.Symbol,

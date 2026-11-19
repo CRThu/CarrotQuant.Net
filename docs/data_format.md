@@ -81,8 +81,10 @@
 - **适用场景**：静态平铺维表（如东财行业对应表、概念对应表）、低频事件数据（如复权因子、公告）、单文件宽表或小样本数据集。标的维表通常不包含时间戳，默认主键为 `symbol`。
 
 ### 分区维度模式 (`partition`)
-- **`partition: "none"`**：整表存储为单个或按年划分的单文件（通常命名为 `data.parquet` 或 `data.csv`），文件内部包含全市场代码数据。
-- **`partition: "symbol"`**：物理文件按股票代码拆分存储，文件名为 `{symbol}.csv`（例如 `sh.600000.csv`）。
+- **`partition: "none"`**：整表存储为单个或按年划分的单文件（通常命名为 `data.parquet` 或 `data.csv`）。
+  - **Parquet**：全市场时序宽表的工业级标准格式（列式存储 + 稀疏索引）；
+  - **CSV**：仅适用于静态平铺维表（Fields）或离散事件表（Events），**时序数据表（Timeseries）严禁使用此模式**。
+- **`partition: "symbol"`**：物理文件按股票代码拆分存储，文件名为 `{symbol}.csv`（例如 `sh.600000.csv`）。**时序 CSV 的强制标准规范**，系统权威从文件名提取标的代码，物理读取直达个股文件，行内绝无无效文本扫描。
 
 ---
 
@@ -173,9 +175,10 @@
    - 否则推断为 `StorageLayout.Flat` 平铺布局。
 2. **文件格式推断 (`StorageFormat`)**：
    - 自动获取目录下首个数据文件的扩展名，推断为 `StorageFormat.Parquet` 或 `StorageFormat.Csv`。
-3. **代码分区推断 (`PartitionMode`)**：
+3. **代码分区推断与缺省 (`PartitionMode`)**：
    - 若物理文件名以 `data.` 开头（如 `data.parquet` 或 `data.csv`），推断为 `PartitionMode.None`（整表无分区）；
-   - 若物理文件以股票代码命名（如 `{symbol}.csv`），推断为 `PartitionMode.Symbol` 代码拆分模式。
+   - 若物理文件以股票代码命名（如 `{symbol}.csv`），推断为 `PartitionMode.Symbol` 代码拆分模式；
+   - **缺省惯例自适应匹配**：无论是否提供 `metadata.json`，若未显式指定 `partition`，时序表（Timeseries）CSV 格式自动默认采用 `PartitionMode.Symbol`，Parquet 格式自动默认采用 `PartitionMode.None`；维表与事件表默认采用 `PartitionMode.None`。
 4. **字段与类型推断 (`schema`)**：
    - **Parquet**：自动流式读取首个 Parquet 文件的 Footer Schema，直接提取所有字段名及其对应的 CLR 物理类型（`Int64` -> `long`，`Double` -> `double` 等）；
    - **CSV**：自动读取首行表头获取字段名列表；字段类型按列名规则自动推断：
