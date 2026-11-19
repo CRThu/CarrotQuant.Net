@@ -76,7 +76,11 @@ Row N-1 [ val ]     [ val ]    ...     [ val ]
 
 ### 3. 分块持久化缓存与轮转调度 (TimeseriesCache & TimeseriesCacheManager)
 - **4096 行物理分块与 LZ4 块压缩**：针对长周期大体量数据，`TimeseriesCache` 将时序按 4096 行切块（Bin），每个分块独立自描述其包含的列宽（Variable Width per Bin）；
-- **零写放大增量追加**：在实盘或增量回测中，调用 `AppendRow` 追加数据时，仅当前活跃分块标记为脏并执行磁盘落盘（`Commit`），历史已固化的分块保持只读，彻底消除全量重写带来的写放大；
+- **表级双标尺索引解耦 (symbols.idx & time.idx)**：
+  - **列标尺 (`symbols.idx`)**：全表共享一份纯文本股票代码词表，物理行号严格对应矩阵列索引（Column Index），消除多字段冗余；
+  - **行标尺 (`time.idx`)**：全表共享一份纯二进制绝对时间戳索引（每个条目为 8 字节 `MarketTime` 标量），物理偏移严格对应行索引（Row Index），支持零拷贝快速载入与零 GC 分配；
+  - **特征元数据瘦身 (`meta.json`)**：各字段仅维护核心物理块属性（`row_count`, `width`, `page_size`, `compression`, `chunk_widths`），体积小于 200 字节，微秒级反序列化；
+- **零写放大增量追加**：在实盘或增量回测中，调用 `AppendRow` 追加数据时，仅当前活跃分块标记为脏并执行磁盘落盘（`Commit`），时间戳直接增量追加至表级 `time.idx`，历史已固化的分块保持只读，彻底消除全量重写带来的写放大；
 - **动态列宽自动拓展**：当新增标的接入时，旧分块载入内存后自动补齐新列宽并填充 NaN，存储空间零膨胀。
 
 ### 4. 时序注册表与 CQRS 读写分离 (TimeseriesRegistry & ITimeseriesScheduler)

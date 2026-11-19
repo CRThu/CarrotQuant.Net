@@ -133,6 +133,15 @@ namespace CarrotBacktesting.NET.Data
                 return mt;
             }
 
+            if (val.Length == 13 && long.TryParse(val, NumberStyles.None, CultureInfo.InvariantCulture, out long tsMs))
+            {
+                return MarketTime.FromUnixTimeMilliseconds(tsMs);
+            }
+            if (val.Length == 10 && long.TryParse(val, NumberStyles.None, CultureInfo.InvariantCulture, out long tsSec))
+            {
+                return MarketTime.FromUnixTimeSeconds(tsSec);
+            }
+
             return defaultValue;
         }
 

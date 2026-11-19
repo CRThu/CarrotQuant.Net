@@ -134,14 +134,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var mtCst = MarketTime.Parse(sCst);
             var mtCstNoColon = MarketTime.Parse(sCstNoColon);
             var mtEst = MarketTime.Parse(sEst);
+            var mtUtc = MarketTime.Parse(sUtc);
 
             Assert.AreEqual(new DateTime(2024, 1, 2, 15, 0, 0), mtCst.ToDateTime());
             Assert.AreEqual(new DateTime(2024, 1, 2, 15, 0, 0), mtCstNoColon.ToDateTime());
             Assert.AreEqual(new DateTime(2024, 1, 2, 2, 0, 0), mtEst.ToDateTime());
+            Assert.AreEqual(new DateTime(2024, 1, 2, 7, 0, 0), mtUtc.ToDateTime());
 
             // 2. 指定目标时区为 UTC 时：权威归一化为绝对 UTC 刻度
             var mtCstUtc = MarketTime.Parse(sCst, TimeZoneInfo.Utc);
-            var mtUtc = MarketTime.Parse(sUtc);
             var mtEstUtc = MarketTime.Parse(sEst, TimeZoneInfo.Utc);
 
             Assert.AreEqual(mtUtc, mtCstUtc);
@@ -234,17 +235,106 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void Parse_PureNumericTimestamps_MillisecondsAndSeconds()
+        public void Parse_PureNumericTimestamps_ShouldBeRejected_UseExplicitFactoryMethods()
         {
-            // 13 位毫秒戳
+            // 文本解析器仅支持符合日历规范的字符串，纯数字时间戳应使用显式工厂方法
             string sMs = "1704182400000";
-            var mtMs = MarketTime.Parse(sMs);
+            Assert.IsFalse(MarketTime.TryParse(sMs, null, out _));
+            Assert.ThrowsException<FormatException>(() => MarketTime.Parse(sMs));
+
+            string sSec = "1704182400";
+            Assert.IsFalse(MarketTime.TryParse(sSec, null, out _));
+            Assert.ThrowsException<FormatException>(() => MarketTime.Parse(sSec));
+
+            // 显式工厂方法正确构造
+            var mtMs = MarketTime.FromUnixTimeMilliseconds(1704182400000L);
             Assert.AreEqual(DateTimeOffset.FromUnixTimeMilliseconds(1704182400000L).UtcTicks, mtMs.Ticks);
 
-            // 10 位秒戳
-            string sSec = "1704182400";
-            var mtSec = MarketTime.Parse(sSec);
+            var mtSec = MarketTime.FromUnixTimeSeconds(1704182400L);
             Assert.AreEqual(DateTimeOffset.FromUnixTimeSeconds(1704182400L).UtcTicks, mtSec.Ticks);
+        }
+
+        [TestMethod]
+        public void Parse_Iso8601_And_Rfc3339_Variations()
+        {
+            // 1. 斜杠分隔符与横线分隔符
+            var mtDash = MarketTime.Parse("2024-01-02");
+            var mtSlash = MarketTime.Parse("2024/01/02");
+            Assert.AreEqual(mtDash, mtSlash);
+
+            // 2. 空格与 T 分隔符
+            var mtSpace = MarketTime.Parse("2024-01-02 15:30:45");
+            var mtT = MarketTime.Parse("2024-01-02T15:30:45");
+            Assert.AreEqual(mtSpace, mtT);
+
+            // 3. 变长亚秒 (1 ~ 7 位小数)
+            var mtFrac1 = MarketTime.Parse("2024-01-02 15:30:45.1");
+            Assert.AreEqual(100, mtFrac1.Millisecond);
+
+            var mtFrac2 = MarketTime.Parse("2024-01-02 15:30:45.12");
+            Assert.AreEqual(120, mtFrac2.Millisecond);
+
+            var mtFrac3 = MarketTime.Parse("2024-01-02 15:30:45.123");
+            Assert.AreEqual(123, mtFrac3.Millisecond);
+
+            var mtFrac6 = MarketTime.Parse("2024-01-02 15:30:45.123456");
+            Assert.AreEqual(123, mtFrac6.Millisecond);
+            Assert.AreEqual(456, mtFrac6.Microsecond);
+
+            var mtFrac7 = MarketTime.Parse("2024-01-02 15:30:45.1234567");
+            Assert.AreEqual(123, mtFrac7.Millisecond);
+            Assert.AreEqual(456, mtFrac7.Microsecond);
+            Assert.AreEqual(7, mtFrac7.Ticks % 10); // 700ns = 7 ticks
+
+            // 4. 时区表示 (带冒号、不带冒号、Z、空格前缀)
+            var mtUtcZ = MarketTime.Parse("2024-01-02T15:30:45Z");
+            var mtUtcz = MarketTime.Parse("2024-01-02T15:30:45z");
+            Assert.AreEqual(mtUtcZ, mtUtcz);
+
+            var mtColon = MarketTime.Parse("2024-01-02T15:30:45+08:00", TimeZoneInfo.Utc);
+            var mtNoColon = MarketTime.Parse("2024-01-02T15:30:45+0800", TimeZoneInfo.Utc);
+            Assert.AreEqual(mtColon, mtNoColon);
+
+            var mtSpaceOffset = MarketTime.Parse("2024-01-02 15:30:45 +08:00", TimeZoneInfo.Utc);
+            Assert.AreEqual(mtColon, mtSpaceOffset);
+        }
+
+        [TestMethod]
+        public void Parse_StrictValidation_NoFallback_ShouldRejectInvalidInputs()
+        {
+            // 1. 无效日期
+            Assert.IsFalse(MarketTime.TryParse("2024-02-30", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2023-02-29", null, out _)); // 2023 非闰年
+            Assert.IsTrue(MarketTime.TryParse("2024-02-29", null, out _));  // 2024 是闰年
+            Assert.IsFalse(MarketTime.TryParse("2024-04-31", null, out _)); // 4月只有30天
+            Assert.IsFalse(MarketTime.TryParse("2024-13-01", null, out _)); // 月份超出
+            Assert.IsFalse(MarketTime.TryParse("2024-00-10", null, out _)); // 月份为0
+            Assert.IsFalse(MarketTime.TryParse("2024-01-00", null, out _)); // 日期为0
+            Assert.IsFalse(MarketTime.TryParse("2024-01-32", null, out _)); // 日期超出
+
+            // 2. 无效时间
+            Assert.IsFalse(MarketTime.TryParse("2024-01-01 24:00:00", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024-01-01 12:60:00", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024-01-01 12:00:60", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024-01-01 12:00:00.", null, out _)); // 尾随点号无数字
+
+            // 3. 分隔符不匹配
+            Assert.IsFalse(MarketTime.TryParse("2024-01/02", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024/01-02", null, out _));
+
+            // 4. 非法长度与截断
+            Assert.IsFalse(MarketTime.TryParse("2024-01", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02 12:00", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024010", null, out _));           // 7 位纯数字
+            Assert.IsFalse(MarketTime.TryParse("202401020", null, out _));         // 9 位纯数字
+            Assert.IsFalse(MarketTime.TryParse("2024010209300", null, out _));     // 13 位纯数字
+            Assert.IsFalse(MarketTime.TryParse("202401020930001", null, out _));   // 15 位纯数字
+
+            // 5. 非法字符与时区越界
+            Assert.IsFalse(MarketTime.TryParse("2024010a", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02 15:00:00X", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02T12:00:00+25:00", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02T12:00:00+08:60", null, out _));
         }
 
         [TestMethod]
@@ -425,10 +515,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var restored = System.Text.Json.JsonSerializer.Deserialize<MarketTime>(json);
             Assert.AreEqual(original, restored);
 
-            // 带微秒/毫秒
+            // 带微秒/毫秒（7位100ns精度）
             var subSec = new MarketTime(2025, 1, 2, 9, 30, 0, 500);
             string jsonSubSec = System.Text.Json.JsonSerializer.Serialize(subSec);
-            Assert.AreEqual("\"2025-01-02T09:30:00.500000Z\"", jsonSubSec);
+            Assert.AreEqual("\"2025-01-02T09:30:00.5000000Z\"", jsonSubSec);
             var restoredSubSec = System.Text.Json.JsonSerializer.Deserialize<MarketTime>(jsonSubSec);
             Assert.AreEqual(subSec, restoredSubSec);
 
@@ -442,6 +532,120 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string jsonNull = System.Text.Json.JsonSerializer.Serialize(nullValue);
             var restoredNull = System.Text.Json.JsonSerializer.Deserialize<MarketTime?>(jsonNull);
             Assert.IsNull(restoredNull);
+        }
+
+        [TestMethod]
+        public void TryParse_ExtremeBoundaries_ShouldNotThrowExceptions()
+        {
+            // 下溢场景：UTC 刻度小于 0，安全返回 false，绝不抛未捕获异常
+            Assert.IsFalse(MarketTime.TryParse("0001-01-01T00:00:00+08:00", TimeZoneInfo.Utc, out _));
+            Assert.IsFalse(MarketTime.TryParse("0001-01-01 02:00:00", TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai"), out _));
+
+            // 上溢场景：UTC 刻度大于 DateTime.MaxValue，安全返回 false
+            Assert.IsFalse(MarketTime.TryParse("9999-12-31T23:59:59-05:00", TimeZoneInfo.Utc, out _));
+
+            // Parse 遇到下溢/上溢抛出 ArgumentOutOfRangeException
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => MarketTime.Parse("0001-01-01T00:00:00+08:00", TimeZoneInfo.Utc));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => MarketTime.Parse("9999-12-31T23:59:59-05:00", TimeZoneInfo.Utc));
+        }
+
+        [TestMethod]
+        public void Parse_MalformedTimezones_ShouldBeRejected()
+        {
+            // 末尾残缺冒号
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02T15:00:00+08:", null, out _));
+            // 冒号后仅 1 位数字
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02T15:00:00+08:5", null, out _));
+            // 无冒号仅 3 位数字
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02T15:00:00+080", null, out _));
+            // 仅符号无数字
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02T15:00:00+", null, out _));
+            Assert.IsFalse(MarketTime.TryParse("2024-01-02T15:00:00-", null, out _));
+        }
+
+        [TestMethod]
+        public void Parse_Subsecond_NanosecondTruncation_ShouldBeAccurate()
+        {
+            // 超过 7 位的纳秒（9 位）：前 7 位为 1234567，后 2 位 89 截断
+            var mt = MarketTime.Parse("2024-01-02 15:30:45.123456789");
+            Assert.AreEqual(123, mt.Millisecond);
+            Assert.AreEqual(456, mt.Microsecond);
+            Assert.AreEqual(7, mt.Ticks % 10);
+
+            // 全 0 亚秒
+            var mtZero = MarketTime.Parse("2024-01-02 15:30:45.0000000");
+            Assert.AreEqual(0, mtZero.Millisecond);
+            Assert.AreEqual(0, mtZero.Ticks % TimeSpan.TicksPerSecond);
+        }
+
+        [TestMethod]
+        public void Parse_Subsecond_CommaDecimalSeparator_ShouldParseAccurately()
+        {
+            // ISO 8601 标准允许逗号作为小数分隔符
+            var mtDot = MarketTime.Parse("2024-01-02 15:30:45.123");
+            var mtComma = MarketTime.Parse("2024-01-02 15:30:45,123");
+            Assert.AreEqual(mtDot, mtComma);
+        }
+
+        [TestMethod]
+        public void JsonConverter_EmptyString_ShouldThrowJsonException_NoFallback()
+        {
+            // 空串或空白串必须显式抛异常，无隐式兜底
+            Assert.ThrowsException<System.Text.Json.JsonException>(() =>
+                System.Text.Json.JsonSerializer.Deserialize<MarketTime>("\"\""));
+            Assert.ThrowsException<System.Text.Json.JsonException>(() =>
+                System.Text.Json.JsonSerializer.Deserialize<MarketTime>("\"   \""));
+
+            // 非法 token 类型（布尔、数组）
+            Assert.ThrowsException<System.Text.Json.JsonException>(() =>
+                System.Text.Json.JsonSerializer.Deserialize<MarketTime>("true"));
+            Assert.ThrowsException<System.Text.Json.JsonException>(() =>
+                System.Text.Json.JsonSerializer.Deserialize<MarketTime>("[]"));
+        }
+
+        [TestMethod]
+        public void Interfaces_SpanFormatting_BufferTooSmall_ShouldReturnFalse()
+        {
+            var mt = new MarketTime(2024, 1, 2, 15, 30, 45);
+            Span<char> tinyBuffer = stackalloc char[5]; // 不足容纳 yyyy-MM-dd
+            Assert.IsFalse(mt.TryFormat(tinyBuffer, out int written, "yyyy-MM-dd", CultureInfo.InvariantCulture));
+            Assert.AreEqual(0, written);
+        }
+
+        [TestMethod]
+        public void Interfaces_ISpanParsable_Contract_ShouldMatch()
+        {
+            ReadOnlySpan<char> span = "2024-01-02 15:30:45".AsSpan();
+            Assert.IsTrue(MarketTime.TryParse(span, CultureInfo.InvariantCulture, out var mt));
+            Assert.AreEqual(new MarketTime(2024, 1, 2, 15, 30, 45), mt);
+        }
+
+        [TestMethod]
+        public void Arithmetic_NaN_And_Infinity_ShouldThrowArgumentException()
+        {
+            var mt = new MarketTime(2024, 1, 2);
+            Assert.ThrowsException<ArgumentException>(() => mt.AddDays(double.NaN));
+            Assert.ThrowsException<ArgumentException>(() => mt.AddDays(double.PositiveInfinity));
+            Assert.ThrowsException<ArgumentException>(() => mt.AddDays(double.NegativeInfinity));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => mt.AddDays(10000000));
+        }
+
+        [TestMethod]
+        public void CompareTo_NonMarketTimeObject_ShouldThrowArgumentException()
+        {
+            var mt = new MarketTime(1000);
+            object dt = new DateTime(1000);
+            Assert.ThrowsException<ArgumentException>(() => mt.CompareTo(dt));
+            Assert.ThrowsException<ArgumentException>(() => mt.CompareTo("string"));
+        }
+
+        [TestMethod]
+        public void UnixTime_Export_InstanceMethods()
+        {
+            long ms = 1704182400123L;
+            var mt = MarketTime.FromUnixTimeMilliseconds(ms);
+            Assert.AreEqual(ms, mt.ToUnixTimeMilliseconds());
+            Assert.AreEqual(1704182400L, mt.ToUnixTimeSeconds());
         }
     }
 }

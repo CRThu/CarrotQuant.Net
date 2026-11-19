@@ -443,8 +443,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
                 var meta = cacheStore.ReadMetadata("close");
                 Assert.IsNotNull(meta);
-                Assert.AreEqual(5, meta.TradeDates.Count);
-                Assert.AreEqual("2025-01-12", meta.TradeDates[4]);
+                Assert.AreEqual(5, meta.RowCount);
+                var storedDates = cacheStore.ReadTradeDates();
+                Assert.AreEqual(5, storedDates.Count);
+                Assert.AreEqual(new MarketTime(2025, 1, 12), storedDates[4]);
             }
         }
 
@@ -530,8 +532,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 4. 磁盘恢复验证：3 只股票，新宽度已持久化
             var meta = cacheStore.ReadMetadata("close");
             Assert.IsNotNull(meta);
-            Assert.AreEqual(3, meta.Symbols.Count);
-            Assert.AreEqual("bj.920001", meta.Symbols[2]);
+            Assert.AreEqual(3, meta.Width);
+            var storedSymbols = cacheStore.ReadSymbols();
+            Assert.AreEqual(3, storedSymbols.Count);
+            Assert.AreEqual("bj.920001", storedSymbols[2]);
         }
 
         [TestMethod]

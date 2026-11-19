@@ -210,6 +210,10 @@ namespace CarrotBacktesting.NET.Data
             if (string.IsNullOrWhiteSpace(s)) return MarketTime.MinValue;
             if (MarketTime.TryParse(s.AsSpan(), sourceTimeZone: null, out var mt))
                 return mt;
+            if (s.Length == 13 && long.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out long tsMs))
+                return MarketTime.FromUnixTimeMilliseconds(tsMs);
+            if (s.Length == 10 && long.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out long tsSec))
+                return MarketTime.FromUnixTimeSeconds(tsSec);
             throw new InvalidDataException($"Cannot parse value '{s}' to MarketTime for parameter '{paramName}'.");
         }
 
@@ -218,6 +222,10 @@ namespace CarrotBacktesting.NET.Data
             if (string.IsNullOrWhiteSpace(s)) return DateTime.MinValue;
             if (MarketTime.TryParse(s.AsSpan(), sourceTimeZone: null, out var mt))
                 return mt.ToDateTime();
+            if (s.Length == 13 && long.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out long tsMs))
+                return MarketTime.FromUnixTimeMilliseconds(tsMs).ToDateTime();
+            if (s.Length == 10 && long.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out long tsSec))
+                return MarketTime.FromUnixTimeSeconds(tsSec).ToDateTime();
             throw new InvalidDataException($"Cannot parse value '{s}' to DateTime for parameter '{paramName}'.");
         }
 

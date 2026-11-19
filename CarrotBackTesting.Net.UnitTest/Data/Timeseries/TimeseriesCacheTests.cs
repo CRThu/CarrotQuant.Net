@@ -108,8 +108,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(totalRows, meta.RowCount);
             Assert.AreEqual(startDate, meta.StartDate);
             Assert.AreEqual(tradeDates[^1], meta.EndDate);
-            Assert.AreEqual(width, meta.Symbols.Count);
-            Assert.AreEqual(totalRows, meta.TradeDates.Count);
+            var storedSymbols = store.ReadSymbols();
+            Assert.AreEqual(width, storedSymbols.Count);
+            var storedDates = store.ReadTradeDates();
+            Assert.AreEqual(totalRows, storedDates.Count);
         }
 
         [TestMethod]
@@ -788,12 +790,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestTimeseriesCache_WriteMatrixAndAppend_DailyAndIntradayDateFormatting()
+        public void TestTimeseriesCache_WriteMatrixAndAppend_IndexFiles_SymbolsAndMarketTime()
         {
             var store = new TimeseriesCache(_tempDir, "table_dates_format", 16, "lz4");
             var symbols = new[] { "sh.600000" };
 
-            // 1. 验证纯日线 (TimeOfDay == 0) 输出格式为 yyyy-MM-dd
+            // 1. 验证写入矩阵后，自动生成表级双标尺索引: symbols.idx 与 time.idx
             var dailyDate = new MarketTime(2025, 1, 6);
             using (var dailyBuffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
             {
@@ -801,33 +803,272 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 store.WriteMatrix("close_daily", dailyBuffer, symbols, new[] { dailyDate });
             }
 
+            Assert.IsTrue(File.Exists(store.GetSymbolsIndexPath()), "symbols.idx 应该存在");
+            Assert.IsTrue(File.Exists(store.GetTimeIndexPath()), "time.idx 应该存在");
+
             var dailyMeta = store.ReadMetadata("close_daily");
             Assert.IsNotNull(dailyMeta);
-            Assert.AreEqual(1, dailyMeta.TradeDates.Count);
-            Assert.AreEqual("2025-01-06", dailyMeta.TradeDates[0]);
+            var dailyDates = store.ReadTradeDates();
+            Assert.AreEqual(1, dailyDates.Count);
+            Assert.AreEqual(dailyDate, dailyDates[0]);
+            var dailySymbols = store.ReadSymbols();
+            Assert.AreEqual(1, dailySymbols.Count);
+            Assert.AreEqual("sh.600000", dailySymbols[0]);
 
-            // 2. 验证分钟线/日内 (TimeOfDay != 0) 输出格式为 yyyy-MM-dd HH:mm:ss
+            // 验证 meta.json 纯粹瘦化，不再包含 symbols 与 trade_dates 数组
+            string metaJson = File.ReadAllText(Path.Combine(store.GetFieldStoreDir("close_daily"), "meta.json"));
+            Assert.IsFalse(metaJson.Contains("\"symbols\""), "meta.json 不应冗余存储 symbols");
+            Assert.IsFalse(metaJson.Contains("\"trade_dates\""), "meta.json 不应冗余存储 trade_dates");
+
+            // 2. 验证多字段独立表写入高精度日内时间戳 (MarketTime)
+            var minuteStore = new TimeseriesCache(_tempDir, "table_minute_format", 16, "lz4");
             var minuteDate = new MarketTime(2025, 1, 6, 9, 30, 0);
             using (var minuteBuffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
             {
                 minuteBuffer[0, 0] = 10.5;
-                store.WriteMatrix("close_minute", minuteBuffer, symbols, new[] { minuteDate });
+                minuteStore.WriteMatrix("close_minute", minuteBuffer, symbols, new[] { minuteDate });
             }
 
-            var minuteMeta = store.ReadMetadata("close_minute");
+            var minuteMeta = minuteStore.ReadMetadata("close_minute");
             Assert.IsNotNull(minuteMeta);
-            Assert.AreEqual(1, minuteMeta.TradeDates.Count);
-            Assert.AreEqual("2025-01-06 09:30:00", minuteMeta.TradeDates[0]);
+            var minuteDates = minuteStore.ReadTradeDates();
+            Assert.AreEqual(1, minuteDates.Count);
+            Assert.AreEqual(minuteDate, minuteDates[0]);
 
-            // 3. 验证追加带时分秒的新行 (AppendRows)
+            // 3. 验证增量追加新行并写入二进制 time.idx
             var newMinuteDate = new MarketTime(2025, 1, 6, 9, 31, 0);
-            store.AppendRows<double>("close_minute", 1, (row, span) => span[0] = 10.6, new[] { newMinuteDate });
+            minuteStore.AppendRows<double>("close_minute", 1, (row, span) => span[0] = 10.6, new[] { newMinuteDate });
 
-            var appendedMeta = store.ReadMetadata("close_minute");
+            var appendedMeta = minuteStore.ReadMetadata("close_minute");
             Assert.IsNotNull(appendedMeta);
-            Assert.AreEqual(2, appendedMeta.TradeDates.Count);
-            Assert.AreEqual("2025-01-06 09:30:00", appendedMeta.TradeDates[0]);
-            Assert.AreEqual("2025-01-06 09:31:00", appendedMeta.TradeDates[1]);
+            var appendedDates = minuteStore.ReadTradeDates();
+            Assert.AreEqual(2, appendedDates.Count);
+            Assert.AreEqual(minuteDate, appendedDates[0]);
+            Assert.AreEqual(newMinuteDate, appendedDates[1]);
+
+            // 4. 直接验证 time.idx 物理文件二进制大小与内容
+            var diskTradeDates = minuteStore.ReadTradeDates();
+            Assert.AreEqual(2, diskTradeDates.Count);
+            Assert.AreEqual(minuteDate, diskTradeDates[0]);
+            Assert.AreEqual(newMinuteDate, diskTradeDates[1]);
+
+            var diskSymbols = minuteStore.ReadSymbols();
+            Assert.AreEqual(1, diskSymbols.Count);
+            Assert.AreEqual("sh.600000", diskSymbols[0]);
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_TableLevelIndices_MultiFieldAppend_NoDuplicateTimeIndex()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_multi_field_idx", 16, "lz4");
+            var symbols = new[] { "sh.600000", "sz.000001" };
+            var baseDate = new MarketTime(2025, 1, 2);
+
+            // 初始化两个字段: close 与 open
+            using (var buf = new ChunkMatrix2D<double>(width: 2, pageSize: 16, initialRowCount: 1))
+            {
+                buf[0, 0] = 10.0;
+                buf[0, 1] = 20.0;
+                store.WriteMatrix("close", buf, symbols, new[] { baseDate });
+                store.WriteMatrix("open", buf, symbols, new[] { baseDate });
+            }
+
+            Assert.AreEqual(1, store.ReadTradeDates().Count);
+
+            // 模拟两个字段各自 Commit 追加相同的新时间戳
+            var newDate1 = new MarketTime(2025, 1, 3);
+            var newDate2 = new MarketTime(2025, 1, 4);
+            var appendDates = new[] { newDate1, newDate2 };
+
+            // Field 1: close 追加 2 行 (总行数 3)
+            store.AppendRows<double>("close", 2, (r, span) => { span[0] = 11.0; span[1] = 21.0; }, appendDates);
+            Assert.AreEqual(3, store.ReadTradeDates().Count);
+
+            // Field 2: open 同步追加相同的 2 行 (总行数 3)，此时 time.idx 已达到目标行数 3，不应发生重复写入
+            store.AppendRows<double>("open", 2, (r, span) => { span[0] = 10.5; span[1] = 20.5; }, appendDates);
+            var allDates = store.ReadTradeDates();
+            Assert.AreEqual(3, allDates.Count, "time.idx 中不应存在多字段提交导致的重复时间记录");
+            Assert.AreEqual(baseDate, allDates[0]);
+            Assert.AreEqual(newDate1, allDates[1]);
+            Assert.AreEqual(newDate2, allDates[2]);
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_CorruptedTimeIndex_ThrowsInvalidDataException()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_corrupt_time_idx", 16, "lz4");
+            string timeIdxPath = store.GetTimeIndexPath();
+            Directory.CreateDirectory(store.GetTableDir());
+
+            // 故意写入 13 字节（非 8 的整数倍）残损数据
+            File.WriteAllBytes(timeIdxPath, new byte[13]);
+
+            // 1. ReadTradeDates 必须显式拦截并抛出 InvalidDataException
+            var ex1 = Assert.ThrowsException<InvalidDataException>(() => store.ReadTradeDates());
+            StringAssert.Contains(ex1.Message, "not a multiple of 8");
+
+            // 2. AppendTradeDates 同样必须显式拦截残损文件，坚决杜绝错位追加
+            var ex2 = Assert.ThrowsException<InvalidDataException>(() =>
+                store.AppendTradeDates(new[] { new MarketTime(2025, 1, 2) }));
+            StringAssert.Contains(ex2.Message, "not a multiple of 8");
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_AppendTradeDates_OutOfSyncLag_ThrowsInvalidOperationException()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_lag_time_idx", 16, "lz4");
+            store.WriteTradeDates(new[] { new MarketTime(2025, 1, 2), new MarketTime(2025, 1, 3) }); // 2 行
+
+            // 模拟 targetRowCount 为 10，新追加 2 行（期望 baseCount = 8，但 time.idx 只有 2 行，出现时空断层）
+            var ex = Assert.ThrowsException<InvalidOperationException>(() =>
+                store.AppendTradeDates(new[] { new MarketTime(2025, 1, 10), new MarketTime(2025, 1, 11) }, targetRowCount: 10));
+
+            StringAssert.Contains(ex.Message, "out of sync");
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_MissingSymbolsIndex_IsCompatibleReturnsFalse()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_missing_symbols_idx", 16, "lz4");
+            var symbols = new[] { "sh.600000", "sz.000001" };
+            using (var buf = new ChunkMatrix2D<double>(width: 2, pageSize: 16, initialRowCount: 1))
+            {
+                store.WriteMatrix("close", buf, symbols, new[] { new MarketTime(2025, 1, 2) });
+            }
+
+            // 正常兼容
+            Assert.IsTrue(store.IsCompatible("close", symbols, typeof(double), out var meta));
+            Assert.IsNotNull(meta);
+            Assert.AreEqual(2, meta.Width);
+            Assert.AreEqual(2, store.ReadSymbols().Count);
+
+            // 物理删除 symbols.idx
+            File.Delete(store.GetSymbolsIndexPath());
+
+            // 再次校验必须安全返回 false，坚决杜绝假阳性穿透
+            Assert.IsFalse(store.IsCompatible("close", symbols, typeof(double), out var metaCorrupt));
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_HighPrecisionMarketTime_RoundtripBitwiseIdentical()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_high_precision_time", 16, "lz4");
+            // 构造亚微秒高精刻度 Ticks
+            long customTicks1 = 638712345678901234L;
+            long customTicks2 = 638712345679999999L;
+            var time1 = MarketTime.FromTicks(customTicks1);
+            var time2 = MarketTime.FromTicks(customTicks2);
+
+            store.WriteTradeDates(new[] { time1, time2 });
+
+            var loaded = store.ReadTradeDates();
+            Assert.AreEqual(2, loaded.Count);
+            Assert.AreEqual(customTicks1, loaded[0].Ticks);
+            Assert.AreEqual(customTicks2, loaded[1].Ticks);
+            Assert.AreEqual(time1, loaded[0]);
+            Assert.AreEqual(time2, loaded[1]);
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_WriteSymbols_PrefixIdempotencyAndExpansionAndConflict()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_symbols_conflict", 16, "lz4");
+
+            // 1. 首次写入 2 只标的
+            store.WriteSymbols(new[] { "sh.600000", "sz.000001" });
+            Assert.AreEqual(2, store.ReadSymbols().Count);
+
+            // 2. 局部字段只传入子集前缀 ["sh.600000"]，必须安全保留已有 2 只标的，杜绝截断
+            store.WriteSymbols(new[] { "sh.600000" });
+            var preserved = store.ReadSymbols();
+            Assert.AreEqual(2, preserved.Count);
+            Assert.AreEqual("sh.600000", preserved[0]);
+            Assert.AreEqual("sz.000001", preserved[1]);
+
+            // 3. 全局扩充第 3 只标的，允许单调递增扩充
+            store.WriteSymbols(new[] { "sh.600000", "sz.000001", "bj.830001" });
+            var expanded = store.ReadSymbols();
+            Assert.AreEqual(3, expanded.Count);
+            Assert.AreEqual("bj.830001", expanded[2]);
+
+            // 4. 传入乱序或冲突代码集，必须拦截报错
+            var ex = Assert.ThrowsException<InvalidOperationException>(() =>
+                store.WriteSymbols(new[] { "sz.000001", "sh.600000", "bj.830001" }));
+            StringAssert.Contains(ex.Message, "conflict");
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_WriteSymbols_InvalidCharacters_ThrowsArgumentException()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_symbols_invalid_char", 16, "lz4");
+
+            // 空或纯空格
+            Assert.ThrowsException<ArgumentException>(() => store.WriteSymbols(new[] { "" }));
+            Assert.ThrowsException<ArgumentException>(() => store.WriteSymbols(new[] { "   " }));
+
+            // 包含换行符（破坏行索引文本结构）
+            Assert.ThrowsException<ArgumentException>(() => store.WriteSymbols(new[] { "sh.600000\nsz.000001" }));
+            Assert.ThrowsException<ArgumentException>(() => store.WriteSymbols(new[] { "sh.600000\r" }));
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_AppendRows_MissingChunkAtNonZeroOffset_ThrowsFileNotFoundException()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_missing_chunk_append", 16, "lz4");
+            var symbols = new[] { "sh.600000" };
+            using (var buf = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 5))
+            {
+                store.WriteMatrix("close", buf, symbols, new[]
+                {
+                    new MarketTime(2025, 1, 1),
+                    new MarketTime(2025, 1, 2),
+                    new MarketTime(2025, 1, 3),
+                    new MarketTime(2025, 1, 4),
+                    new MarketTime(2025, 1, 5)
+                });
+            }
+
+            // 物理删除 chunk_0.bin，此时元数据 RowCount=5 (offset=5 > 0)
+            string chunk0 = Path.Combine(store.GetFieldStoreDir("close"), "chunk_0.bin");
+            File.Delete(chunk0);
+
+            // 追加新行时，绝不能假填充全 0 覆写，必须立即抛出 FileNotFoundException
+            Assert.ThrowsException<FileNotFoundException>(() =>
+            {
+                store.AppendRows<double>("close", 1, (r, span) => span[0] = 99.0, new[] { new MarketTime(2025, 1, 6) });
+            });
+        }
+
+        [TestMethod]
+        public void TestTimeseriesCache_WriteMatrix_ShrinkRows_CleansOrphanChunks()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_orphan_chunks_clean", 16, "lz4");
+            var symbols = new[] { "sh.600000" };
+            // 写入 32 行（刚好占用 chunk_0.bin 与 chunk_1.bin 两个分块）
+            var dates32 = new MarketTime[32];
+            for (int i = 0; i < 32; i++) dates32[i] = new MarketTime(2025, 1, 1).AddDays(i);
+
+            using (var buf32 = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 32))
+            {
+                store.WriteMatrix("close", buf32, symbols, dates32);
+            }
+
+            string chunk0 = Path.Combine(store.GetFieldStoreDir("close"), "chunk_0.bin");
+            string chunk1 = Path.Combine(store.GetFieldStoreDir("close"), "chunk_1.bin");
+            Assert.IsTrue(File.Exists(chunk0));
+            Assert.IsTrue(File.Exists(chunk1));
+
+            // 缩容重写为 10 行（仅需 chunk_0.bin）
+            var dates10 = new MarketTime[10];
+            Array.Copy(dates32, dates10, 10);
+            using (var buf10 = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 10))
+            {
+                store.WriteMatrix("close", buf10, symbols, dates10);
+            }
+
+            // 验证 chunk_0 存在，而 chunk_1 孤儿文件已被彻底清理删除
+            Assert.IsTrue(File.Exists(chunk0));
+            Assert.IsFalse(File.Exists(chunk1), "多余的旧分块文件 chunk_1.bin 应该被自动清理，杜绝孤儿文件");
         }
     }
 }

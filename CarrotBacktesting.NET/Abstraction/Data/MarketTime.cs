@@ -9,11 +9,11 @@ using System.Text.Json.Serialization;
 namespace CarrotBacktesting.NET
 {
     /// <summary>
-    /// 高性能 64 位市场时间标量值对象。
+    /// 64 位市场时间标量值对象。
     /// <para>
-    /// 内部以自 0001-01-01 起的 100ns UTC 刻度 (Ticks) 存储，结构体尺寸严格对齐 8 字节。<br/>
-    /// 排除宿主机操作系统的本地时区 (<see cref="TimeZoneInfo.Local"/>) 与区域文化 (<see cref="CultureInfo.CurrentCulture"/>)。<br/>
-    /// 支持 CPU 寄存器直传与单周期整数比对 (CMP)，时区仅作为外部呈现投影坐标系。
+    /// 内部以自 0001-01-01 00:00:00 起的 100ns 刻度 (Ticks) 存储，结构体尺寸为 8 字节。<br/>
+    /// 内部刻度与宿主机时区及 CultureInfo 解耦，时区仅作为外部呈现或显式转换时的投影坐标系。<br/>
+    /// 文本解析严格基于 ISO 8601 与 RFC 3339 标准，无隐式兜底。
     /// </para>
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -33,27 +33,6 @@ namespace CarrotBacktesting.NET
 
         private static readonly int[] s_daysToMonth365 = { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 };
         private static readonly int[] s_daysToMonth366 = { 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366 };
-
-        /// <summary>
-        /// 预置高频无时区标准格式数组（按出现频次降序排列，避免冗余遍历）。
-        /// </summary>
-        private static readonly string[] s_standardDateTimeFormats = new[]
-        {
-            // 1. 标准空格分隔格式（高频日内与日线行情）
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd HH:mm:ss.fff",
-            "yyyy-MM-dd HH:mm:ss.ffffff",
-            "yyyy-MM-dd",
-            // 2. 标准 T 分隔格式（无时区 ISO 文本）
-            "yyyy-MM-ddTHH:mm:ss",
-            "yyyy-MM-ddTHH:mm:ss.fff",
-            "yyyy-MM-ddTHH:mm:ss.ffffff",
-            // 3. 紧凑纯数字格式（无分隔符，系统兜底无法推断，必须精确匹配）
-            "yyyyMMdd",
-            "yyyyMMddHHmmss",
-            "yyyyMMddHHmmssfff",
-            "yyyyMMddHHmmssffffff"
-        };
 
         /// <summary>
         /// 自公元 0001-01-01 00:00:00 起的 100ns 刻度值 (Ticks)。
@@ -285,20 +264,70 @@ namespace CarrotBacktesting.NET
             _ticks = ticks;
         }
 
-        private static long DateToTicks(int year, int month, int day)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsDigit(char c) => (uint)(c - '0') <= 9;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int Parse2(ReadOnlySpan<char> s, int offset)
         {
-            if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1)
+            uint c0 = (uint)(s[offset] - '0');
+            uint c1 = (uint)(s[offset + 1] - '0');
+            if (c0 > 9 || c1 > 9) return -1;
+            return (int)(c0 * 10 + c1);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int Parse4(ReadOnlySpan<char> s, int offset)
+        {
+            uint c0 = (uint)(s[offset] - '0');
+            uint c1 = (uint)(s[offset + 1] - '0');
+            uint c2 = (uint)(s[offset + 2] - '0');
+            uint c3 = (uint)(s[offset + 3] - '0');
+            if (c0 > 9 || c1 > 9 || c2 > 9 || c3 > 9) return -1;
+            return (int)(c0 * 1000 + c1 * 100 + c2 * 10 + c3);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryDateToTicks(int year, int month, int day, out long ticks)
+        {
+            if (year < 1 || year > 9999 || (uint)(month - 1) >= 12 || day < 1)
             {
-                ThrowDateOutOfRange();
+                ticks = 0;
+                return false;
             }
             int[] daysToMonth = IsLeapYear(year) ? s_daysToMonth366 : s_daysToMonth365;
             if (day > daysToMonth[month] - daysToMonth[month - 1])
             {
-                ThrowDateOutOfRange();
+                ticks = 0;
+                return false;
             }
             int y = year - 1;
             int n = y * 365 + y / 4 - y / 100 + y / 400 + daysToMonth[month - 1] + day - 1;
-            return (long)n * TimeSpan.TicksPerDay;
+            ticks = (long)n * TimeSpan.TicksPerDay;
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryTimeToTicks(int hour, int minute, int second, out long ticks)
+        {
+            if ((uint)hour >= 24 || (uint)minute >= 60 || (uint)second >= 60)
+            {
+                ticks = 0;
+                return false;
+            }
+            ticks = hour * TimeSpan.TicksPerHour +
+                    minute * TimeSpan.TicksPerMinute +
+                    second * TimeSpan.TicksPerSecond;
+            return true;
+        }
+
+        private static long DateToTicks(int year, int month, int day)
+        {
+            if (!TryDateToTicks(year, month, day, out long ticks))
+            {
+                ThrowDateOutOfRange();
+            }
+            return ticks;
         }
 
         private static long TimeToTicks(int hour, int minute, int second, int millisecond)
@@ -350,7 +379,7 @@ namespace CarrotBacktesting.NET
         }
 
         /// <summary>
-        /// 从 <see cref="DateTime"/> 创建市场时间（直接提取其 Ticks 刻度，杜绝隐式时区猜测）。
+        /// 从 <see cref="DateTime"/> 创建市场时间（提取其 Ticks 刻度）。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static MarketTime FromDateTime(DateTime dateTime)
@@ -424,7 +453,6 @@ namespace CarrotBacktesting.NET
 
         /// <summary>
         /// 检查时间文本是否包含显式的时区标识（如 'Z'、'+08:00'、'+0800'、'-05:00'）。
-        /// 单次扫描、零堆内存分配。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool HasTimezone(ReadOnlySpan<char> s)
@@ -461,22 +489,39 @@ namespace CarrotBacktesting.NET
             return HasTimezone(text.AsSpan());
         }
 
+        private enum ParseResultStatus
+        {
+            Success,
+            FormatError,
+            TimezoneConflict,
+            OutOfRange
+        }
+
         /// <summary>
-        /// 解析文本为 <see cref="MarketTime"/>。
+        /// 解析符合 ISO 8601 与 RFC 3339 规范的时间文本为 <see cref="MarketTime"/>。
         /// <para>
-        /// 1. 纯数字根据字符长度与数值量纲分流（13位为 Unix 毫秒戳、10位为 Unix 秒戳，其余紧凑数字格式走日期解析）；<br/>
-        /// 2. 文本自带时区标识（如 +08:00、+0800 或 Z）时，统一转换为 UTC 刻度；若传入了矛盾的 <paramref name="sourceTimeZone"/>，则抛出 <see cref="ArgumentException"/>；<br/>
+        /// 1. 支持标准扩展格式 (yyyy-MM-dd[THH:mm:ss[.ffffff][Z|±HH:mm]]) 与紧凑基本格式 (yyyyMMdd[HHmmss[fff[fff]]])；<br/>
+        /// 2. 文本自带时区标识时按时区偏移转换为物理 UTC 刻度；若传入了与之冲突的 <paramref name="sourceTimeZone"/>，抛出 <see cref="ArgumentException"/>；<br/>
         /// 3. 文本不含时区标识时，若指定了 <paramref name="sourceTimeZone"/> 则作为源时区转换为 UTC 刻度，未指定则直接映射为字面刻度；<br/>
-        /// 4. 严格绑定 InvariantCulture，排除宿主机本地时区与文化干扰。
+        /// 4. 格式不匹配时抛出 <see cref="FormatException"/>，刻度超出支持范围时抛出 <see cref="ArgumentOutOfRangeException"/>，无隐式兜底。
         /// </para>
         /// </summary>
         public static MarketTime Parse(ReadOnlySpan<char> text, TimeZoneInfo? sourceTimeZone = null)
         {
-            if (TryParse(text, sourceTimeZone, out MarketTime result))
+            ParseResultStatus status = TryParseInternal(text, sourceTimeZone, out MarketTime result, out TimeSpan actual, out TimeSpan expected);
+            switch (status)
             {
-                return result;
+                case ParseResultStatus.Success:
+                    return result;
+                case ParseResultStatus.TimezoneConflict:
+                    ThrowTimezoneConflict(actual, expected, sourceTimeZone!);
+                    break;
+                case ParseResultStatus.OutOfRange:
+                    throw new ArgumentOutOfRangeException(nameof(text), "MarketTime ticks out of supported range (0001-01-01 to 9999-12-31).");
+                default:
+                    throw new FormatException($"String '{text.ToString()}' was not recognized as a valid MarketTime.");
             }
-            throw new FormatException($"String '{text.ToString()}' was not recognized as a valid MarketTime.");
+            return result;
         }
 
         /// <inheritdoc cref="Parse(ReadOnlySpan{char}, TimeZoneInfo?)"/>
@@ -487,83 +532,342 @@ namespace CarrotBacktesting.NET
         }
 
         /// <summary>
-        /// 尝试解析文本为 <see cref="MarketTime"/>。
+        /// 尝试将符合 ISO 8601 与 RFC 3339 规范的时间文本解析为 <see cref="MarketTime"/>。
+        /// 失败时安全返回 false，绝不向外抛出异常。
         /// </summary>
         public static bool TryParse(ReadOnlySpan<char> text, TimeZoneInfo? sourceTimeZone, out MarketTime result)
         {
+            return TryParseInternal(text, sourceTimeZone, out result, out _, out _) == ParseResultStatus.Success;
+        }
+
+        private static ParseResultStatus TryParseInternal(
+            ReadOnlySpan<char> text,
+            TimeZoneInfo? sourceTimeZone,
+            out MarketTime result,
+            out TimeSpan actualOffset,
+            out TimeSpan expectedOffset)
+        {
+            result = default;
+            actualOffset = TimeSpan.Zero;
+            expectedOffset = TimeSpan.Zero;
+
             ReadOnlySpan<char> s = text.Trim();
             if (s.IsEmpty)
             {
-                result = default;
-                return false;
+                return ParseResultStatus.FormatError;
             }
 
-            // 1. 纯数字时间戳分流：严格基于字符长度与数值量纲分流，防御误判 14 位 yyyyMMddHHmmss 或 8 位 yyyyMMdd
-            if (long.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out long num))
+            // 1. 标准扩展格式：yyyy-MM-dd... 或 yyyy/MM/dd... (ISO 8601 Extended / RFC 3339)
+            if (s.Length >= 10 && (s[4] == '-' || s[4] == '/'))
             {
-                // 13 位数字：Unix 毫秒戳 (覆盖 1970 - 2065 年: 10^12 ~ 3*10^12)
-                if (s.Length == 13 && num >= 1_000_000_000_000L && num <= 3_000_000_000_000L)
+                char sep = s[4];
+                if (s[7] != sep)
                 {
-                    result = FromUnixTimeMilliseconds(num);
-                    return true;
+                    return ParseResultStatus.FormatError;
                 }
-                // 10 位数字：Unix 秒戳 (覆盖 1970 - 2065 年: 10^8 ~ 3*10^9)
-                if (s.Length == 10 && num >= 100_000_000L && num <= 3_000_000_000L)
-                {
-                    result = FromUnixTimeSeconds(num);
-                    return true;
-                }
-                // 其余长度（如 14 位 yyyyMMddHHmmss、8 位 yyyyMMdd）不得视为时间戳，掉落后续日期解析
-            }
 
-            // 2. 包含显式时区偏移（Z, +08:00, +0800, -05:00）的 ISO 文本
-            // 通过 DateTimeOffset 提取，脱敏宿主机系统时区
-            if (HasTimezone(s))
-            {
-                if (DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset dto))
+                int year = Parse4(s, 0);
+                int month = Parse2(s, 5);
+                int day = Parse2(s, 8);
+                if (year < 0 || month < 0 || day < 0 || !TryDateToTicks(year, month, day, out long dateTicks))
+                {
+                    return ParseResultStatus.FormatError;
+                }
+
+                if (s.Length == 10)
                 {
                     if (sourceTimeZone != null)
                     {
-                        // 若显式传入了具体的业务时区（非 UTC），严格校验是否与文本自带时区偏移冲突
-                        if (sourceTimeZone != TimeZoneInfo.Utc)
+                        try
                         {
-                            TimeSpan expectedOffset = sourceTimeZone.GetUtcOffset(dto.DateTime);
-                            if (dto.Offset != expectedOffset)
+                            DateTime unspecified = new DateTime(dateTicks, DateTimeKind.Unspecified);
+                            result = new MarketTime(TimeZoneInfo.ConvertTimeToUtc(unspecified, sourceTimeZone).Ticks);
+                            return ParseResultStatus.Success;
+                        }
+                        catch (ArgumentException)
+                        {
+                            return ParseResultStatus.OutOfRange;
+                        }
+                    }
+                    result = new MarketTime(dateTicks);
+                    return ParseResultStatus.Success;
+                }
+
+                char timeSep = s[10];
+                if (timeSep != ' ' && timeSep != 'T' && timeSep != 't')
+                {
+                    return ParseResultStatus.FormatError;
+                }
+
+                if (s.Length < 19 || s[13] != ':' || s[16] != ':')
+                {
+                    return ParseResultStatus.FormatError;
+                }
+
+                int hour = Parse2(s, 11);
+                int minute = Parse2(s, 14);
+                int second = Parse2(s, 17);
+                if (hour < 0 || minute < 0 || second < 0 || !TryTimeToTicks(hour, minute, second, out long timeTicks))
+                {
+                    return ParseResultStatus.FormatError;
+                }
+
+                int pos = 19;
+                long fracTicks = 0;
+
+                // 可选亚秒部分 (.ffffff 或 ,ffffff)
+                if (pos < s.Length && (s[pos] == '.' || s[pos] == ','))
+                {
+                    pos++;
+                    int fracStart = pos;
+                    while (pos < s.Length && IsDigit(s[pos]))
+                    {
+                        pos++;
+                    }
+                    int fracLen = pos - fracStart;
+                    if (fracLen == 0)
+                    {
+                        return ParseResultStatus.FormatError;
+                    }
+                    long fracVal = 0;
+                    int parseLen = Math.Min(fracLen, 7);
+                    for (int i = 0; i < parseLen; i++)
+                    {
+                        fracVal = fracVal * 10 + (s[fracStart + i] - '0');
+                    }
+                    for (int i = parseLen; i < 7; i++)
+                    {
+                        fracVal *= 10;
+                    }
+                    fracTicks = fracVal;
+                }
+
+                // 允许时间与时区符号之间存在空格
+                while (pos < s.Length && s[pos] == ' ')
+                {
+                    pos++;
+                }
+
+                bool hasTz = false;
+                TimeSpan tzOffset = TimeSpan.Zero;
+
+                // 可选时区部分 (Z, +08:00, -05:00, +0800, -0500, +08)
+                if (pos < s.Length)
+                {
+                    char tzChar = s[pos];
+                    if (tzChar == 'Z' || tzChar == 'z')
+                    {
+                        pos++;
+                        hasTz = true;
+                        tzOffset = TimeSpan.Zero;
+                    }
+                    else if (tzChar == '+' || tzChar == '-')
+                    {
+                        hasTz = true;
+                        bool negative = tzChar == '-';
+                        pos++;
+                        if (pos + 2 > s.Length)
+                        {
+                            return ParseResultStatus.FormatError;
+                        }
+                        int tzHour = Parse2(s, pos);
+                        if (tzHour < 0 || tzHour > 23)
+                        {
+                            return ParseResultStatus.FormatError;
+                        }
+                        pos += 2;
+                        int tzMin = 0;
+                        if (pos < s.Length)
+                        {
+                            if (s[pos] == ':')
                             {
-                                ThrowTimezoneConflict(dto.Offset, expectedOffset, sourceTimeZone);
+                                pos++;
+                                if (pos + 2 > s.Length)
+                                {
+                                    return ParseResultStatus.FormatError; // 例如 "+08:"
+                                }
+                                tzMin = Parse2(s, pos);
+                                if (tzMin < 0 || tzMin > 59)
+                                {
+                                    return ParseResultStatus.FormatError;
+                                }
+                                pos += 2;
+                            }
+                            else if (IsDigit(s[pos]))
+                            {
+                                if (pos + 2 > s.Length)
+                                {
+                                    return ParseResultStatus.FormatError; // 例如 "+080"
+                                }
+                                tzMin = Parse2(s, pos);
+                                if (tzMin < 0 || tzMin > 59)
+                                {
+                                    return ParseResultStatus.FormatError;
+                                }
+                                pos += 2;
+                            }
+                            else
+                            {
+                                return ParseResultStatus.FormatError;
                             }
                         }
-                        // 校验通过或显式要求转为 UTC：换算为绝对物理 UTC 刻度
-                        result = new MarketTime(dto.UtcTicks);
+                        long offsetTicks = (tzHour * TimeSpan.TicksPerHour) + (tzMin * TimeSpan.TicksPerMinute);
+                        tzOffset = new TimeSpan(negative ? -offsetTicks : offsetTicks);
                     }
                     else
                     {
-                        // 未指定目标时区：保留钟表时间，排除宿主机本地时区干扰
-                        result = new MarketTime(dto.DateTime.Ticks);
+                        return ParseResultStatus.FormatError;
                     }
-                    return true;
                 }
-            }
 
-            // 3. 不含显式时区标记的文本（严格绑定 InvariantCulture，排除宿主机系统时区干扰）
-            if (DateTime.TryParseExact(s, s_standardDateTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt) ||
-                DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
-            {
-                if (sourceTimeZone != null)
+                if (pos != s.Length)
                 {
-                    DateTime unspecified = DateTime.SpecifyKind(dt, DateTimeKind.Unspecified);
-                    result = new MarketTime(TimeZoneInfo.ConvertTimeToUtc(unspecified, sourceTimeZone).Ticks);
+                    return ParseResultStatus.FormatError;
+                }
+
+                long wallTicks = dateTicks + timeTicks + fracTicks;
+                if ((ulong)wallTicks > (ulong)DateTime.MaxValue.Ticks)
+                {
+                    return ParseResultStatus.OutOfRange;
+                }
+
+                if (hasTz)
+                {
+                    if (sourceTimeZone != null)
+                    {
+                        if (sourceTimeZone != TimeZoneInfo.Utc)
+                        {
+                            DateTime wallDt = new DateTime(wallTicks, DateTimeKind.Unspecified);
+                            TimeSpan expected = sourceTimeZone.GetUtcOffset(wallDt);
+                            if (tzOffset != expected)
+                            {
+                                actualOffset = tzOffset;
+                                expectedOffset = expected;
+                                return ParseResultStatus.TimezoneConflict;
+                            }
+                        }
+
+                        long utcTicks = wallTicks - tzOffset.Ticks;
+                        if ((ulong)utcTicks > (ulong)DateTime.MaxValue.Ticks)
+                        {
+                            return ParseResultStatus.OutOfRange;
+                        }
+                        result = new MarketTime(utcTicks);
+                        return ParseResultStatus.Success;
+                    }
+                    else
+                    {
+                        // 未指定源时区时：保真保留原始钟表时间（Wall-clock time），
+                        // 确保日线行情与日历日期严格对齐，绝不受宿主机本地时区污染。
+                        result = new MarketTime(wallTicks);
+                        return ParseResultStatus.Success;
+                    }
                 }
                 else
                 {
-                    // 未指定时区：直接将字面时刻保真映射为基准标量
-                    result = new MarketTime(dt.Ticks);
+                    if (sourceTimeZone != null)
+                    {
+                        DateTime wallDt = new DateTime(wallTicks, DateTimeKind.Unspecified);
+                        TimeSpan expected = sourceTimeZone.GetUtcOffset(wallDt);
+                        long utcTicks = wallTicks - expected.Ticks;
+                        if ((ulong)utcTicks > (ulong)DateTime.MaxValue.Ticks)
+                        {
+                            return ParseResultStatus.OutOfRange;
+                        }
+                        result = new MarketTime(utcTicks);
+                        return ParseResultStatus.Success;
+                    }
+                    result = new MarketTime(wallTicks);
+                    return ParseResultStatus.Success;
                 }
-                return true;
             }
 
-            result = default;
-            return false;
+            // 2. 紧凑基本格式 (ISO 8601 Basic: yyyyMMdd[HHmmss[fff[fff]]])
+            if (s.Length is 8 or 14 or 17 or 20)
+            {
+                for (int i = 0; i < s.Length; i++)
+                {
+                    if (!IsDigit(s[i]))
+                    {
+                        return ParseResultStatus.FormatError;
+                    }
+                }
+
+                int year = Parse4(s, 0);
+                int month = Parse2(s, 4);
+                int day = Parse2(s, 6);
+                if (year < 0 || month < 0 || day < 0 || !TryDateToTicks(year, month, day, out long dateTicks))
+                {
+                    return ParseResultStatus.FormatError;
+                }
+
+                if (s.Length == 8)
+                {
+                    if (sourceTimeZone != null)
+                    {
+                        DateTime wallDt = new DateTime(dateTicks, DateTimeKind.Unspecified);
+                        TimeSpan expected = sourceTimeZone.GetUtcOffset(wallDt);
+                        long utcTicks = dateTicks - expected.Ticks;
+                        if ((ulong)utcTicks > (ulong)DateTime.MaxValue.Ticks)
+                        {
+                            return ParseResultStatus.OutOfRange;
+                        }
+                        result = new MarketTime(utcTicks);
+                        return ParseResultStatus.Success;
+                    }
+                    result = new MarketTime(dateTicks);
+                    return ParseResultStatus.Success;
+                }
+
+                int hour = Parse2(s, 8);
+                int minute = Parse2(s, 10);
+                int second = Parse2(s, 12);
+                if (hour < 0 || minute < 0 || second < 0 || !TryTimeToTicks(hour, minute, second, out long timeTicks))
+                {
+                    return ParseResultStatus.FormatError;
+                }
+
+                long fracTicks = 0;
+                if (s.Length == 17)
+                {
+                    int ms = (s[14] - '0') * 100 + (s[15] - '0') * 10 + (s[16] - '0');
+                    fracTicks = ms * TimeSpan.TicksPerMillisecond;
+                }
+                else if (s.Length == 20)
+                {
+                    long us = (s[14] - '0') * 100000L +
+                              (s[15] - '0') * 10000L +
+                              (s[16] - '0') * 1000L +
+                              (s[17] - '0') * 100L +
+                              (s[18] - '0') * 10L +
+                              (s[19] - '0');
+                    fracTicks = us * 10;
+                }
+
+                long totalTicks = dateTicks + timeTicks + fracTicks;
+                if ((ulong)totalTicks > (ulong)DateTime.MaxValue.Ticks)
+                {
+                    return ParseResultStatus.OutOfRange;
+                }
+
+                if (sourceTimeZone != null)
+                {
+                    DateTime wallDt = new DateTime(totalTicks, DateTimeKind.Unspecified);
+                    TimeSpan expected = sourceTimeZone.GetUtcOffset(wallDt);
+                    long utcTicks = totalTicks - expected.Ticks;
+                    if ((ulong)utcTicks > (ulong)DateTime.MaxValue.Ticks)
+                    {
+                        return ParseResultStatus.OutOfRange;
+                    }
+                    result = new MarketTime(utcTicks);
+                    return ParseResultStatus.Success;
+                }
+                result = new MarketTime(totalTicks);
+                return ParseResultStatus.Success;
+            }
+
+            // 3. 不符合规范的格式：直接判定失败，无隐式兜底
+            return ParseResultStatus.FormatError;
         }
 
         #endregion
@@ -607,7 +911,7 @@ namespace CarrotBacktesting.NET
         }
 
         /// <summary>
-        /// 零分配获取指定时区偏移量下的本地小时数 (0-23)，安全防御负偏移。
+        /// 获取指定时区偏移量下的本地小时数 (0-23)。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetHour(TimeSpan offset)
@@ -619,7 +923,7 @@ namespace CarrotBacktesting.NET
         }
 
         /// <summary>
-        /// 零分配获取指定时区偏移量下的本地分钟数 (0-59)，安全防御负偏移。
+        /// 获取指定时区偏移量下的本地分钟数 (0-59)。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetMinute(TimeSpan offset)
@@ -629,6 +933,18 @@ namespace CarrotBacktesting.NET
             int mod = (int)(minutes % 60);
             return mod < 0 ? mod + 60 : mod;
         }
+
+        /// <summary>
+        /// 获取自 Unix 纪元 (1970-01-01 00:00:00 UTC) 起经过的毫秒数。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long ToUnixTimeMilliseconds() => (_ticks - UnixEpoch.Ticks) / TimeSpan.TicksPerMillisecond;
+
+        /// <summary>
+        /// 获取自 Unix 纪元 (1970-01-01 00:00:00 UTC) 起经过的秒数。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long ToUnixTimeSeconds() => (_ticks - UnixEpoch.Ticks) / TimeSpan.TicksPerSecond;
 
         #endregion
 
@@ -648,37 +964,69 @@ namespace CarrotBacktesting.NET
 
         #region 时间运算与偏移
 
+        private MarketTime Add(double value, double scale)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                throw new ArgumentException("Value cannot be NaN or Infinity.", nameof(value));
+            }
+            double ticksD = value * scale;
+            if (ticksD < -TimeSpan.TicksPerDay * 3650000 || ticksD > TimeSpan.TicksPerDay * 3650000)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "Argument is out of the supported range.");
+            }
+            long ticks = (long)(ticksD >= 0 ? ticksD + 0.5 : ticksD - 0.5);
+            return AddTicks(ticks);
+        }
+
         /// <summary>增加指定的持续时间。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public MarketTime Add(TimeSpan value) => new(_ticks + value.Ticks);
+        public MarketTime Add(TimeSpan value) => AddTicks(value.Ticks);
 
         /// <summary>增加指定天数。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public MarketTime AddDays(double value) => new(_ticks + (long)(value * TimeSpan.TicksPerDay));
+        public MarketTime AddDays(double value) => Add(value, TimeSpan.TicksPerDay);
 
         /// <summary>增加指定小时数。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public MarketTime AddHours(double value) => new(_ticks + (long)(value * TimeSpan.TicksPerHour));
+        public MarketTime AddHours(double value) => Add(value, TimeSpan.TicksPerHour);
 
         /// <summary>增加指定分钟数。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public MarketTime AddMinutes(double value) => new(_ticks + (long)(value * TimeSpan.TicksPerMinute));
+        public MarketTime AddMinutes(double value) => Add(value, TimeSpan.TicksPerMinute);
 
         /// <summary>增加指定秒数。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public MarketTime AddSeconds(double value) => new(_ticks + (long)(value * TimeSpan.TicksPerSecond));
+        public MarketTime AddSeconds(double value) => Add(value, TimeSpan.TicksPerSecond);
 
         /// <summary>增加指定毫秒数。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public MarketTime AddMilliseconds(double value) => new(_ticks + (long)(value * TimeSpan.TicksPerMillisecond));
+        public MarketTime AddMilliseconds(double value) => Add(value, TimeSpan.TicksPerMillisecond);
 
         /// <summary>增加指定 100ns 刻度数。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public MarketTime AddTicks(long value) => new(_ticks + value);
+        public MarketTime AddTicks(long value)
+        {
+            long total;
+            try
+            {
+                total = checked(_ticks + value);
+            }
+            catch (OverflowException)
+            {
+                ThrowOutOfRange(value < 0 ? -1 : long.MaxValue);
+                return default;
+            }
+            if ((ulong)total > (ulong)DateTime.MaxValue.Ticks)
+            {
+                ThrowOutOfRange(total);
+            }
+            return new MarketTime(total);
+        }
 
         /// <summary>减去指定的持续时间。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public MarketTime Subtract(TimeSpan value) => new(_ticks - value.Ticks);
+        public MarketTime Subtract(TimeSpan value) => AddTicks(-value.Ticks);
 
         /// <summary>计算两个市场时间之间的时间间隔。</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -686,20 +1034,16 @@ namespace CarrotBacktesting.NET
 
         #endregion
 
-        #region 操作符重载与类型转换 (Zero-Cost Inlining)
+        #region 操作符重载与类型转换
 
         /// <summary>
-        /// 显式转换为标准 <see cref="DateTime"/>（默认保留其 Unspecified 真实时间刻度）。
-        /// 需显式转换或调用 <see cref="ToDateTime()"/>，杜绝双向隐式转换导致的类型推断二义性。
+        /// 显式转换为标准 <see cref="DateTime"/>（保留其 Unspecified 时间刻度）。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static explicit operator DateTime(MarketTime mt) => mt.ToDateTime();
 
         /// <summary>
-        /// 从 <see cref="DateTime"/> 隐式构造市场时间。
-        /// <para>
-        /// 纯粹取其 Ticks 刻度，严禁调用 <see cref="DateTime.ToUniversalTime()"/> 读取宿主机操作系统的本地时区。
-        /// </para>
+        /// 从 <see cref="DateTime"/> 隐式构造市场时间（提取其 Ticks 刻度）。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static implicit operator MarketTime(DateTime dt)
@@ -745,15 +1089,14 @@ namespace CarrotBacktesting.NET
         {
             if (obj is null) return 1;
             if (obj is MarketTime mt) return CompareTo(mt);
-            if (obj is DateTime dt) return _ticks.CompareTo(dt.Ticks);
-            throw new ArgumentException("Object must be of type MarketTime or DateTime.");
+            throw new ArgumentException("Object must be of type MarketTime.");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(MarketTime other) => _ticks == other._ticks;
 
         /// <summary>
-        /// 遵循类型一致性哈希相等公理：仅当对象同为 MarketTime 时按 Ticks 比较。
+        /// 当对象同为 MarketTime 时按 Ticks 比较。
         /// </summary>
         public override bool Equals(object? obj)
         {
@@ -814,7 +1157,7 @@ namespace CarrotBacktesting.NET
 
     /// <summary>
     /// <see cref="MarketTime"/> 的 System.Text.Json 序列化转换器。
-    /// 统一按 ISO 8601 / 标准时间格式以纯标量字符串读写，杜绝对象属性递归展开。
+    /// 按 ISO 8601 与 RFC 3339 格式以字符串读写。
     /// </summary>
     public sealed class MarketTimeJsonConverter : JsonConverter<MarketTime>
     {
@@ -823,23 +1166,23 @@ namespace CarrotBacktesting.NET
             if (reader.TokenType == JsonTokenType.String)
             {
                 string? s = reader.GetString();
-                if (string.IsNullOrWhiteSpace(s)) return MarketTime.MinValue;
-                return MarketTime.Parse(s);
-            }
-            if (reader.TokenType == JsonTokenType.Number)
-            {
-                if (reader.TryGetInt64(out long ticks))
+                if (string.IsNullOrWhiteSpace(s))
                 {
-                    return MarketTime.FromTicks(ticks);
+                    throw new JsonException($"Cannot parse empty or whitespace string to {nameof(MarketTime)}.");
                 }
+                if (MarketTime.TryParse(s, sourceTimeZone: null, out var mt))
+                {
+                    return mt;
+                }
+                throw new JsonException($"String '{s}' was not recognized as a valid {nameof(MarketTime)}.");
             }
-            throw new JsonException($"Cannot convert token {reader.TokenType} to MarketTime.");
+            throw new JsonException($"Cannot convert token {reader.TokenType} to {nameof(MarketTime)}.");
         }
 
         public override void Write(Utf8JsonWriter writer, MarketTime value, JsonSerializerOptions options)
         {
             string formatted = value.Ticks % TimeSpan.TicksPerSecond != 0
-                ? value.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", CultureInfo.InvariantCulture)
+                ? value.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ", CultureInfo.InvariantCulture)
                 : value.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
             writer.WriteStringValue(formatted);
         }

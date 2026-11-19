@@ -58,8 +58,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 从 CSV 当前行读取并解析为强类型 64-bit UTC 市场时间标量 <see cref="MarketTime"/>。
-        /// 零堆分配，单点权威时间解析。
+        /// 从 CSV 当前行读取并解析为 <see cref="MarketTime"/>。
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static MarketTime ParseTime(this CsvDataReader reader, int colIdx, TimeZoneInfo? sourceTimeZone = null)
@@ -82,7 +81,22 @@ namespace CarrotBacktesting.NET.Data
             ReadOnlySpan<char> span = reader.GetFieldSpan(colIdx);
             if (span.IsEmpty || span.IsWhiteSpace()) return MarketTime.MinValue;
 
-            return MarketTime.TryParse(span, sourceTimeZone, out var mt) ? mt : MarketTime.MinValue;
+            if (MarketTime.TryParse(span, sourceTimeZone, out var mt))
+            {
+                return mt;
+            }
+
+            // CSV 文本若未绑定 Schema 且为 13 位毫秒戳或 10 位秒戳，作为数值降级解析
+            if (span.Length == 13 && long.TryParse(span, NumberStyles.None, CultureInfo.InvariantCulture, out long tsMs))
+            {
+                return MarketTime.FromUnixTimeMilliseconds(tsMs);
+            }
+            if (span.Length == 10 && long.TryParse(span, NumberStyles.None, CultureInfo.InvariantCulture, out long tsSec))
+            {
+                return MarketTime.FromUnixTimeSeconds(tsSec);
+            }
+
+            return MarketTime.MinValue;
         }
 
         /// <summary>

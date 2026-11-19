@@ -6,7 +6,8 @@ namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
     /// 时序二进制持久化元数据描述契约。
-    /// 记录表标识、字段名称、数据类型、压缩算法、定长分页大小、行列规模以及完整时空维度（代码与交易日列表）。
+    /// 记录表标识、字段名称、数据类型、压缩算法、定长分页大小、行列规模及物理分块拓扑。
+    /// 标的代码列表与时间戳标尺由表级双标尺索引文件 (symbols.idx / time.idx) 权威定义。
     /// </summary>
     public class TimeseriesMetadata
     {
@@ -36,12 +37,6 @@ namespace CarrotBacktesting.NET.Data
 
         [JsonPropertyName("end_date")]
         public MarketTime? EndDate { get; set; }
-
-        [JsonPropertyName("symbols")]
-        public List<string> Symbols { get; set; } = new();
-
-        [JsonPropertyName("trade_dates")]
-        public List<string> TradeDates { get; set; } = new();
 
         [JsonPropertyName("chunk_widths")]
         public List<int>? ChunkWidths { get; set; }
@@ -140,5 +135,49 @@ namespace CarrotBacktesting.NET.Data
         /// 清空整个表的所有字段持久化数据。
         /// </summary>
         void ClearTable();
+
+        /// <summary>
+        /// 获取表级物理存储根目录路径：{storeRoot}/{tableId}
+        /// </summary>
+        string GetTableDir();
+
+        /// <summary>
+        /// 获取表级标的代码索引文件路径 (symbols.idx)。
+        /// </summary>
+        string GetSymbolsIndexPath();
+
+        /// <summary>
+        /// 获取表级交易时间戳索引文件路径 (time.idx)。
+        /// </summary>
+        string GetTimeIndexPath();
+
+        /// <summary>
+        /// 读取表级统一的标的代码索引列表 (symbols.idx)。
+        /// 每一行对应唯一的列索引 (Column Index)。
+        /// </summary>
+        IReadOnlyList<string> ReadSymbols();
+
+        /// <summary>
+        /// 读取表级统一的交易时间戳索引列表 (time.idx)。
+        /// 每个记录为 8 字节 MarketTime 标量，行号严格对应时间索引 (Row Index)。
+        /// </summary>
+        IReadOnlyList<MarketTime> ReadTradeDates();
+
+        /// <summary>
+        /// 原子写入表级标的代码索引文件 (symbols.idx)。
+        /// </summary>
+        void WriteSymbols(IReadOnlyList<string> symbols);
+
+        /// <summary>
+        /// 原子写入表级交易时间戳索引文件 (time.idx)。
+        /// </summary>
+        void WriteTradeDates(IReadOnlyList<MarketTime> tradeDates);
+
+        /// <summary>
+        /// 增量追加交易时间戳到表级索引文件 (time.idx)。
+        /// </summary>
+        /// <param name="newTradeDates">待追加的新时间戳列表。</param>
+        /// <param name="targetRowCount">可选的目标总行数防御边界（若现有索引已达标则免写）。</param>
+        void AppendTradeDates(IReadOnlyList<MarketTime> newTradeDates, int targetRowCount = -1);
     }
 }

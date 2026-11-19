@@ -377,15 +377,27 @@ public interface ITimeseriesCache
     bool IsCompatible(string fieldName, IReadOnlyList<string> expectedSymbols, Type expectedType, out TimeseriesMetadata? metadata);
 
     ChunkMatrix2D<T> LoadMatrix<T>(string fieldName, int? targetWidth = null) where T : unmanaged;
-    void WriteMatrix<T>(string fieldName, ChunkMatrix2D<T> matrix, IReadOnlyList<string> symbols, IReadOnlyList<DateTime> tradeDates) where T : unmanaged;
+    bool TryReadChunk<T>(string fieldName, int pageIndex, Span<T> destination, out int rowsRead) where T : unmanaged;
+    void WriteMatrix<T>(string fieldName, ChunkMatrix2D<T> matrix, IReadOnlyList<string> symbols, IReadOnlyList<MarketTime> tradeDates) where T : unmanaged;
     void RewriteChunk<T>(string fieldName, int pageIndex, Action<int, Span<T>> rowProvider, int? newChunkWidth = null, IReadOnlyList<string>? updatedSymbols = null) where T : unmanaged;
-    void AppendRows<T>(string fieldName, int deltaRows, Action<int, Span<T>> rowProvider, IReadOnlyList<DateTime> newTradeDates) where T : unmanaged;
+    void AppendRows<T>(string fieldName, int deltaRows, Action<int, Span<T>> rowProvider, IReadOnlyList<MarketTime> newTradeDates) where T : unmanaged;
     void Clear(string fieldName);
     void ClearTable();
+
+    string GetTableDir();
+    string GetSymbolsIndexPath();
+    string GetTimeIndexPath();
+    IReadOnlyList<string> ReadSymbols();
+    IReadOnlyList<MarketTime> ReadTradeDates();
+    void WriteSymbols(IReadOnlyList<string> symbols);
+    void WriteTradeDates(IReadOnlyList<MarketTime> tradeDates);
+    void AppendTradeDates(IReadOnlyList<MarketTime> newTradeDates, int targetRowCount = -1);
 }
 
 public class TimeseriesCache : ITimeseriesCache
 {
+    public const string SymbolsIndexFileName = "symbols.idx";
+    public const string TimeIndexFileName = "time.idx";
     public TimeseriesCache(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4");
     // (实现 ITimeseriesCache 契约)
 }

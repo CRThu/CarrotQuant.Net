@@ -222,7 +222,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var meta1 = store.ReadMetadata(fieldName);
             Assert.IsNotNull(meta1);
             Assert.AreEqual(2, meta1.Width);
-            Assert.AreEqual(2, meta1.Symbols.Count);
+            var symbols1 = store.ReadSymbols();
+            Assert.AreEqual(2, symbols1.Count);
 
             // 扩充至 3 只股票
             mockSource.SymbolsList.Add("sz.000002");
@@ -245,8 +246,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var meta2 = store.ReadMetadata(fieldName);
             Assert.IsNotNull(meta2);
             Assert.AreEqual(3, meta2.Width);
-            Assert.AreEqual(3, meta2.Symbols.Count);
-            Assert.AreEqual("sz.000002", meta2.Symbols[2]);
+            var symbols2 = store.ReadSymbols();
+            Assert.AreEqual(3, symbols2.Count);
+            Assert.AreEqual("sz.000002", symbols2[2]);
         }
 
         [TestMethod]

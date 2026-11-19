@@ -522,12 +522,11 @@ namespace CarrotBacktesting.NET.Data
                 if (deltaRows > 0)
                 {
                     // 1. 批量增量追加具有物理真实时间戳的新行到持久化分块
-                    var datesToCommit = _uncommittedDates.ToArray();
                     _store.AppendRows<T>(
                         _fieldName,
                         deltaRows,
                         (globalRow, destRow) => _matrix.CopyRow(globalRow, 0, destRow),
-                        datesToCommit);
+                        _uncommittedDates);
 
                     _committedRowCount = _totalRows;
                     _uncommittedDates.Clear();
@@ -590,7 +589,7 @@ namespace CarrotBacktesting.NET.Data
                     {
                         if (meta!.RowCount >= totalDays)
                         {
-                            if (_metadata.Symbols.Count > meta.Symbols.Count)
+                            if (_metadata.Symbols.Count > meta.Width)
                             {
                                 RefreshActiveChunkForExpandedSymbols(meta);
                             }
@@ -620,7 +619,7 @@ namespace CarrotBacktesting.NET.Data
                     {
                         try
                         {
-                            if (_metadata.Symbols.Count > meta!.Symbols.Count)
+                            if (_metadata.Symbols.Count > meta!.Width)
                             {
                                 RefreshActiveChunkForExpandedSymbols(meta);
                             }
@@ -694,13 +693,14 @@ namespace CarrotBacktesting.NET.Data
             int activeRows = Math.Min(_pageSize, meta.RowCount - startRow);
             int newWidth = _metadata.Symbols.Count;
 
-            T[][] activeData = new T[newWidth][];
+            int totalElements = newWidth * activeRows;
+            T[] flatBuffer = ArrayPool<T>.Shared.Rent(totalElements);
             try
             {
                 for (int c = 0; c < newWidth; c++)
                 {
-                    activeData[c] = ArrayPool<T>.Shared.Rent(activeRows);
-                    _source.ReadSymbolSeries(_metadata.Symbols[c], _fieldName, startRow, activeRows, activeData[c].AsSpan(0, activeRows));
+                    Span<T> colSpan = flatBuffer.AsSpan(c * activeRows, activeRows);
+                    _source.ReadSymbolSeries(_metadata.Symbols[c], _fieldName, startRow, activeRows, colSpan);
                 }
 
                 _store.RewriteChunk<T>(
@@ -711,7 +711,7 @@ namespace CarrotBacktesting.NET.Data
                         int r = globalRow - startRow;
                         for (int c = 0; c < newWidth; c++)
                         {
-                            destRow[c] = activeData[c][r];
+                            destRow[c] = flatBuffer[c * activeRows + r];
                         }
                     },
                     newChunkWidth: newWidth,
@@ -719,13 +719,7 @@ namespace CarrotBacktesting.NET.Data
             }
             finally
             {
-                for (int c = 0; c < newWidth; c++)
-                {
-                    if (activeData[c] != null)
-                    {
-                        ArrayPool<T>.Shared.Return(activeData[c]);
-                    }
-                }
+                ArrayPool<T>.Shared.Return(flatBuffer);
             }
         }
 
