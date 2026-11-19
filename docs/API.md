@@ -361,8 +361,11 @@ ReadOnlyColumnView<double> singleStockSeries = provider.GetSeries<double>("close
 ReadOnlyColumnView<double> btcSeries = provider.GetSeries<double>("close", "BTCUSDT");
 ```
 
-### 4. ITimeseriesCache 与 TimeseriesCache
-基于 4096 行分块与原生 LZ4 块压缩的时序二进制持久化存储器抽象与实现。支持分块独立自描述宽度（Variable Width per Bin），在内存载入时根据目标宽度自动拓展列并填充 NaN，仅重刷当前活跃分块，彻底消除历史分块的写放大与无意义存储膨胀。
+### 4. 时序缓存存储体系 (ITimeseriesCache, TimeseriesIndexStore, TimeseriesFieldStore & TimeseriesCache)
+基于 4096 行分块与原生 LZ4 块压缩的时序二进制持久化存储体系。采用单一职责与分层隔离设计：
+- **TimeseriesIndexStore**：专职负责表级双标尺索引（`symbols.idx` 纯文本标的代码词表与 `time.idx` 纯二进制 8 字节 `MarketTime` 绝对时间戳轴）的单一事实维护、原子写入、前缀单调扩充与幂等保护；
+- **TimeseriesFieldStore**：专职负责单字段特征分块文件（`chunk_{i}.bin`）与自描述元数据（`meta.json`）的存储管理、LZ4 高速块流式解包、单字段私有锁隔离与列自动拓宽；
+- **TimeseriesCache**：统一精炼门面（Facade），编排 `TimeseriesIndexStore` 与 `TimeseriesFieldStore`，完整实现 `ITimeseriesCache` 契约。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
@@ -394,12 +397,39 @@ public interface ITimeseriesCache
     void AppendTradeDates(IReadOnlyList<MarketTime> newTradeDates, int targetRowCount = -1);
 }
 
-public class TimeseriesCache : ITimeseriesCache
+public class TimeseriesIndexStore
 {
     public const string SymbolsIndexFileName = "symbols.idx";
     public const string TimeIndexFileName = "time.idx";
+    public TimeseriesIndexStore(string storeRoot, string tableId);
+    public IReadOnlyList<string> ReadSymbols();
+    public void WriteSymbols(IReadOnlyList<string> symbols);
+    public IReadOnlyList<MarketTime> ReadTradeDates();
+    public void WriteTradeDates(IReadOnlyList<MarketTime> tradeDates);
+    public void AppendTradeDates(IReadOnlyList<MarketTime> newTradeDates, int targetRowCount = -1);
+    public void ClearTable();
+}
+
+public class TimeseriesFieldStore
+{
+    public TimeseriesFieldStore(string storeRoot, string tableId, string fieldName, int pageSize, string compression, TimeseriesIndexStore indexStore);
+    public bool HasField();
+    public TimeseriesMetadata? ReadMetadata();
+    public void SaveMetadata(TimeseriesMetadata meta);
+    public bool IsCompatible(IReadOnlyList<string> expectedSymbols, Type expectedType, out TimeseriesMetadata? metadata);
+    public ChunkMatrix2D<T> LoadMatrix<T>(int? targetWidth = null) where T : unmanaged;
+    public void WriteMatrix<T>(ChunkMatrix2D<T> matrix, IReadOnlyList<string> symbols, IReadOnlyList<MarketTime> tradeDates) where T : unmanaged;
+    public void AppendRows<T>(int deltaRows, Action<int, Span<T>> rowProvider, IReadOnlyList<MarketTime> newTradeDates) where T : unmanaged;
+    public void RewriteChunk<T>(int pageIndex, Action<int, Span<T>> rowProvider, int? newChunkWidth = null, IReadOnlyList<string>? updatedSymbols = null) where T : unmanaged;
+    public bool TryReadChunk<T>(int pageIndex, Span<T> destination, out int rowsRead) where T : unmanaged;
+    public void Clear();
+}
+
+public class TimeseriesCache : ITimeseriesCache
+{
+    public TimeseriesIndexStore IndexStore { get; }
+    public TimeseriesFieldStore GetFieldStore(string fieldName);
     public TimeseriesCache(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4");
-    // (实现 ITimeseriesCache 契约)
 }
 ```
 

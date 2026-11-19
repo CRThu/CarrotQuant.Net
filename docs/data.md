@@ -74,14 +74,21 @@ Row N-1 [ val ]     [ val ]    ...     [ val ]
 - **标准哨兵填充**：物理缺失的单元格（停牌、未上市或退市）统一填充 IEEE 754 标准 `NaN`（整型使用 `long.MinValue` / `int.MinValue` 作为哨兵）；
 - **停牌前置契约**：回测系统绝不在底层隐式猜数据或执行向前沿用（`ffill`）。停牌价格沿用必须由上游 ETL 宽表明确处理，数据层严格反映物理数据真相。
 
-### 3. 分块持久化缓存与轮转调度 (TimeseriesCache & TimeseriesCacheManager)
-- **4096 行物理分块与 LZ4 块压缩**：针对长周期大体量数据，`TimeseriesCache` 将时序按 4096 行切块（Bin），每个分块独立自描述其包含的列宽（Variable Width per Bin）；
-- **表级双标尺索引解耦 (symbols.idx & time.idx)**：
-  - **列标尺 (`symbols.idx`)**：全表共享一份纯文本股票代码词表，物理行号严格对应矩阵列索引（Column Index），消除多字段冗余；
-  - **行标尺 (`time.idx`)**：全表共享一份纯二进制绝对时间戳索引（每个条目为 8 字节 `MarketTime` 标量），物理偏移严格对应行索引（Row Index），支持零拷贝快速载入与零 GC 分配；
+### 3. 分块持久化缓存与双标尺存储体系 (TimeseriesCache & Sub-stores)
+针对长周期全市场海量时序，CarrotQuant 采用分层解耦的二进制持久化存储体系：
+- **表级双标尺存储器 (`TimeseriesIndexStore`)**：
+  - **列标尺 (`symbols.idx`)**：全表唯一纯文本股票代码词表，物理行号严格对应矩阵列索引（Column Index），消除多字段冗余；
+  - **行标尺 (`time.idx`)**：全表唯一纯二进制绝对时间戳索引（每个条目为 8 字节 `MarketTime` 标量），物理偏移严格对应行索引（Row Index），支持零拷贝快速载入与零 GC 分配；
+  - **单调扩充与幂等安全**：内部由私有表锁保护，写入时严格校验前缀单调扩充与子集包含，杜绝破坏性覆盖与代码错位；
+- **单字段分块存储器 (`TimeseriesFieldStore`)**：
+  - **4096 行物理分块与 LZ4 块压缩**：将时序特征按 4096 行切块（Bin，`chunk_{i}.bin`），每个分块独立自描述其包含的列宽（Variable Width per Bin）；
   - **特征元数据瘦身 (`meta.json`)**：各字段仅维护核心物理块属性（`row_count`, `width`, `page_size`, `compression`, `chunk_widths`），体积小于 200 字节，微秒级反序列化；
-- **零写放大增量追加**：在实盘或增量回测中，调用 `AppendRow` 追加数据时，仅当前活跃分块标记为脏并执行磁盘落盘（`Commit`），时间戳直接增量追加至表级 `time.idx`，历史已固化的分块保持只读，彻底消除全量重写带来的写放大；
-- **动态列宽自动拓展**：当新增标的接入时，旧分块载入内存后自动补齐新列宽并填充 NaN，存储空间零膨胀。
+  - **字段级实例锁隔离**：各特征字段拥有独立的私有锁，实现跨字段分块加载与磁盘 I/O 的完全并发，零跨字段锁争用；
+  - **动态列宽自动拓展**：当新增标的接入时，旧分块载入内存后自动补齐新列宽并填充 NaN，存储空间零膨胀；
+- **统一门面管理器 (`TimeseriesCache`)**：
+  - 作为面向外部的 Facade，完整实现 `ITimeseriesCache` 契约，对内无缝编排 `TimeseriesIndexStore` 与 `TimeseriesFieldStore`；
+- **分块调度器 (`TimeseriesCacheManager<T>`)**：
+  - 遵循迪米特法则，纯粹面向 `ITimeseriesCache` 编程，管理非托管连续内存矩阵与磁盘分块持久化存储间的挂载预读、实盘追加与无写放大的增量提交（`Commit`）。
 
 ### 4. 时序注册表与 CQRS 读写分离 (TimeseriesRegistry & ITimeseriesScheduler)
 `TimeseriesRegistry` 是时序子系统的聚合核心，采用 CQRS（命令查询职责分离）与接口隔离（ISP）原则：
