@@ -28,7 +28,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string testSymbol = "sh.600000";
 
             // 1. 物理读取 CSV 数据，建立物理基准字典
-            var physicalData = new Dictionary<DateTime, double>();
+            var physicalData = new Dictionary<MarketTime, double>();
             var tableDir = Path.Combine(csvRoot, tableId);
             var yearDirs = Directory.GetDirectories(tableDir, "year=*");
 
@@ -43,22 +43,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
                 while (csvReader.Read())
                 {
-                    DateTime date = DateTime.MinValue;
-                    if (csvReader.GetFieldType(dateCol) == typeof(DateTime))
-                    {
-                        date = csvReader.GetDateTime(dateCol).Date;
-                    }
-                    else
-                    {
-                        string dtStr = csvReader.GetString(dateCol);
-                        if (DateTime.TryParse(dtStr, out var parsedDate))
-                        {
-                            date = parsedDate;
-                        }
-                    }
-
+                    MarketTime date = csvReader.ParseTime(dateCol);
                     double close = csvReader.GetDouble(closeCol);
-                    if (date != DateTime.MinValue)
+                    if (date != MarketTime.MinValue)
                     {
                         physicalData[date] = close;
                     }
@@ -82,7 +69,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 3. 逐交易日对比物理数值
             foreach (var kvp in physicalData)
             {
-                DateTime date = kvp.Key;
+                MarketTime date = kvp.Key;
                 double physicalVal = kvp.Value;
 
                 int dateIdx = source.GetDateIndex(date);

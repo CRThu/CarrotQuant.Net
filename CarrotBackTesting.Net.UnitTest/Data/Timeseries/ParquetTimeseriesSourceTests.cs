@@ -32,7 +32,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string testSymbol = "sh.600000";
 
             // 1. 物理读取年度 Parquet 数据，建立物理基准
-            var physicalData = new Dictionary<DateTime, double>();
+            var physicalData = new Dictionary<MarketTime, double>();
             var tableDir = Path.Combine(parquetRoot, tableId);
             var yearDirs = Directory.GetDirectories(tableDir, "year=*");
 
@@ -73,7 +73,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                         {
                             if (symDef[idx] > 0 && symArr[idx].Span.Equals(testSymbol.AsSpan(), StringComparison.OrdinalIgnoreCase))
                             {
-                                if (dtDef[idx] > 0 && DateTime.TryParse(dtArr[idx].Span, out var rowDate))
+                                if (dtDef[idx] > 0 && MarketTime.TryParse(dtArr[idx].Span, sourceTimeZone: null, out var rowDate))
                                 {
                                     physicalData[rowDate] = closeArr[idx];
                                 }
@@ -101,7 +101,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 3. 逐个交易日对比数据值
             foreach (var kvp in physicalData)
             {
-                DateTime date = kvp.Key;
+                MarketTime date = kvp.Key;
                 double physicalVal = kvp.Value;
 
                 int dateIdx = source.GetDateIndex(date);
