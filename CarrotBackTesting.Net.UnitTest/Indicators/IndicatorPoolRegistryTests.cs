@@ -154,8 +154,12 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var mockTimeseries = new FakeTimeseries(meta);
             var context = new EngineContext(mockTimeseries, mockBroker);
 
-            context.UpdateStep(0, DateTime.UtcNow);
-            pool.Step(context);
+            // Warmup (确保 Tier 1 JIT 编译稳定完成)
+            for (int w = 0; w < 50; w++)
+            {
+                context.UpdateStep(w, DateTime.UtcNow);
+                pool.Step(context);
+            }
 
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 1000; i++)
@@ -178,9 +182,12 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var mockTimeseries = new FakeTimeseries(meta);
             var context = new EngineContext(mockTimeseries, mockBroker, indicators: registry);
 
-            // Warmup
-            context.UpdateStep(0, DateTime.UtcNow);
-            registry.Step(context);
+            // Warmup (确保 Tier 1 JIT 编译稳定完成)
+            for (int w = 0; w < 50; w++)
+            {
+                context.UpdateStep(w, DateTime.UtcNow);
+                registry.Step(context);
+            }
 
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 1000; i++)

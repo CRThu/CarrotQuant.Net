@@ -278,7 +278,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 批量读取 RowGroup 中的日期列并转换为统一的 DateTime 数组（截断至 Date 精度）。
+        /// 批量读取 RowGroup 中的日期/时间列并转换为统一的 DateTime 数组（保真保留时间精度）。
         /// 自动适配 DateTime、DateTimeOffset、long（毫秒时间戳）以及文本日期。
         /// 默认严禁 NULL 值；除非字段显式在 nullableFields 集合中声明，否则一旦检测到 NULL 立即抛出详细诊断异常。
         /// </summary>
@@ -324,7 +324,7 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (!isNullable || def[i] > 0)
                     {
-                        dates[i] = dtArr[valIdx++].Date;
+                        dates[i] = dtArr[valIdx++];
                     }
                     else
                     {
@@ -346,7 +346,7 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (!isNullable || def[i] > 0)
                     {
-                        dates[i] = dtoArr[valIdx++].DateTime.Date;
+                        dates[i] = dtoArr[valIdx++].DateTime;
                     }
                     else
                     {
@@ -368,7 +368,7 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (!isNullable || def[i] > 0)
                     {
-                        dates[i] = DateTimeOffset.FromUnixTimeMilliseconds(tsArr[valIdx++]).DateTime.Date;
+                        dates[i] = DateTimeOffset.FromUnixTimeMilliseconds(tsArr[valIdx++]).DateTime;
                     }
                     else
                     {
@@ -387,7 +387,7 @@ namespace CarrotBacktesting.NET.Data
                 {
                     if (!string.IsNullOrEmpty(strArr[i]) && DateTime.TryParse(strArr[i], CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
                     {
-                        dates[i] = dt.Date;
+                        dates[i] = dt;
                     }
                     else
                     {

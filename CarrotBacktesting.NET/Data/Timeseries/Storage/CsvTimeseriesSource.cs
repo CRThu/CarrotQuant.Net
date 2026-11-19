@@ -14,42 +14,71 @@ namespace CarrotBacktesting.NET.Data
     public class CsvTimeseriesSource : TimeseriesSourceBase
     {
         /// <summary>
+        /// 是否检测到物理数据按时间截面交错或单文件多标的混杂存放。
+        /// 该模式下按标的抽取会多次扫描文本，性能受限。
+        /// </summary>
+        public bool IsInterleaved { get; private set; }
+
+        /// <summary>
         /// 核心构造函数，接收不可变表元数据与统一调度器。
         /// </summary>
         public CsvTimeseriesSource(TableMetadata metadata, IStorageResolver resolver, DateTime? startDate = null, DateTime? endDate = null, string? timeZone = null)
             : base(metadata, resolver, startDate, endDate, timeZone)
         {
-            // 1. 扫描可用股票代码，直通委托给调度器解析符合时间区间的物理文件
             var symbolSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var dateSet = new HashSet<DateTime>();
             var csvFiles = _resolver.ResolvePhysicalFiles(_metadata, null, _startDate, _endDate);
+            bool hasInternalSymbols = false;
+
             foreach (var file in csvFiles)
             {
-                string sym = Path.GetFileNameWithoutExtension(file);
-                if (!sym.Equals("data", StringComparison.OrdinalIgnoreCase))
-                {
-                    symbolSet.Add(sym);
-                }
-            }
+                if (!File.Exists(file)) continue;
 
-            // 若文件名均为 data（即 partition: "none" 单文件多标的存储），则通过流式读取 symbol 列提取标的并集
-            if (symbolSet.Count == 0 && csvFiles.Count > 0)
-            {
-                foreach (var file in csvFiles)
+                using var reader = CsvDataReader.Create(file);
+                int symColIdx = reader.FindColumn(DefaultDataColumns.SymbolCandidates);
+                int dateColIdx = reader.FindColumn(DefaultDataColumns.TimeCandidates);
+
+                if (symColIdx >= 0)
                 {
-                    if (!File.Exists(file)) continue;
-                    using var reader = CsvDataReader.Create(file);
-                    int symColIdx = reader.FindColumn(DefaultDataColumns.SymbolCandidates);
-                    if (symColIdx >= 0)
+                    hasInternalSymbols = true;
+                    while (reader.Read())
+                    {
+                        if (!reader.IsDBNull(symColIdx))
+                        {
+                            string sym = reader.GetString(symColIdx);
+                            if (!string.IsNullOrWhiteSpace(sym))
+                            {
+                                symbolSet.Add(sym);
+                            }
+                        }
+
+                        if (dateColIdx >= 0)
+                        {
+                            DateTime dt = reader.ParseDate(dateColIdx, _sourceTimeZone);
+                            if (dt != DateTime.MinValue)
+                            {
+                                dateSet.Add(dt);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // 内部无 symbol 列：权威从文件名提取标的代码（如 sh.600000.csv -> sh.600000）
+                    string sym = Path.GetFileNameWithoutExtension(file);
+                    if (!string.IsNullOrWhiteSpace(sym))
+                    {
+                        symbolSet.Add(sym);
+                    }
+
+                    if (dateColIdx >= 0)
                     {
                         while (reader.Read())
                         {
-                            if (!reader.IsDBNull(symColIdx))
+                            DateTime dt = reader.ParseDate(dateColIdx, _sourceTimeZone);
+                            if (dt != DateTime.MinValue)
                             {
-                                string sym = reader.GetString(symColIdx);
-                                if (!string.IsNullOrWhiteSpace(sym))
-                                {
-                                    symbolSet.Add(sym);
-                                }
+                                dateSet.Add(dt);
                             }
                         }
                     }
@@ -57,26 +86,13 @@ namespace CarrotBacktesting.NET.Data
             }
 
             _symbols = symbolSet.OrderBy(s => s).ToList();
-
-            // 2. 扫描所有交易日，取并集并排序（利用 Sylvan 高速解析）
-            var dateSet = new HashSet<DateTime>();
-            foreach (var file in csvFiles)
-            {
-                using var reader = CsvDataReader.Create(file);
-                int dateColIdx = reader.FindColumn(DefaultDataColumns.TimeCandidates);
-                if (dateColIdx == -1) continue;
-
-                while (reader.Read())
-                {
-                    DateTime dt = reader.ParseDate(dateColIdx, _sourceTimeZone);
-                    if (dt != DateTime.MinValue)
-                    {
-                        dateSet.Add(dt);
-                    }
-                }
-            }
-
             _tradeDates = dateSet.OrderBy(d => d).ToList();
+
+            if (hasInternalSymbols && _symbols.Count > 1)
+            {
+                IsInterleaved = true;
+                Console.WriteLine($"[WARN] CSV 时序数据表 '{_tableId}' 检测到单文件内混存多标的 (共 {_symbols.Count} 标的)。按标的抽取将反复全量扫描文本，存在 O(N*Rows) 性能开销。强烈建议上游拆分为 {{symbol}}.csv 或转换为 Parquet 格式。");
+            }
         }
 
         /// <inheritdoc />
@@ -104,9 +120,13 @@ namespace CarrotBacktesting.NET.Data
                 int fieldColIdx = reader.FindColumn(fieldName);
                 if (fieldColIdx == -1) continue;
 
+                // 仅当明确检测到单文件多标的混杂交错时，才开启内部行级标的过滤；
+                // 正常分标的文件 (IsInterleaved == false) 彻底跳过比对，零字符串分配与判定开销
+                bool needSymbolFilter = IsInterleaved && symColIdx >= 0;
+
                 while (reader.Read())
                 {
-                    if (symColIdx >= 0)
+                    if (needSymbolFilter)
                     {
                         string rowSym = reader.GetString(symColIdx);
                         if (!rowSym.Equals(symbol, StringComparison.OrdinalIgnoreCase))

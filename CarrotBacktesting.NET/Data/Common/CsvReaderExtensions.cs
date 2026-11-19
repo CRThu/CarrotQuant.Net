@@ -78,7 +78,7 @@ namespace CarrotBacktesting.NET.Data
                         ? TimeZoneInfo.ConvertTimeToUtc(dtVal, sourceTimeZone)
                         : dtVal.ToUniversalTime();
                 }
-                return dtVal.Date;
+                return dtVal;
             }
 
             if (fieldType == typeof(long))
@@ -86,7 +86,7 @@ namespace CarrotBacktesting.NET.Data
                 long tsVal = reader.GetInt64(colIdx);
                 return sourceTimeZone != null
                     ? DateTimeOffset.FromUnixTimeMilliseconds(tsVal).UtcDateTime
-                    : DateTimeOffset.FromUnixTimeMilliseconds(tsVal).DateTime.Date;
+                    : DateTimeOffset.FromUnixTimeMilliseconds(tsVal).DateTime;
             }
 
             string dtStr = reader.GetString(colIdx);
@@ -96,7 +96,7 @@ namespace CarrotBacktesting.NET.Data
             {
                 return sourceTimeZone != null
                     ? DateTimeOffset.FromUnixTimeMilliseconds(ts).UtcDateTime
-                    : DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime.Date;
+                    : DateTimeOffset.FromUnixTimeMilliseconds(ts).DateTime;
             }
 
             DateTime parsed;
@@ -120,7 +120,7 @@ namespace CarrotBacktesting.NET.Data
                     : parsed.ToUniversalTime();
             }
 
-            return parsed.Date;
+            return parsed;
         }
 
         /// <summary>
@@ -160,7 +160,10 @@ namespace CarrotBacktesting.NET.Data
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static T Read(CsvDataReader reader, int colIdx)
             {
-                if (colIdx < 0 || reader.IsDBNull(colIdx)) return default;
+                if (colIdx < 0 || reader.IsDBNull(colIdx)) return MarketDataAligner.GetNaNValue<T>();
+
+                ReadOnlySpan<char> span = reader.GetFieldSpan(colIdx);
+                if (span.IsEmpty || span.IsWhiteSpace()) return MarketDataAligner.GetNaNValue<T>();
 
                 if (typeof(T) == typeof(double)) { double val = reader.GetDouble(colIdx); return Unsafe.As<double, T>(ref val); }
                 if (typeof(T) == typeof(float)) { float val = reader.GetFloat(colIdx); return Unsafe.As<float, T>(ref val); }
@@ -175,7 +178,7 @@ namespace CarrotBacktesting.NET.Data
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private static T ParseValueFallback(string? valStr)
             {
-                if (string.IsNullOrWhiteSpace(valStr)) return default;
+                if (string.IsNullOrWhiteSpace(valStr)) return MarketDataAligner.GetNaNValue<T>();
                 try
                 {
                     object converted = Convert.ChangeType(valStr, typeof(T), CultureInfo.InvariantCulture);
@@ -183,7 +186,7 @@ namespace CarrotBacktesting.NET.Data
                 }
                 catch
                 {
-                    return default;
+                    return MarketDataAligner.GetNaNValue<T>();
                 }
             }
         }

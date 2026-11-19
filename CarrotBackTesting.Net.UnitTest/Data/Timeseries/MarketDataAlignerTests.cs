@@ -80,6 +80,32 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
+        public void TestAlignAndFill_IntradayMinutes_MissingMinutes_StrictlyFillsNaN()
+        {
+            var t0 = new DateTime(2025, 1, 6, 9, 30, 0);
+            var t1 = new DateTime(2025, 1, 6, 9, 31, 0);
+            var t2 = new DateTime(2025, 1, 6, 9, 32, 0);
+
+            var globalDates = new List<DateTime> { t0, t1, t2 };
+            // t1 分钟缺失（停牌/无成交）
+            var recordDates = new[] { t0, t2 };
+            var recordValues = new[] { 10.0, 10.2 };
+            double[] destination = new double[3];
+
+            MarketDataAligner.AlignAndFill(
+                globalDates,
+                0,
+                3,
+                recordDates,
+                recordValues,
+                destination);
+
+            Assert.AreEqual(10.0, destination[0], 1e-4);
+            Assert.IsTrue(double.IsNaN(destination[1]), "缺失的分钟时间步必须严格填充为 NaN");
+            Assert.AreEqual(10.2, destination[2], 1e-4);
+        }
+
+        [TestMethod]
         public void TestAlignAndFill_EmptyRecords_StrictlyFillsNaN()
         {
             var globalDates = new List<DateTime> { new(2025, 1, 6), new(2025, 1, 7) };

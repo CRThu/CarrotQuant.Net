@@ -99,11 +99,11 @@ namespace CarrotBacktesting.NET.Data
                 return;
             }
 
-            DateTime windowStartDate = globalTradeDates[startIndex].Date;
+            DateTime windowStartDate = globalTradeDates[startIndex];
             int rawIdx = 0;
 
             // 快速跳过窗口起始日之前的历史记录
-            while (rawIdx < recordDates.Length && recordDates[rawIdx].Date < windowStartDate)
+            while (rawIdx < recordDates.Length && recordDates[rawIdx] < windowStartDate)
             {
                 rawIdx++;
             }
@@ -111,15 +111,15 @@ namespace CarrotBacktesting.NET.Data
             // 双游标流式扫描日历
             for (int i = 0; i < length && rawIdx < recordDates.Length; i++)
             {
-                DateTime curDate = globalTradeDates[startIndex + i].Date;
+                DateTime curDate = globalTradeDates[startIndex + i];
 
                 // 跳过非交易日杂质行或重复记录
-                while (rawIdx < recordDates.Length && recordDates[rawIdx].Date < curDate)
+                while (rawIdx < recordDates.Length && recordDates[rawIdx] < curDate)
                 {
                     rawIdx++;
                 }
 
-                if (rawIdx < recordDates.Length && recordDates[rawIdx].Date == curDate)
+                if (rawIdx < recordDates.Length && recordDates[rawIdx] == curDate)
                 {
                     destination[i] = recordValues[rawIdx++];
                 }

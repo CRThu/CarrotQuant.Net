@@ -79,6 +79,11 @@ namespace CarrotBacktesting.NET.Data
         /// 仅刷写活跃分块，历史分块物理零触碰。
         /// </summary>
         void Commit();
+
+        /// <summary>
+        /// 确保该字段的时序数据已完成连续多块挂载或全量加载。
+        /// </summary>
+        void EnsureLoaded();
     }
 
     /// <summary>

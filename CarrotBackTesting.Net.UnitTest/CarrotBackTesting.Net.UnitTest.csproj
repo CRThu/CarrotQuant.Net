@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CarrotBacktesting.NET\CarrotBacktesting.NET.csproj" />
+    <ProjectReference Include="..\CarrotBacktesting.NET.CLI\CarrotBacktesting.NET.CLI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

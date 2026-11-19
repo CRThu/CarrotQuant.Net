@@ -63,3 +63,11 @@ __pycache__/
 
 /verify/summary/*
 carrotquant.data/
+
+# BenchmarkDotNet 基准测试产物
+BenchmarkDotNet.Artifacts/
+**/BenchmarkDotNet.Artifacts/
+
+# CarrotQuant 本地分块缓存与报表输出
+.cache/
+**/.cache/

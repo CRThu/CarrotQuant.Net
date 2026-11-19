@@ -118,9 +118,39 @@ namespace CarrotBacktesting.NET.Data
             {
                 int count = ReadRawSeriesFromFile(symbol, fieldName, minDate, maxDate, ref rawDates, ref rawValues);
 
-                if (count > 1 && rawDates[0] > rawDates[count - 1])
+                if (count > 1)
                 {
-                    Array.Sort(rawDates, rawValues, 0, count);
+                    bool isSorted = true;
+                    for (int i = 1; i < count; i++)
+                    {
+                        if (rawDates[i] < rawDates[i - 1])
+                        {
+                            isSorted = false;
+                            break;
+                        }
+
+                        if (rawDates[i] == rawDates[i - 1] &&
+                            !EqualityComparer<T>.Default.Equals(rawValues[i], rawValues[i - 1]))
+                        {
+                            throw new InvalidDataException(
+                                $"标的 '{symbol}' 在时间戳 {rawDates[i]:yyyy-MM-dd HH:mm:ss.fff} 存在冲突的重复记录 ({rawValues[i - 1]} vs {rawValues[i]})，数据完整性损坏，严禁隐式覆盖。");
+                        }
+                    }
+
+                    if (!isSorted)
+                    {
+                        Array.Sort(rawDates, rawValues, 0, count);
+
+                        for (int i = 1; i < count; i++)
+                        {
+                            if (rawDates[i] == rawDates[i - 1] &&
+                                !EqualityComparer<T>.Default.Equals(rawValues[i], rawValues[i - 1]))
+                            {
+                                throw new InvalidDataException(
+                                    $"标的 '{symbol}' 在时间戳 {rawDates[i]:yyyy-MM-dd HH:mm:ss.fff} 存在冲突的重复记录 ({rawValues[i - 1]} vs {rawValues[i]})，数据完整性损坏，严禁隐式覆盖。");
+                            }
+                        }
+                    }
                 }
 
                 // 统一通过 MarketDataAligner 完成全局日历投影，物理缺失天然填充标准 NaN / 哨兵

@@ -55,7 +55,7 @@ namespace CarrotBacktesting.NET.Data
                 ? new HashSet<string>(config.NullableFields, StringComparer.OrdinalIgnoreCase)
                 : null;
             var source = TimeseriesSourceFactory.Create(resolver, config.TableId, startDate, endDate, config.TimeZone, nullableFields);
-            return new TimeseriesRegistry(
+            var registry = new TimeseriesRegistry(
                 source,
                 resolver.StorageRoot,
                 pageSize: config.PageSize,
@@ -68,6 +68,20 @@ namespace CarrotBacktesting.NET.Data
                 prefetch: config.Prefetch,
                 isLive: isLive,
                 ownsSource: true);
+
+            // 依据 YAML / Config 显式声明的 Fields 清单确保首批分块完成载入
+            if (config.Fields != null && config.Fields.Count > 0)
+            {
+                foreach (var field in config.Fields)
+                {
+                    if (registry.HasField(field))
+                    {
+                        registry.GetCacheManager(field).EnsureLoaded();
+                    }
+                }
+            }
+
+            return registry;
         }
 
         /// <summary>

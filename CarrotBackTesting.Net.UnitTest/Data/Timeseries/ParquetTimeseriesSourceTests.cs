@@ -75,7 +75,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                             {
                                 if (dtDef[idx] > 0 && DateTime.TryParse(dtArr[idx].Span, out var rowDate))
                                 {
-                                    physicalData[rowDate.Date] = closeArr[idx];
+                                    physicalData[rowDate] = closeArr[idx];
                                 }
                             }
                         }
@@ -639,6 +639,354 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes);
                 Assert.AreEqual(20.0, closes[0], 1e-4);
                 Assert.AreEqual(21.0, closes[1], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        public class KlineTimeSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime Date { get; set; }
+            public double Close { get; set; }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_IntradayMinuteData_MultiSymbolPreservesTimestampsAndValues()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_minute_multi_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                var t0 = new DateTime(2025, 1, 6, 9, 30, 0);
+                var t1 = new DateTime(2025, 1, 6, 9, 31, 0);
+                var t2 = new DateTime(2025, 1, 6, 9, 32, 0);
+
+                // sh.600000 全量 3 个分钟；sz.000001 在 t1 缺失停牌
+                var samples = new List<KlineTimeSample>
+                {
+                    new() { Symbol = "sh.600000", Date = t0, Close = 10.0 },
+                    new() { Symbol = "sh.600000", Date = t1, Close = 10.1 },
+                    new() { Symbol = "sh.600000", Date = t2, Close = 10.2 },
+                    new() { Symbol = "sz.000001", Date = t0, Close = 20.0 },
+                    new() { Symbol = "sz.000001", Date = t2, Close = 20.2 }
+                };
+
+                string tableId = "ashare.kline.1m";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+                using (var fs = File.Create(Path.Combine(tableDir, "data.parquet")))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "Close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+
+                // 1. 验证全局多分钟时间轴完整保留
+                Assert.AreEqual(3, source.TradeDates.Count);
+                Assert.AreEqual(t0, source.TradeDates[0]);
+                Assert.AreEqual(t1, source.TradeDates[1]);
+                Assert.AreEqual(t2, source.TradeDates[2]);
+
+                // 2. 验证多标的识别
+                Assert.AreEqual(2, source.Symbols.Count);
+                Assert.IsTrue(source.Symbols.Contains("sh.600000"));
+                Assert.IsTrue(source.Symbols.Contains("sz.000001"));
+
+                // 3. 验证第一只股票数值准确对齐
+                double[] closes1 = new double[3];
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 3, closes1);
+                Assert.AreEqual(10.0, closes1[0], 1e-4);
+                Assert.AreEqual(10.1, closes1[1], 1e-4);
+                Assert.AreEqual(10.2, closes1[2], 1e-4);
+
+                // 4. 验证第二只股票在缺失分钟 t1 严格填补 NaN，其余数值严格对齐
+                double[] closes2 = new double[3];
+                source.ReadSymbolSeries("sz.000001", "Close", 0, 3, closes2);
+                Assert.AreEqual(20.0, closes2[0], 1e-4);
+                Assert.IsTrue(double.IsNaN(closes2[1]), "缺失分钟步必须严格填充为 NaN");
+                Assert.AreEqual(20.2, closes2[2], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_DailyData_WithNoSpecialSuffix_BuildsCalendarAndValuesAccurately()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_daily_nosuffix_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                var d0 = new DateTime(2025, 1, 6);
+                var d1 = new DateTime(2025, 1, 7);
+                var d2 = new DateTime(2025, 1, 8);
+
+                var samples = new List<KlineTimeSample>
+                {
+                    new() { Symbol = "sh.600000", Date = d0, Close = 10.0 },
+                    new() { Symbol = "sh.600000", Date = d1, Close = 11.0 },
+                    new() { Symbol = "sh.600000", Date = d2, Close = 12.0 },
+                    new() { Symbol = "sz.000001", Date = d0, Close = 20.0 },
+                    new() { Symbol = "sz.000001", Date = d1, Close = 21.0 },
+                    new() { Symbol = "sz.000001", Date = d2, Close = 22.0 }
+                };
+
+                // 表名使用无任何特化后缀的普通名称，严禁依赖 .1d 或 .day 猜测
+                string tableId = "stock_daily_bars";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+                using (var fs = File.Create(Path.Combine(tableDir, "data.parquet")))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "Close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+
+                // 验证标准连续聚簇存储未触发交错标记
+                Assert.IsFalse(((ParquetTimeseriesSource)source).IsInterleaved);
+
+                // 1. 验证交易日历与零点纯日期守恒
+                Assert.AreEqual(3, source.TradeDates.Count);
+                Assert.AreEqual(d0, source.TradeDates[0]);
+                Assert.AreEqual(d1, source.TradeDates[1]);
+                Assert.AreEqual(d2, source.TradeDates[2]);
+                Assert.AreEqual(TimeSpan.Zero, source.TradeDates[0].TimeOfDay);
+
+                // 2. 验证多标的数值准确提取
+                double[] closes1 = new double[3];
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 3, closes1);
+                Assert.AreEqual(10.0, closes1[0], 1e-4);
+                Assert.AreEqual(11.0, closes1[1], 1e-4);
+                Assert.AreEqual(12.0, closes1[2], 1e-4);
+
+                double[] closes2 = new double[3];
+                source.ReadSymbolSeries("sz.000001", "Close", 0, 3, closes2);
+                Assert.AreEqual(20.0, closes2[0], 1e-4);
+                Assert.AreEqual(21.0, closes2[1], 1e-4);
+                Assert.AreEqual(22.0, closes2[2], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_InterleavedCrossSectionalData_DetectsInterleavedAndExtractsAccurately()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_interleaved_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                var t0 = new DateTime(2025, 1, 6, 9, 30, 0);
+                var t1 = new DateTime(2025, 1, 6, 9, 31, 0);
+
+                // 物理数据按时间截面交叉存放 (ORDER BY datetime, symbol)，同一标的非连续交替出现
+                var samples = new List<KlineTimeSample>
+                {
+                    // T0 截面
+                    new() { Symbol = "sh.600000", Date = t0, Close = 10.0 },
+                    new() { Symbol = "sz.000001", Date = t0, Close = 20.0 },
+
+                    // T1 截面 (sh.600000 二次交替出现)
+                    new() { Symbol = "sh.600000", Date = t1, Close = 10.1 },
+                    new() { Symbol = "sz.000001", Date = t1, Close = 20.1 }
+                };
+
+                string tableId = "interleaved_kline";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+                using (var fs = File.Create(Path.Combine(tableDir, "data.parquet")))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "Close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+
+                // 1. 验证首次发现交错时即标记性能降级
+                Assert.IsTrue(((ParquetTimeseriesSource)source).IsInterleaved);
+
+                // 2. 验证数据不抛异常，且多标的数据精准完整提取
+                Assert.AreEqual(2, source.Symbols.Count);
+                Assert.AreEqual(2, source.TradeDates.Count);
+
+                double[] closes1 = new double[2];
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes1);
+                Assert.AreEqual(10.0, closes1[0], 1e-4);
+                Assert.AreEqual(10.1, closes1[1], 1e-4);
+
+                double[] closes2 = new double[2];
+                source.ReadSymbolSeries("sz.000001", "Close", 0, 2, closes2);
+                Assert.AreEqual(20.0, closes2[0], 1e-4);
+                Assert.AreEqual(20.1, closes2[1], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_UnsortedTimestamps_AutoSortsAndAlignsAccurately()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_unsorted_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                var t0 = new DateTime(2025, 1, 6, 9, 30, 0);
+                var t1 = new DateTime(2025, 1, 6, 9, 31, 0);
+                var t2 = new DateTime(2025, 1, 6, 9, 32, 0);
+
+                // 物理行记录乱序存放 (T2, T0, T1)
+                var samples = new List<KlineTimeSample>
+                {
+                    new() { Symbol = "sh.600000", Date = t2, Close = 10.2 },
+                    new() { Symbol = "sh.600000", Date = t0, Close = 10.0 },
+                    new() { Symbol = "sh.600000", Date = t1, Close = 10.1 },
+                };
+
+                string tableId = "unsorted_kline";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+                using (var fs = File.Create(Path.Combine(tableDir, "data.parquet")))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "Close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+
+                // 全局日历依然升序
+                Assert.AreEqual(3, source.TradeDates.Count);
+                Assert.AreEqual(t0, source.TradeDates[0]);
+                Assert.AreEqual(t1, source.TradeDates[1]);
+                Assert.AreEqual(t2, source.TradeDates[2]);
+
+                // 提取时应自动原地排序自愈，精准对齐日历网格，绝无假 NaN
+                double[] closes = new double[3];
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 3, closes);
+                Assert.AreEqual(10.0, closes[0], 1e-4);
+                Assert.AreEqual(10.1, closes[1], 1e-4);
+                Assert.AreEqual(10.2, closes[2], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_DuplicateConflictingTimestamps_ThrowsInvalidDataException()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_duplicate_conflict_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                var t0 = new DateTime(2025, 1, 6, 9, 30, 0);
+
+                // 物理行记录在同一时间戳存在两条冲突价格 (10.0 vs 10.5)
+                var samples = new List<KlineTimeSample>
+                {
+                    new() { Symbol = "sh.600000", Date = t0, Close = 10.0 },
+                    new() { Symbol = "sh.600000", Date = t0, Close = 10.5 },
+                };
+
+                string tableId = "duplicate_kline";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+                using (var fs = File.Create(Path.Combine(tableDir, "data.parquet")))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "Close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+                double[] closes = new double[1];
+
+                // 必须抛出 InvalidDataException 阻断脏数据，严禁隐式吞掉或假覆盖
+                var ex = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    source.ReadSymbolSeries("sh.600000", "Close", 0, 1, closes);
+                });
+                StringAssert.Contains(ex.Message, "存在冲突的重复记录");
             }
             finally
             {

@@ -394,7 +394,7 @@ public class TimeseriesCache : ITimeseriesCache
 ### 5. TimeseriesCacheManager<T> 与 TimeseriesRegistry
 时序连续分块状态机与高性能供给门面：
 - **TimeseriesCacheManager<T>**: 单表单字段连续多分块调度器，管理非托管内存矩阵与磁盘分块持久化存储间的分块挂载、实盘单行追加与跨页分块轮转（Rollover，每 4096 行开辟新块），以及精准增量提交（`Commit`，仅落盘活跃分块，历史分块零写放大）。
-- **TimeseriesRegistry**: 满足 `ITimeseriesRegistry` 契约的高性能数据门面。遵循单一职责原则，底层存储与分块工厂完全外包隔离，对内纯粹持有并协调各字段的 `TimeseriesCacheManager`，对外提供只读二维时序矩阵（`GetMatrix<T>`）、分块调度器检索（`GetCacheManager<T>`）与原子落盘（`Commit`）。
+- **TimeseriesRegistry**: 满足 `ITimeseriesRegistry` 契约的高性能数据门面。遵循单一职责原则，底层存储与分块工厂完全外包隔离，对内纯粹持有并协调各字段的 `TimeseriesCacheManager`，对外提供只读二维时序矩阵（`GetMatrix<T>`）、分块调度器检索（`GetCacheManager`）与原子落盘（`Commit`）。
 
 ```csharp
 namespace CarrotBacktesting.NET.Data;
@@ -413,6 +413,7 @@ public sealed class TimeseriesCacheManager<T> : ITimeseriesCacheManager where T 
     public ChunkMatrix2D<T> Matrix { get; }
 
     public IReadOnlyMatrix2D<T> AsReadOnly();
+    public void EnsureLoaded();
     public void StepTo(int currentLogicalRow);
     public void AppendRow(DateTime timestamp, ReadOnlySpan<T> rowValues);
     public void AppendRow(ReadOnlySpan<T> rowValues); // 兼容重载
@@ -428,7 +429,7 @@ public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler, ITi
     public IMarketMetadata Metadata { get; }
     public bool HasField(string fieldName);
     public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
-    public TimeseriesCacheManager<T> GetCacheManager<T>(string fieldName) where T : unmanaged;
+    public ITimeseriesCacheManager GetCacheManager(string fieldName);
     public void StepTo(int currentLogicalRow);
     public void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
     public void AppendCol(string symbol);

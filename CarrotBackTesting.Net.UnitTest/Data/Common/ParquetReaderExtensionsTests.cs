@@ -142,7 +142,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public async Task ReadDateColumn_AllFormats_ShouldTruncateToDatePrecision()
+        public async Task ReadDateColumn_AllFormats_ShouldPreserveFullPrecision()
         {
             var testDate = new DateTime(2025, 6, 18, 14, 30, 45);
             long unixMillis = new DateTimeOffset(2025, 6, 18, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
@@ -176,21 +176,20 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
                 var schema = reader.Schema;
 
-                // 1. DateTime
+                // 1. DateTime 保留完整精度
                 var dtField = schema.FindDataFieldIgnoreCase("DtCol")!;
                 var dates1 = groupReader.ReadDateColumn(dtField, rowCount);
-                Assert.AreEqual(new DateTime(2025, 6, 18), dates1[0]);
-                Assert.AreEqual(TimeSpan.Zero, dates1[0].TimeOfDay);
+                Assert.AreEqual(testDate, dates1[0]);
 
                 // 2. Unix Milliseconds (long)
                 var tsField = schema.FindDataFieldIgnoreCase("UnixMillisCol")!;
                 var dates2 = groupReader.ReadDateColumn(tsField, rowCount);
-                Assert.AreEqual(new DateTime(2025, 6, 18), dates2[0]);
+                Assert.AreEqual(new DateTime(2025, 6, 18, 0, 0, 0), dates2[0]);
 
-                // 3. String Date
+                // 3. String Date 保留完整精度
                 var strDateField = schema.FindDataFieldIgnoreCase("StrDateCol")!;
                 var dates3 = groupReader.ReadDateColumn(strDateField, rowCount);
-                Assert.AreEqual(new DateTime(2025, 6, 18), dates3[0]);
+                Assert.AreEqual(new DateTime(2025, 6, 18, 10, 0, 0), dates3[0]);
                 Assert.AreEqual(DateTime.MinValue, dates3[1], "非法格式日期文本必须安全回退至 DateTime.MinValue");
             }
             finally
@@ -420,7 +419,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 DateTime[] dates = groupReader.ReadDateColumn(dtField, rowCount);
                 Assert.AreEqual(rowCount, dates.Length);
                 Assert.AreEqual(2024, dates[0].Year);
-                Assert.AreEqual(TimeSpan.Zero, dates[0].TimeOfDay); // 确保截断为纯 Date 精度
+                Assert.AreEqual(new TimeSpan(15, 0, 0), dates[0].TimeOfDay); // 保真读取物理文件的真实时间戳精度
             }
             finally
             {

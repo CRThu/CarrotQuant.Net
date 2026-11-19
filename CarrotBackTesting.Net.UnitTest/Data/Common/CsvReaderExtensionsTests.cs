@@ -78,10 +78,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsTrue(reader.Read());
 
             DateTime dtFromDate = reader.ParseDate(0);
-            Assert.AreEqual(new DateTime(2024, 1, 2), dtFromDate);
+            Assert.AreEqual(new DateTime(2024, 1, 2, 9, 30, 0), dtFromDate);
 
             DateTime dtFromTs = reader.ParseDate(1);
-            Assert.AreEqual(new DateTime(2024, 1, 2), dtFromTs);
+            Assert.AreEqual(new DateTime(2024, 1, 2, 0, 0, 0), dtFromTs);
 
             DateTime dtInvalid = reader.ParseDate(-1);
             Assert.AreEqual(DateTime.MinValue, dtInvalid);
@@ -117,6 +117,38 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(42, reader.ReadValue<int>(3));
             Assert.AreEqual(true, reader.ReadValue<bool>(4));
             Assert.AreEqual((byte)255, reader.ReadValue<byte>(5));
+        }
+
+        [TestMethod]
+        public void ReadValue_NullEmptyAndWhitespace_ReturnsNaNOrSentinel()
+        {
+            // Row 1: 连续逗号表示的空字段 ,,
+            // Row 2: 纯空格表示的空字段 ,   ,
+            string csv = "d,f,l,i,s\n,,,,\n   ,   ,   ,   ,   \n";
+            using var reader = CreateReader(csv);
+
+            // 1. 测试负索引越界安全防护
+            Assert.IsTrue(double.IsNaN(reader.ReadValue<double>(-1)));
+            Assert.IsTrue(float.IsNaN(reader.ReadValue<float>(-1)));
+            Assert.AreEqual(long.MinValue, reader.ReadValue<long>(-1));
+            Assert.AreEqual(int.MinValue, reader.ReadValue<int>(-1));
+            Assert.AreEqual(short.MinValue, reader.ReadValue<short>(-1));
+
+            // 2. 测试首行空字符串字段（IsEmpty 拦截）
+            Assert.IsTrue(reader.Read());
+            Assert.IsTrue(double.IsNaN(reader.ReadValue<double>(0)));
+            Assert.IsTrue(float.IsNaN(reader.ReadValue<float>(1)));
+            Assert.AreEqual(long.MinValue, reader.ReadValue<long>(2));
+            Assert.AreEqual(int.MinValue, reader.ReadValue<int>(3));
+            Assert.AreEqual(short.MinValue, reader.ReadValue<short>(4));
+
+            // 3. 测试次行纯空格空白字段（IsWhiteSpace 拦截）
+            Assert.IsTrue(reader.Read());
+            Assert.IsTrue(double.IsNaN(reader.ReadValue<double>(0)));
+            Assert.IsTrue(float.IsNaN(reader.ReadValue<float>(1)));
+            Assert.AreEqual(long.MinValue, reader.ReadValue<long>(2));
+            Assert.AreEqual(int.MinValue, reader.ReadValue<int>(3));
+            Assert.AreEqual(short.MinValue, reader.ReadValue<short>(4));
         }
     }
 }

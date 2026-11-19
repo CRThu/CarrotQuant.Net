@@ -29,7 +29,7 @@ CarrotQuant.Net 是一个基于 .NET 开发的轻量级、高性能量化交易�
 | **CarrotBacktesting.NET** | **核心引擎**。包含数据层、经纪商与撮合、指标体系、引擎驱动、策略抽象、绩效分析与报表导出。 |
 | **CarrotBackTesting.Net.UnitTest** | **单元测试**。覆盖数据层全部组件，含真实测试数据校验。 |
 | **CarrotBackTesting.NET.TestData** | **测试数据集**。CSV/Parquet 格式的 A 股行情与复权因子数据。 |
-| **CarrotBacktesting.NET.Demo** | **回测示例**。 |
+| **CarrotBacktesting.NET.CLI** | **命令行工具**。支持零代码编译直接以 CLI 运行 YAML 回测会话与报告输出。 |
 
 ---
 

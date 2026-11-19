@@ -152,12 +152,11 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 获取指定字段的分块管理器实例（供实盘时间步推进与高级调度使用）。
+        /// 获取指定字段的非泛型分块调度器实例（供生命周期装配、数据加载与分块管理使用）。
         /// </summary>
-        /// <typeparam name="T">非托管数值类型。</typeparam>
         /// <param name="fieldName">字段名称。</param>
         /// <returns>对应的分块调度器实例。</returns>
-        public TimeseriesCacheManager<T> GetCacheManager<T>(string fieldName) where T : unmanaged
+        public ITimeseriesCacheManager GetCacheManager(string fieldName)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -167,12 +166,7 @@ namespace CarrotBacktesting.NET.Data
             }
 
             var fieldType = _metadata.GetFieldType(fieldName);
-            if (fieldType != typeof(T))
-            {
-                throw new InvalidOperationException($"Type mismatch for field '{fieldName}'. Expected {fieldType}, requested {typeof(T)}.");
-            }
-
-            return (TimeseriesCacheManager<T>)_managers.GetOrAdd(fieldName, name => _managerFactory(name, typeof(T)));
+            return _managers.GetOrAdd(fieldName, name => _managerFactory(name, fieldType));
         }
 
         /// <summary>
@@ -180,7 +174,13 @@ namespace CarrotBacktesting.NET.Data
         /// </summary>
         public void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged
         {
-            var manager = GetCacheManager<T>(fieldName);
+            var fieldType = _metadata.GetFieldType(fieldName);
+            if (fieldType != typeof(T))
+            {
+                throw new InvalidOperationException($"Type mismatch for field '{fieldName}'. Expected {fieldType}, requested {typeof(T)}.");
+            }
+
+            var manager = (TimeseriesCacheManager<T>)GetCacheManager(fieldName);
             manager.AppendRow(timestamp, rowValues);
         }
 

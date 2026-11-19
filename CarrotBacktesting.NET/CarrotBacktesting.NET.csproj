@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="CarrotBackTesting.Net.UnitTest" />
+    <InternalsVisibleTo Include="carrot-benchmark" />
   </ItemGroup>
 
 </Project>

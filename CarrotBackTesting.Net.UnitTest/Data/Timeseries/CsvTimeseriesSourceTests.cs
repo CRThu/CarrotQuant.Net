@@ -53,7 +53,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                         string dtStr = csvReader.GetString(dateCol);
                         if (DateTime.TryParse(dtStr, out var parsedDate))
                         {
-                            date = parsedDate.Date;
+                            date = parsedDate;
                         }
                     }
 
@@ -320,6 +320,358 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 // 纽约时间 09:30:00 EST (UTC-5) 对应 UTC 14:30:00
                 DateTime expectedNyUtc = new DateTime(2025, 1, 2, 14, 30, 0, DateTimeKind.Utc);
                 Assert.AreEqual(expectedNyUtc, registry.Metadata.TradeDates[0]);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public void TestCsvTimeseriesSource_EmptyAndWhitespaceFields_ShouldFillWithNaN()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "CarrotCsvEmptyTest_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string tableId = "empty_fields_table";
+                string tableDir = Path.Combine(tempDir, tableId, "year=2025");
+                Directory.CreateDirectory(tableDir);
+
+                // 第 1 行正常
+                // 第 2 行 close 留空（连续逗号），volume 为纯空格
+                // 第 3 行 close 为纯空格，volume 正常
+                string csvContent = "symbol,datetime,open,high,low,close,volume\n" +
+                                   "\"sh.600000\",\"2025-01-02\",\"10.0\",\"11.0\",\"9.5\",\"10.5\",\"100000\"\n" +
+                                   "\"sh.600000\",\"2025-01-03\",\"10.5\",\"11.5\",\"10.0\",,\"   \"\n" +
+                                   "\"sh.600000\",\"2025-01-06\",\"11.0\",\"12.0\",\"10.5\",\"   \",\"200000\"\n";
+                File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+
+                Assert.AreEqual(1, source.Symbols.Count);
+                Assert.AreEqual(3, source.TradeDates.Count);
+
+                double[] closeDest = new double[3];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 3, closeDest);
+                Assert.AreEqual(10.5, closeDest[0], 1e-4);
+                Assert.IsTrue(double.IsNaN(closeDest[1]), "第 2 行连续逗号留空的 close 必须解析为 NaN");
+                Assert.IsTrue(double.IsNaN(closeDest[2]), "第 3 行纯空格的 close 必须解析为 NaN");
+
+                double[] volDest = new double[3];
+                source.ReadSymbolSeries("sh.600000", "volume", 0, 3, volDest);
+                Assert.AreEqual(100000.0, volDest[0], 1e-4);
+                Assert.IsTrue(double.IsNaN(volDest[1]), "第 2 行纯空格的 volume 必须解析为 NaN");
+                Assert.AreEqual(200000.0, volDest[2], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public void TestCsvTimeseriesSource_IntradayMinuteData_MultiSymbolPreservesTimestampsAndValues()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_csv_minute_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                string tableId = "ashare.kline.1m";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+
+                // CSV 写入日内分钟数据，包含 2 只股票，sz.000001 在 09:31 缺失
+                string csvContent = """
+                datetime,symbol,close,volume
+                2025-01-06 09:30:00,sh.600000,10.0,1000
+                2025-01-06 09:31:00,sh.600000,10.1,1100
+                2025-01-06 09:32:00,sh.600000,10.2,1200
+                2025-01-06 09:30:00,sz.000001,20.0,2000
+                2025-01-06 09:32:00,sz.000001,20.2,2200
+                """;
+                File.WriteAllText(Path.Combine(tableDir, "data.csv"), csvContent);
+
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "csv",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "datetime": "datetime",
+                        "symbol": "string",
+                        "close": "double",
+                        "volume": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+
+                // 1. 验证时间轴完整保真
+                Assert.AreEqual(3, source.TradeDates.Count);
+                Assert.AreEqual(new DateTime(2025, 1, 6, 9, 30, 0), source.TradeDates[0]);
+                Assert.AreEqual(new DateTime(2025, 1, 6, 9, 31, 0), source.TradeDates[1]);
+                Assert.AreEqual(new DateTime(2025, 1, 6, 9, 32, 0), source.TradeDates[2]);
+
+                // 2. 验证多标的
+                Assert.AreEqual(2, source.Symbols.Count);
+
+                // 3. 验证第一只股票全量数值
+                double[] closes1 = new double[3];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 3, closes1);
+                Assert.AreEqual(10.0, closes1[0], 1e-4);
+                Assert.AreEqual(10.1, closes1[1], 1e-4);
+                Assert.AreEqual(10.2, closes1[2], 1e-4);
+
+                // 4. 验证第二只股票在缺失时间步严格填补 NaN
+                double[] closes2 = new double[3];
+                source.ReadSymbolSeries("sz.000001", "close", 0, 3, closes2);
+                Assert.AreEqual(20.0, closes2[0], 1e-4);
+                Assert.IsTrue(double.IsNaN(closes2[1]), "缺失分钟必须填充为 NaN");
+                Assert.AreEqual(20.2, closes2[2], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public void TestCsvTimeseriesSource_DailyData_WithNoSpecialSuffix_BuildsCalendarAndValuesAccurately()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_csv_daily_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                string tableId = "stock_daily_bars";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+
+                string csvContent = """
+                datetime,symbol,close
+                2025-01-06,sh.600000,10.0
+                2025-01-07,sh.600000,11.0
+                2025-01-06,sz.000001,20.0
+                2025-01-07,sz.000001,21.0
+                """;
+                File.WriteAllText(Path.Combine(tableDir, "data.csv"), csvContent);
+
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "csv",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "datetime": "datetime",
+                        "symbol": "string",
+                        "close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+
+                // 1. 验证日历天数与零点纯日期
+                Assert.AreEqual(2, source.TradeDates.Count);
+                Assert.AreEqual(new DateTime(2025, 1, 6), source.TradeDates[0]);
+                Assert.AreEqual(new DateTime(2025, 1, 7), source.TradeDates[1]);
+                Assert.AreEqual(TimeSpan.Zero, source.TradeDates[0].TimeOfDay);
+
+                // 2. 验证多标的数值
+                double[] closes1 = new double[2];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 2, closes1);
+                Assert.AreEqual(10.0, closes1[0], 1e-4);
+                Assert.AreEqual(11.0, closes1[1], 1e-4);
+
+                double[] closes2 = new double[2];
+                source.ReadSymbolSeries("sz.000001", "close", 0, 2, closes2);
+                Assert.AreEqual(20.0, closes2[0], 1e-4);
+                Assert.AreEqual(21.0, closes2[1], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public void CsvTimeseriesSource_SingleFileMultiSymbol_DetectsFlagAndExtractsCorrectly()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_csv_singlefile_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                string tableId = "csv_single_multi";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+
+                // 单文件 data.csv，包含 sh.600000 与 sz.000001 两个标的
+                string csvContent = """
+                symbol,datetime,close
+                sh.600000,2025-01-06,10.0
+                sz.000001,2025-01-06,20.0
+                sh.600000,2025-01-07,11.0
+                sz.000001,2025-01-07,21.0
+                """;
+                File.WriteAllText(Path.Combine(tableDir, "data.csv"), csvContent);
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "csv",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "symbol": "string",
+                        "datetime": "datetime",
+                        "close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+                var csvSource = (CsvTimeseriesSource)source;
+
+                // 验证单文件多标的降级标记触发
+                Assert.IsTrue(csvSource.IsInterleaved);
+                Assert.AreEqual(2, source.Symbols.Count);
+                Assert.AreEqual(2, source.TradeDates.Count);
+
+                double[] closes1 = new double[2];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 2, closes1);
+                Assert.AreEqual(10.0, closes1[0], 1e-4);
+                Assert.AreEqual(11.0, closes1[1], 1e-4);
+
+                double[] closes2 = new double[2];
+                source.ReadSymbolSeries("sz.000001", "close", 0, 2, closes2);
+                Assert.AreEqual(20.0, closes2[0], 1e-4);
+                Assert.AreEqual(21.0, closes2[1], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public void CsvTimeseriesSource_NoSymbolColumn_ExtractsFromFileName_NotInterleaved()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_csv_nosym_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                string tableId = "csv_no_sym_col";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+
+                // 物理文件内部没有 symbol 列，仅有 datetime 和 close，文件名本身即品种代码
+                string csvContent1 = """
+                datetime,close
+                2025-01-06,10.0
+                2025-01-07,11.0
+                """;
+                string csvContent2 = """
+                datetime,close
+                2025-01-06,20.0
+                2025-01-07,21.0
+                """;
+                File.WriteAllText(Path.Combine(tableDir, "sh.600000.csv"), csvContent1);
+                File.WriteAllText(Path.Combine(tableDir, "sz.000001.csv"), csvContent2);
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "csv",
+                    "layout": "flat",
+                    "partition": "symbol",
+                    "schema": {
+                        "datetime": "datetime",
+                        "close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+                var csvSource = (CsvTimeseriesSource)source;
+
+                // 内部无 symbol 列，按文件名隔离，非交错状态
+                Assert.IsFalse(csvSource.IsInterleaved);
+                Assert.AreEqual(2, source.Symbols.Count);
+                Assert.AreEqual("sh.600000", source.Symbols[0]);
+                Assert.AreEqual("sz.000001", source.Symbols[1]);
+                Assert.AreEqual(2, source.TradeDates.Count);
+
+                double[] closes1 = new double[2];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 2, closes1);
+                Assert.AreEqual(10.0, closes1[0], 1e-4);
+                Assert.AreEqual(11.0, closes1[1], 1e-4);
+
+                double[] closes2 = new double[2];
+                source.ReadSymbolSeries("sz.000001", "close", 0, 2, closes2);
+                Assert.AreEqual(20.0, closes2[0], 1e-4);
+                Assert.AreEqual(21.0, closes2[1], 1e-4);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public void CsvTimeseriesSource_NonDataFileName_WithMultiSymbols_CorrectlyIdentifiedAsInterleaved()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_csv_nondata_name_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                string tableId = "csv_custom_filename";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+
+                // 文件名故意不叫 data.csv，而是叫 market_wide_kline.csv
+                string csvContent = """
+                symbol,datetime,close
+                sh.600000,2025-01-06,10.0
+                sz.000001,2025-01-06,20.0
+                sh.600000,2025-01-07,11.0
+                sz.000001,2025-01-07,21.0
+                """;
+                File.WriteAllText(Path.Combine(tableDir, "market_wide_kline.csv"), csvContent);
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "csv",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "symbol": "string",
+                        "datetime": "datetime",
+                        "close": "double"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+                var csvSource = (CsvTimeseriesSource)source;
+
+                // 彻底摆脱对 "data" 文件名的硬编码依赖，依然精准识别交错存储
+                Assert.IsTrue(csvSource.IsInterleaved);
+                Assert.AreEqual(2, source.Symbols.Count);
+
+                double[] closes1 = new double[2];
+                source.ReadSymbolSeries("sh.600000", "close", 0, 2, closes1);
+                Assert.AreEqual(10.0, closes1[0], 1e-4);
+                Assert.AreEqual(11.0, closes1[1], 1e-4);
             }
             finally
             {

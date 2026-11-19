@@ -786,6 +786,49 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             });
             StringAssert.Contains(ex3.Message, "LZ4 decoding failed");
         }
+
+        [TestMethod]
+        public void TestTimeseriesCache_WriteMatrixAndAppend_DailyAndIntradayDateFormatting()
+        {
+            var store = new TimeseriesCache(_tempDir, "table_dates_format", 16, "lz4");
+            var symbols = new[] { "sh.600000" };
+
+            // 1. 验证纯日线 (TimeOfDay == 0) 输出格式为 yyyy-MM-dd
+            var dailyDate = new DateTime(2025, 1, 6);
+            using (var dailyBuffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
+            {
+                dailyBuffer[0, 0] = 10.0;
+                store.WriteMatrix("close_daily", dailyBuffer, symbols, new[] { dailyDate });
+            }
+
+            var dailyMeta = store.ReadMetadata("close_daily");
+            Assert.IsNotNull(dailyMeta);
+            Assert.AreEqual(1, dailyMeta.TradeDates.Count);
+            Assert.AreEqual("2025-01-06", dailyMeta.TradeDates[0]);
+
+            // 2. 验证分钟线/日内 (TimeOfDay != 0) 输出格式为 yyyy-MM-dd HH:mm:ss
+            var minuteDate = new DateTime(2025, 1, 6, 9, 30, 0);
+            using (var minuteBuffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
+            {
+                minuteBuffer[0, 0] = 10.5;
+                store.WriteMatrix("close_minute", minuteBuffer, symbols, new[] { minuteDate });
+            }
+
+            var minuteMeta = store.ReadMetadata("close_minute");
+            Assert.IsNotNull(minuteMeta);
+            Assert.AreEqual(1, minuteMeta.TradeDates.Count);
+            Assert.AreEqual("2025-01-06 09:30:00", minuteMeta.TradeDates[0]);
+
+            // 3. 验证追加带时分秒的新行 (AppendRows)
+            var newMinuteDate = new DateTime(2025, 1, 6, 9, 31, 0);
+            store.AppendRows<double>("close_minute", 1, (row, span) => span[0] = 10.6, new[] { newMinuteDate });
+
+            var appendedMeta = store.ReadMetadata("close_minute");
+            Assert.IsNotNull(appendedMeta);
+            Assert.AreEqual(2, appendedMeta.TradeDates.Count);
+            Assert.AreEqual("2025-01-06 09:30:00", appendedMeta.TradeDates[0]);
+            Assert.AreEqual("2025-01-06 09:31:00", appendedMeta.TradeDates[1]);
+        }
     }
 }
 

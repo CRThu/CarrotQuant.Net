@@ -315,10 +315,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 var buffer = provider.GetMatrix<double>("close");
                 Assert.AreEqual(1, buffer.RowCount);
 
-                // 通过 Manager 追加实时行
-                var manager = provider.GetCacheManager<double>("close");
+                // 通过门面追加实时行
                 double[] newRow = new double[] { 88.8, 99.9 };
-                manager.AppendRow(newRow);
+                provider.AppendRow("close", DateTime.UtcNow, newRow);
+                var manager = provider.GetCacheManager("close");
 
                 Assert.IsTrue(manager.IsDirty);
                 Assert.AreEqual(2, manager.TotalRows);
@@ -467,22 +467,23 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             using var provider = new TimeseriesRegistry(mockSource, _tempCacheDir);
 
-            // 1. 正确获取 Manager
-            var manager1 = provider.GetCacheManager<double>("close");
-            var manager2 = provider.GetCacheManager<double>("close");
+            // 1. 正确获取 Manager（单例模式）
+            var manager1 = provider.GetCacheManager("close");
+            var manager2 = provider.GetCacheManager("close");
             Assert.IsNotNull(manager1);
             Assert.AreSame(manager1, manager2);
+            Assert.AreEqual(typeof(double), manager1.DataType);
 
-            // 2. 类型不匹配抛出 InvalidOperationException
+            // 2. 字段类型不匹配时 AppendRow 抛出 InvalidOperationException
             Assert.ThrowsException<InvalidOperationException>(() =>
             {
-                provider.GetCacheManager<float>("close");
+                provider.AppendRow("close", DateTime.UtcNow, new float[] { 1.0f });
             });
 
             // 3. 字段不存在抛出 KeyNotFoundException
             Assert.ThrowsException<KeyNotFoundException>(() =>
             {
-                provider.GetCacheManager<double>("non_existent");
+                provider.GetCacheManager("non_existent");
             });
         }
 
@@ -508,6 +509,29 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 验证 ITimeseriesRegistry 类型本身不暴露 StepTo（编译期隔离，此处测试运行时多态）
             CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler scheduler = (CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler)registry;
             scheduler.StepTo(0);
+        }
+
+        [TestMethod]
+        public void TimeseriesRegistry_GetCacheManager_And_EnsureLoaded()
+        {
+            var mockSource = new MockTimeseriesSource();
+            mockSource.SymbolsList.Add("sh.600000");
+            mockSource.DatesList.Add(DateTime.UtcNow);
+            mockSource.FieldsList.Add("open");
+            mockSource.FieldsList.Add("close");
+
+            using var registry = new TimeseriesRegistry(mockSource, _tempCacheDir);
+
+            // 通过非泛型 GetCacheManager 确保首批分块完成载入
+            var openMgr = registry.GetCacheManager("open");
+            Assert.IsNotNull(openMgr);
+            openMgr.EnsureLoaded();
+            Assert.AreEqual(1, openMgr.TotalRows);
+
+            var closeMgr = registry.GetCacheManager("close");
+            Assert.IsNotNull(closeMgr);
+            closeMgr.EnsureLoaded();
+            Assert.AreEqual(1, closeMgr.TotalRows);
         }
 
         private class MockTimeseriesSource : ITimeseriesSource

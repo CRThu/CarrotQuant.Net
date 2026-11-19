@@ -259,7 +259,9 @@ namespace CarrotBacktesting.NET.Data
             var dateStrings = new List<string>(tradeDates.Count);
             for (int i = 0; i < tradeDates.Count; i++)
             {
-                dateStrings.Add(tradeDates[i].ToString("yyyy-MM-dd"));
+                dateStrings.Add(tradeDates[i].TimeOfDay == TimeSpan.Zero
+                    ? tradeDates[i].ToString("yyyy-MM-dd")
+                    : tradeDates[i].ToString("yyyy-MM-dd HH:mm:ss"));
             }
 
             var chunkWidths = new List<int>(neededPages);
@@ -425,7 +427,9 @@ namespace CarrotBacktesting.NET.Data
             meta.EndDate = newTradeDates[^1];
             for (int i = 0; i < newTradeDates.Count; i++)
             {
-                meta.TradeDates.Add(newTradeDates[i].ToString("yyyy-MM-dd"));
+                meta.TradeDates.Add(newTradeDates[i].TimeOfDay == TimeSpan.Zero
+                    ? newTradeDates[i].ToString("yyyy-MM-dd")
+                    : newTradeDates[i].ToString("yyyy-MM-dd HH:mm:ss"));
             }
 
             int targetNeededPages = targetRowCount > 0 ? (int)(((long)targetRowCount + _pageSize - 1) / _pageSize) : 0;
