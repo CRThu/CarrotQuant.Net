@@ -99,7 +99,7 @@ namespace CarrotBacktesting.NET.Data
         private readonly ITimeseriesSource _source;
         private readonly ITimeseriesCache? _store;
         private readonly int _pageSize;
-        private readonly string _refreshMode;
+        private readonly CacheRefreshMode _refreshMode;
         private readonly int _commitBatchSize;
         private readonly int _maxPages;
         private readonly bool _prefetch;
@@ -201,7 +201,7 @@ namespace CarrotBacktesting.NET.Data
             ITimeseriesSource source,
             ITimeseriesCache? store,
             int pageSize = 4096,
-            string refreshMode = "lazy")
+            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy)
             : this(fieldName, metadata, source, store, pageSize, refreshMode, 64, 4)
         {
         }
@@ -215,7 +215,7 @@ namespace CarrotBacktesting.NET.Data
             ITimeseriesSource source,
             ITimeseriesCache? store,
             int pageSize,
-            string refreshMode,
+            CacheRefreshMode refreshMode,
             int commitBatchSize)
             : this(fieldName, metadata, source, store, pageSize, refreshMode, commitBatchSize, 4)
         {
@@ -230,7 +230,7 @@ namespace CarrotBacktesting.NET.Data
             ITimeseriesSource source,
             ITimeseriesCache? store,
             int pageSize,
-            string refreshMode,
+            CacheRefreshMode refreshMode,
             int commitBatchSize,
             int maxPages = 4,
             bool prefetch = true,
@@ -581,7 +581,7 @@ namespace CarrotBacktesting.NET.Data
 
             if (_store != null)
             {
-                if (string.Equals(_refreshMode, "force", StringComparison.OrdinalIgnoreCase))
+                if (_refreshMode == CacheRefreshMode.Force)
                 {
                     _store.Clear(_fieldName);
                     using (var fullMat = LoadFromSource(totalDays))
@@ -594,7 +594,7 @@ namespace CarrotBacktesting.NET.Data
                     _isDirty = false;
                     return;
                 }
-                else if (string.Equals(_refreshMode, "auto", StringComparison.OrdinalIgnoreCase))
+                else if (_refreshMode == CacheRefreshMode.Auto)
                 {
                     if (_store.IsCompatible(_fieldName, _metadata.Symbols, typeof(T), out var meta))
                     {

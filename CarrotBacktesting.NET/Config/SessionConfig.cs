@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CarrotBacktesting.NET.Abstraction.Data;
 
 namespace CarrotBacktesting.NET.Config
 {
@@ -148,17 +149,14 @@ namespace CarrotBacktesting.NET.Config
         public int PageSize { get; set; } = 4096;
 
         /// <summary>
-        /// 缓存刷新策略:
-        /// "lazy" (默认，首次缺失时构建一次，后续只要缓存存在则直接加载且不检查原始数据),
-        /// "auto" (自动比对原始数据与缓存的头尾时间戳，存在新数据时增量补充),
-        /// "force" (强制清空现有缓存并从原始数据全量重新构建)。
+        /// 缓存刷新策略: Lazy (默认，首次缺失时构建一次), Auto (自动比对增量补充), Force (强制清空重建)。
         /// </summary>
-        public string Refresh { get; set; } = "lazy";
+        public CacheRefreshMode Refresh { get; set; } = CacheRefreshMode.Lazy;
 
         /// <summary>
-        /// 缓存块压缩格式: "lz4" (默认，LZ4 原生块压缩), "none" (无压缩二进制块)。
+        /// 缓存块压缩格式: Lz4 (默认，LZ4 原生块压缩), None (无压缩二进制块)。
         /// </summary>
-        public string Compression { get; set; } = "lz4";
+        public CacheCompression Compression { get; set; } = CacheCompression.Lz4;
 
         /// <summary>
         /// 内存增量行定量落盘批次大小，默认 64 行。
@@ -223,7 +221,7 @@ namespace CarrotBacktesting.NET.Config
 
         /// <summary>
         /// 允许包含空值（NULL）的字段名列表（白名单）。
-        /// 默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。
+        /// 默认全表所有字段禁止为 NULL；若检测到未在白名单中的字段存在 NULL，将抛出 InvalidDataException 诊断异常。
         /// 若 metadata.json 中也定义了 nullable_fields，此处将与元数据配置合并生效。
         /// </summary>
         public List<string>? NullableFields { get; set; }
@@ -235,14 +233,14 @@ namespace CarrotBacktesting.NET.Config
     public class AdjustmentConfig
     {
         /// <summary>
-        /// 复权模式: "post" (后复权), "none" (未复权物理价，默认)。
+        /// 复权模式: Post (后复权), None (未复权物理价，默认)。
         /// </summary>
-        public string Mode { get; set; } = "none";
+        public AdjustmentMode Mode { get; set; } = AdjustmentMode.None;
 
         /// <summary>
-        /// 除权因子事件表名称，默认 "adjustments"。
+        /// 除权因子事件表唯一标识 ID，默认 "adjustments"。
         /// </summary>
-        public string Table { get; set; } = "adjustments";
+        public string TableId { get; set; } = "adjustments";
 
         /// <summary>
         /// 因子值字段名，默认 "back_adj_factor"。
@@ -253,5 +251,17 @@ namespace CarrotBacktesting.NET.Config
         /// 需同步复权的价格类字段白名单，默认 ["open", "high", "low", "close"]。
         /// </summary>
         public List<string> PriceFields { get; set; } = new() { "open", "high", "low", "close" };
+
+        /// <summary>
+        /// 是否启用因子矩阵的二进制缓存（基于列式紧凑压缩存储），默认 true。
+        /// 开启后将全量除权因子矩阵直接序列化/反序列化至 .cache/{TableId}/ 目录下，
+        /// 避免重复回测或超长回测时逐日回放解析除权事件。
+        /// </summary>
+        public bool Cache { get; set; } = true;
+
+        /// <summary>
+        /// 缓存根目录路径，若为 null 则自动 fallback 至 SessionConfig.Data.Root 或当前工作目录。
+        /// </summary>
+        public string? StorageRoot { get; set; }
     }
 }

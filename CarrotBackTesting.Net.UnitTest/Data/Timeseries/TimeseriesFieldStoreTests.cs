@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -32,16 +33,16 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestConstructor_ValidatesParameters()
         {
             var indexStore = new TimeseriesIndexStore(_tempDir, "t1");
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesFieldStore("", "t1", "close", 1024, "lz4", indexStore));
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesFieldStore(_tempDir, "", "close", 1024, "lz4", indexStore));
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesFieldStore(_tempDir, "t1", "", 1024, "lz4", indexStore));
-            Assert.ThrowsException<ArgumentException>(() => new TimeseriesFieldStore(_tempDir, "t1", "close", 1000, "lz4", indexStore)); // 非 2 的幂
-            Assert.ThrowsException<ArgumentNullException>(() => new TimeseriesFieldStore(_tempDir, "t1", "close", 1024, "lz4", null!));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesFieldStore("", "t1", "close", 1024, CacheCompression.Lz4, indexStore));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesFieldStore(_tempDir, "", "close", 1024, CacheCompression.Lz4, indexStore));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesFieldStore(_tempDir, "t1", "", 1024, CacheCompression.Lz4, indexStore));
+            Assert.ThrowsException<ArgumentException>(() => new TimeseriesFieldStore(_tempDir, "t1", "close", 1000, CacheCompression.Lz4, indexStore)); // 非 2 的幂
+            Assert.ThrowsException<ArgumentNullException>(() => new TimeseriesFieldStore(_tempDir, "t1", "close", 1024, CacheCompression.Lz4, null!));
 
-            var fieldStore = new TimeseriesFieldStore(_tempDir, "t1", "close", 1024, "lz4", indexStore);
+            var fieldStore = new TimeseriesFieldStore(_tempDir, "t1", "close", 1024, CacheCompression.Lz4, indexStore);
             Assert.AreEqual("close", fieldStore.FieldName);
             Assert.AreEqual(1024, fieldStore.PageSize);
-            Assert.AreEqual("lz4", fieldStore.Compression);
+            Assert.AreEqual(CacheCompression.Lz4, fieldStore.Compression);
             Assert.AreSame(indexStore, fieldStore.IndexStore);
         }
 
@@ -49,7 +50,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestWriteAndLoadMatrix_WithFieldStore()
         {
             var indexStore = new TimeseriesIndexStore(_tempDir, "t1");
-            var fieldStore = new TimeseriesFieldStore(_tempDir, "t1", "open", 512, "lz4", indexStore);
+            var fieldStore = new TimeseriesFieldStore(_tempDir, "t1", "open", 512, CacheCompression.Lz4, indexStore);
 
             int width = 5;
             int totalRows = 1200; // 512 + 512 + 176
@@ -99,7 +100,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestAutoExpandWidth_OnLoadMatrix()
         {
             var indexStore = new TimeseriesIndexStore(_tempDir, "t_expand");
-            var fieldStore = new TimeseriesFieldStore(_tempDir, "t_expand", "volume", 256, "none", indexStore);
+            var fieldStore = new TimeseriesFieldStore(_tempDir, "t_expand", "volume", 256, CacheCompression.None, indexStore);
 
             int width = 2;
             int totalRows = 300;

@@ -40,40 +40,60 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             ts.RegisterMatrix("volume", volData);
 
             var broker = new FakeBroker();
-            var context = new EngineContext(ts, broker);
+            using var context = new EngineContext(ts, broker);
 
-            // 注入因子: sh.600000 为 2.0, sz.000001 为 1.5
-            context.SetDailyFactors(new double[] { 2.0, 1.5 });
+            // 构造因子矩阵 (2 行 2 列)
+            // row 0: sh.600000 = 2.0, sz.000001 = 1.5
+            // row 1: sh.600000 = 3.0, sz.000001 = 1.5 (第 1 天发生除权跃迁)
+            var factorMatrix = new ChunkMatrix2D<double>(width: 2, pageSize: 4096, initialRowCount: 2);
+            factorMatrix[0, 0] = 2.0;
+            factorMatrix[0, 1] = 1.5;
+            factorMatrix[1, 0] = 3.0;
+            factorMatrix[1, 1] = 1.5;
+
+            var stepToDateIndex = new int[] { 0, 1 };
+            context.SetAdjustmentData(factorMatrix, stepToDateIndex);
 
             // 步进至第 0 步
             context.UpdateStep(0, meta.TradeDates[0]);
 
             // 1. 收盘价: 后复权 vs 未复权
-            Assert.AreEqual(20.0, context.GetClose("sh.600000", PriceMode.Post), 1e-12); // 10.0 * 2.0
-            Assert.AreEqual(10.0, context.GetClose("sh.600000", PriceMode.Raw), 1e-12);
-            Assert.AreEqual(30.0, context.GetClose(1, PriceMode.Post), 1e-12);             // 20.0 * 1.5
-            Assert.AreEqual(20.0, context.GetClose(1, PriceMode.Raw), 1e-12);
+            Assert.AreEqual(20.0, context.GetClose("sh.600000", mode: PriceMode.Post), 1e-12); // 10.0 * 2.0
+            Assert.AreEqual(10.0, context.GetClose("sh.600000", mode: PriceMode.Raw), 1e-12);
+            Assert.AreEqual(30.0, context.GetClose(1, mode: PriceMode.Post), 1e-12);             // 20.0 * 1.5
+            Assert.AreEqual(20.0, context.GetClose(1, mode: PriceMode.Raw), 1e-12);
 
             // 2. 开盘价
-            Assert.AreEqual(18.0, context.GetOpen("sh.600000", PriceMode.Post), 1e-12);  // 9.0 * 2.0
-            Assert.AreEqual(9.0, context.GetOpen("sh.600000", PriceMode.Raw), 1e-12);
+            Assert.AreEqual(18.0, context.GetOpen("sh.600000", mode: PriceMode.Post), 1e-12);  // 9.0 * 2.0
+            Assert.AreEqual(9.0, context.GetOpen("sh.600000", mode: PriceMode.Raw), 1e-12);
 
             // 3. 成交量: 默认保持 Raw 物理量
             Assert.AreEqual(1000.0, context.GetVolume("sh.600000"), 1e-12);
             Assert.AreEqual(1000.0, context.GetVolume(0), 1e-12);
 
             // 4. 通用字段 GetField
-            Assert.AreEqual(20.0, context.GetField("sh.600000", "close", PriceMode.Post), 1e-12);
-            Assert.AreEqual(10.0, context.GetField(0, "close", PriceMode.Raw), 1e-12);
+            Assert.AreEqual(20.0, context.GetField("sh.600000", "close", mode: PriceMode.Post), 1e-12);
+            Assert.AreEqual(10.0, context.GetField(0, "close", mode: PriceMode.Raw), 1e-12);
 
             // 5. 越界与未知标的防御返回 NaN
             Assert.IsTrue(double.IsNaN(context.GetClose("unknown.symbol")));
             Assert.IsTrue(double.IsNaN(context.GetClose(999)));
 
-            // 6. 增量更新因子
-            context.UpdateFactor(0, 3.0); // 更新 sh.600000 因子为 3.0
-            Assert.AreEqual(30.0, context.GetClose("sh.600000", PriceMode.Post), 1e-12); // 10.0 * 3.0
-            Assert.AreEqual(10.0, context.GetClose("sh.600000", PriceMode.Raw), 1e-12);  // 物理价格不受影响
+            // 6. 步进至第 1 步 (发生除权跃迁)，测试当期与时序负向回溯
+            context.UpdateStep(1, meta.TradeDates[1]);
+            Assert.AreEqual(33.0, context.GetClose("sh.600000", offset: 0, mode: PriceMode.Post), 1e-12); // 11.0 * 3.0
+            Assert.AreEqual(11.0, context.GetClose("sh.600000", offset: 0, mode: PriceMode.Raw), 1e-12);
+
+            // 时序负向回溯昨日收盘价: 必须严格锚定昨日因子 2.0，而不是被今日因子 3.0 篡改！
+            Assert.AreEqual(20.0, context.GetClose("sh.600000", offset: -1, mode: PriceMode.Post), 1e-12); // 10.0 * 2.0
+            Assert.AreEqual(10.0, context.GetClose("sh.600000", offset: -1, mode: PriceMode.Raw), 1e-12);
+
+            // 历史左边界越界防御
+            Assert.IsTrue(double.IsNaN(context.GetClose("sh.600000", offset: -2)));
+
+            // 非法未来函数熔断防御 (offset > 0 必须抛出 ArgumentOutOfRangeException)
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetClose("sh.600000", offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetClose(0, offset: 2));
         }
 
         #endregion
@@ -149,8 +169,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 {
                     Adjust = new AdjustmentConfig
                     {
-                        Mode = "post",
-                        Table = "adjustments",
+                        Mode = AdjustmentMode.Post,
+                        TableId = "adjustments",
                         FactorField = "back_adj_factor"
                     }
                 }
@@ -226,8 +246,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 {
                     Adjust = new AdjustmentConfig
                     {
-                        Mode = "post",
-                        Table = "adjustments",
+                        Mode = AdjustmentMode.Post,
+                        TableId = "adjustments",
                         FactorField = "back_adj_factor"
                     }
                 }
@@ -265,8 +285,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 {
                     Adjust = new AdjustmentConfig
                     {
-                        Mode = "post",
-                        Table = "non_existent_adjustments"
+                        Mode = AdjustmentMode.Post,
+                        TableId = "non_existent_adjustments"
                     }
                 }
             };
@@ -380,9 +400,15 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             events.Register("adjustments", adjTable);
 
             var recordedPostPrices = new List<double>();
+            var recordedLookbackPrices = new List<double>();
             var strategy = new GenericTestStrategy(ctx =>
             {
-                recordedPostPrices.Add(ctx.GetClose("sh.600000", PriceMode.Post));
+                recordedPostPrices.Add(ctx.GetClose("sh.600000", mode: PriceMode.Post));
+                if (ctx.CurrentIndex > 0)
+                {
+                    // 测试负向时序回溯 (offset = -1) 昨日复权收盘价
+                    recordedLookbackPrices.Add(ctx.GetClose("sh.600000", offset: -1, mode: PriceMode.Post));
+                }
             });
 
             var pipeline = StrategyPipeline.Sequential();
@@ -399,8 +425,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 {
                     Adjust = new AdjustmentConfig
                     {
-                        Mode = "post",
-                        Table = "adjustments",
+                        Mode = AdjustmentMode.Post,
+                        TableId = "adjustments",
                         FactorField = "back_adj_factor"
                     }
                 }
@@ -417,6 +443,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(10.0, recordedPostPrices[0], 1e-12);
             Assert.AreEqual(22.0, recordedPostPrices[1], 1e-12);
             Assert.AreEqual(24.0, recordedPostPrices[2], 1e-12);
+
+            // 验证时序因果律负向守恒:
+            // 在 Day 2 (1/3) 时回溯昨日收盘价: 昨日物理 10.0 * 昨日因子 1.0 = 10.0 (绝对不能等于 10.0 * 今日因子 2.0 = 20.0!)
+            // 在 Day 3 (1/4) 时回溯昨日收盘价: 11.0 * 2.0 = 22.0
+            Assert.AreEqual(2, recordedLookbackPrices.Count);
+            Assert.AreEqual(10.0, recordedLookbackPrices[0], 1e-12);
+            Assert.AreEqual(22.0, recordedLookbackPrices[1], 1e-12);
         }
 
         [TestMethod]
@@ -450,17 +483,19 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             ts.RegisterMatrix("close", new double[,] { { 10.0 } });
             ts.RegisterMatrix("pe", new double[,] { { 15.0 } });
 
-            var context = new EngineContext(ts, new FakeBroker(), priceFields: new[] { "close" });
-            context.SetDailyFactors(new[] { 2.0 }); // 因子 2.0
+            using var context = new EngineContext(ts, new FakeBroker(), priceFields: new[] { "close" });
+            var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
+            factorMatrix[0, 0] = 2.0; // 因子 2.0
+            context.SetAdjustmentData(factorMatrix, new[] { 0 });
             context.UpdateStep(0, DateTime.UtcNow);
 
             // 价格类字段在 Post 模式下乘以因子
-            Assert.AreEqual(20.0, context.GetClose(0, PriceMode.Post), 1e-12);
-            Assert.AreEqual(20.0, context.GetField(0, "close", PriceMode.Post), 1e-12);
+            Assert.AreEqual(20.0, context.GetClose(0, mode: PriceMode.Post), 1e-12);
+            Assert.AreEqual(20.0, context.GetField(0, "close", mode: PriceMode.Post), 1e-12);
 
             // 非价格类字段（pe）即使请求 PriceMode.Post 也严禁盲目乘因子，保持原始值 15.0！
-            Assert.AreEqual(15.0, context.GetField(0, "pe", PriceMode.Post), 1e-12);
-            Assert.AreEqual(15.0, context.GetField(0, "pe", PriceMode.Raw), 1e-12);
+            Assert.AreEqual(15.0, context.GetField(0, "pe", mode: PriceMode.Post), 1e-12);
+            Assert.AreEqual(15.0, context.GetField(0, "pe", mode: PriceMode.Raw), 1e-12);
         }
 
         [TestMethod]
@@ -470,14 +505,474 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var ts = new MockTimeseriesRegistry(meta);
             ts.RegisterMatrix("volume", new double[,] { { 50000.0 } });
 
-            var context = new EngineContext(ts, new FakeBroker());
-            context.SetDailyFactors(new[] { 2.5 });
+            using var context = new EngineContext(ts, new FakeBroker());
+            var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
+            factorMatrix[0, 0] = 2.5;
+            context.SetAdjustmentData(factorMatrix, new[] { 0 });
             context.UpdateStep(0, DateTime.UtcNow);
 
             // 成交量严格保持物理原始量（Raw 股数），防止产生虚构成交量
-            Assert.AreEqual(50000.0, context.GetVolume(0, PriceMode.Raw), 1e-12);
-            Assert.AreEqual(50000.0, context.GetVolume(0, PriceMode.Post), 1e-12);
-            Assert.AreEqual(50000.0, context.GetVolume("sh.600000", PriceMode.Post), 1e-12);
+            Assert.AreEqual(50000.0, context.GetVolume(0, mode: PriceMode.Raw), 1e-12);
+            Assert.AreEqual(50000.0, context.GetVolume(0, mode: PriceMode.Post), 1e-12);
+            Assert.AreEqual(50000.0, context.GetVolume("sh.600000", mode: PriceMode.Post), 1e-12);
+        }
+
+        [TestMethod]
+        public void EngineContext_FutureOffset_AllFacadesMustThrowArgumentOutOfRangeException()
+        {
+            var meta = new SimpleMarketMetadata(new[] { DateTime.UtcNow }, new[] { "sh.600000" });
+            var ts = new MockTimeseriesRegistry(meta);
+            ts.RegisterMatrix("close", new double[,] { { 10.0 } });
+            ts.RegisterMatrix("open", new double[,] { { 9.0 } });
+            ts.RegisterMatrix("high", new double[,] { { 11.0 } });
+            ts.RegisterMatrix("low", new double[,] { { 8.5 } });
+            ts.RegisterMatrix("volume", new double[,] { { 1000.0 } });
+
+            using var context = new EngineContext(ts, new FakeBroker());
+            context.UpdateStep(0, DateTime.UtcNow);
+
+            // 前瞻偏差防御：所有取价门面只要 offset > 0 必须抛出 ArgumentOutOfRangeException
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetClose("sh.600000", offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetClose(0, offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetOpen("sh.600000", offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetOpen(0, offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetHigh("sh.600000", offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetHigh(0, offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetLow("sh.600000", offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetLow(0, offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetVolume("sh.600000", offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetVolume(0, offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetField("sh.600000", "close", offset: 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetField(0, "close", offset: 1));
+        }
+
+        [TestMethod]
+        public void Engine_MultiStepLookback_ExDividendCausalityConservation()
+        {
+            // 验证连续多次除权场景下的深层时序因果律守恒
+            var dates = new List<DateTime>
+            {
+                new(2025, 1, 2), // Day 0
+                new(2025, 1, 3), // Day 1
+                new(2025, 1, 6), // Day 2: 首次除权
+                new(2025, 1, 7), // Day 3
+                new(2025, 1, 8)  // Day 4: 二次除权
+            };
+            var symbols = new List<string> { "sh.600000" };
+            var meta = new SimpleMarketMetadata(dates, symbols);
+
+            var ts = new MockTimeseriesRegistry(meta);
+            // 物理价格矩阵
+            ts.RegisterMatrix("close", new double[,]
+            {
+                { 10.0 }, // Day 0
+                { 11.0 }, // Day 1
+                { 6.0 },  // Day 2 (除权后物理价 6.0)
+                { 6.5 },  // Day 3
+                { 4.0 }   // Day 4 (再次除权后物理价 4.0)
+            });
+
+            // 构造事件表:
+            // 2025-01-02: 初始因子 1.0
+            // 2025-01-06: 因子跃迁至 2.0
+            // 2025-01-08: 因子跃迁至 3.0
+            var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "back_adj_factor", 0 } };
+            var eventData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
+
+            var d0 = new MarketTime(2025, 1, 2);
+            eventData[d0] = new Dictionary<string, List<DataRow>>
+            {
+                ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d0, new[] { "1.0" }, ordinals) }
+            };
+            var d2 = new MarketTime(2025, 1, 6);
+            eventData[d2] = new Dictionary<string, List<DataRow>>
+            {
+                ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d2, new[] { "2.0" }, ordinals) }
+            };
+            var d4 = new MarketTime(2025, 1, 8);
+            eventData[d4] = new Dictionary<string, List<DataRow>>
+            {
+                ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d4, new[] { "3.0" }, ordinals) }
+            };
+
+            var adjTable = new EventTable("adjustments", new[] { "back_adj_factor" }, eventData);
+            var events = new EventRegistry();
+            events.Register("adjustments", adjTable);
+
+            // 在回测推进到最后一天 (Day 4) 时，测试深度历史回溯的因子完全正确
+            double day4Current = 0.0;
+            double day4Yesterday = 0.0;
+            double day4Day1 = 0.0;
+            double day4Day0 = 0.0;
+
+            var strategy = new GenericTestStrategy(ctx =>
+            {
+                if (ctx.CurrentIndex == 4)
+                {
+                    day4Current = ctx.GetClose("sh.600000", offset: 0, mode: PriceMode.Post);
+                    day4Yesterday = ctx.GetClose("sh.600000", offset: -1, mode: PriceMode.Post);
+                    day4Day1 = ctx.GetClose("sh.600000", offset: -3, mode: PriceMode.Post);
+                    day4Day0 = ctx.GetClose("sh.600000", offset: -4, mode: PriceMode.Post);
+                }
+            });
+
+            var pipeline = StrategyPipeline.Sequential();
+            pipeline.Add(strategy);
+
+            var sessionConfig = new SessionConfig
+            {
+                Engine = new EngineConfig
+                {
+                    StartDate = new DateTime(2025, 1, 2),
+                    EndDate = new DateTime(2025, 1, 8)
+                },
+                Data = new DataConfig
+                {
+                    Adjust = new AdjustmentConfig
+                    {
+                        Mode = AdjustmentMode.Post,
+                        TableId = "adjustments",
+                        FactorField = "back_adj_factor"
+                    }
+                }
+            };
+
+            var engine = BacktestingEngine.Create(sessionConfig, ts, pipeline, events);
+            engine.Run();
+
+            // 验证时序因果律与状态守恒：
+            // Day 4 (1/8): 物理 4.0 * 因子 3.0 = 12.0
+            Assert.AreEqual(12.0, day4Current, 1e-12);
+            // Day 3 (1/7, offset -1): 物理 6.5 * 昨日因子 2.0 = 13.0 (绝非 6.5 * 3.0 = 19.5!)
+            Assert.AreEqual(13.0, day4Yesterday, 1e-12);
+            // Day 1 (1/3, offset -3): 物理 11.0 * 当时因子 1.0 = 11.0 (绝非 11.0 * 3.0 = 33.0!)
+            Assert.AreEqual(11.0, day4Day1, 1e-12);
+            // Day 0 (1/2, offset -4): 物理 10.0 * 当时因子 1.0 = 10.0 (绝非 10.0 * 3.0 = 30.0!)
+            Assert.AreEqual(10.0, day4Day0, 1e-12);
+        }
+
+        [TestMethod]
+        public void Engine_AdjustmentCache_Lz4PersistenceAndReload()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "CarrotQuant_AdjCacheTest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                var dates = new List<DateTime>
+                {
+                    new(2025, 1, 2),
+                    new(2025, 1, 3)
+                };
+                var symbols = new List<string> { "sh.600000" };
+                var meta = new SimpleMarketMetadata(dates, symbols);
+
+                var ts = new MockTimeseriesRegistry(meta);
+                ts.RegisterMatrix("close", new double[,] { { 10.0 }, { 11.0 } });
+
+                var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "back_adj_factor", 0 } };
+                var eventData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
+                var d0 = new MarketTime(2025, 1, 2);
+                eventData[d0] = new Dictionary<string, List<DataRow>>
+                {
+                    ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d0, new[] { "2.5" }, ordinals) }
+                };
+                var adjTable = new EventTable("adjustments", new[] { "back_adj_factor" }, eventData);
+                var events = new EventRegistry();
+                events.Register("adjustments", adjTable);
+
+                var sessionConfig = new SessionConfig
+                {
+                    Engine = new EngineConfig
+                    {
+                        StartDate = new DateTime(2025, 1, 2),
+                        EndDate = new DateTime(2025, 1, 3)
+                    },
+                    Data = new DataConfig
+                    {
+                        Adjust = new AdjustmentConfig
+                        {
+                            Mode = AdjustmentMode.Post,
+                            TableId = "adjustments",
+                            FactorField = "back_adj_factor",
+                            Cache = true,
+                            StorageRoot = tempDir
+                        }
+                    }
+                };
+
+                // 首次运行：构建并持久化二进制缓存
+                using (var engine1 = BacktestingEngine.Create(sessionConfig, ts, StrategyPipeline.Sequential(), events))
+                {
+                    engine1.Run();
+                    var ctx1 = (EngineContext)engine1.Context;
+                    Assert.AreEqual(2.5, ctx1.DailyFactors[0], 1e-12);
+                }
+
+                // 验证磁盘上生成了 LZ4 缓存文件
+                string cacheDir = Path.Combine(tempDir, ".cache", "adjustments");
+                Assert.IsTrue(Directory.Exists(cacheDir), "必须生成缓存表目录");
+                Assert.IsTrue(File.Exists(Path.Combine(cacheDir, "symbols.idx")), "必须生成 symbols.idx");
+                Assert.IsTrue(File.Exists(Path.Combine(cacheDir, "time.idx")), "必须生成 time.idx");
+                Assert.IsTrue(Directory.Exists(Path.Combine(cacheDir, "back_adj_factor")), "必须生成字段缓存目录");
+
+                // 第二次运行：直接从 LZ4 二进制缓存命中加载
+                using (var engine2 = BacktestingEngine.Create(sessionConfig, ts, StrategyPipeline.Sequential(), events))
+                {
+                    engine2.Run();
+                    var ctx2 = (EngineContext)engine2.Context;
+                    Assert.AreEqual(2.5, ctx2.DailyFactors[0], 1e-12);
+                    Assert.AreEqual(27.5, ctx2.GetClose("sh.600000", offset: 0, mode: PriceMode.Post), 1e-12); // 11.0 * 2.5
+                    Assert.AreEqual(25.0, ctx2.GetClose("sh.600000", offset: -1, mode: PriceMode.Post), 1e-12); // 10.0 * 2.5
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+
+        [TestMethod]
+        public void EngineContext_Dispose_ShouldSafelyReleaseFactorMatrix()
+        {
+            var meta = new SimpleMarketMetadata(new[] { DateTime.UtcNow }, new[] { "sh.600000" });
+            var ts = new MockTimeseriesRegistry(meta);
+            ts.RegisterMatrix("close", new double[,] { { 10.0 } });
+
+            var context = new EngineContext(ts, new FakeBroker());
+            var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
+            factorMatrix[0, 0] = 2.0;
+            context.SetAdjustmentData(factorMatrix, new[] { 0 });
+            context.UpdateStep(0, DateTime.UtcNow);
+
+            Assert.AreEqual(2.0, context.DailyFactors[0], 1e-12);
+            Assert.AreEqual(20.0, context.GetClose(0, mode: PriceMode.Post), 1e-12);
+
+            // 显式释放非托管资源
+            context.Dispose();
+
+            // 释放后验证：DailyFactors 返回空 Span，复权降级为物理价，零崩溃或悬挂指针异常
+            Assert.IsTrue(context.DailyFactors.IsEmpty);
+            Assert.AreEqual(10.0, context.GetClose(0, mode: PriceMode.Post), 1e-12);
+        }
+
+        [TestMethod]
+        public void AdjustmentProvider_FullHistoryLoading_ShouldNotBePrunedByStartDate()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "CarrotQuant_AdjPruneTest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                // 创建一个模拟的 adjustments Hive 表:
+                // year=2024/data.csv (历史除权)
+                // year=2025/data.csv (当前除权)
+                string dir2024 = Path.Combine(tempDir, "adjustments", "year=2024");
+                string dir2025 = Path.Combine(tempDir, "adjustments", "year=2025");
+                Directory.CreateDirectory(dir2024);
+                Directory.CreateDirectory(dir2025);
+
+                File.WriteAllText(Path.Combine(dir2024, "data.csv"), "date,symbol,back_adj_factor\n2024-06-01,sh.600000,2.0\n");
+                File.WriteAllText(Path.Combine(dir2025, "data.csv"), "date,symbol,back_adj_factor\n2025-06-01,sh.600000,3.0\n");
+
+                var resolver = new StorageResolver(tempDir);
+                var adjConfig = new AdjustmentConfig
+                {
+                    Mode = AdjustmentMode.Post,
+                    TableId = "adjustments",
+                    FactorField = "back_adj_factor",
+                    Cache = false
+                };
+
+                // 回测时序元数据从 2025-01-02 开始
+                var tradeDates = new List<MarketTime>
+                {
+                    new(2025, 1, 2),
+                    new(2025, 6, 2)
+                };
+                var meta = new DynamicMarketMetadata(new[] { "sh.600000" }, tradeDates);
+
+                // 专职通道加载：即使回测从 2025 年开始，历史 2024 年的除权因子 2.0 仍被完整吸收到 2025-01-02 的基准中！
+                var (factorMatrix, stepMap) = AdjustmentProvider.Resolve(adjConfig, meta, resolver: resolver);
+                Assert.IsNotNull(factorMatrix);
+                Assert.AreEqual(2, factorMatrix.RowCount);
+                Assert.AreEqual(1, factorMatrix.Width);
+
+                // 2025-01-02 应当继承 2024-06-01 的除权因子 2.0
+                Assert.AreEqual(2.0, factorMatrix[0, 0], 1e-12);
+                // 2025-06-02 应当应用 2025-06-01 最新的除权因子 3.0
+                Assert.AreEqual(3.0, factorMatrix[1, 0], 1e-12);
+
+                factorMatrix.Dispose();
+            }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+
+        [TestMethod]
+        public void Engine_WeekendExDividendEvent_ShouldBeAppliedOnNextTradingDay()
+        {
+            // 真实场景：除权事件发生在周日 (2025-01-05)，交易日为周五 (2025-01-03) 与周一 (2025-01-06)
+            var dates = new List<DateTime>
+            {
+                new(2025, 1, 3), // Friday
+                new(2025, 1, 6)  // Monday
+            };
+            var symbols = new List<string> { "sh.600000" };
+            var meta = new SimpleMarketMetadata(dates, symbols);
+
+            var ts = new MockTimeseriesRegistry(meta);
+            ts.RegisterMatrix("close", new double[,]
+            {
+                { 10.0 }, // Friday
+                { 5.5 }   // Monday (除权后价格)
+            });
+
+            // 构造事件表:
+            // 2025-01-03 (周五): 初始因子 1.0
+            // 2025-01-05 (周日，非交易日): 除权事件，因子跃迁至 2.0！
+            var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "back_adj_factor", 0 } };
+            var eventData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
+
+            var dFri = new MarketTime(2025, 1, 3);
+            eventData[dFri] = new Dictionary<string, List<DataRow>>
+            {
+                ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", dFri, new[] { "1.0" }, ordinals) }
+            };
+            var dSun = new MarketTime(2025, 1, 5); // 非交易日周末
+            eventData[dSun] = new Dictionary<string, List<DataRow>>
+            {
+                ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", dSun, new[] { "2.0" }, ordinals) }
+            };
+
+            var adjTable = new EventTable("adjustments", new[] { "back_adj_factor" }, eventData);
+            var events = new EventRegistry();
+            events.Register("adjustments", adjTable);
+
+            double mondayPostClose = 0.0;
+            double mondayLookbackFriday = 0.0;
+
+            var strategy = new GenericTestStrategy(ctx =>
+            {
+                if (ctx.CurrentIndex == 1) // 周一
+                {
+                    mondayPostClose = ctx.GetClose("sh.600000", offset: 0, mode: PriceMode.Post);
+                    mondayLookbackFriday = ctx.GetClose("sh.600000", offset: -1, mode: PriceMode.Post);
+                }
+            });
+
+            var pipeline = StrategyPipeline.Sequential();
+            pipeline.Add(strategy);
+
+            var sessionConfig = new SessionConfig
+            {
+                Engine = new EngineConfig
+                {
+                    StartDate = new DateTime(2025, 1, 3),
+                    EndDate = new DateTime(2025, 1, 6)
+                },
+                Data = new DataConfig
+                {
+                    Adjust = new AdjustmentConfig
+                    {
+                        Mode = AdjustmentMode.Post,
+                        TableId = "adjustments",
+                        FactorField = "back_adj_factor"
+                    }
+                }
+            };
+
+            using var engine = BacktestingEngine.Create(sessionConfig, ts, pipeline, events);
+            engine.Run();
+
+            // 验证周日非交易日的除权除息被周一精准吸收：
+            // 周一收盘后复权价: 5.5 * 2.0 = 11.0 (绝非因丢失周末事件而错误计算为 5.5 * 1.0 = 5.5!)
+            Assert.AreEqual(11.0, mondayPostClose, 1e-12);
+            // 周一回溯周五收盘价: 10.0 * 1.0 = 10.0 (因果律完全守恒)
+            Assert.AreEqual(10.0, mondayLookbackFriday, 1e-12);
+        }
+
+        [TestMethod]
+        public void Engine_NarrowCacheWidth_ShouldRebuildOrSafelyFallbackWithoutCrashing()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "CarrotQuant_NarrowCacheTest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                var dates = new List<DateTime> { new(2025, 1, 2) };
+                // 1. 首次仅回测 1 只股票 "sh.600000"，生成宽度为 1 的缓存
+                var symbols1 = new List<string> { "sh.600000" };
+                var meta1 = new SimpleMarketMetadata(dates, symbols1);
+                var ts1 = new MockTimeseriesRegistry(meta1);
+                ts1.RegisterMatrix("close", new double[,] { { 10.0 } });
+
+                var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "back_adj_factor", 0 } };
+                var eventData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
+                var d0 = new MarketTime(2025, 1, 2);
+                eventData[d0] = new Dictionary<string, List<DataRow>>
+                {
+                    ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d0, new[] { "2.0" }, ordinals) },
+                    ["sz.000001"] = new List<DataRow> { new DataRow("sz.000001", d0, new[] { "3.0" }, ordinals) }
+                };
+                var adjTable = new EventTable("adjustments", new[] { "back_adj_factor" }, eventData);
+                var events = new EventRegistry();
+                events.Register("adjustments", adjTable);
+
+                var sessionConfig1 = new SessionConfig
+                {
+                    Engine = new EngineConfig { StartDate = new DateTime(2025, 1, 2), EndDate = new DateTime(2025, 1, 2) },
+                    Data = new DataConfig
+                    {
+                        Adjust = new AdjustmentConfig
+                        {
+                            Mode = AdjustmentMode.Post,
+                            TableId = "adjustments",
+                            FactorField = "back_adj_factor",
+                            Cache = true,
+                            StorageRoot = tempDir
+                        }
+                    }
+                };
+
+                using (var engine1 = BacktestingEngine.Create(sessionConfig1, ts1, StrategyPipeline.Sequential(), events))
+                {
+                    engine1.Run();
+                }
+
+                // 2. 扩容标的池至 2 只股票（"sh.600000", "sz.000001"）
+                var symbols2 = new List<string> { "sh.600000", "sz.000001" };
+                var meta2 = new SimpleMarketMetadata(dates, symbols2);
+                var ts2 = new MockTimeseriesRegistry(meta2);
+                ts2.RegisterMatrix("close", new double[,] { { 10.0, 20.0 } });
+
+                var sessionConfig2 = new SessionConfig
+                {
+                    Engine = new EngineConfig { StartDate = new DateTime(2025, 1, 2), EndDate = new DateTime(2025, 1, 2) },
+                    Data = new DataConfig
+                    {
+                        Adjust = new AdjustmentConfig
+                        {
+                            Mode = AdjustmentMode.Post,
+                            TableId = "adjustments",
+                            FactorField = "back_adj_factor",
+                            Cache = true,
+                            StorageRoot = tempDir
+                        }
+                    }
+                };
+
+                // 第二次运行：缓存中仅有宽度为 1 的旧数据，系统必须检测出列宽不一致并重新全量构建，严禁抛出 IndexOutOfRangeException
+                using var engine2 = BacktestingEngine.Create(sessionConfig2, ts2, StrategyPipeline.Sequential(), events);
+                engine2.Run();
+
+                var ctx2 = (EngineContext)engine2.Context;
+                Assert.AreEqual(20.0, ctx2.GetClose("sh.600000", mode: PriceMode.Post), 1e-12); // 10.0 * 2.0
+                Assert.AreEqual(60.0, ctx2.GetClose("sz.000001", mode: PriceMode.Post), 1e-12); // 20.0 * 3.0
+            }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
         }
 
         private class GenericTestStrategy : IStrategy

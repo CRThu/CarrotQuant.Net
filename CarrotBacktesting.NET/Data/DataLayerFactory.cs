@@ -30,7 +30,11 @@ namespace CarrotBacktesting.NET.Data
             // 1. 装配稠密时序矩阵注册表
             if (config.Timeseries == null || config.Timeseries.Count == 0)
             {
-                throw new InvalidOperationException("DataConfig 中未配置任何 timeseries 表项，无法构建 ITimeseriesRegistry。");
+                throw new InvalidOperationException("DataConfig 中未配置任何 timeseries 表项，无法构建 ITimeseriesRegistry。回测引擎依赖主时序行情表作为推进时间轴。");
+            }
+            if (config.Timeseries.Count > 1)
+            {
+                throw new NotSupportedException($"DataConfig 目前仅支持单张主时序行情表，检测到配置了 {config.Timeseries.Count} 个 timeseries 表项。多时序行情表自动对齐与跨周期时钟推进机制尚未开放，请在配置中保留单张主时序行情表。");
             }
             var ts = TimeseriesRegistryFactory.Create(resolver, config.Timeseries[0], startDate, endDate, isLive);
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -291,8 +292,8 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Assert.AreEqual("ashare.kline.1d.raw.baostock", ts.TableId);
             Assert.IsTrue(ts.Cache, "Cache 默认值应为 true");
             Assert.AreEqual(4096, ts.PageSize, "PageSize 默认值应为 4096");
-            Assert.AreEqual("lazy", ts.Refresh, "Refresh 默认值应为 lazy");
-            Assert.AreEqual("lz4", ts.Compression, "Compression 默认值应为 lz4");
+            Assert.AreEqual(CacheRefreshMode.Lazy, ts.Refresh, "Refresh 默认值应为 Lazy");
+            Assert.AreEqual(CacheCompression.Lz4, ts.Compression, "Compression 默认值应为 Lz4");
         }
 
         [TestMethod]
@@ -325,15 +326,15 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Assert.AreEqual("ashare.kline.1m.raw.custom", ts0.TableId);
             Assert.IsFalse(ts0.Cache);
             Assert.AreEqual(1024, ts0.PageSize);
-            Assert.AreEqual("auto", ts0.Refresh);
-            Assert.AreEqual("none", ts0.Compression);
+            Assert.AreEqual(CacheRefreshMode.Auto, ts0.Refresh);
+            Assert.AreEqual(CacheCompression.None, ts0.Compression);
 
             var ts1 = config.Data.Timeseries[1];
             Assert.AreEqual("ashare.kline.1d.raw.baostock", ts1.TableId);
             Assert.IsTrue(ts1.Cache);
             Assert.AreEqual(8192, ts1.PageSize);
-            Assert.AreEqual("force", ts1.Refresh);
-            Assert.AreEqual("lz4", ts1.Compression);
+            Assert.AreEqual(CacheRefreshMode.Force, ts1.Refresh);
+            Assert.AreEqual(CacheCompression.Lz4, ts1.Compression);
         }
 
         [TestMethod]
@@ -401,7 +402,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
                     Root = _tempDir,
                     Timeseries =
                     [
-                        new() { TableId = "ashare.kline.1d.raw.baostock", Cache = true, PageSize = 4096, Compression = "lz4" }
+                        new() { TableId = "ashare.kline.1d.raw.baostock", Cache = true, PageSize = 4096, Compression = CacheCompression.Lz4 }
                     ],
                     Events =
                     [
@@ -544,8 +545,8 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Assert.AreEqual("ashare.kline.1d.raw.baostock", ts.TableId);
             Assert.IsTrue(ts.Cache);
             Assert.AreEqual(2048, ts.PageSize);
-            Assert.AreEqual("auto", ts.Refresh);
-            Assert.AreEqual("none", ts.Compression);
+            Assert.AreEqual(CacheRefreshMode.Auto, ts.Refresh);
+            Assert.AreEqual(CacheCompression.None, ts.Compression);
             Assert.AreEqual(32, ts.CommitBatchSize);
             Assert.AreEqual(8, ts.MaxPages);
             Assert.IsTrue(ts.Prefetch);

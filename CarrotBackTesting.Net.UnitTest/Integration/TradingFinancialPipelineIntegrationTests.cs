@@ -29,7 +29,7 @@ namespace CarrotBackTesting.Net.UnitTest.Integration;
 /// 3. 次日持仓解锁、卖出滑点、印花税征收与现金精准返还；
 /// 4. 系统级财务公理绝对守恒：终局总资产 == 初始现金 + 净收益，净收益 == 毛收益 - 总交易费用（分厘不差对齐）；
 /// 5. 流动性大单硬约束（VolumeLimit）与涨跌停封板拦截（CheckLimit）；
-/// 6. 防偷价与因果律保护：禁止跨时间步获取未来行情数据。
+/// 6. 前瞻偏差防御与时序因果律保护：禁止跨时间步获取未来行情数据。
 /// </summary>
 [TestClass]
 public class TradingFinancialPipelineIntegrationTests
@@ -521,10 +521,10 @@ public class TradingFinancialPipelineIntegrationTests
 
     #endregion
 
-    #region 4. 防偷价与因果律保护（No Future Peek）
+    #region 4. 前瞻偏差防御与时序因果律保护（Look-ahead Bias Prevention）
 
     /// <summary>
-    /// 恶意偷窥未来数据的策略：尝试在当前步越界访问未来的时序行情矩阵。
+    /// 访问未来越界数据的策略：尝试在当前步越界访问未来的时序行情矩阵。
     /// </summary>
     private class FuturePeekerStrategy : IStrategy
     {

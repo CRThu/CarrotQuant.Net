@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Data;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -37,10 +38,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.ThrowsException<ArgumentException>(() => new TimeseriesCache(_tempDir, "t1", 0));
             Assert.ThrowsException<ArgumentException>(() => new TimeseriesCache(_tempDir, "t1", 1000)); // 非 2 的幂
 
-            var store = new TimeseriesCache(_tempDir, "table_1", 2048, "none");
+            var store = new TimeseriesCache(_tempDir, "table_1", 2048, CacheCompression.None);
             Assert.AreEqual("table_1", store.TableId);
             Assert.AreEqual(2048, store.PageSize);
-            Assert.AreEqual("none", store.Compression);
+            Assert.AreEqual(CacheCompression.None, store.Compression);
         }
 
         [TestMethod]
@@ -190,7 +191,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int appendRows = 100; // 500 + 100 = 600 行，跨越 512 边界
             const int width = 10;
 
-            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "none");
+            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: CacheCompression.None);
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
@@ -292,7 +293,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int width = 100;
             long rawByteCount = (long)rows * width * sizeof(double); // 819,200 字节
 
-            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "lz4");
+            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: CacheCompression.Lz4);
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
@@ -342,7 +343,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int width = 10;
             long expectedBytes = (long)rows * width * sizeof(float);
 
-            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "none");
+            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: CacheCompression.None);
 
             var symbols = new List<string>();
             for (int c = 0; c < width; c++) symbols.Add($"s_{c}");
@@ -387,7 +388,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int totalRows = 300; // 非满页（仅填充满 300/1024）
             const int width = 5;
 
-            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "lz4");
+            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: CacheCompression.Lz4);
 
             var symbols = new List<string> { "s_ipo_late", "s_delisted", "s_normal", "s_halted", "s_all_nan" };
             var dates = new List<MarketTime>();
@@ -458,7 +459,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int totalRows = 2500; // 跨越 3 个分块 (0: 1024行, 1: 1024行, 2: 452行)
             const int width = 4;
 
-            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "lz4");
+            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: CacheCompression.Lz4);
 
             var symbols = new List<string> { "s0", "s1", "s2", "s3" };
             var dates = new List<MarketTime>();
@@ -563,7 +564,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             const int totalRows = 1500; // Chunk 0 (1024行), Chunk 1 (476行)
             const int initialWidth = 2;
 
-            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: "lz4");
+            var store = new TimeseriesCache(_tempDir, tableId, pageSize, compression: CacheCompression.Lz4);
 
             var initialSymbols = new List<string> { "s0", "s1" };
             var dates = new List<MarketTime>();
@@ -701,7 +702,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestTryReadChunk_ReadsSingleChunk_Accurately()
         {
             const string tableId = "try_read_chunk_table";
-            var store = new TimeseriesCache(_tempDir, tableId, 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, tableId, 16, CacheCompression.Lz4);
             var symbols = new List<string> { "sh.600000", "sz.000001" };
             var dates = new List<MarketTime>();
             for (int i = 0; i < 35; i++) dates.Add(MarketTime.UtcNow.AddDays(i));
@@ -744,7 +745,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestLoadMatrix_CorruptCompressedChunkFile_ThrowsInvalidDataException()
         {
-            var store = new TimeseriesCache(_tempDir, "table_corrupt", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_corrupt", 16, CacheCompression.Lz4);
             var symbols = new[] { "sh.600000" };
             var dates = new[] { MarketTime.UtcNow };
 
@@ -792,7 +793,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_WriteMatrixAndAppend_IndexFiles_SymbolsAndMarketTime()
         {
-            var store = new TimeseriesCache(_tempDir, "table_dates_format", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_dates_format", 16, CacheCompression.Lz4);
             var symbols = new[] { "sh.600000" };
 
             // 1. 验证写入矩阵后，自动生成表级双标尺索引: symbols.idx 与 time.idx
@@ -821,7 +822,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsFalse(metaJson.Contains("\"trade_dates\""), "meta.json 不应冗余存储 trade_dates");
 
             // 2. 验证多字段独立表写入高精度日内时间戳 (MarketTime)
-            var minuteStore = new TimeseriesCache(_tempDir, "table_minute_format", 16, "lz4");
+            var minuteStore = new TimeseriesCache(_tempDir, "table_minute_format", 16, CacheCompression.Lz4);
             var minuteDate = new MarketTime(2025, 1, 6, 9, 30, 0);
             using (var minuteBuffer = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 1))
             {
@@ -860,7 +861,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_TableLevelIndices_MultiFieldAppend_NoDuplicateTimeIndex()
         {
-            var store = new TimeseriesCache(_tempDir, "table_multi_field_idx", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_multi_field_idx", 16, CacheCompression.Lz4);
             var symbols = new[] { "sh.600000", "sz.000001" };
             var baseDate = new MarketTime(2025, 1, 2);
 
@@ -896,7 +897,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_CorruptedTimeIndex_ThrowsInvalidDataException()
         {
-            var store = new TimeseriesCache(_tempDir, "table_corrupt_time_idx", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_corrupt_time_idx", 16, CacheCompression.Lz4);
             string timeIdxPath = store.GetTimeIndexPath();
             Directory.CreateDirectory(store.GetTableDir());
 
@@ -916,7 +917,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_AppendTradeDates_OutOfSyncLag_ThrowsInvalidOperationException()
         {
-            var store = new TimeseriesCache(_tempDir, "table_lag_time_idx", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_lag_time_idx", 16, CacheCompression.Lz4);
             store.WriteTradeDates(new[] { new MarketTime(2025, 1, 2), new MarketTime(2025, 1, 3) }); // 2 行
 
             // 模拟 targetRowCount 为 10，新追加 2 行（期望 baseCount = 8，但 time.idx 只有 2 行，出现时空断层）
@@ -929,7 +930,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_MissingSymbolsIndex_IsCompatibleReturnsFalse()
         {
-            var store = new TimeseriesCache(_tempDir, "table_missing_symbols_idx", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_missing_symbols_idx", 16, CacheCompression.Lz4);
             var symbols = new[] { "sh.600000", "sz.000001" };
             using (var buf = new ChunkMatrix2D<double>(width: 2, pageSize: 16, initialRowCount: 1))
             {
@@ -952,7 +953,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_HighPrecisionMarketTime_RoundtripBitwiseIdentical()
         {
-            var store = new TimeseriesCache(_tempDir, "table_high_precision_time", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_high_precision_time", 16, CacheCompression.Lz4);
             // 构造亚微秒高精刻度 Ticks
             long customTicks1 = 638712345678901234L;
             long customTicks2 = 638712345679999999L;
@@ -972,7 +973,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_WriteSymbols_PrefixIdempotencyAndExpansionAndConflict()
         {
-            var store = new TimeseriesCache(_tempDir, "table_symbols_conflict", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_symbols_conflict", 16, CacheCompression.Lz4);
 
             // 1. 首次写入 2 只标的
             store.WriteSymbols(new[] { "sh.600000", "sz.000001" });
@@ -1000,7 +1001,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_WriteSymbols_InvalidCharacters_ThrowsArgumentException()
         {
-            var store = new TimeseriesCache(_tempDir, "table_symbols_invalid_char", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_symbols_invalid_char", 16, CacheCompression.Lz4);
 
             // 空或纯空格
             Assert.ThrowsException<ArgumentException>(() => store.WriteSymbols(new[] { "" }));
@@ -1014,7 +1015,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_AppendRows_MissingChunkAtNonZeroOffset_ThrowsFileNotFoundException()
         {
-            var store = new TimeseriesCache(_tempDir, "table_missing_chunk_append", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_missing_chunk_append", 16, CacheCompression.Lz4);
             var symbols = new[] { "sh.600000" };
             using (var buf = new ChunkMatrix2D<double>(width: 1, pageSize: 16, initialRowCount: 5))
             {
@@ -1042,7 +1043,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         [TestMethod]
         public void TestTimeseriesCache_WriteMatrix_ShrinkRows_CleansOrphanChunks()
         {
-            var store = new TimeseriesCache(_tempDir, "table_orphan_chunks_clean", 16, "lz4");
+            var store = new TimeseriesCache(_tempDir, "table_orphan_chunks_clean", 16, CacheCompression.Lz4);
             var symbols = new[] { "sh.600000" };
             // 写入 32 行（刚好占用 chunk_0.bin 与 chunk_1.bin 两个分块）
             var dates32 = new MarketTime[32];

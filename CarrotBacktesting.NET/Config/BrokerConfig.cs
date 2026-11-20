@@ -43,7 +43,7 @@ namespace CarrotBacktesting.NET.Config
 
         /// <summary>
         /// 成交量流动性硬约束：单笔最大允许成交量占当前 Bar 成交量的最大比例（如 0.05 表示 5%）。
-        /// 默认 0.05，严格杜绝流动性不足或无量封板时的虚假成交作弊；设为 0.0 则不限制。
+        /// 默认 0.05，用于限制标的流动性不足或涨跌停无量时的不可行成交；设为 0.0 则不限制。
         /// </summary>
         public double VolumeLimit { get; set; } = 0.05;
 

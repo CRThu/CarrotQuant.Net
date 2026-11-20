@@ -91,7 +91,7 @@ public interface IStreamIndicator
 ```
 
 > [!IMPORTANT]
-> **绝对的防未来函数偷价熔断**：`this[int offset]` 索引器在 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，从物理内存切片上彻底斩断未来函数（Lookahead Bias）。
+> **前瞻偏差防护（Look-ahead Bias Prevention）**：`this[int offset]` 索引器在 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，从物理内存切片与时间步推进上杜绝访问未发生的未来数据。
 
 ### 2. 全市场连续标的池 (`IndicatorPool<T>`)
 作为全市场标的高性能集合容器，内部直接持有按标的全局列索引（`symbolIndex`）排列的连续扁平数组 `T[] _instances`：
@@ -205,31 +205,44 @@ sequenceDiagram
 
 ## 五、统一取价门面与除权因子供给 (Pricing Facades & Adjustment Safety)
 
-### 1. 取价门面与 `PriceMode`
-`EngineContext` 提供集中式取价门面，支持标的代码与列索引双重重载：
+### 1. 取价与时序负向回溯门面
+`EngineContext` 提供集中式取价与负向回溯门面，支持标的代码与列索引双重重载，默认后复权（Post）：
 
 ```csharp
-double GetClose(string symbol, PriceMode mode = PriceMode.Post);
-double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post);
-double GetOpen(string symbol, PriceMode mode = PriceMode.Post);
-double GetHigh(string symbol, PriceMode mode = PriceMode.Post);
-double GetLow(string symbol, PriceMode mode = PriceMode.Post);
-double GetVolume(string symbol, PriceMode mode = PriceMode.Raw); // 始终保持物理 Raw
+// 核心时序回溯取价门面（offset <= 0 访问当期或历史，offset > 0 抛出 ArgumentOutOfRangeException 杜绝前瞻偏差）
+double GetClose(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetClose(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetOpen(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetOpen(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetHigh(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetHigh(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetLow(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetLow(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetVolume(string symbol, int offset = 0, PriceMode mode = PriceMode.Raw); // 始终保持物理 Raw
+double GetVolume(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Raw);
+double GetField(string symbol, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
+double GetField(int symbolIndex, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
 ```
 
-- **约定优于配置**：价格类字段默认采用 `PriceMode.Post`（后复权），消除除权除息造成的假跳空突破；
+- **负向时序回溯因果律守恒**：`offset <= 0` 严格指向过去或当期（例如 `offset = -1` 获取昨日收盘价），内部时序与因子严格对应历史时点（历史收盘价 $\times$ 历史因子）；`offset > 0` 被判定为前瞻偏差（Look-ahead Bias），立即抛出强类型 `ArgumentOutOfRangeException` 阻断执行；
+- **约定优于配置**：价格类字段默认采用 `PriceMode.Post`（后复权），消除除权除息造成的假跳空突破；若需原始未复权物理价，直接通过 C# 命名参数指定 `mode: PriceMode.Raw` 即可；
 - **成交量物理守恒**：`GetVolume` 严格保持物理原始成交量（Raw 股数），绝不乘以复权因子，防止虚假放大流动性；
 - **白名单机制**：仅允许价格字段（open, high, low, close）在 Post 模式下乘因子，市盈率、换手率等非价格字段受白名单保护，防止误乘；
-- **热路径零堆分配**：`EngineContext` 内部对价格矩阵实施单次惰性解析缓存（`_resolvedClose`），百万步循环堆分配增量恒为 **0 bytes**。
+- **热路径零堆分配与列宽越界防御**：`EngineContext` 直接持有具体矩阵指针与 `[MethodImpl(MethodImplOptions.AggressiveInlining)]`，无符号位运算消除下界检查，百万步循环堆分配增量恒为 **0 bytes**。
 
-### 2. 除权因子供给与严格一一对应告警
-- **冷启动极速滚动**：回测启动时，引擎从历史首个除权事件单调滚动沉淀至起测日，耗时 $<0.5\text{ms}$；
+### 2. 除权因子专职管理 (AdjustmentProvider) 与本地 LZ4 缓存
+- **专职独立服务解耦**：系统通过专职的 `AdjustmentProvider` 管理除权因子的完整生命周期，彻底与策略运行期事件流（`Events`）解耦，消灭跨表胶水代码；
+- **默认启用高速缓存 (`Cache = true`)**：除权配置默认开启二进制列存缓存，优先探测本地 LZ4 块压缩缓存（`.cache/{table}/{field}/`）。缓存命中时直接解压为非托管矩阵，原始除权文件 **0 读取、0 解析、0 堆分配**，启动耗时仅需 ~5ms；
+- **全量预热二维连续矩阵**：缓存未命中时，`AdjustmentProvider` 专职加载全量历史除权事件推导为非托管二维矩阵 `_factorMatrix` (`ChunkMatrix2D<double>`)，日频 $D \times N$ 单调预存并持久化回写缓存，用完即释放原始数据；高频多周期通过 `stepToDateIndex` 数组在常数时间 $O(1)$ 映射至对应交易日因子行；
+- **周末与节假日除权推进**：支持跨周末或节假日的除权事件自动吸收，采用有序日期迭代器向前推进，杜绝非交易日除权事件遗漏；
+- **全序列交易日历严格校验与缓存扩列防御**：本地 LZ4 缓存重载时比对全量日历序列与代码池列宽（`meta.RowCount == dailyCount && meta.Width == symbolCount`），彻底消除伪命中与越界奔溃；
+- **主循环零事件开销**：主时钟推进时仅更新日索引，彻底消除主循环中高开销的逐日事件哈希检索与一维数组覆写开销；
 - **首日有效行情覆盖前置拦截**：
   若标的在行情矩阵中已产生有效价格（非 NaN），但除权表中完全无记录，或首条除权事件的生效日期滞后于标的首个有效交易日（例如 2025 年上市有交易，但除权表从 2026 年才开始记载），引擎在启动时立即抛出格式化警告：
   ```
   [Warning] 检测到标的在产生有效行情前未提供除权因子，将回退为基准因子 1.0 (标的: sz.001234, 首日有效行情: 2025-06-01, 首条除权生效日: 2026-05-20)
   ```
-  彻底杜绝因数据断档导致的静默失真。
+  并在矩阵中安全填充基准因子 1.0，彻底杜绝因数据断档导致的静默失真。
 
 ---
 

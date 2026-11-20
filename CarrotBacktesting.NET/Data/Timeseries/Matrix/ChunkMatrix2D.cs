@@ -518,6 +518,29 @@ namespace CarrotBacktesting.NET.Data
             return new ReadOnlyRowView<T>(new ReadOnlySpan<T>(ptr, len));
         }
 
+        /// <summary>
+        /// 获取指定整行的连续内存只读切片（零堆分配）。
+        /// </summary>
+        /// <param name="row">目标行索引。</param>
+        /// <returns>包含全宽度元素的 ReadOnlySpan 切片。</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlySpan<T> GetRowSpan(int row)
+        {
+            int rowCount = Volatile.Read(ref _rowCount);
+            int baseRow = Volatile.Read(ref _baseRowIndex);
+            if ((uint)(row - baseRow) >= (uint)(rowCount - baseRow))
+            {
+                ThrowIndexOutOfRangeException("行索引越界或已滑出常驻内存窗口。");
+            }
+
+            int pageIdx = row >> _shift;
+            int rowInPage = row & _mask;
+            int slotIdx = _maxPages > 0 ? (pageIdx & _slotMask) : pageIdx;
+            var pages = Volatile.Read(ref _pages);
+            T* ptr = pages[slotIdx] + ((long)rowInPage * _width);
+            return new ReadOnlySpan<T>(ptr, _width);
+        }
+
         /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ColumnView<T> GetColumnView(int row, int col, int len)

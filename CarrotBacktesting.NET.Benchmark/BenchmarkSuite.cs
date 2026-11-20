@@ -523,7 +523,7 @@ public static class BenchmarkSuite
                         pageSize: 4096,
                         enableCache: true,
                         tableId: tableId,
-                        compression: "lz4");
+                        compression: CacheCompression.Lz4);
 
                     var sessionConfig = new SessionConfig
                     {
@@ -578,7 +578,7 @@ public static class BenchmarkSuite
                         pageSize: 4096,
                         enableCache: true,
                         tableId: tableId,
-                        compression: "lz4");
+                        compression: CacheCompression.Lz4);
 
                     var sessionConfig = new SessionConfig
                     {
@@ -767,7 +767,7 @@ public static class BenchmarkSuite
                         pageSize: 4096, 
                         enableCache: true, 
                         tableId: "ashare.kline.1m", 
-                        compression: "lz4");
+                        compression: CacheCompression.Lz4);
 
                     var config = new SessionConfig
                     {
@@ -801,7 +801,7 @@ public static class BenchmarkSuite
                         pageSize: 4096, 
                         enableCache: true, 
                         tableId: "ashare.kline.1m", 
-                        compression: "lz4");
+                        compression: CacheCompression.Lz4);
 
                     var config = new SessionConfig
                     {

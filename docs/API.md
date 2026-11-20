@@ -46,8 +46,8 @@ public static class SessionConfigLoader
 - **`EngineConfig`**: 引擎自身参数：`Mode` (`backtest`/`living`)、`StartDate` (DateTime?)、`EndDate` (DateTime?)。
 - **`BrokerConfig`**: `InitialCash` (double)、`SettleDays` (int: 0 即 T+0, 1 即 T+1)、`AllowShort` (bool)、`FeeRate` (double)、`MinFee` (double)、`Slippage` (double)、`VolumeLimit` (double)、`CheckLimit` (bool)、`Multiplier` (double)、`MarginRate` (double)，对称覆盖 Hook，以及内置静态市场预设（`Universal`, `AStock`, `Futures`, `Crypto`）。
 - **`DataConfig`**: `Root` (string)、`Timeseries` (`List<TimeseriesConfig>`)、`Events` (`List<EventStreamConfig>`)、`Fields` (`List<FieldTableConfig>`)、`Adjust` (`AdjustmentConfig`)。
-- **`AdjustmentConfig`**: `Mode` ("post" / "none")、`Table` (string: 默认 "adjustments")、`FactorField` (string: 默认 "back_adj_factor")、`PriceFields` (`List<string>`: 默认 ["open", "high", "low", "close"])。
-- **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)、`TimeZone` (string?)、`Cache` (bool)、`PageSize` (int)、`Refresh` (string)、`Compression` (string)、`CommitBatchSize` (int)、`MaxPages` (int)、`Prefetch` (bool)、`NullableFields` (`List<string>?`)。
+- **`AdjustmentConfig`**: `Mode` (`AdjustmentMode`: `None` / `Post`)、`TableId` (string: 默认 "adjustments")、`FactorField` (string: 默认 "back_adj_factor")、`PriceFields` (`List<string>`: 默认 ["open", "high", "low", "close"])、`Cache` (bool: 默认 true)。
+- **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)、`TimeZone` (string?)、`Cache` (bool)、`PageSize` (int)、`Refresh` (`CacheRefreshMode`: `Lazy` / `Auto` / `Force`)、`Compression` (`CacheCompression`: `Lz4` / `None`)、`CommitBatchSize` (int)、`MaxPages` (int)、`Prefetch` (bool)、`NullableFields` (`List<string>?`)。
 - **`EventStreamConfig`**: `Name` (string)、`TableId` (string)、`Fields` (`List<string>?`)、`TimeZone` (string?)、`NullableFields` (`List<string>?`)。
 - **`FieldTableConfig`**: `Name` (string)、`TableId` (string)、`KeyColumn` (string?)、`ValueColumns` (`List<string>?`)、`NullableFields` (`List<string>?`)。
 
@@ -83,6 +83,9 @@ data:
   timeseries:
     - table_id: "ashare.kline.1m.raw.custom"
       fields: ["open", "high", "low", "close", "volume"]
+  adjust:
+    mode: "post"              # none / post
+    table_id: "ashare.adj_factor.baostock"
   events:
     - name: "adjustments"
       table_id: "ashare.adj_factor.baostock"
@@ -117,6 +120,9 @@ data:
   timeseries:
     - table_id: "ashare.kline.1m.raw.custom"
       fields: ["open", "close", "volume"]
+  adjust:
+    mode: "post"
+    table_id: "ashare.adj_factor.baostock"
   events:
     - name: "adjustments"
       table_id: "ashare.adj_factor.baostock"
@@ -412,7 +418,7 @@ public class TimeseriesIndexStore
 
 public class TimeseriesFieldStore
 {
-    public TimeseriesFieldStore(string storeRoot, string tableId, string fieldName, int pageSize, string compression, TimeseriesIndexStore indexStore);
+    public TimeseriesFieldStore(string storeRoot, string tableId, string fieldName, int pageSize, CacheCompression compression, TimeseriesIndexStore indexStore);
     public bool HasField();
     public TimeseriesMetadata? ReadMetadata();
     public void SaveMetadata(TimeseriesMetadata meta);
@@ -429,7 +435,7 @@ public class TimeseriesCache : ITimeseriesCache
 {
     public TimeseriesIndexStore IndexStore { get; }
     public TimeseriesFieldStore GetFieldStore(string fieldName);
-    public TimeseriesCache(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4");
+    public TimeseriesCache(string storeRoot, string tableId, int pageSize = 4096, CacheCompression compression = CacheCompression.Lz4);
 }
 ```
 
@@ -716,19 +722,19 @@ public interface IEngineContext
     double AvailableCash { get; }
     double TotalEquity { get; }
 
-    // 当期极简取价门面（专职当期快照，统一 double，默认 Post 后复权，根除因子时间错位）
-    double GetClose(string symbol, PriceMode mode = PriceMode.Post);
-    double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post);
-    double GetOpen(string symbol, PriceMode mode = PriceMode.Post);
-    double GetOpen(int symbolIndex, PriceMode mode = PriceMode.Post);
-    double GetHigh(string symbol, PriceMode mode = PriceMode.Post);
-    double GetHigh(int symbolIndex, PriceMode mode = PriceMode.Post);
-    double GetLow(string symbol, PriceMode mode = PriceMode.Post);
-    double GetLow(int symbolIndex, PriceMode mode = PriceMode.Post);
-    double GetVolume(string symbol, PriceMode mode = PriceMode.Raw); // 成交量默认保持 Raw 物理量
-    double GetVolume(int symbolIndex, PriceMode mode = PriceMode.Raw);
-    double GetField(string symbol, string fieldName, PriceMode mode = PriceMode.Post);
-    double GetField(int symbolIndex, string fieldName, PriceMode mode = PriceMode.Post);
+    // 时序与复权取价门面（支持时序负向回溯 offset <= 0，offset > 0 严格抛出未来函数熔断异常，默认 Post 后复权）
+    double GetClose(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetClose(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetOpen(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetOpen(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetHigh(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetHigh(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetLow(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetLow(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetVolume(string symbol, int offset = 0, PriceMode mode = PriceMode.Raw); // 成交量默认保持 Raw 物理量
+    double GetVolume(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Raw);
+    double GetField(string symbol, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
+    double GetField(int symbolIndex, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
 }
 ```
 
@@ -858,7 +864,7 @@ public interface ICheckpointable
 为彻底避免全量预计算后复权价与指标导致物理二维矩阵膨胀（20GB~30GB），CarrotQuant.NET 建立了高性能增量流式指标子系统与当期极速复权因子供给机制。
 
 ### 1. IStreamIndicator (流式指标核心契约)
-统一单值与多值指标为唯一抽象契约，原生支持负数时序索引、未来函数偷价熔断（offset > 0 强制抛错）与停牌冻结跳过（Skip & Freeze）。每步传入完整的 OHLCV 市场行情，杜绝假参数与伪实现：
+统一单值与多值指标为唯一抽象契约，原生支持负数时序索引、前瞻偏差防护（当 offset > 0 时抛出 ArgumentOutOfRangeException）与停牌冻结跳过（Skip & Freeze）。每步传入完整的 OHLCV 市场行情，杜绝假参数与伪实现：
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Indicators;

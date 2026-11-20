@@ -41,7 +41,7 @@ namespace CarrotBacktesting.NET.Data
 
                 using var reader = CsvDataReader.Create(filePath);
                 int symIdx = reader.FindColumn(DefaultDataColumns.SymbolCandidates);
-                int dtIdx = reader.FindColumn(DefaultDataColumns.DateTime);
+                int dtIdx = reader.FindColumn(DefaultDataColumns.TimeCandidates);
                 int tsIdx = reader.FindColumn(DefaultDataColumns.Timestamp);
                 var valueColIndices = valueColumns.Select(v => reader.FindColumn(v)).ToArray();
 

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 using K4os.Compression.LZ4;
 
@@ -23,7 +24,7 @@ namespace CarrotBacktesting.NET.Data
         private readonly string _tableId;
         private readonly string _fieldName;
         private readonly int _pageSize;
-        private readonly string _compression;
+        private readonly CacheCompression _compression;
         private readonly TimeseriesIndexStore _indexStore;
         private readonly object _gate = new();
 
@@ -48,9 +49,9 @@ namespace CarrotBacktesting.NET.Data
         public int PageSize => _pageSize;
 
         /// <summary>
-        /// 压缩算法名称（如 "lz4", "none"）。
+        /// 压缩算法（如 Lz4, None）。
         /// </summary>
-        public string Compression => _compression;
+        public CacheCompression Compression => _compression;
 
         /// <summary>
         /// 所属表的表级双标尺索引管理器。
@@ -76,7 +77,7 @@ namespace CarrotBacktesting.NET.Data
             string tableId,
             string fieldName,
             int pageSize,
-            string compression,
+            CacheCompression compression,
             TimeseriesIndexStore indexStore)
         {
             if (string.IsNullOrWhiteSpace(storeRoot))
@@ -101,7 +102,7 @@ namespace CarrotBacktesting.NET.Data
             _tableId = tableId;
             _fieldName = fieldName;
             _pageSize = pageSize;
-            _compression = string.IsNullOrWhiteSpace(compression) ? "lz4" : compression.ToLowerInvariant();
+            _compression = compression;
             _indexStore = indexStore;
         }
 
@@ -330,7 +331,7 @@ namespace CarrotBacktesting.NET.Data
                 int totalRows = matrix.RowCount;
                 int width = matrix.Width;
                 int neededPages = totalRows > 0 ? (int)(((long)totalRows + _pageSize - 1) / _pageSize) : 0;
-                bool useLz4 = string.Equals(_compression, "lz4", StringComparison.OrdinalIgnoreCase);
+                bool useLz4 = _compression == CacheCompression.Lz4;
 
                 // 1. 逐块以块级纯连续内存写入二进制数据文件 chunk_{i}.bin
                 for (int pageIdx = 0; pageIdx < neededPages; pageIdx++)
@@ -368,7 +369,7 @@ namespace CarrotBacktesting.NET.Data
                     TableId = _tableId,
                     FieldName = _fieldName,
                     DataType = typeof(T).Name,
-                    Compression = _compression,
+                    Compression = _compression.ToString().ToLowerInvariant(),
                     PageSize = _pageSize,
                     Width = width,
                     RowCount = totalRows,

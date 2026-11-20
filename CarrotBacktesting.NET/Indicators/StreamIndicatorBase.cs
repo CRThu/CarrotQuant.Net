@@ -44,12 +44,12 @@ namespace CarrotBacktesting.NET.Indicators
         {
             get
             {
-                // 1. 防未来函数偷价红线：严格禁止访问未来 Bar
+                // 1. 前瞻偏差防御：禁止访问未来 Bar
                 if (offset > 0)
                 {
                     throw new ArgumentOutOfRangeException(
                         nameof(offset),
-                        $"检测到非法未来函数越界 (offset = {offset} > 0)！系统严格禁止向未来偷价，仅允许访问当前 (0) 或历史 (< 0)。");
+                        $"时序 offset 越界 (offset = {offset} > 0)。仅允许访问当前 (0) 或历史步长 (< 0)，以防止前瞻偏差。");
                 }
 
                 // 2. 未就绪或历史回溯深度超出当前已记录的缓冲窗口时安全返回 NaN

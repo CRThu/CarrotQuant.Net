@@ -125,11 +125,11 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
             int count = _instances.Length;
             for (int i = 0; i < count; i++)
             {
-                double o = context.GetOpen(i, Mode);
-                double h = context.GetHigh(i, Mode);
-                double l = context.GetLow(i, Mode);
-                double c = context.GetClose(i, Mode);
-                double v = context.GetVolume(i);
+                double o = context.GetOpen(i, 0, Mode);
+                double h = context.GetHigh(i, 0, Mode);
+                double l = context.GetLow(i, 0, Mode);
+                double c = context.GetClose(i, 0, Mode);
+                double v = context.GetVolume(i, 0);
                 _instances[i].Update(o, h, l, c, v);
             }
         }

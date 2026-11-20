@@ -136,19 +136,19 @@ public class EngineContext : IEngineContext
     public IMarketState Market { get; }
     public IndicatorRegistry Indicators { get; }
 
-    // 当期极简取价门面（专职当期快照，统一 double，默认 Post 后复权，根除历史因子时间错位）
-    public double GetClose(string symbol, PriceMode mode = PriceMode.Post);
-    public double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post);
-    public double GetOpen(string symbol, PriceMode mode = PriceMode.Post);
-    public double GetOpen(int symbolIndex, PriceMode mode = PriceMode.Post);
-    public double GetHigh(string symbol, PriceMode mode = PriceMode.Post);
-    public double GetHigh(int symbolIndex, PriceMode mode = PriceMode.Post);
-    public double GetLow(string symbol, PriceMode mode = PriceMode.Post);
-    public double GetLow(int symbolIndex, PriceMode mode = PriceMode.Post);
-    public double GetVolume(string symbol, PriceMode mode = PriceMode.Raw); // 成交量默认保持物理量 Raw
-    public double GetVolume(int symbolIndex, PriceMode mode = PriceMode.Raw);
-    public double GetField(string symbol, string fieldName, PriceMode mode = PriceMode.Post);
-    public double GetField(int symbolIndex, string fieldName, PriceMode mode = PriceMode.Post);
+    // 统一取价与时序回溯门面（专职当期及历史负向回溯快照，统一 double，默认 Post 后复权，负向回溯 offset <= 0，offset > 0 严格抛出未来函数熔断）
+    public double GetClose(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetClose(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetOpen(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetOpen(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetHigh(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetHigh(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetLow(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetLow(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetVolume(string symbol, int offset = 0, PriceMode mode = PriceMode.Raw); // 成交量默认保持物理量 Raw
+    public double GetVolume(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Raw);
+    public double GetField(string symbol, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
+    public double GetField(int symbolIndex, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
 }
 ```
 

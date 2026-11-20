@@ -161,7 +161,7 @@ public interface ISimulatedExchange : IExchangeGateway
 - **时序矩阵按需 $O(1)$ 直通发现**：`SimulatedExchangeGateway` 在步进时绑定当前时序矩阵与时间步索引。当挂单簿为空或标的首次报单时，网关直接按需 $O(1)$ 常数时间直通时序矩阵获取当前收盘价作为公允市价，彻底杜绝挂单簿无排队单时公允市价缺失、进而导致限价单误拿自身委托价判定即时成交的系统性漏洞。
 
 ### 4. 流动性成交量硬约束 (VolumeLimit)
-为杜绝小盘股撮合成交量超过真实市场容量的作弊行为，配置项 `VolumeLimit` 严格限制单笔委托不得超过当前 Bar 物理成交量的指定比例（如 5%）：
+为防止委托成交量超出真实市场流动性容量，配置项 `VolumeLimit` 严格限制单笔委托不得超过当前 Bar 物理成交量的指定比例（如 5%）：
 $$\text{MaxAllowedQuantity} = \text{BarVolume} \times \text{VolumeLimit}$$
 超出比例的订单直接被拒单（Rejected）。若 `VolumeLimit == 0.0` 则代表完全禁用流动性约束（无限制放行）。
 

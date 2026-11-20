@@ -54,18 +54,18 @@ public class RoslynStrategyCompilerTests
         }
 
         public CarrotBacktesting.NET.Abstraction.Indicators.IIndicatorRegistry Indicators => throw new NotImplementedException();
-        public double GetClose(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetOpen(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetOpen(int symbolIndex, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetHigh(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetHigh(int symbolIndex, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetLow(string symbol, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetLow(int symbolIndex, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetVolume(string symbol, PriceMode mode = PriceMode.Raw) => double.NaN;
-        public double GetVolume(int symbolIndex, PriceMode mode = PriceMode.Raw) => double.NaN;
-        public double GetField(string symbol, string fieldName, PriceMode mode = PriceMode.Post) => double.NaN;
-        public double GetField(int symbolIndex, string fieldName, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetClose(string symbol, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetClose(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetOpen(string symbol, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetOpen(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetHigh(string symbol, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetHigh(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetLow(string symbol, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetLow(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetVolume(string symbol, int offset = 0, PriceMode mode = PriceMode.Raw) => double.NaN;
+        public double GetVolume(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Raw) => double.NaN;
+        public double GetField(string symbol, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
+        public double GetField(int symbolIndex, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post) => double.NaN;
 
         public T? GetExtension<T>() where T : class => null;
     }

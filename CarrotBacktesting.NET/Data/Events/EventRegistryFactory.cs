@@ -41,6 +41,7 @@ namespace CarrotBacktesting.NET.Data
                 var nullableFields = cfg.NullableFields != null
                     ? new HashSet<string>(cfg.NullableFields, StringComparer.OrdinalIgnoreCase)
                     : null;
+
                 var table = EventSourceFactory.Create(resolver, cfg.TableId, startDate, endDate, nullableFields);
                 registry.Register(tableName, table);
             }

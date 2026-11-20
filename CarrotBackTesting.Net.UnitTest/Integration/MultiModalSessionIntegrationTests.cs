@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using CarrotBacktesting.NET;
 using CarrotBacktesting.NET.Abstraction.Analysis;
+using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Indicators;
 using CarrotBacktesting.NET.Analysis;
@@ -302,7 +303,7 @@ public class MultiModalSessionIntegrationTests
                         Fields = new List<string> { "open", "high", "low", "close", "volume" },
                         Cache = true, // 开启分块本地缓存与预读
                         PageSize = 4096,
-                        Compression = "lz4"
+                        Compression = CacheCompression.Lz4
                     }
                 }
             },

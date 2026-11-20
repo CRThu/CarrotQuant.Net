@@ -146,7 +146,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 source, _tempCacheDir, 
                 pageSize: 1024, 
                 enableCache: true, 
-                refreshMode: "lazy", 
+                refreshMode: CacheRefreshMode.Lazy, 
                 tableId: tableId))
             {
                 var buf1 = provider1.GetMatrix<double>("close");
@@ -165,7 +165,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 source, _tempCacheDir, 
                 pageSize: 1024, 
                 enableCache: true, 
-                refreshMode: "lazy", 
+                refreshMode: CacheRefreshMode.Lazy, 
                 tableId: tableId))
             {
                 var buf2 = provider2.GetMatrix<double>("close");
@@ -179,7 +179,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 source, _tempCacheDir, 
                 pageSize: 1024, 
                 enableCache: true, 
-                refreshMode: "force", 
+                refreshMode: CacheRefreshMode.Force, 
                 tableId: tableId))
             {
                 var buf3 = provider3.GetMatrix<double>("close");
@@ -208,7 +208,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 1024,
                 enableCache: true,
-                refreshMode: "lazy",
+                refreshMode: CacheRefreshMode.Lazy,
                 tableId: tableId))
             {
                 var buf1 = provider1.GetMatrix<double>(fieldName);
@@ -232,7 +232,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 1024,
                 enableCache: true,
-                refreshMode: "lazy",
+                refreshMode: CacheRefreshMode.Lazy,
                 tableId: tableId))
             {
                 var buf2 = provider2.GetMatrix<double>(fieldName);
@@ -266,7 +266,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 1024,
                 enableCache: true,
-                refreshMode: "force",
+                refreshMode: CacheRefreshMode.Force,
                 tableId: tableId))
             {
                 var bufPe = provider1.GetMatrix<double>(fieldPe);
@@ -279,7 +279,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 1024,
                 enableCache: true,
-                refreshMode: "lazy",
+                refreshMode: CacheRefreshMode.Lazy,
                 tableId: tableId))
             {
                 var bufPe = provider2.GetMatrix<double>(fieldPe);
@@ -312,7 +312,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 1. 初始化 provider 并载入
             using (var provider = new TimeseriesRegistry(
                 mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
+                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
             {
                 var buffer = provider.GetMatrix<double>("close");
                 Assert.AreEqual(1, buffer.RowCount);
@@ -334,7 +334,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             mockSource.DatesList.Add(new DateTime(2025, 1, 3));
             using (var providerRestart = new TimeseriesRegistry(
                 mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
+                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
             {
                 var buffer = providerRestart.GetMatrix<double>("close");
                 Assert.AreEqual(2, buffer.RowCount);
@@ -357,7 +357,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 1. auto 模式首次写入
             using (var provider1 = new TimeseriesRegistry(
                 mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
+                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
             {
                 var buf = provider1.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
@@ -366,7 +366,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 2. auto 模式同维度命中
             using (var provider2 = new TimeseriesRegistry(
                 mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
+                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
             {
                 var buf = provider2.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
@@ -376,7 +376,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             mockSource.SymbolsList.Add("sh.600001");
             using (var provider3 = new TimeseriesRegistry(
                 mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: "auto", tableId: tableId))
+                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
             {
                 var buf = provider3.GetMatrix<double>("close");
                 Assert.AreEqual(2, buf.Width);
@@ -392,7 +392,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             using (var provider4 = new TimeseriesRegistry(
                 mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: "lazy", tableId: tableId))
+                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
             {
                 var buf = provider4.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);

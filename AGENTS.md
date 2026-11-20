@@ -91,7 +91,7 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 - `TimeseriesSourceFactory`: 时序数据源工厂，根据 `StorageResolver.GetFormat(tableId)` 自动派发构建 `CsvTimeseriesSource` 或 `ParquetTimeseriesSource`，调用端零物理格式耦合。
 - `ReadSymbolSeries<T>(symbol, fieldName, startIndex, length, destination)`: 直接写入调用方提供的内存块，严格零拷贝；`T : unmanaged` 约束兼容 MMF/连续内存布局。
 - `CsvTimeseriesSource`: 遵循 `PartitionMode.Symbol` 强制标准规范，支持 Hive 分区 `{root}/{table_id}/year={yyyy}/{symbol}.csv` 与 Flat 结构；基于 Sylvan.Data.Csv 流式解析，标的代码权威绑定文件名，行内绝无 symbol 列比对与分配开销，泛型分发 `ValueConverter<T>` 零装箱转换。
-- `ParquetTimeseriesSource`: 支持按年/月分区 `{root}/{table_id}/year={yyyy}/[month={mm}/]data.parquet` 或单文件；基于 `YearCache` 按需列缓存解压，通过 `Unsafe.As` 零拷贝转换。**实行全局严格零空值（Zero-Tolerance NULL）契约**：默认全表全列严禁 NULL，一旦在解包中检测到未在白名单中的字段存在 NULL，立即以方案 C（统计损坏总数 + 占比 + 打印前 5 个损坏样本行号）抛出强类型 `InvalidDataException` 阻断加载；仅对在 `metadata.json` 或 `TimeseriesConfig.NullableFields` 白名单中显式声明的字段放行并安全映射为 NaN/默认哨兵。
+- `ParquetTimeseriesSource`: 支持按年/月分区 `{root}/{table_id}/year={yyyy}/[month={mm}/]data.parquet` 或单文件；基于 `YearCache` 按需列缓存解压，通过 `Unsafe.As` 零拷贝转换。**实行全局严格零空值（Zero-Tolerance NULL）契约**：默认全表全列严禁 NULL，一旦在解包中检测到未在白名单中的字段存在 NULL，立即统计损坏总数、占比并打印前 5 个损坏样本行号，抛出强类型 `InvalidDataException` 阻断加载；仅对在 `metadata.json` 或 `TimeseriesConfig.NullableFields` 白名单中显式声明的字段放行并安全映射为 NaN/默认哨兵。
 - **统一稠密矩阵载体**：系统统一采用 `ChunkMatrix2D<T>`（`IReadOnlyMatrix2D<T>`）作为全市场稠密数据载体。横向截面快照统一由行切片（`ReadOnlyRowView<T>`）提供，纵向时序统一由列切片（`ReadOnlyColumnView<T>`）提供，回测与实盘统一由 Matrix 供给。
 
 ### 2. 内存层接口与 Matrix 访问
@@ -343,20 +343,22 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | **VectorBT** | Python / Numba | 2,000 万 ~ 5,000 万 | 1,000 万 ~ 3,000 万 | 约 10~30 秒 | 纯矩阵向量化广播速度快，但无法处理真实订单状态机、T+1、流动性拦截与路径依赖。 |
 | **CarrotQuant .NET** | **现代 C# (.NET 10)** | **2,000 万 ~ 5,000 万** | **200 万 ~ 800 万** | **约 35~120 秒** | **兼具矩阵高吞吐与订单撮合保真度**。非托管连续内存 + AsOf 时间片 + 对称 Hook 拦截。 |
 
-### 4. 当期极简取价门面与除权因子供给机制 (Pricing Facades & Adjustment Safety)
+### 4. 统一取价与负向时序回溯门面与除权因子专职管理 (Pricing Facades & Adjustment Provider)
 
-1. **统一取价门面 (`GetClose`, `GetOpen`, `GetHigh`, `GetLow`, `GetVolume`)**:
-   - `EngineContext` 原生提供当前 Bar 统一取价门面，统一返回原生 `double`，同时支持标的代码（`string symbol`）与标的全局列索引（`int symbolIndex`）重载；
-   - 内部对 OHLCV 矩阵建立单次惰性解析缓存（`_resolvedClose` 标量快速标记），后续百万级步进中跳过字段探查与字典查找，无 Try-Catch 异常分支阻碍 JIT 内联，实测 1000 步热循环堆内存分配严格为 **0 bytes**。
+1. **统一取价与时序负向回溯门面 (`GetClose`, `GetOpen`, `GetHigh`, `GetLow`, `GetVolume`, `GetField`)**:
+   - `EngineContext` 原生提供 12 个核心取价门面，统一返回原生 `double`，支持标的代码（`string symbol`）与标的全局列索引（`int symbolIndex`）双重载；
+   - **负向时序回溯因果律守恒**: 统一支持 `int offset = 0` 历史回溯参数。`offset <= 0` 严格指向过去或当期（例如 `offset = -1` 获取昨日价），内部时序与因子严格对应历史时刻；当 `offset > 0` 时显式通过 Cold Throw 抛出强类型 `ArgumentOutOfRangeException`，在契约层彻底杜绝前瞻偏差（Look-ahead Bias）；
+   - **热路径极致内联与零 GC**: 内部对 OHLCV 矩阵实施单次惰性解析缓存（`_resolvedClose` 等），无符号位运算消除下界检查，提取 Cold Throw 消除 IL 膨胀，确保 RyuJIT 激进内联，百万步热循环堆分配严格为 **0 bytes**。
 2. **复权口径严格解耦 (`PriceMode.Post` vs `PriceMode.Raw`)**:
-   - **约定优于配置**: 门面方法缺省复权模式均为 `PriceMode.Post`（后复权），消除除权除息造成的虚假价格断崖；
+   - **约定优于配置**: 门面方法缺省复权模式均为 `PriceMode.Post`（后复权），消除除权除息造成的虚假价格断崖；如需原始未复权价，直接通过命名参数 `mode: PriceMode.Raw` 传入；
    - **撮合与核算 100% 物理隔离**: 交易所撮合（`SimulatedExchangeGateway`）、订单簿（`OrderBook`）与资产账本（`AccountLedger`）强制绑定物理真实原价（Raw），完全与策略分析用的后复权价（Post）物理隔离。
 3. **成交量（Volume）物理守恒与白名单防护**:
    - `GetVolume` 契约固定返回物理原始成交量（Raw 股数），无论传入何种复权模式均绝不乘复权因子，坚决杜绝因价格复权计算虚假放大成交量；
    - `GetField` 引入 `_priceFields` 白名单校验，仅对声明的价格字段在 Post 模式下乘因子，市盈率（PE）、换手率、成交笔数等非价格衍生字段严格受白名单保护，杜绝误乘。
-4. **全历史因子极速滚动与首日覆盖严格告警**:
-   - 回测启动前，引擎从除权表历史首个事件极速滚动沉淀至起测日（耗时 $< 0.5\text{ms}$），保证跨年回测基准因子精准对齐；
-   - **前置时序严格比对**: 引擎起测前逐一校验全市场标的首次产生有效行情（非 NaN）的日期与除权表首条记录的生效日期；凡在产生有效行情前未提供除权因子、或首条除权记录滞后于交易首日的，强制输出聚合 Warning 告警（如次新股、停牌漏配），杜绝隐式赋 1.0 掩盖数据缺失。
+4. **除权因子专职管理 (`AdjustmentProvider`) 与本地 LZ4 缓存**:
+   - 彻底与策略事件流（`Events`）解耦，废除 `IsCumulative` 临时补丁，由专职的 `AdjustmentProvider` 统一接管因子生命周期；
+   - **默认开启二进制缓存 (`Cache = true`)**: 优先探测本地 LZ4 块压缩缓存（`.cache/{table}/{field}/`），严格校验标的代码池列宽与全序列交易日历；命中时直接解压为非托管矩阵，原始除权文件 **0 读取、0 堆解析**，启动耗时收敛至 ~5ms；
+   - **全历史滚存与非交易日推进**: 缓存未命中时专职加载完整历史除权事件，有序迭代器自动推进合并周末/节假日事件，并执行行情跨模态时序前置严格比对与 Warning 诊断。
 
 ---
 
@@ -376,7 +378,7 @@ CarrotQuant .NET 遵循瘦契约与分层隔离原则，指标体系收敛为以
 - **`IStreamIndicator` (`Abstraction/Indicators/IStreamIndicator.cs`)**:
   - 增量流式指标顶层接口契约，单一输入入口 `Update(open, high, low, close, volume)`，以 5 个原生 `double` 寄存器参数对齐单值与复合指标需求，严格零装箱；
   - 属性暴露最新值 `Value` / `Current`、预热指示 `IsReady`，支持重置状态机 `Reset()`；
-  - 负数时序索引器 `this[int offset]`：统一以 `0` 代表当期，`-1` 代表上期；当 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，**在物理契约层彻底熔断未来函数偷价风险**。
+  - 负数时序索引器 `this[int offset]`：统一以 `0` 代表当期，`-1` 代表上期；当 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，**在契约层彻底杜绝前瞻偏差（Look-ahead Bias）**。
 - **`IndicatorPool` & `IndicatorPool<T>` (`Abstraction/Indicators/IndicatorPool.cs`)**:
   - 全市场标的指标池连续扁平容器，非泛型基类 `IndicatorPool` 统筹 Name、Count 与 PriceMode，泛型具体类 `IndicatorPool<T>` 内部直接持有连续平铺数组 `T[] _instances`；
   - 热路径提供与原生数组等同的纳秒级寻址 `pool[symbolIndex]`（CPU L2 Cache 极致亲和），并支持标的代码寻址 `pool[symbol]`；
@@ -444,7 +446,7 @@ CarrotQuant .NET 遵循瘦契约与分层隔离原则，指标体系收敛为以
 - `broker`: 账户初始资金 (`initial_cash`)、结算制度 (`settle_days`)、做空许可 (`allow_short`)、费率滑点 (`fee_rate`, `min_fee`, `slippage`)、流动性风控与合约保证金 (`volume_limit`, `check_limit`, `multiplier`, `margin_rate`)。
 - `data`: 数据层统一多态入口（单一事实来源）：
   - **外链独立配置**: 赋外部文件相对路径字符串（如 `data: "shared/data.yaml"`），支持多策略复用；
-  - **直接内嵌配置**: 内嵌数据层映射对象，包含 `root`、`timeseries`（含 `table_id` 与可选 `fields`）、`events`（含 `name` 与 `table_id`）、`fields`（含 `name`、`table_id`、可选 `key_column` 与 `value_columns`）。
+  - **直接内嵌配置**: 内嵌数据层映射对象，包含 `root`、`timeseries`（含 `table_id`、`refresh: lazy/auto/force`、`compression: lz4/none` 与可选 `fields`）、`events`（含 `name` 与 `table_id`）、`fields`（含 `name`、`table_id`、可选 `key_column` 与 `value_columns`），以及 `adjust`（复权设置，含强类型枚举 `mode: none/post`、`table_id`、`factor_field`、`price_fields` 与 `cache`）。
 - `pipeline`: （可选）策略管线拓扑多态入口：支持外链相对路径字符串（如 `pipeline: "shared/pipeline.yaml"`）或直接内嵌流水线节点映射。
 - **统一门面 API**: `SessionConfig.Load(path)`、`SessionConfig.FromYaml(yaml, baseDir)`、`config.ToYaml()`、`config.Save(path)`，底层由权威唯一的 `YamlSerializer` 单点驱动。
 - **配置模板与完整 YAML 范例**: 详见 [docs/API.md](docs/API.md#3-yaml-配置范例) 与 [docs/configuration.md](docs/configuration.md)。

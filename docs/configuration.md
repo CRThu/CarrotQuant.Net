@@ -66,9 +66,10 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | :--- | :--- | :--- | :---: | :--- | :--- |
 | `data` | `Data` | `string` \| `Mapping` | 是 | - | **多态统一入口**：<br>1. **外链模式**：赋字符串路径指向外部独立配置文件（如 `"shared/data.yaml"`）；<br>2. **内嵌模式**：赋字典映射直接声明以下参数。 |
 | `root` | `Root` | `string` | 是 | `""` | 数据存储区物理根目录。支持以当前配置文件所在目录为基准的相对路径（如 `"../../data"`）或操作系统绝对路径。 |
-| `timeseries` | `Timeseries` | `List<TimeseriesConfig>` | 否 | `[]` | 时序行情矩阵列表（稠密数据），用于加载 OHLCV 宽表。 |
-| `events` | `Events` | `List<EventStreamConfig>` | 否 | `[]` | 异构事件流列表（稀疏数据），用于挂载复权因子、公告、龙虎榜等 KV 数据。 |
-| `fields` | `Fields` | `List<FieldTableConfig>` | 否 | `[]` | 标的静态属性与维表列表，用于挂载概念、行业、静态属性等平铺维表。 |
+| `timeseries` | `Timeseries` | `List<TimeseriesConfig>` | 是 | `[]` | 时序行情矩阵列表（稠密数据），用于加载 OHLCV 宽表。当前主时钟由**唯一**主时序表驱动，必须配置且仅配置 1 项；若配置 0 项抛出 `InvalidOperationException`，配置多于 1 项抛出 `NotSupportedException`。 |
+| `events` | `Events` | `List<EventStreamConfig>` | 否 | `[]` | 异构事件流列表（稀疏数据，支持 0~N 个），用于挂载复权因子、公告、龙虎榜等 KV 数据。 |
+| `fields` | `Fields` | `List<FieldTableConfig>` | 否 | `[]` | 标的静态属性与维表列表（支持 0~N 个），用于挂载概念、行业、静态属性等平铺维表。 |
+| `adjust` | `Adjust` | `AdjustmentConfig` | 否 | 见下表 | 除权因子自动推导与复权管理配置，用于统一计算并供给前/后复权价格矩阵。 |
 
 #### 3.1 `timeseries` 时序项配置 (`TimeseriesConfig`)
 
@@ -79,12 +80,12 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `time_zone` | `TimeZone` | `string?` | 否 | `null` | 数据源时间戳时区标识符（遵循 IANA 标准如 `"Asia/Shanghai"`、`"America/New_York"` 或 `"UTC"`）。若数据源时间戳为无时区本地时间，将根据此时区转换为全局单调的 UTC 时间戳；若缺省或为 null，则视为 UTC 时间。 |
 | `cache` | `Cache` | `bool` | 否 | `true` | 是否启用二进制对齐缓存。 |
 | `page_size` | `PageSize` | `int` | 否 | `4096` | 缓存分页行数大小，默认固定为 4096（必须为 2 的幂，如 1024, 2048, 4096, 8192 等）。 |
-| `refresh` | `Refresh` | `string` | 否 | `"lazy"` | 缓存刷新模式：`"lazy"`（默认，首次生成后只要存在直接加载，不检查原始数据）、`"auto"`（比对原始数据头尾时间戳增量补充）、`"force"`（强制清空并全量重刷）。 |
-| `compression` | `Compression` | `string` | 否 | `"lz4"` | 缓存分块压缩算法：`"lz4"`（默认，3~5GB/s 超高速解码，节省 60%~70% 磁盘空间）、`"none"`（无压缩裸二进制块）。 |
+| `refresh` | `Refresh` | `CacheRefreshMode` | 否 | `Lazy` | 缓存刷新模式枚举：`Lazy` / `"lazy"`（默认，首次生成后只要存在直接加载，不检查原始数据）、`Auto` / `"auto"`（比对原始数据头尾时间戳增量补充）、`Force` / `"force"`（强制清空并全量重刷）。 |
+| `compression` | `Compression` | `CacheCompression` | 否 | `Lz4` | 缓存分块压缩算法枚举：`Lz4` / `"lz4"`（默认，3~5GB/s 超高速解码，节省 60%~70% 磁盘空间）、`None` / `"none"`（无压缩裸二进制块）。 |
 | `commit_batch_size` | `CommitBatchSize` | `int` | 否 | `64` | 内存增量行定量落盘批次大小，默认 64 行。实盘单行追加达到该行数阈值时自动触发批量 Commit 增量落盘；若设为 0 或负数则禁用定量落盘，仅在引擎停止或 Dispose 时触发保底 Commit。 |
 | `max_pages` | `MaxPages` | `int` | 否 | `4` | 最大常驻内存页数，默认为 4（必须为 2 的整数幂，如 2, 4, 8, 16 等）。底层以环形槽位管理内存分页，最老冷数据自动淘汰释放，确保超长高频回测与实盘常驻内存严格守恒；设为 0 或负数则禁用环形淘汰（全量常驻内存）。 |
 | `prefetch` | `Prefetch` | `bool` | 否 | `true` | 是否启用后台异步双缓冲预读。仅在回测模式下生效；在实盘（Living）模式下自动物理短路熔断禁用。 |
-| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常（含缺失行数、占比与样本行号）。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
+| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出包含缺失总行数、占比与样本行号的强类型 `InvalidDataException` 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
 
 > [!NOTE]
 > **零空值契约与缺失值口径**：
@@ -98,7 +99,7 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `name` | `Name` | `string` | 是 | - | 事件流在引擎上下文事件注册表 (`IEventRegistry`) 中的别名，策略通过 `context.Events.GetTable(name)` 或 `context.Events[name]` 依据此名称获取。 |
 | `table_id` | `TableId` | `string` | 是 | - | 事件流物理存储表的唯一标识符（如 `"ashare.adj_factor.baostock"`）。 |
 | `time_zone` | `TimeZone` | `string?` | 否 | `null` | 事件数据源时间戳时区标识符（遵循 IANA 标准如 `"Asia/Shanghai"`、`"UTC"`）。 |
-| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
+| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出包含缺失总行数、占比与样本行号的强类型 `InvalidDataException` 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
 
 #### 3.3 `fields` 标的静态维表配置 (`FieldTableConfig`)
 
@@ -107,7 +108,19 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 | `name` | `Name` | `string` | 是 | - | 维表在引擎上下文维表注册表 (`IFieldRegistry`) 中的别名，策略通过 `context.Fields[name]` 或 `context.Fields.GetTable(name)` 访问。 |
 | `table_id` | `TableId` | `string` | 是 | - | 维表物理存储表的唯一标识符（如 `"ashare.industry.eastmoney"`）。 |
 | `key_column` | `KeyColumn` | `string?` | 否 | `null` | 主键列名。缺省时优先自动推断 `symbol` 列；若无 `symbol` 则采用首列。 |
-| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出方案 C 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
+| `nullable_fields` | `NullableFields` | `List<string>?` | 否 | `null` | 允许包含空值（NULL）的字段名列表（白名单）。默认全表所有字段严禁为 NULL；若检测到未在白名单中的字段存在 NULL，将立即抛出包含缺失总行数、占比与样本行号的强类型 `InvalidDataException` 诊断异常。若 `metadata.json` 中也定义了 `nullable_fields`，此处将与元数据配置合并生效。 |
+
+#### 3.4 `adjust` 自动复权配置 (`AdjustmentConfig`)
+
+统筹回测与实盘运行期的复权模式、除权因子物理来源与本地缓存加速：
+
+| YAML 字段 | C# 属性 | 类型 | 必填 | 默认值 | 说明与取值范围 |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| `mode` | `Mode` | `AdjustmentMode` | 否 | `None` | 复权模式枚举：`None` / `"none"`（默认，不进行复权，使用原始行情）、`Post` / `"post"`（启用后复权，门面与指标默认乘以复权因子）。 |
+| `table_id` | `TableId` | `string` | 否 | `"adjustments"` | 除权因子事件表的唯一标识符（如 `"ashare.adj_factor.baostock"`）。系统由此定位物理存储并预构建连续二维除权因子矩阵。 |
+| `factor_field` | `FactorField` | `string` | 否 | `"back_adj_factor"` | 包含除权因子的数据列名。 |
+| `price_fields` | `PriceFields` | `List<string>` | 否 | `["open", "high", "low", "close"]` | 允许执行复权乘法折算的价格字段白名单，非价格字段（如成交量、市盈率）受到保护不执行复权。 |
+| `cache` | `Cache` | `bool` | 否 | `true` | 是否启用除权因子本地二进制缓存（`.cache/{table_id}/{factor_field}/`）。命中时直接载入非托管矩阵，原始数据零解析。 |
 
 ### 4. `pipeline` 策略流水线编排配置 (`PipelineConfiguration` & `StrategyNodeConfiguration`)
 
@@ -272,9 +285,11 @@ my_project/
 ```yaml
 root: "../../data"                  # 数据存储区物理根目录
 timeseries:
-  - table_id: "ashare.kline.1m.raw.custom"
-    fields: ["open", "high", "low", "close", "volume"]
   - table_id: "ashare.kline.1d.raw.baostock"
+    fields: ["open", "high", "low", "close", "volume"]
+adjust:
+  mode: "post"                      # 复权模式 (none | post)
+  table_id: "ashare.adj_factor.baostock"
 events:
   - name: "adjustments"
     table_id: "ashare.adj_factor.baostock"
@@ -536,6 +551,11 @@ var config = new SessionConfig
                 MaxPages = 4,
                 Prefetch = true
             }
+        },
+        Adjust = new AdjustmentConfig
+        {
+            Mode = AdjustmentMode.Post,
+            TableId = "ashare.adj_factor.baostock"
         },
         Events = new List<EventStreamConfig>
         {

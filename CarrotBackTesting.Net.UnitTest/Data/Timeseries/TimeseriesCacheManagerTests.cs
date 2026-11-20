@@ -38,7 +38,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 4,
-                refreshMode: "lazy");
+                refreshMode: CacheRefreshMode.Lazy);
 
             Assert.AreEqual("close", manager.FieldName);
             Assert.AreEqual(typeof(double), manager.DataType);
@@ -69,7 +69,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 4,
-                refreshMode: "lazy");
+                refreshMode: CacheRefreshMode.Lazy);
 
             // 初始状态：3 行，chunk 0 尚未写满
             Assert.AreEqual(3, manager.TotalRows);
@@ -110,7 +110,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 4096,
-                refreshMode: "lazy");
+                refreshMode: CacheRefreshMode.Lazy);
 
             manager.EnsureLoaded();
             Assert.AreEqual(4096, manager.TotalRows);
@@ -131,7 +131,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_Commit_IncrementalFlushAndZeroHistoricalWriteAmplification()
         {
             var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
-            var cacheStore = new TimeseriesCache(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "test_table", pageSize: 4, compression: CacheCompression.Lz4);
 
             // 1. 首次加载：4 行正好写满 chunk 0
             using (var manager = new TimeseriesCacheManager<double>(
@@ -140,7 +140,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 4,
-                refreshMode: "force"))
+                refreshMode: CacheRefreshMode.Force))
             {
                 manager.EnsureLoaded();
                 Assert.AreEqual(4, manager.TotalRows);
@@ -161,7 +161,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 4,
-                refreshMode: "lazy"))
+                refreshMode: CacheRefreshMode.Lazy))
             {
                 manager.EnsureLoaded();
                 Assert.AreEqual(4, manager.TotalRows);
@@ -191,7 +191,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 4,
-                refreshMode: "lazy"))
+                refreshMode: CacheRefreshMode.Lazy))
             {
                 recoveryManager.EnsureLoaded();
                 Assert.AreEqual(6, recoveryManager.TotalRows);
@@ -211,7 +211,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_UpdateRow_And_RewriteActiveChunkWithoutNewRows()
         {
             var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 4);
-            var cacheStore = new TimeseriesCache(_tempCacheDir, "test_table", pageSize: 4, compression: "lz4");
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "test_table", pageSize: 4, compression: CacheCompression.Lz4);
 
             // 1. 首次加载 4 行并缓存
             using (var manager = new TimeseriesCacheManager<double>(
@@ -220,7 +220,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 4,
-                refreshMode: "force"))
+                refreshMode: CacheRefreshMode.Force))
             {
                 manager.EnsureLoaded();
             }
@@ -232,7 +232,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 4,
-                refreshMode: "lazy"))
+                refreshMode: CacheRefreshMode.Lazy))
             {
                 manager.EnsureLoaded();
                 Assert.AreEqual(4, manager.TotalRows);
@@ -253,7 +253,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 4,
-                refreshMode: "lazy"))
+                refreshMode: CacheRefreshMode.Lazy))
             {
                 recoveryManager.EnsureLoaded();
                 Assert.AreEqual(4, recoveryManager.TotalRows);
@@ -273,7 +273,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 4,
-                refreshMode: "lazy");
+                refreshMode: CacheRefreshMode.Lazy);
 
             manager.EnsureLoaded();
             // 代码总数为 2，传入长度为 3 的截面
@@ -293,7 +293,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 4,
-                refreshMode: "lazy");
+                refreshMode: CacheRefreshMode.Lazy);
 
             manager.Dispose();
 
@@ -313,7 +313,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 4,
-                refreshMode: "lazy");
+                refreshMode: CacheRefreshMode.Lazy);
 
             var rawBuffer = manager.Matrix;
             Assert.IsNotNull(rawBuffer);
@@ -334,7 +334,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 4,
-                refreshMode: "lazy");
+                refreshMode: CacheRefreshMode.Lazy);
 
             manager.EnsureLoaded();
 
@@ -355,7 +355,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_CorruptedCacheFallback_InLazyMode()
         {
             var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 4);
-            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_corrupt", pageSize: 4, compression: "lz4");
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_corrupt", pageSize: 4, compression: CacheCompression.Lz4);
 
             // 1. 首次加载写入缓存
             using (var manager = new TimeseriesCacheManager<double>(
@@ -364,7 +364,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 4,
-                refreshMode: "force"))
+                refreshMode: CacheRefreshMode.Force))
             {
                 manager.EnsureLoaded();
             }
@@ -380,7 +380,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 4,
-                refreshMode: "lazy"))
+                refreshMode: CacheRefreshMode.Lazy))
             {
                 manager2.EnsureLoaded();
                 Assert.AreEqual(4, manager2.TotalRows);
@@ -392,7 +392,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_AppendRow_WithTimestamp_And_AutoCommitAtBatchSize()
         {
             var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 2);
-            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_batch", pageSize: 16, compression: "lz4");
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_batch", pageSize: 16, compression: CacheCompression.Lz4);
 
             // 1. 初始化 2 行并写入缓存，设置 commitBatchSize: 3
             using (var manager = new TimeseriesCacheManager<double>(
@@ -401,7 +401,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 16,
-                refreshMode: "force",
+                refreshMode: CacheRefreshMode.Force,
                 commitBatchSize: 3))
             {
                 manager.EnsureLoaded();
@@ -429,7 +429,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 16,
-                refreshMode: "lazy"))
+                refreshMode: CacheRefreshMode.Lazy))
             {
                 recoveryManager.EnsureLoaded();
                 Assert.AreEqual(5, recoveryManager.TotalRows);
@@ -454,7 +454,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_Dispose_ForcesResidualCommit()
         {
             var mock = new MockTimeseriesSource(new[] { "000001.SZ" }, 2);
-            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_residual", pageSize: 16, compression: "lz4");
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_residual", pageSize: 16, compression: CacheCompression.Lz4);
 
             // 追加了 1 行（未达到 64 行批次），未显式调用 Commit()，直接退出并 Dispose
             using (var manager = new TimeseriesCacheManager<double>(
@@ -463,7 +463,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 16,
-                refreshMode: "force",
+                refreshMode: CacheRefreshMode.Force,
                 commitBatchSize: 64))
             {
                 manager.EnsureLoaded();
@@ -480,7 +480,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 16,
-                refreshMode: "lazy"))
+                refreshMode: CacheRefreshMode.Lazy))
             {
                 recoveryManager.EnsureLoaded();
                 Assert.AreEqual(3, recoveryManager.TotalRows);
@@ -492,7 +492,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TestChunkManager_AppendCol_FlushesRowsFirst_ThenExpandsWidthAndCommits()
         {
             var mock = new MockTimeseriesSource(new[] { "000001.SZ", "600000.SH" }, 2);
-            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_col", pageSize: 16, compression: "lz4");
+            var cacheStore = new TimeseriesCache(_tempCacheDir, "table_col", pageSize: 16, compression: CacheCompression.Lz4);
 
             using (var manager = new TimeseriesCacheManager<double>(
                 "close",
@@ -500,7 +500,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 cacheStore,
                 pageSize: 16,
-                refreshMode: "force",
+                refreshMode: CacheRefreshMode.Force,
                 commitBatchSize: 64))
             {
                 manager.EnsureLoaded();
@@ -553,7 +553,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: pageSize,
-                refreshMode: "lazy",
+                refreshMode: CacheRefreshMode.Lazy,
                 commitBatchSize: 64,
                 maxPages: maxPages);
 
@@ -585,7 +585,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 16,
-                refreshMode: "lazy",
+                refreshMode: CacheRefreshMode.Lazy,
                 commitBatchSize: 64,
                 maxPages: 4,
                 prefetch: false,
@@ -614,7 +614,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: 16,
-                refreshMode: "lazy",
+                refreshMode: CacheRefreshMode.Lazy,
                 commitBatchSize: 64,
                 maxPages: 4,
                 prefetch: true,
@@ -648,7 +648,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 store: null,
                 pageSize: pageSize,
-                refreshMode: "lazy",
+                refreshMode: CacheRefreshMode.Lazy,
                 commitBatchSize: 64,
                 maxPages: maxPages,
                 prefetch: true,

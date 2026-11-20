@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Config;
 
 namespace CarrotBacktesting.NET.Data
@@ -27,7 +28,7 @@ namespace CarrotBacktesting.NET.Data
         private readonly string _storeRoot;
         private readonly string _tableId;
         private readonly int _pageSize;
-        private readonly string _compression;
+        private readonly CacheCompression _compression;
         private readonly TimeseriesIndexStore _indexStore;
         private readonly ConcurrentDictionary<string, TimeseriesFieldStore> _fieldStores = new(StringComparer.OrdinalIgnoreCase);
 
@@ -43,9 +44,9 @@ namespace CarrotBacktesting.NET.Data
         public int PageSize => _pageSize;
 
         /// <summary>
-        /// 压缩算法名称（如 "lz4", "none"）。
+        /// 压缩算法（如 Lz4, None）。
         /// </summary>
-        public string Compression => _compression;
+        public CacheCompression Compression => _compression;
 
         /// <summary>
         /// 表级双标尺索引管理器。
@@ -58,8 +59,8 @@ namespace CarrotBacktesting.NET.Data
         /// <param name="storeRoot">物理存储根目录（例如 {storage_root}/.cache 或表级存储目录）</param>
         /// <param name="tableId">时序表唯一标识符</param>
         /// <param name="pageSize">分页行数大小，默认为 4096</param>
-        /// <param name="compression">压缩格式，支持 "lz4"（默认）与 "none"（无压缩裸块）</param>
-        public TimeseriesCache(string storeRoot, string tableId, int pageSize = 4096, string compression = "lz4")
+        /// <param name="compression">压缩格式，支持 Lz4（默认）与 None（无压缩裸块）</param>
+        public TimeseriesCache(string storeRoot, string tableId, int pageSize = 4096, CacheCompression compression = CacheCompression.Lz4)
         {
             if (string.IsNullOrWhiteSpace(storeRoot))
             {
@@ -77,7 +78,7 @@ namespace CarrotBacktesting.NET.Data
             _storeRoot = Path.GetFullPath(storeRoot);
             _tableId = tableId;
             _pageSize = pageSize;
-            _compression = string.IsNullOrWhiteSpace(compression) ? "lz4" : compression.ToLowerInvariant();
+            _compression = compression;
             _indexStore = new TimeseriesIndexStore(_storeRoot, _tableId);
         }
 

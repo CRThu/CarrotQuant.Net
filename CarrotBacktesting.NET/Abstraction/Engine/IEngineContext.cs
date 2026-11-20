@@ -183,93 +183,105 @@ public interface IEngineContext
 
     #endregion
 
-    #region 当期极简取价门面 (Unified Current Bar Market Data Facades)
+    #region 时序与复权取价门面 (Unified Market Data Facades with Negative Offset)
 
     /// <summary>
-    /// 获取指定标的的当期收盘价（默认提供平滑后复权价）。
+    /// 获取指定标的的收盘价（支持时序负向回溯与平滑复权）。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetClose(string symbol, PriceMode mode = PriceMode.Post);
+    double GetClose(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的列索引的当期收盘价（热路径零字典哈希）。
+    /// 获取指定标的列索引的收盘价（基于标的列索引直接访问）。
     /// </summary>
     /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post);
+    double GetClose(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的的当期开盘价（默认提供平滑后复权价）。
+    /// 获取指定标的的开盘价（支持时序负向回溯与平滑复权）。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetOpen(string symbol, PriceMode mode = PriceMode.Post);
+    double GetOpen(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的列索引的当期开盘价（热路径零字典哈希）。
+    /// 获取指定标的列索引的开盘价（基于标的列索引直接访问）。
     /// </summary>
     /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetOpen(int symbolIndex, PriceMode mode = PriceMode.Post);
+    double GetOpen(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的的当期最高价（默认提供平滑后复权价）。
+    /// 获取指定标的的最高价（支持时序负向回溯与平滑复权）。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetHigh(string symbol, PriceMode mode = PriceMode.Post);
+    double GetHigh(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的列索引的当期最高价（热路径零字典哈希）。
+    /// 获取指定标的列索引的最高价（基于标的列索引直接访问）。
     /// </summary>
     /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetHigh(int symbolIndex, PriceMode mode = PriceMode.Post);
+    double GetHigh(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的的当期最低价（默认提供平滑后复权价）。
+    /// 获取指定标的的最低价（支持时序负向回溯与平滑复权）。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetLow(string symbol, PriceMode mode = PriceMode.Post);
+    double GetLow(string symbol, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的列索引的当期最低价（热路径零字典哈希）。
+    /// 获取指定标的列索引的最低价（基于标的列索引直接访问）。
     /// </summary>
     /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetLow(int symbolIndex, PriceMode mode = PriceMode.Post);
+    double GetLow(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的的当期成交量（默认保持物理量 Raw）。
+    /// 获取指定标的的成交量（默认保持物理量 Raw）。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（成交量默认保持 Raw）。</param>
-    double GetVolume(string symbol, PriceMode mode = PriceMode.Raw);
+    double GetVolume(string symbol, int offset = 0, PriceMode mode = PriceMode.Raw);
 
     /// <summary>
-    /// 获取指定标的列索引的当期成交量（热路径零字典哈希）。
+    /// 获取指定标的列索引的成交量（基于标的列索引直接访问）。
     /// </summary>
     /// <param name="symbolIndex">标的全局列索引。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（成交量默认保持 Raw）。</param>
-    double GetVolume(int symbolIndex, PriceMode mode = PriceMode.Raw);
+    double GetVolume(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Raw);
 
     /// <summary>
-    /// 获取指定标的当期任意时序字段值。
+    /// 获取指定标的任意时序字段值。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
     /// <param name="fieldName">字段名（如 "vwap", "turnover", "settlement" 等）。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetField(string symbol, string fieldName, PriceMode mode = PriceMode.Post);
+    double GetField(string symbol, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
 
     /// <summary>
-    /// 获取指定标的列索引当期任意时序字段值（热路径零字典哈希）。
+    /// 获取指定标的列索引任意时序字段值（基于标的列索引直接访问）。
     /// </summary>
     /// <param name="symbolIndex">标的全局列索引。</param>
     /// <param name="fieldName">字段名。</param>
+    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。取值必须小于等于 0；若大于 0 则抛出 ArgumentOutOfRangeException 以防止前瞻偏差（Look-ahead Bias）。</param>
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
-    double GetField(int symbolIndex, string fieldName, PriceMode mode = PriceMode.Post);
+    double GetField(int symbolIndex, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
 
     #endregion
 
