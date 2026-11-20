@@ -29,6 +29,7 @@ namespace CarrotBacktesting.NET.Engine
         private readonly ITimeseriesRegistry _timeseries;
         private readonly ITimeseriesScheduler? _timeseriesScheduler;
         private readonly IBroker _broker;
+        private readonly IBrokerEngineDriver? _brokerDriver;
         private readonly IAccountSnapshotProvider? _snapshotProvider;
         private readonly ISimulatedExchange? _simExchange;
         private readonly IStrategyPipeline _pipeline;
@@ -154,6 +155,7 @@ namespace CarrotBacktesting.NET.Engine
             _timeseries = timeseries ?? throw new ArgumentNullException(nameof(timeseries));
             _timeseriesScheduler = timeseries as ITimeseriesScheduler;
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _brokerDriver = broker as IBrokerEngineDriver;
             _snapshotProvider = broker as IAccountSnapshotProvider;
             _simExchange = simExchange ?? (broker as ISimulatedExchange) ?? ((broker as IExchangeGatewayProvider)?.Gateway as ISimulatedExchange);
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
@@ -425,7 +427,7 @@ namespace CarrotBacktesting.NET.Engine
                     _simExchange?.Step(currentTime, _timeseries, i);
 
                     // 5.4 推进经纪商时钟与交易所本地跨日结算（T+N 在途持仓解锁）
-                    _broker.Step(currentTime);
+                    _brokerDriver?.Step(currentTime);
 
                     // 5.4 离散事件常数时间轻量探测与派发
                     if (_events.HasNewEvents(currentTime))

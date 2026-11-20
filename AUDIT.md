@@ -89,11 +89,17 @@ flowchart TD
   2. **持仓实体最新价格同步更新**：`AccountLedger` 在盯市估值解析出 `resolvedPrice > 0.0` 时，同步刷新 `pos.LastPrice = resolvedPrice;`，彻底消除开仓后终生未更新的隐患；
   3. **单元测试验证**：`TradingFinancialPipelineIntegrationTests.MarkToMarket_WithoutNewOrders_EquityCurveMustFluctuateWithDailyClose` 验证连续 5 天无新挂单持有股票期间，未实现浮动盈亏与总净值严格随收盘价逐日递增，净值曲线真实波动。
 
-### 2. 市价买单因 `Price=0` 预冻结 0 元资金，引发巨额穿仓破产
-- **严重度**：🔴 致命 P0
-- **涉及位置**：`OrderTypes.cs#L23-L26`、`Broker.cs#L206`、`AccountLedger.cs#L259-L265`、`AccountLedger.cs#L450`
+### 2. 市价买单因 `Price=0` 预冻结 0 元资金，引发巨额穿仓破产【✅ 已修复 (PASS)】
+- **严重度**：🔴 致命 P0 -> 🟢 已修复
+- **涉及位置**：`OrderTypes.cs#L23-L26`、`Broker.cs#L246-L264`、`Broker.cs#L548-L571`、`AccountLedger.cs#L283-L299`
 - **缺陷剖析**：
-  市价单便捷构造函数 `Price` 默认为 `0.0`。`Broker` 估价时若 `Price <= 0` 则估价为 `0.0`，导致 `requiredCash` 计算为 0 元。账户即使可用资金为 0，也能顺利通过两阶段预冻结发出市价单。成交落账时直接 `_cash -= marginAdded` 扣款，导致现金瞬间穿仓变为巨额负数。
+  市价单便捷构造函数 `Price` 默认为 `0.0`。原先 `Broker` 估价时若 `Price <= 0` 则估价为 `0.0`，导致 `requiredCash` 计算为 0 元。账户即使可用资金为 0，也能顺利通过两阶段预冻结发出市价单。成交落账时直接 `_cash -= marginAdded` 扣款，导致现金瞬间穿仓变为巨额负数。
+- **重构方案与治理机制**：
+  1. **公允参考市价推导**：`Broker.GetEstimatedPrice` 对市价买单（`Price <= 0.0`）自动向绑定的底层网关（`ISimulatedExchange.GetMarketPrice`）查询标的最新客观公允市价；
+  2. **预估滑点缓冲上浮**：买单在基准市价基础上强制叠加 `(1.0 + Slippage)` 上浮缓冲作为估价基准，保证预冻结资金充沛覆盖执行滑点；
+  3. **前置资金安全拦截**：若可用资金无法覆盖预估保证金与手续费，在两阶段 Phase 1 阶段直接拒绝委托（`OrderStatus.Rejected`），坚决杜绝 0 元免冻结放行；
+  4. **无参考价快速失败**：若标的从未注入行情或无合法收盘价，`GetEstimatedPrice` 返回 `0.0`，`Broker` 立即快速失败拒单并提示明确原因，杜绝未冻结现金造成的穿仓破产；
+  5. **单元测试验证**：`SimulatedBrokerTests.MarketBuyOrder_WithReferencePrice_ShouldPreFreezeWithSlippage`、`MarketBuyOrder_InsufficientCashForPreFreeze_ShouldRejectImmediately` 与 `MarketBuyOrder_WhenNoReferencePriceAvailable_ShouldRejectFast` 全链路验证预冻结、欠资拦截与无参考价快速失败。
 
 ### 3. 无挂单时 `_marketPrices` 为空，典型的市价单在首根 Bar 会直接被拒【✅ 已修复 (PASS)】
 - **严重度**：🔴 致命 P0 -> 🟢 已修复
@@ -153,15 +159,27 @@ flowchart TD
   - **缺陷**：原先撮合挂单簿中排队的限价单时仅与收盘价 `marketPrice` 进行触碰比对。若日内最低价跌破买价但收盘价拉起未跌破，该限价单被错误判定为未成交。
   - **修复**：`MatchingEngine.EvaluatePendingLimitOrder` 重构为接收真实 `bar` 行情切片，买单基于 `bar.Low <= request.Price` 判定日内触碰，卖单基于 `bar.High >= request.Price` 判定日内触碰；若 `bar` 缺失则安全回退至 `marketPrice`。
   - **单测**：`TradingFinancialPipelineIntegrationTests.MatchingEngine_PendingLimitOrder_ShouldFillOnIntradayLowTouch` 验证日内最低价 9.4 触碰限价 9.5 成功撮合成交。
-- **7.2 排队挂单完全抹杀跳空缺口与价格改善** (`MatchingEngine.cs#L119-L122`)：排队挂单成交价强制等于委托限价。若次日跳空低开，限价买单无法以更优的开盘价撮合。
+- **7.2 排队挂单完全抹杀跳空缺口与价格改善** (`MatchingEngine.cs#L123-L129`)【✅ 已修复 (PASS)】：
+  - **缺陷**：排队挂单成交价强制等于委托限价。若次日跳空低开，限价买单无法以更优的开盘价撮合；若次日跳空高开，限价卖单无法以更优的开盘价撮合。
+  - **修复**：`MatchingEngine.EvaluatePendingLimitOrder` 引入纯函数跳空价格改善模型。当 `bar.HasOpen && bar.Open > 0.0` 时，买单以 `Math.Min(request.Price, bar.Open)` 成交，卖单以 `Math.Max(request.Price, bar.Open)` 成交；若开盘不利或无开盘价则严格遵循委托限价。
+  - **单测**：`MatchingEngineTests.MakerLimitBuyOrder_FavorableOpenGap_ShouldEnjoyPriceImprovement`、`MakerLimitSellOrder_FavorableOpenGap_ShouldEnjoyPriceImprovement` 与 `MakerLimitOrder_UnfavorableOrMissingOpen_ShouldFillAtLimitPrice` 完备验证买卖双向价格改善与不利/缺失时回退限价。
 - **7.3 成交滑点价反向污染市场基准价格** (`SimulatedExchangeGateway.cs#L58`)【✅ 已修复 (PASS)】：
   - **缺陷**：原先成交后直接执行 `_marketPrices[symbol] = matchResult.FillPrice;`，将包含执行滑点的成交价反向写回全局公共行情字典，污染后续盯市基准。此外，当挂单簿无订单时原代码提前退出未记录最新时序，导致后续限价单误将自身委托价作为基准市价判定即时成交。
   - **修复**：
     1. 成交回报中的带滑点成交价（`matchResult.FillPrice`）仅反馈给策略与交易账本，公允市场价格字典 `_marketPrices` 仅记录不含滑点的未污染基准市价（`basePrice`）；
     2. `Step` 中接入当前时序索引，`GetMarketPrice` 与 `GetBasePriceForOrder` 按需 $O(1)$ 常数时间直通时序矩阵获取当期公允收盘价，彻底治愈挂单簿为空时基准市价缺失的深层连锁隐患；
     3. 单元测试 `SimulatedExchangeGatewayTests.SendOrder_WithSlippage_ShouldNotPollutePublicMarketPrice` 验证 1% 滑点成交下公共市价字典仍保持 100% 纯净未污染。
-- **7.4 挂单簿未实现“当日有效（Day Order）”日切自动撤单** (`SimulatedExchangeGateway.cs#L19-L20`)：现货委托单永久驻留挂单簿数天甚至数月，跨日不会失效。
-- **7.5 停牌标的（NaN）与未上市标的允许违规建仓撮合** (`SimulatedExchangeGateway.cs#L48-L83`)：停牌股票限价单取委托限价作为 `basePrice`，直接入簿并撮合成交，无法体现停牌无法卖出的风控事实。
+- **7.4 挂单簿未实现“当日有效（Day Order）”日切自动撤单** (`SimulatedExchangeGateway.cs`, `BrokerConfig.cs`)【✅ 已修复 (PASS)】：
+  - **缺陷**：现货委托单永久驻留挂单簿数天甚至数月，跨日不会失效，违背 A 股/美股日内委托收盘自动作废规则。
+  - **修复**：
+    1. `BrokerConfig` 增加 `CancelPendingOrdersOnDailyClose` 配置项（默认 `false` 保持 GTC 跨日挂单兼容性）；
+    2. `SimulatedExchangeGateway.Step` 在时钟检测到跨日且开启撤单规则时，集中清空挂单簿未成交订单；
+    3. 严格遵循 Open Calls 原则在锁外派发 `OrderStatus.Canceled` 回报，驱动 `Broker` 自动全额解冻预占资金与持仓；
+    4. 单测 `SimulatedExchangeGatewayTests.Step_CancelPendingOrdersOnDailyClose_WhenTrue_ShouldCancelAndUnfreezeAcrossDays` 与 `Step_CancelPendingOrdersOnDailyClose_WhenFalse_ShouldPreservePendingOrdersAcrossDays` 验证开启与关闭两种模式下的行为。
+- **7.5 停牌标的（NaN）与未上市标的允许违规建仓撮合** (`SimulatedExchangeGateway.cs#L59-L70`)【✅ 已修复 (PASS)】：
+  - **缺陷**：停牌或未上市股票限价单取委托限价作为 `basePrice`，直接入簿并撮合成交，无法体现停牌无法交易与未上市拦截的风控事实。
+  - **修复**：`SimulatedExchangeGateway.SendOrder` 增加前置守卫拦截。若标的在当期无合法收盘价（`NaN`、`<= 0` 或 `Infinity`）且未显式提供 Bar，立即拒绝委托（`OrderStatus.Rejected`），严禁入簿挂单，并触发 `Broker` 立即全额解冻；
+  - **单测**：`SimulatedExchangeGatewayTests.SendOrder_SuspendedOrUnlistedSymbol_ShouldRejectAtGateAndUnfreeze` 验证停牌股票发单被前置拒绝且资金零锁定。
 - **7.6 盘口深度与时间价格优先缺失** (`SimulatedExchangeGateway.cs#L237-L268`)：所有满足价格条件的排队挂单无视盘口容量一刀切全额成交。
 - **7.7 自定义滑点 Hook `OnCalculateSlippage` 永远无法执行** (`MatchingEngine.cs#L128`)：判断条件包含 `bar != null`，因 `bar` 恒为 `null`，高级滑点模型被静默降级为固定比例滑点。
 
@@ -174,7 +192,9 @@ flowchart TD
 - **8.3 允许做空模式下，可用持仓不足被静默篡改为“开空单”** (`AccountLedger.cs#L246-L256`)：若今日 T+1 导致 `AvailableQuantity = 0`，平仓容量为 0，剩余全部转为开空单，系统直接执行开空，导致多空双向持仓。
 - **8.4 缺乏保证金追缴（Margin Call）与爆仓强平机制** (`AccountLedger.cs#L81-L98`)：净值跌为负数时没有任何风控强平，允许账户无限透支存续。
 - **8.5 反向调仓（多翻空/空翻多）预冻结误拒单** (`AccountLedger.cs#L246-L271`)：多翻空时开空部分需预冻结现金，而平多释放的资金成交时才入账，资金不足时订单被错误拦截。
-- **8.6 现货单向印花税机制缺失** (`BrokerConfig.cs#L36-L40`)：仅有对称的费率，未内置 A 股等现货市场仅卖出征收的印花税规则。
+- **8.6 现货单向印花税机制缺失【❌ 拒绝修改 (Won't Fix)】**：
+  - **争议点**：原审计建议在通用配置中内置现货单向印花税率（如 `StampTaxRate`）。
+  - **架构裁定与拒绝理由**：印花税属于特定国家/地区特定现货市场（如 A 股、港股）的非通用特化规则，美股、加密货币、期货、外汇均无此概念。若在通用 `BrokerConfig` 中硬编码 `StampTaxRate`，与此前在 `BarSnapshot` 中硬编码 `limit_up` 犯了一样的特定业务污染通用内核的反模式。系统已有设计良好的一级函数式 Hook `BrokerConfig.OnCalculateFee = (req, turnover) => ...`，任何复杂市场的单双边税费均可通过一行数学表达式自由注入。通用内核保持绝对轻量通用，**坚决拒绝在底层内核中硬编码特定市场税率**。
 - **8.7 订单 ID 重复覆盖导致在途冻结额度野指针泄露** (`Broker.cs#L235`)【✅ 已修复 (PASS)】：
   - **缺陷**：重复传入相同 `ClientOrderId` 时，系统原先直接覆盖内部 `_orders` 字典中的记录。旧订单处于挂单或在途状态时被直接切断关联，其冻结的现金与持仓永远无法解冻核销，彻底沦为不可逆的野指针泄漏。
   - **修复**：
@@ -190,17 +210,15 @@ flowchart TD
 
 ## 四、维度二：接口暴露错误、封装破坏与契约隔离违背
 
-### 9. `IBroker` 核心契约污染：引擎步进与权威对账方法泄露给策略
-- **涉及位置**：`IBroker.cs#L67-L79`
-- **代码特征**：
-  ```csharp
-  public interface IBroker
-  {
-      void Step(DateTime currentTime) { }
-      void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions) { }
-  }
-  ```
-- **问题分析**：`IBroker` 是注入给策略上下文的核心门面。然而 `Step`（驱动跨日清算与 T+N 持仓解锁）与 `SyncState`（权威覆盖本地资产账本）属于引擎驱动层和柜台重连特权方法。策略在 `OnUpdate` 中可随意调用 `context.Broker.Step(DateTime.MaxValue)` 提前解冻持仓，或调用 `SyncState(99999999, ...)` 任意篡改资产，严重违背接口隔离原则（ISP）。
+### 9. `IBroker` 核心契约污染：引擎步进与权威对账方法泄露给策略【✅ 已修复 (PASS)】
+- **严重度**：🟡 中等 -> 🟢 已修复
+- **涉及位置**：`IBroker.cs`、`Broker.cs`、`BacktestingEngine.cs`
+- **问题分析**：`IBroker` 是注入给策略上下文的核心门面。原先 `Step`（驱动跨日清算与 T+N 持仓解锁）与 `SyncState`（权威覆盖本地资产账本）属于引擎驱动层和柜台重连特权方法，却直接暴露在 `IBroker` 接口上。策略在 `OnUpdate` 中可随意调用 `context.Broker.Step(DateTime.MaxValue)` 提前解冻持仓，或调用 `SyncState(99999999, ...)` 任意篡改资产，严重违背接口隔离原则（ISP）。
+- **重构方案与治理机制**：
+  1. **瘦核心契约 `IBroker`**：从 `IBroker` 接口中彻底剥离 `Step` 与 `SyncState` 方法，策略上下文仅感知纯净交易与查账门面；
+  2. **专属驱动契约 `IBrokerEngineDriver`**：在 `CarrotBacktesting.NET.Abstraction.Engine` 定义内部基础设施契约 `public interface IBrokerEngineDriver : IBroker`，集中收敛 `Step` 与 `SyncState`；
+  3. **引擎受控持有与单向驱动**：`BacktestingEngine` 在启动构造时安全持有 `_brokerDriver = broker as IBrokerEngineDriver`，由主循环权威驱动时钟；
+  4. **单测验证**：`SimulatedBrokerTests.Broker_InterfaceSegregation_IBrokerShouldNotContainEngineDriverMethods` 与 `Broker_EngineDriver_StepAndSyncState_ShouldWorkCorrectly` 通过反射验证 `IBroker` 瘦契约边界，并端到端验证 `IBrokerEngineDriver` 跨日解锁与状态同步。
 
 ### 10. `Broker.Gateway` 公共暴露破坏封装边界【✅ 已修复 (PASS)】
 - **严重度**：🟡 中等 -> 🟢 已修复
@@ -304,9 +322,13 @@ flowchart TD
 - **涉及位置**：`BacktestSession.cs`、`BacktestingEngine.cs#L113-L126`
 - **问题分析**：在纯 C# 代码中启动回测体验极差：要么构造十余个层层嵌套的配置模型，要么手动实例化 8 个底层对象。`BacktestingEngine` 构造函数高达 12 个参数。
 
-### 22. `AnalysisReport` 报表缺乏扁平快捷属性
+### 22. `AnalysisReport` 报表缺乏扁平快捷属性【❌ 拒绝修改 (Won't Fix)】
 - **涉及位置**：`AnalysisReport.cs`
-- **问题分析**：获取指标必须逐层穿透：`report.Portfolio?.SharpeRatio`。一旦某分析器被配置关闭，直接访问抛出 `NullReferenceException`，在参数调优和自动化回测中极不顺手。
+- **争议点**：原审计建议在 `AnalysisReport` 顶层平铺直接代理 `SharpeRatio`、`MaxDrawdown`、`WinRate` 等快捷属性。
+- **架构裁定与拒绝理由**：
+  1. **严重违背单一事实来源（SSOT）**：夏普比率归属组合统计、最大回撤归属资金统计、胜率归属交易统计。平铺代理会导致 `AnalysisReport` 退化为包罗万象的上帝类（God Object），破坏各子统计模块的领域高内聚；
+  2. **违反红线第 8 条（严禁隐式兜底与伪实现）**：子分析器具备独立可配置可插拔性。若用户关闭了某分析器，扁平属性若返回 `0.0` 伪数据，会导致外部参数调优和回测选拔逻辑将“未计算”误判为“数值等于 0”；若抛异常则代理属性毫无意义；
+  3. **结论**：保留分层强类型属性访问（如 `report.Portfolio?.SharpeRatio`）才是客观真实反映模块边界与可选性状态的最纯粹第一性原理设计，**坚决不搞扁平化垫片污染**。
 
 ### 23. 标的元数据访问路径过深，缺乏一级门面【✅ 已修复 (PASS)】
 - **涉及位置**：`IEngineContext.cs`、`EngineContext.cs`

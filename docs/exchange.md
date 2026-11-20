@@ -138,11 +138,15 @@ public interface ISimulatedExchange : IExchangeGateway
 ### 1. 无状态计算设计
 方法接收订单请求 `OrderRequest`、基准价格 `marketPrice`、可选行情行 `IDataRow? bar` 及时间戳，返回紧凑的只读值类型 `MatchResult`（包含 `IsFilled`, `IsPending`, `IsRejected`, `FillPrice`, `FillQuantity`, `Commission`）。
 
-### 2. Maker 被动触碰规则与委托限价保护
+### 2. Maker 被动触碰规则与跳空价格改善 (Price Improvement)
 挂单簿中排队的限价单，在行情触及限价时撮合（基于 `BarSnapshot` 纯值类型切片，零 GC）：
 - **买单成交条件**：$\text{TouchPrice} = \text{LowOr}(\text{ExecPrice}) \le P_{\text{limit}}$（日内最低价触及或跌破委托限价；若缺少 Low 则自适应平滑回退至基准执行价）
 - **卖单成交条件**：$\text{TouchPrice} = \text{HighOr}(\text{ExecPrice}) \ge P_{\text{limit}}$（日内最高价触及或突破委托限价；若缺少 High 则自适应平滑回退至基准执行价）
-- **委托限价保护契约**：Maker 挂单成交时，成交价严格遵循委托限价（$\text{FillPrice} = P_{\text{limit}}$），绝不突破限价劣质成交。
+- **开盘跳空价格改善 (Price Improvement)**：
+  当新时间步开盘出现对挂单方更有利的跳空缺口时，Maker 限价挂单享受更优开盘价成交：
+  $$\text{FillPrice}_{\text{Buy}} = \min(P_{\text{limit}}, P_{\text{open}}) \quad (\text{若 } P_{\text{open}} \text{ 有效且 } P_{\text{open}} < P_{\text{limit}})$$
+  $$\text{FillPrice}_{\text{Sell}} = \max(P_{\text{limit}}, P_{\text{open}}) \quad (\text{若 } P_{\text{open}} \text{ 有效且 } P_{\text{open}} > P_{\text{limit}})$$
+  若无开盘价或开盘跳空对挂单方不利（如买单高开但盘中触及限价），成交价严格锚定委托限价 $P_{\text{limit}}$，绝不突破限价劣质成交。
 
 > 💡 **零 GC 48 字节通用切片 (`BarSnapshot`)**：
 > 系统采用严格 48 字节非托管值类型 `BarSnapshot`（承载 `Open`, `High`, `Low`, `Close`, `Volume`, `Amount` 六大物理维度），完美容纳于单个 64 字节 CPU Cache Line。全字段原生支持缺失（内部以 `double.NaN` 表达），对称提供 `HasXxx` 探测与 `XxxOr(fallback)` 零开销内联回退，完美兼容次步开盘（Next Open）、VWAP 均价、收盘扫盘与日内限价等多种撮合时态。
@@ -161,8 +165,9 @@ public interface ISimulatedExchange : IExchangeGateway
 $$\text{MaxAllowedQuantity} = \text{BarVolume} \times \text{VolumeLimit}$$
 超出比例的订单直接被拒单（Rejected）。若 `VolumeLimit == 0.0` 则代表完全禁用流动性约束（无限制放行）。
 
-### 5. 涨跌停封板与停牌拦截 (CheckLimit)
-开启 `CheckLimit` 时，若挂载了 `OnCheckLimit` 委托，在触及一字涨跌停板或停牌时，拦截不可成交的反向或顺向订单并返回拒单。
+### 5. 涨跌停封板与停牌前置拦截 (CheckLimit & Suspended Filter)
+- **停牌与无行情前置检查**：在回测时间步推进时，若标的当期收盘价无效（`NaN`、`<= 0` 或 `Infinity`）且未提供显式 Bar，`SendOrder` 在网关入口直接拒绝（`OrderStatus.Rejected`），不压入挂单簿；
+- **涨跌停封板拦截**：开启 `CheckLimit` 时，若挂载了 `OnCheckLimit` 委托，在触及一字涨跌停板时拦截不可成交的反向或顺向订单并返回拒单。
 
 ### 6. 手续费与摩擦模型
 手续费支持百分比费率与单笔最低消费门槛（如 A 股 5 元低吸保障）：
@@ -183,11 +188,12 @@ void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = nu
 - **时间戳精准绑定**：撮合触发生成的成交报告 `ExecutionReport.Time` 严格锚定传入的 `time` 参数；
 - **回测时间穿越防御**：绝不隐式回退使用系统当前时钟 `DateTime.UtcNow`，彻底消除回测报告与历史时间轴错位的隐患。
 
-### 3. 离线时间步撮合 (Step)
+### 3. 离线时间步撮合与日切自动撤单 (Step & Day Order)
 在离线回测中，引擎推进主时钟时调用 `gateway.Step(currentTime, timeseries, currentIndex)`：
-1. 快速检查挂单簿：若挂单簿总数 `OrderBook.Count == 0`，立即常数时间返回；
-2. 仅遍历挂单簿中当前存在排队订单的标的集合 `OrderBook.ActiveSymbols`；
-3. 从时序注册表提取当日收盘价矩阵 `closeMatrix`，批量触发被动撮合。
+1. **跨日挂单集中撤销**：若配置了 `CancelPendingOrdersOnDailyClose == true`（当日有效 Day Order 规则）且检测到全局时间戳发生跨日，网关在撮合前集中清除前一交易日未成交的全部排队挂单，并在锁外统一派发 `OrderStatus.Canceled` 回报，驱动 `Broker` 自动全额解冻预占资金与持仓；若配置为 `false`（默认 GTC 规则），挂单跨日顺延；
+2. **快速排队检查**：若挂单簿总数 `OrderBook.Count == 0`，锁外派发已撤销回报后立即常数时间安全退出；
+3. **活跃标的索引遍历**：仅遍历挂单簿中当前存在排队订单的标的集合 `OrderBook.ActiveSymbols`；
+4. **时序矩阵批量撮合**：从时序注册表提取当日行情矩阵，批量触发被动撮合。
 
 ### 4. 单一事实来源权威撮合内核 (MatchSymbolOrders)
 `Step` 离线批量推进与 `OnMarketData` 实时增量灌入，统一收敛至私有纯函数 `MatchSymbolOrders` 进行权威撮合，100% 杜绝多入口代码重复与逻辑分叉。
@@ -212,6 +218,7 @@ void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = nu
 | `FeeRate` + `MinFee` | `OnCalculateFee(request, turnover)` | 动态手续费/印花税计算 | `0.001` / `0.0` |
 | `VolumeLimit` | `OnCheckVolume(request, bar)` | 成交量流动性硬约束判定 | `0.05` (5%) |
 | `CheckLimit` | `OnCheckLimit(request, bar)` | 涨跌停封板与停牌拦截判定 | `false` |
+| `CancelPendingOrdersOnDailyClose` | - | 每日收盘/日切时自动撤销挂单簿中未成交订单并全额解冻 | `false` (GTC) |
 
 ---
 

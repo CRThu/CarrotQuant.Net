@@ -85,18 +85,14 @@ public interface IBroker
     void CancelOrder(string orderId);
     OrderStatus GetOrderStatus(string orderId);
 
-    // 物理时钟单向推进与跨日结算
-    void Step(DateTime currentTime);
-
-    // 实盘状态对账同步
-    void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions);
-
     // 异步执行事件
     event Action<string, OrderStatus> OnOrderStatusChanged;
     event Action<ExecutionReport> OnTrade;
     event Action<PositionEvent>? OnPositionChanged;
 }
 ```
+
+> 💡 **分层契约与生命周期驱动分离**：`IBroker` 保持纯净的交易与持仓查询门面。时钟步进推进（`Step`）与柜台状态同步（`SyncState`）定义于专有基础设施契约 `IBrokerEngineDriver`，供引擎主循环与对账模块调用。详见 [第十节](#十可观测性与能力接口扩展-capability-interfaces)。
 
 ---
 
@@ -174,6 +170,13 @@ sequenceDiagram
 
 ### 5. 异常拒单与撤单全额解冻 (Unfreeze)
 若报单被网关拒单（`Rejected`）或由用户撤单（`Canceled`），`Broker` 调用 `ledger.Unfreeze(symbol, frozenCash, frozenPos)`，冻结资金全额归还可用现金，冻结持仓全额归还可用持仓，退出零脏状态。
+
+### 6. 市价单保证金预估与资金校验机制 (Market Order Pricing)
+市价单委托价格通常为 `0.0`，系统在 Phase 1 预冻结阶段通过以下机制评估资金需求：
+1. **参考市价解析**：`Broker.GetEstimatedPrice` 从绑定网关（`ISimulatedExchange.GetMarketPrice`）获取标的最新基准价格；
+2. **滑点缓冲系数**：买单以 `marketPrice * (1.0 + Slippage)` 计算预估开仓成本，卖单以 `marketPrice * (1.0 - Slippage)` 预估；
+3. **资金充足性检查**：当可用资金低于预估保证金与预估手续费之和时，拒绝委托并返回 `OrderStatus.Rejected`；
+4. **无参考价处理**：当标的尚无市场行情记录（参考价 `<= 0` 或 `NaN`）时，`GetEstimatedPrice` 返回 `0.0`，买单由于无法确定资金需求直接拒绝。
 
 ---
 
@@ -282,3 +285,18 @@ public interface IExchangeGatewayProvider
 ```
 - **封装安全闭环**：`Broker` 不暴露公共的 `Gateway` 属性。策略持有 `IBroker` 或 `Broker` 引用无法直接访问底层网关；
 - **受保护的受控发现**：回测引擎在装配或步进阶段通过 `(broker as IExchangeGatewayProvider)?.Gateway` 安全感知仿真网关，兼顾了架构的灵活性与风控封装的绝对安全。
+
+### 3. 引擎驱动契约 (`IBrokerEngineDriver`)
+遵循接口隔离原则（ISP），经纪商的物理时钟步进推进与柜台状态同步独立于策略门面契约：
+```csharp
+public interface IBrokerEngineDriver : IBroker
+{
+    // 推进经纪商物理时钟时间步，执行多时区日切清算与 T+N 冻结批次解锁
+    void Step(MarketTime currentTime);
+
+    // 实盘断线重连或定时对账时，从外部权威数据源原子同步账户可用资金与持仓
+    void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions);
+}
+```
+- **接口隔离**：策略层仅依赖面向交易与持仓查询的 `IBroker` 接口；
+- **驱动控制**：`BacktestingEngine` 与 `LivingEngine` 持有 `IBrokerEngineDriver` 引用，由事件循环驱动时间步演进与对账。

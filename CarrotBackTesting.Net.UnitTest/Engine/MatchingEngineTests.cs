@@ -244,4 +244,70 @@ public class MatchingEngineTests
         Assert.IsTrue(matcher.EvaluateImmediateOrder(req, double.NaN, BarSnapshot.Empty, 1.0, DateTime.UtcNow).IsRejected);
         Assert.IsTrue(matcher.EvaluateImmediateOrder(req, double.PositiveInfinity, BarSnapshot.Empty, 1.0, DateTime.UtcNow).IsRejected);
     }
+
+    [TestMethod]
+    public void MakerLimitBuyOrder_FavorableOpenGap_ShouldEnjoyPriceImprovement()
+    {
+        var config = new BrokerConfig();
+        var matcher = new MatchingEngine(config);
+        var tradeTime = DateTime.UtcNow;
+
+        // 挂单排队限价买单：最高买入限价 10.0 元
+        var buyOrder = new SimulatedOrder("buy-1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 100m), tradeTime);
+
+        // 次步开盘有利跳空低开至 9.5 元（Open = 9.5, High = 9.8, Low = 9.4, Close = 9.7）
+        var gapDownBar = new BarSnapshot(open: 9.5, high: 9.8, low: 9.4, close: 9.7);
+
+        var result = matcher.EvaluatePendingLimitOrder(buyOrder, 9.7, in gapDownBar, tradeTime);
+
+        Assert.IsTrue(result.IsFilled);
+        Assert.AreEqual(9.5, result.FillPrice, 1e-6);
+    }
+
+    [TestMethod]
+    public void MakerLimitSellOrder_FavorableOpenGap_ShouldEnjoyPriceImprovement()
+    {
+        var config = new BrokerConfig();
+        var matcher = new MatchingEngine(config);
+        var tradeTime = DateTime.UtcNow;
+
+        // 挂单排队限价卖单：最低卖出限价 10.0 元
+        var sellOrder = new SimulatedOrder("sell-1", new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 100m), tradeTime);
+
+        // 次步开盘有利跳空高开至 10.6 元（Open = 10.6, High = 10.8, Low = 10.5, Close = 10.7）
+        var gapUpBar = new BarSnapshot(open: 10.6, high: 10.8, low: 10.5, close: 10.7);
+
+        var result = matcher.EvaluatePendingLimitOrder(sellOrder, 10.7, in gapUpBar, tradeTime);
+
+        Assert.IsTrue(result.IsFilled);
+        Assert.AreEqual(10.6, result.FillPrice, 1e-6);
+    }
+
+    [TestMethod]
+    public void MakerLimitOrder_UnfavorableOrMissingOpen_ShouldFillAtLimitPrice()
+    {
+        var config = new BrokerConfig();
+        var matcher = new MatchingEngine(config);
+        var tradeTime = DateTime.UtcNow;
+
+        // 1. 买单 10.0：开盘高开 10.3（对买方不利），但盘中 Low 触及 9.8 触碰限价
+        var buyOrder = new SimulatedOrder("buy-2", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 100m), tradeTime);
+        var barUnfavorableBuy = new BarSnapshot(open: 10.3, high: 10.4, low: 9.8, close: 10.1);
+        var resultBuy = matcher.EvaluatePendingLimitOrder(buyOrder, 10.1, in barUnfavorableBuy, tradeTime);
+        Assert.IsTrue(resultBuy.IsFilled);
+        Assert.AreEqual(10.0, resultBuy.FillPrice, 1e-6);
+
+        // 2. 卖单 10.0：开盘低开 9.7（对卖方不利），但盘中 High 触及 10.4 触碰限价
+        var sellOrder = new SimulatedOrder("sell-2", new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 100m), tradeTime);
+        var barUnfavorableSell = new BarSnapshot(open: 9.7, high: 10.4, low: 9.6, close: 10.2);
+        var resultSell = matcher.EvaluatePendingLimitOrder(sellOrder, 10.2, in barUnfavorableSell, tradeTime);
+        Assert.IsTrue(resultSell.IsFilled);
+        Assert.AreEqual(10.0, resultSell.FillPrice, 1e-6);
+
+        // 3. 无 Open（NaN）时态：限价买单 Low 触碰
+        var barNoOpen = new BarSnapshot(high: 10.2, low: 9.8, close: 10.0);
+        var resultNoOpen = matcher.EvaluatePendingLimitOrder(buyOrder, 10.0, in barNoOpen, tradeTime);
+        Assert.IsTrue(resultNoOpen.IsFilled);
+        Assert.AreEqual(10.0, resultNoOpen.FillPrice, 1e-6);
+    }
 }

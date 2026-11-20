@@ -147,11 +147,11 @@ public class BarSnapshotTests
         // 仅有开盘价 10.0，High 和 Low 为 null/NaN（次步开盘撮合时态）
         var openOnlyBar = new BarSnapshot(open: 10.0);
 
-        // 1. 限价买单 10.2（委托价高于开盘价 10.0）：应触碰成交（开盘触碰）
+        // 1. 限价买单 10.2（委托价高于开盘价 10.0）：开盘触碰且享受 Maker 跳空价格改善为 10.0
         var buyOrderHit = new SimulatedOrder("ord1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.2, 100m), tradeTime);
         var resultHit = matcher.EvaluatePendingLimitOrder(buyOrderHit, 10.0, openOnlyBar, tradeTime);
         Assert.IsTrue(resultHit.IsFilled);
-        Assert.AreEqual(10.2, resultHit.FillPrice);
+        Assert.AreEqual(10.0, resultHit.FillPrice); // 享受开盘跳空价格改善（Math.Min(10.2, 10.0) == 10.0）
 
         // 2. 限价买单 9.8（委托价低于开盘价 10.0）：未触碰
         var buyOrderMiss = new SimulatedOrder("ord2", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.8, 100m), tradeTime);

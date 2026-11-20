@@ -117,8 +117,16 @@ internal sealed class MatchingEngine
             return MatchResult.Rejected(reason);
         }
 
-        // Maker 限价挂单成交价：严格遵循委托限价（成交价 = 委托限价）
+        // Maker 限价挂单成交价：
+        // 若开盘出现对委托方更有利的跳空缺口（低开买入 / 高开卖出），享受更优开盘价成交（Price Improvement）；
+        // 否则严格遵循委托限价（成交价 = 委托限价）。
         double fillPrice = request.Price;
+        if (bar.HasOpen && bar.Open > 0.0)
+        {
+            fillPrice = request.IsBuy
+                ? Math.Min(request.Price, bar.Open)
+                : Math.Max(request.Price, bar.Open);
+        }
 
         return MatchResult.Filled(fillPrice, request.Quantity, tradeTime);
     }

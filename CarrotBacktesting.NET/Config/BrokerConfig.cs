@@ -53,6 +53,12 @@ namespace CarrotBacktesting.NET.Config
         public bool CheckLimit { get; set; } = false;
 
         /// <summary>
+        /// 是否在交易日收盘（日切）时自动撤销挂单簿中未成交的排队订单（Day Order 规则）。
+        /// 开启后，前一交易日未成交的限价单会在跨日时自动作废并解冻在途资金/持仓；默认为 false（兼容 GTC 跨日挂单）。
+        /// </summary>
+        public bool CancelPendingOrdersOnDailyClose { get; set; } = false;
+
+        /// <summary>
         /// 默认合约乘数。股票按“股”计算为 1.0，期货按“手”计算填一手规格（如螺纹钢填 10.0）。默认为 1.0。
         /// </summary>
         public double Multiplier { get; set; } = 1.0;

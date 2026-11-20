@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
@@ -1593,6 +1594,135 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             string noOpId = broker.ClosePosition("SH.600000", 10.5);
             Assert.AreEqual(string.Empty, noOpId);
         }
+
+        #region 契约隔离与市价单资金预估 (IBrokerEngineDriver & Market Order Pricing)
+
+        [TestMethod]
+        public void Broker_InterfaceSegregation_IBrokerShouldNotContainEngineDriverMethods()
+        {
+            var iBrokerType = typeof(IBroker);
+            Assert.IsNull(iBrokerType.GetMethod("Step"));
+            Assert.IsNull(iBrokerType.GetMethod("SyncState"));
+
+            var driverType = typeof(IBrokerEngineDriver);
+            Assert.IsTrue(typeof(IBroker).IsAssignableFrom(driverType));
+            Assert.IsNotNull(driverType.GetMethod("Step"));
+            Assert.IsNotNull(driverType.GetMethod("SyncState"));
+        }
+
+        [TestMethod]
+        public void Broker_EngineDriver_StepAndSyncState_ShouldWorkCorrectly()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                SettleDays = 1,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var gateway = new SimulatedExchangeGateway(config);
+            var broker = new Broker(gateway, config);
+
+            Assert.IsTrue(broker is IBrokerEngineDriver);
+            IBrokerEngineDriver driver = (IBrokerEngineDriver)broker;
+
+            // 1. 下达买单 1,000 股 @ 10.0 元
+            gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 2, 9, 30, 0));
+            broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m));
+
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
+
+            // 2. 通过 driver.Step 推进到次日
+            driver.Step(new DateTime(2025, 1, 3, 9, 30, 0));
+            Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"));
+
+            // 3. 通过 driver.SyncState 权威同步账户状态
+            var authoritativePositions = new Dictionary<string, decimal>
+            {
+                ["sh.600000"] = 600m
+            };
+            driver.SyncState(88_888.0, authoritativePositions);
+
+            Assert.AreEqual(88_888.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(600m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(600m, broker.GetAvailablePosition("sh.600000"));
+        }
+
+        [TestMethod]
+        public void MarketBuyOrder_WithReferencePrice_ShouldPreFreezeWithSlippage()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 10_000.0,
+                Slippage = 0.01, // 1% 买入滑点
+                FeeRate = 0.0,
+                MarginRate = 1.0,
+                Multiplier = 1.0
+            };
+            var gateway = new SimulatedExchangeGateway(config);
+            var broker = new Broker(gateway, config);
+
+            // 注入市场行情 10.0 元
+            gateway.OnMarketData("sh.600000", 10.0, DateTime.UtcNow);
+
+            // 提交市价买单 500 股，Price 为 0.0
+            var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 0.0, 500m);
+            string orderId = broker.SubmitOrder(req);
+
+            // 成交价为 10.0 * (1 + 0.01) = 10.10，耗资 500 * 10.10 = 5,050.0
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(orderId));
+            Assert.AreEqual(10_000.0 - 5050.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(0.0, broker.FrozenCash);
+            Assert.AreEqual(500m, broker.GetPosition("sh.600000"));
+        }
+
+        [TestMethod]
+        public void MarketBuyOrder_InsufficientCashForPreFreeze_ShouldRejectImmediately()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 1_000.0,
+                Slippage = 0.0,
+                FeeRate = 0.0,
+                MarginRate = 1.0,
+                Multiplier = 1.0
+            };
+            var gateway = new SimulatedExchangeGateway(config);
+            var broker = new Broker(gateway, config);
+
+            gateway.OnMarketData("sh.600000", 10.0, DateTime.UtcNow);
+
+            // 尝试市价买入 200 股（需 2000 元 > 可用 1000 元）
+            var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 0.0, 200m);
+            string orderId = broker.SubmitOrder(req);
+
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
+            Assert.AreEqual(1_000.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(0.0, broker.FrozenCash);
+            Assert.AreEqual(0m, broker.GetPosition("sh.600000"));
+        }
+
+        [TestMethod]
+        public void MarketBuyOrder_WhenNoReferencePriceAvailable_ShouldRejectFast()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0
+            };
+            var gateway = new SimulatedExchangeGateway(config);
+            var broker = new Broker(gateway, config);
+
+            // 标的无历史行情与当期价格记录
+            var req = new OrderRequest("sh.999999", OrderDirection.Buy, OrderType.Market, 0.0, 100m);
+            string orderId = broker.SubmitOrder(req);
+
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
+            Assert.AreEqual(100_000.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(0.0, broker.FrozenCash);
+        }
+
+        #endregion
     }
 
     internal static class BrokerTestExtensions

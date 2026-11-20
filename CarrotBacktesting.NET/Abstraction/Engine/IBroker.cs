@@ -116,19 +116,6 @@ public interface IBroker
     OrderStatus GetOrderStatus(string orderId);
 
     /// <summary>
-    /// 推进经纪商物理时钟时间步，驱动日内精确时间戳对齐与多时区自动跨日清算（如 T+N 解锁冻结持仓、按日盯市等）。
-    /// </summary>
-    /// <param name="currentTime">当前全局物理时间戳。</param>
-    void Step(MarketTime currentTime) { }
-
-    /// <summary>
-    /// 实盘断线重连或定时对账时，由交易所权威数据原子同步本地账户状态（回测模式无需调用）。
-    /// </summary>
-    /// <param name="cash">权威可用资金。</param>
-    /// <param name="positions">权威持仓快照。</param>
-    void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions) { }
-
-    /// <summary>
     /// 当订单的生命周期状态发生变化时触发（例如：提交成功、被拒绝、撤销成功）。
     /// </summary>
     event Action<string, OrderStatus> OnOrderStatusChanged;
@@ -142,4 +129,25 @@ public interface IBroker
     /// 当账户持仓数量发生变化时触发。
     /// </summary>
     event Action<PositionEvent>? OnPositionChanged;
+}
+
+/// <summary>
+/// 经纪商引擎驱动与基础设施特权契约。
+/// 仅面向回测引擎驱动层与实盘柜台对账层，承担时钟步进推进与状态权威同步职责。
+/// 严格物理隔离于策略层之外，防止策略越权干扰日切结算与资产状态。
+/// </summary>
+public interface IBrokerEngineDriver : IBroker
+{
+    /// <summary>
+    /// 推进经纪商物理时钟时间步，驱动日内精确时间戳对齐与多时区自动跨日清算（如 T+N 解锁冻结持仓、按日盯市等）。
+    /// </summary>
+    /// <param name="currentTime">当前全局物理时间戳。</param>
+    void Step(MarketTime currentTime);
+
+    /// <summary>
+    /// 实盘断线重连或定时对账时，由交易所权威数据原子同步本地账户状态（回测模式无需调用）。
+    /// </summary>
+    /// <param name="cash">权威可用资金。</param>
+    /// <param name="positions">权威持仓快照。</param>
+    void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions);
 }

@@ -4,6 +4,7 @@ using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
+using CarrotBacktesting.NET.Engine.Broker;
 using CarrotBacktesting.NET.Engine.Exchange;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -311,4 +312,159 @@ public class SimulatedExchangeGatewayTests
         public bool IsUpdated(string tableName) => false;
         public int GetTableIndex(string tableName) => 0;
     }
+
+    #region 停牌拦截与日切撤单测试 (Suspended Guard & Day Order)
+
+    private class MultiMatrixTimeseriesRegistry : ITimeseriesRegistry
+    {
+        private readonly Dictionary<string, IReadOnlyMatrix2D<double>> _matrices;
+        public IMarketMetadata Metadata { get; }
+
+        public MultiMatrixTimeseriesRegistry(IMarketMetadata metadata, Dictionary<string, IReadOnlyMatrix2D<double>> matrices)
+        {
+            Metadata = metadata;
+            _matrices = matrices;
+        }
+
+        public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
+        {
+            if (_matrices.TryGetValue(fieldName, out var mat))
+            {
+                return (IReadOnlyMatrix2D<T>)mat;
+            }
+            throw new KeyNotFoundException($"Field '{fieldName}' not found.");
+        }
+
+        public bool HasField(string fieldName) => _matrices.ContainsKey(fieldName);
+        public IReadOnlyList<T> GetSeries<T>(string fieldName) where T : unmanaged => throw new NotImplementedException();
+        public void StepTo(int index) { }
+        public bool IsUpdated(int tableIndex) => false;
+        public bool IsUpdated(string tableName) => false;
+        public int GetTableIndex(string tableName) => 0;
+    }
+
+    private static ITimeseriesRegistry CreateMockTimeseries(
+        string[] symbols,
+        MarketTime[] dates,
+        double[,] closePrices)
+    {
+        var metadata = new DynamicMarketMetadata(symbols, dates);
+        int rows = dates.Length;
+        int cols = symbols.Length;
+
+        var closeMat = new ChunkMatrix2D<double>(width: cols, pageSize: 4096, initialRowCount: rows);
+        for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
+                closeMat[r, c] = closePrices[r, c];
+
+        var matrices = new Dictionary<string, IReadOnlyMatrix2D<double>>(StringComparer.OrdinalIgnoreCase)
+        {
+            [StandardFields.Close] = closeMat
+        };
+
+        return new MultiMatrixTimeseriesRegistry(metadata, matrices);
+    }
+
+    [TestMethod]
+    public void SendOrder_SuspendedOrUnlistedSymbol_ShouldRejectAtGateAndUnfreeze()
+    {
+        var symbols = new[] { "sh.600000", "sh.600001" };
+        var dates = new[] { (MarketTime)new DateTime(2025, 1, 2) };
+        // sh.600000 正常交易 (10.0)，sh.600001 全天停牌 (NaN)
+        var closePrices = new double[,] { { 10.0, double.NaN } };
+
+        var timeseries = CreateMockTimeseries(symbols, dates, closePrices);
+        var config = new BrokerConfig { InitialCash = 100_000.0 };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+
+        // 推进网关时步绑定时序
+        gateway.Step(dates[0], timeseries, 0);
+
+        // 对停牌标的 sh.600001 提交限价买单
+        var req = new OrderRequest("sh.600001", OrderDirection.Buy, OrderType.Limit, 15.0, 100m);
+        string orderId = broker.SubmitOrder(req);
+
+        // 网关必须在前置守卫拦截拒单，严禁放入挂单簿排队
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(0.0, broker.FrozenCash);
+    }
+
+    [TestMethod]
+    public void Step_CancelPendingOrdersOnDailyClose_WhenTrue_ShouldCancelAndUnfreezeAcrossDays()
+    {
+        var symbols = new[] { "sh.600000" };
+        var dates = new[] { (MarketTime)new DateTime(2025, 1, 2), (MarketTime)new DateTime(2025, 1, 3) };
+        var closePrices = new double[,] { { 10.0 }, { 10.5 } };
+        var timeseries = CreateMockTimeseries(symbols, dates, closePrices);
+
+        var config = new BrokerConfig
+        {
+            InitialCash = 100_000.0,
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            CancelPendingOrdersOnDailyClose = true // 开启日切自动撤单
+        };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+
+        // Day 1
+        gateway.Step(dates[0], timeseries, 0);
+        ((IBrokerEngineDriver)broker).Step(dates[0]);
+
+        // 提交限价 9.0 买单（当前市价 10.0，未触碰 -> 排队挂单）
+        var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m);
+        string orderId = broker.SubmitOrder(req);
+
+        Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
+
+        // Day 2 (跨日推进)
+        gateway.Step(dates[1], timeseries, 1);
+        ((IBrokerEngineDriver)broker).Step(dates[1]);
+
+        // 验证：Day 1 挂单已由网关集中撤销，且 Broker 收到撤单事件全额解冻
+        Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(0.0, broker.FrozenCash);
+    }
+
+    [TestMethod]
+    public void Step_CancelPendingOrdersOnDailyClose_WhenFalse_ShouldPreservePendingOrdersAcrossDays()
+    {
+        var symbols = new[] { "sh.600000" };
+        var dates = new[] { (MarketTime)new DateTime(2025, 1, 2), (MarketTime)new DateTime(2025, 1, 3) };
+        var closePrices = new double[,] { { 10.0 }, { 10.5 } };
+        var timeseries = CreateMockTimeseries(symbols, dates, closePrices);
+
+        var config = new BrokerConfig
+        {
+            InitialCash = 100_000.0,
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            CancelPendingOrdersOnDailyClose = false // 默认 GTC：跨日保留挂单
+        };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+
+        // Day 1
+        gateway.Step(dates[0], timeseries, 0);
+        ((IBrokerEngineDriver)broker).Step(dates[0]);
+
+        // 提交限价 9.0 买单
+        var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m);
+        string orderId = broker.SubmitOrder(req);
+
+        Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
+
+        // Day 2 (跨日推进)
+        gateway.Step(dates[1], timeseries, 1);
+        ((IBrokerEngineDriver)broker).Step(dates[1]);
+
+        // 验证：挂单依然存在于挂单簿，资金继续维持冻结
+        Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
+    }
+
+    #endregion
 }

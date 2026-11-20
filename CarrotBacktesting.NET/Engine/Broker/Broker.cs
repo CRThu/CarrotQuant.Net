@@ -13,7 +13,7 @@ namespace CarrotBacktesting.NET.Engine.Broker;
 /// 面向策略层的统一入口，统领本地资产账本、多空持仓均价、两阶段预冻结与订单生命周期状态机。
 /// 严格基于依赖倒置：通过通用接口 IExchangeGateway 路由订单，回测与实盘 100% 共享完全一致的单一内核代码。
 /// </summary>
-public sealed class Broker : IBroker, IAccountSnapshotProvider, ICheckpointable<BrokerSnapshot>, IExchangeGatewayProvider
+public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvider, ICheckpointable<BrokerSnapshot>, IExchangeGatewayProvider
 {
     private readonly IExchangeGateway _gateway;
     private readonly BrokerConfig _config;
@@ -228,6 +228,10 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider, ICheckpointable<
 
         bool freezeOk;
         string? rejectReason;
+        decimal closeQty = 0m;
+        decimal openQty = 0m;
+        double frozenCash = 0.0;
+        decimal frozenPosition = 0m;
 
         lock (_syncLock)
         {
@@ -239,31 +243,39 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider, ICheckpointable<
             }
             else
             {
-                double estimatedPrice = request.Price > 0.0 ? request.Price : 0.0;
-                freezeOk = _ledger.TryFreeze(
-                    request,
-                    estimatedPrice,
-                    multiplier,
-                    marginRate,
-                    out var closeQty,
-                    out var openQty,
-                    out var frozenCash,
-                    out var frozenPosition,
-                    out rejectReason);
+                double estimatedPrice = GetEstimatedPrice(request);
+                if (request.IsBuy && (estimatedPrice <= 0.0 || double.IsNaN(estimatedPrice) || double.IsInfinity(estimatedPrice)))
+                {
+                    freezeOk = false;
+                    rejectReason = $"Cannot determine valid price for buy order on '{request.Symbol}' to reserve cash.";
+                }
+                else
+                {
+                    freezeOk = _ledger.TryFreeze(
+                        request,
+                        estimatedPrice,
+                        multiplier,
+                        marginRate,
+                        out closeQty,
+                        out openQty,
+                        out frozenCash,
+                        out frozenPosition,
+                        out rejectReason);
+                }
 
                 var record = new BrokerOrderRecord(orderId, request)
                 {
                     Multiplier = multiplier,
                     MarginRate = marginRate,
                     SettleDays = settleDays,
-                    CloseQuantity = closeQty,
-                    OpenQuantity = openQty,
-                    RemainingCloseQuantity = closeQty,
-                    RemainingOpenQuantity = openQty,
-                    InitialFrozenCash = frozenCash,
-                    RemainingFrozenCash = frozenCash,
-                    InitialFrozenPosition = frozenPosition,
-                    RemainingFrozenPosition = frozenPosition,
+                    CloseQuantity = freezeOk ? closeQty : 0m,
+                    OpenQuantity = freezeOk ? openQty : 0m,
+                    RemainingCloseQuantity = freezeOk ? closeQty : 0m,
+                    RemainingOpenQuantity = freezeOk ? openQty : 0m,
+                    InitialFrozenCash = freezeOk ? frozenCash : 0.0,
+                    RemainingFrozenCash = freezeOk ? frozenCash : 0.0,
+                    InitialFrozenPosition = freezeOk ? frozenPosition : 0m,
+                    RemainingFrozenPosition = freezeOk ? frozenPosition : 0m,
                     Status = freezeOk ? OrderStatus.Submitted : OrderStatus.Rejected,
                     RejectReason = rejectReason
                 };
@@ -531,6 +543,31 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider, ICheckpointable<
             return _config.OnGetSettleDays(symbol);
         }
         return _config.SettleDays;
+    }
+
+    private double GetEstimatedPrice(OrderRequest request)
+    {
+        if (request.Price > 0.0 && !double.IsNaN(request.Price) && !double.IsInfinity(request.Price))
+        {
+            return request.Price;
+        }
+
+        // 市价单（Price <= 0.0）：尝试从绑定的网关中查询当前标的公允参考市价
+        double marketPrice = 0.0;
+        if (_gateway is ISimulatedExchange sim)
+        {
+            marketPrice = sim.GetMarketPrice(request.Symbol);
+        }
+
+        if (marketPrice > 0.0 && !double.IsNaN(marketPrice) && !double.IsInfinity(marketPrice))
+        {
+            // 预估滑点缓冲：买单上浮预留充足保证金，卖单下浮保守预估
+            return request.IsBuy
+                ? marketPrice * (1.0 + Math.Max(0.0, _config.Slippage))
+                : marketPrice * Math.Max(0.0, 1.0 - Math.Max(0.0, _config.Slippage));
+        }
+
+        return 0.0;
     }
 
     /// <summary>
