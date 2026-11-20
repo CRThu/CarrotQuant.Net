@@ -82,6 +82,11 @@ internal sealed class OrderBook
     }
 
     /// <summary>
+    /// 获取当前挂单簿中所有排队挂单。
+    /// </summary>
+    public IEnumerable<SimulatedOrder> GetAllOrders() => _ordersById.Values;
+
+    /// <summary>
     /// 清空挂单簿中的所有挂单。
     /// </summary>
     public void Clear()

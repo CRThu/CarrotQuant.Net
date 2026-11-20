@@ -9,6 +9,7 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 /// <param name="Price">委托价格。对于市价单，此值通常忽略。</param>
 /// <param name="Quantity">委托数量。</param>
 /// <param name="OrderTag">策略业务标签（如开仓理由、特征 Tag），用于订单归因与成交流水追踪。</param>
+[method: System.Text.Json.Serialization.JsonConstructor]
 public record OrderRequest(
     string Symbol,
     OrderDirection Direction,

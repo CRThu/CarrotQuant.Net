@@ -12,7 +12,7 @@ namespace CarrotBacktesting.NET.Engine.Exchange;
 /// 实现 IExchangeGateway 与 ISimulatedExchange，专管仿真撮合、挂单簿维护与时间步时钟驱动。
 /// 杜绝任何账户、资金、持仓逻辑，纯粹作为外部物理交易所通道的仿真数字孪生。
 /// </summary>
-public sealed class SimulatedExchangeGateway : ISimulatedExchange
+public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointable<ExchangeSnapshot>
 {
     private readonly BrokerConfig _config;
     private readonly IFieldRegistry? _fields;
@@ -23,6 +23,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
     private readonly object _syncLock = new();
 
     private MarketTime _currentTime = MarketTime.MinValue;
+    private ITimeseriesRegistry? _currentTimeseries;
+    private int _currentIndex = -1;
 
     public event Action<ExecutionReport>? OnExecution;
     public event Action<string, OrderStatus>? OnOrderStateChanged;
@@ -54,8 +56,13 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
 
             if (matchResult.IsFilled)
             {
-                // 即时成交（市价单或已穿透限价的限价单）
-                _marketPrices[request.Symbol] = matchResult.FillPrice;
+                // 即时成交（市价单或已穿透限价的限价单）：
+                // 若公允市价未知，记录未含滑点的基准市价 basePrice，严禁将带滑点的 FillPrice 写入 _marketPrices
+                if (!_marketPrices.ContainsKey(request.Symbol) && basePrice > 0.0)
+                {
+                    _marketPrices[request.Symbol] = basePrice;
+                }
+
                 fillReport = new ExecutionReport(
                     orderId,
                     request.Symbol,
@@ -122,6 +129,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
         lock (_syncLock)
         {
             _currentTime = currentTime;
+            _currentTimeseries = timeseries;
+            _currentIndex = currentIndex;
 
             if (_orderBook.Count == 0)
             {
@@ -178,7 +187,37 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
         if (string.IsNullOrWhiteSpace(symbol)) return 0.0;
         lock (_syncLock)
         {
-            return _marketPrices.TryGetValue(symbol, out var p) ? p : 0.0;
+            if (_marketPrices.TryGetValue(symbol, out var p) && p > 0.0)
+            {
+                return p;
+            }
+
+            if (_currentTimeseries != null && _currentIndex >= 0)
+            {
+                int colIndex = _currentTimeseries.Metadata.GetSymbolIndex(symbol);
+                if (colIndex >= 0)
+                {
+                    try
+                    {
+                        var closeMatrix = _currentTimeseries.GetMatrix<double>("close");
+                        if (closeMatrix != null && _currentIndex < closeMatrix.RowCount)
+                        {
+                            double cp = closeMatrix[_currentIndex, colIndex];
+                            if (cp > 0.0 && !double.IsNaN(cp) && !double.IsInfinity(cp))
+                            {
+                                _marketPrices[symbol] = cp;
+                                return cp;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // 时序中可能不存在 close 字段
+                    }
+                }
+            }
+
+            return 0.0;
         }
     }
 
@@ -288,11 +327,13 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
 
     private double GetBasePriceForOrder(OrderRequest request)
     {
+        double currentMarketPrice = GetMarketPrice(request.Symbol);
+
         if (request.Type == OrderType.Limit)
         {
-            if (_marketPrices.TryGetValue(request.Symbol, out var lp) && lp > 0.0)
+            if (currentMarketPrice > 0.0)
             {
-                return lp;
+                return currentMarketPrice;
             }
             return request.Price > 0.0 ? request.Price : 0.0;
         }
@@ -303,10 +344,9 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
             return request.Price;
         }
 
-        // 未显式指定价格时，查询行情缓存
-        if (_marketPrices.TryGetValue(request.Symbol, out var p) && p > 0.0)
+        if (currentMarketPrice > 0.0)
         {
-            return p;
+            return currentMarketPrice;
         }
 
         return 0.0;
@@ -337,5 +377,58 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange
             return _config.OnGetSettleDays(symbol);
         }
         return _config.SettleDays;
+    }
+
+    /// <summary>
+    /// 保存仿真交易所状态快照（价格字典与排队挂单）。
+    /// </summary>
+    public ExchangeSnapshot SaveState()
+    {
+        lock (_syncLock)
+        {
+            var prices = new Dictionary<string, double>(_marketPrices, StringComparer.Ordinal);
+            var orders = new List<SimulatedOrderSnapshot>();
+            foreach (var ord in _orderBook.GetAllOrders())
+            {
+                orders.Add(new SimulatedOrderSnapshot(
+                    ord.OrderId,
+                    ord.Request,
+                    ord.SubmitTime,
+                    ord.Multiplier,
+                    ord.MarginRate,
+                    ord.SettleDays
+                ));
+            }
+            return new ExchangeSnapshot(prices, orders);
+        }
+    }
+
+    /// <summary>
+    /// 基于不可变快照恢复仿真交易所状态。
+    /// </summary>
+    public void RestoreState(ExchangeSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        lock (_syncLock)
+        {
+            _marketPrices.Clear();
+            foreach (var kvp in snapshot.MarketPrices)
+            {
+                _marketPrices[kvp.Key] = kvp.Value;
+            }
+
+            _orderBook.Clear();
+            foreach (var snap in snapshot.PendingOrders)
+            {
+                var ord = new SimulatedOrder(snap.OrderId, snap.Request, snap.CreateTime)
+                {
+                    Multiplier = snap.Multiplier,
+                    MarginRate = snap.MarginRate,
+                    SettleDays = snap.SettleDays
+                };
+                _orderBook.Add(ord);
+            }
+        }
     }
 }

@@ -150,6 +150,8 @@ public interface ISimulatedExchange : IExchangeGateway
   $$\text{FillPrice}_{\text{Buy}} = \text{BasePrice} \times (1 + \text{Slippage})$$
   $$\text{FillPrice}_{\text{Sell}} = \text{BasePrice} \times (1 - \text{Slippage})$$
 - **限价截断保护 (Price Truncation)**：即便由于滑点计算导致理论价格劣于限价单限定价格，系统强制施加截断防御（买入成交价 $\le P_{\text{limit}}$，卖出成交价 $\ge P_{\text{limit}}$），绝不允许金融违规穿透。
+- **公允市价与成交滑点价物理隔离**：即时成交价（`FillPrice`）仅反馈给策略与交易账本，公允市场价格字典（`_marketPrices`）仅维护客观基准价格（`BasePrice`），严禁将带滑点的执行价格反向写回全局公共行情字典，防止污染后续盯市基准。
+- **时序矩阵按需 $O(1)$ 直通发现**：`SimulatedExchangeGateway` 在步进时绑定当前时序矩阵与时间步索引。当挂单簿为空或标的首次报单时，网关直接按需 $O(1)$ 常数时间直通时序矩阵获取当前收盘价作为公允市价，彻底杜绝挂单簿无排队单时公允市价缺失、进而导致限价单误拿自身委托价判定即时成交的系统性漏洞。
 
 ### 4. 流动性成交量硬约束 (VolumeLimit)
 为杜绝小盘股撮合成交量超过真实市场容量的作弊行为，配置项 `VolumeLimit` 严格限制单笔委托不得超过当前 Bar 物理成交量的指定比例（如 5%）：

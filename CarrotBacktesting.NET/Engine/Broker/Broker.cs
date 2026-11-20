@@ -13,7 +13,7 @@ namespace CarrotBacktesting.NET.Engine.Broker;
 /// 面向策略层的统一入口，统领本地资产账本、多空持仓均价、两阶段预冻结与订单生命周期状态机。
 /// 严格基于依赖倒置：通过通用接口 IExchangeGateway 路由订单，回测与实盘 100% 共享完全一致的单一内核代码。
 /// </summary>
-public sealed class Broker : IBroker, IAccountSnapshotProvider
+public sealed class Broker : IBroker, IAccountSnapshotProvider, ICheckpointable<BrokerSnapshot>, IExchangeGatewayProvider
 {
     private readonly IExchangeGateway _gateway;
     private readonly BrokerConfig _config;
@@ -34,9 +34,9 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
     public event Action<PositionEvent>? OnPositionChanged;
 
     /// <summary>
-    /// 获取当前挂载的交易所网关实例。
+    /// 显式实现 <see cref="IExchangeGatewayProvider"/>，封闭外部对原始网关的直接访问，避免策略绕过两阶段预冻结。
     /// </summary>
-    public IExchangeGateway Gateway => _gateway;
+    IExchangeGateway IExchangeGatewayProvider.Gateway => _gateway;
 
     /// <summary>
     /// 获取经纪商当前推进的全局时间戳。
@@ -61,6 +61,25 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
         lock (_syncLock)
         {
             return _ledger.AvailableCash;
+        }
+    }
+
+    /// <summary>
+    /// 当前账户可用现金。
+    /// </summary>
+    public double AvailableCash => GetCash();
+
+    /// <summary>
+    /// 当前账户在途冻结资金。
+    /// </summary>
+    public double FrozenCash
+    {
+        get
+        {
+            lock (_syncLock)
+            {
+                return _ledger.FrozenCash;
+            }
         }
     }
 
@@ -167,6 +186,15 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
     }
 
     /// <inheritdoc />
+    public double GetPositionCost(string symbol)
+    {
+        lock (_syncLock)
+        {
+            return _ledger.GetPositionCost(symbol);
+        }
+    }
+
+    /// <inheritdoc />
     public IReadOnlyDictionary<string, decimal> GetPositions()
     {
         lock (_syncLock)
@@ -203,36 +231,45 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
 
         lock (_syncLock)
         {
-            double estimatedPrice = request.Price > 0.0 ? request.Price : 0.0;
-            freezeOk = _ledger.TryFreeze(
-                request,
-                estimatedPrice,
-                multiplier,
-                marginRate,
-                out var closeQty,
-                out var openQty,
-                out var frozenCash,
-                out var frozenPosition,
-                out rejectReason);
-
-            var record = new BrokerOrderRecord(orderId, request)
+            // 校验订单标识唯一性：拦截重复 ClientOrderId 避免覆盖在途活跃订单及关联冻结资产
+            if (_orders.ContainsKey(orderId))
             {
-                Multiplier = multiplier,
-                MarginRate = marginRate,
-                SettleDays = settleDays,
-                CloseQuantity = closeQty,
-                OpenQuantity = openQty,
-                RemainingCloseQuantity = closeQty,
-                RemainingOpenQuantity = openQty,
-                InitialFrozenCash = frozenCash,
-                RemainingFrozenCash = frozenCash,
-                InitialFrozenPosition = frozenPosition,
-                RemainingFrozenPosition = frozenPosition,
-                Status = freezeOk ? OrderStatus.Submitted : OrderStatus.Rejected,
-                RejectReason = rejectReason
-            };
+                freezeOk = false;
+                rejectReason = $"Order with ID '{orderId}' already exists.";
+            }
+            else
+            {
+                double estimatedPrice = request.Price > 0.0 ? request.Price : 0.0;
+                freezeOk = _ledger.TryFreeze(
+                    request,
+                    estimatedPrice,
+                    multiplier,
+                    marginRate,
+                    out var closeQty,
+                    out var openQty,
+                    out var frozenCash,
+                    out var frozenPosition,
+                    out rejectReason);
 
-            _orders[orderId] = record;
+                var record = new BrokerOrderRecord(orderId, request)
+                {
+                    Multiplier = multiplier,
+                    MarginRate = marginRate,
+                    SettleDays = settleDays,
+                    CloseQuantity = closeQty,
+                    OpenQuantity = openQty,
+                    RemainingCloseQuantity = closeQty,
+                    RemainingOpenQuantity = openQty,
+                    InitialFrozenCash = frozenCash,
+                    RemainingFrozenCash = frozenCash,
+                    InitialFrozenPosition = frozenPosition,
+                    RemainingFrozenPosition = frozenPosition,
+                    Status = freezeOk ? OrderStatus.Submitted : OrderStatus.Rejected,
+                    RejectReason = rejectReason
+                };
+
+                _orders[orderId] = record;
+            }
         }
 
         if (!freezeOk)
@@ -247,6 +284,25 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
         _gateway.SendOrder(orderId, request);
 
         return orderId;
+    }
+
+    /// <inheritdoc />
+    public string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+
+    /// <inheritdoc />
+    public string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+
+    /// <inheritdoc />
+    public string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        var pos = GetPosition(symbol);
+        if (pos == 0m) return string.Empty;
+
+        var dir = pos > 0m ? OrderDirection.Sell : OrderDirection.Buy;
+        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
     }
 
     /// <inheritdoc />
@@ -359,9 +415,7 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
             if (report.Commission <= 0.0 && (_config.FeeRate > 0.0 || _config.MinFee > 0.0 || _config.OnCalculateFee != null))
             {
                 double turnover = (double)report.FillQuantity * report.FillPrice * ord.Multiplier;
-                double commission = _config.OnCalculateFee != null
-                    ? _config.OnCalculateFee(ord.Request, turnover)
-                    : Math.Max(_config.MinFee, turnover * _config.FeeRate);
+                double commission = FeeCalculator.CalculateFee(turnover, ord.Request, _config);
                 report = report with { Commission = commission };
             }
 
@@ -478,6 +532,88 @@ public sealed class Broker : IBroker, IAccountSnapshotProvider
         }
         return _config.SettleDays;
     }
+
+    /// <summary>
+    /// 导出经纪商资产与在途活跃订单快照。
+    /// </summary>
+    public BrokerSnapshot SaveState()
+    {
+        lock (_syncLock)
+        {
+            var ledgerSnap = _ledger.SaveState();
+            var activeOrders = new List<BrokerOrderSnapshot>();
+            foreach (var kvp in _orders)
+            {
+                var ord = kvp.Value;
+                if (ord.Status == OrderStatus.Submitted || ord.Status == OrderStatus.Pending || ord.Status == OrderStatus.PartialFilled)
+                {
+                    activeOrders.Add(new BrokerOrderSnapshot(
+                        ord.OrderId,
+                        ord.Request,
+                        ord.Status,
+                        ord.RejectReason,
+                        ord.Multiplier,
+                        ord.MarginRate,
+                        ord.SettleDays,
+                        ord.CloseQuantity,
+                        ord.OpenQuantity,
+                        ord.RemainingCloseQuantity,
+                        ord.RemainingOpenQuantity,
+                        ord.FilledQuantity,
+                        ord.InitialFrozenCash,
+                        ord.RemainingFrozenCash,
+                        ord.InitialFrozenPosition,
+                        ord.RemainingFrozenPosition
+                    ));
+                }
+            }
+
+            return new BrokerSnapshot(ledgerSnap, activeOrders);
+        }
+    }
+
+    /// <summary>
+    /// 恢复经纪商资产与在途活跃订单快照。
+    /// </summary>
+    public void RestoreState(BrokerSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        lock (_syncLock)
+        {
+            _ledger.RestoreState(snapshot.Ledger);
+            _orders.Clear();
+            if (snapshot.ActiveOrders != null)
+            {
+                foreach (var s in snapshot.ActiveOrders)
+                {
+                    var record = new BrokerOrderRecord(s.OrderId, s.Request)
+                    {
+                        Status = s.Status,
+                        RejectReason = s.RejectReason,
+                        Multiplier = s.Multiplier,
+                        MarginRate = s.MarginRate,
+                        SettleDays = s.SettleDays,
+                        CloseQuantity = s.CloseQuantity,
+                        OpenQuantity = s.OpenQuantity,
+                        RemainingCloseQuantity = s.RemainingCloseQuantity,
+                        RemainingOpenQuantity = s.RemainingOpenQuantity,
+                        FilledQuantity = s.FilledQuantity,
+                        InitialFrozenCash = s.InitialFrozenCash,
+                        RemainingFrozenCash = s.RemainingFrozenCash,
+                        InitialFrozenPosition = s.InitialFrozenPosition,
+                        RemainingFrozenPosition = s.RemainingFrozenPosition
+                    };
+                    _orders[s.OrderId] = record;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 兼容旧版仅恢复纯账本快照。
+    /// </summary>
+    public void RestoreState(AccountLedgerSnapshot snapshot) => _ledger.RestoreState(snapshot);
 }
 
 /// <summary>

@@ -19,6 +19,7 @@ public class RuleStrategyBaseTests
         public void SetPosition(string symbol, decimal quantity) => _positions[symbol] = quantity;
         public decimal GetPosition(string symbol) => _positions.TryGetValue(symbol, out var q) ? q : 0m;
         public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
+        public double GetPositionCost(string symbol) => 0.0;
         public IReadOnlyDictionary<string, decimal> GetPositions() => _positions;
 
         public double GetCash() => 100000.0;
@@ -47,6 +48,7 @@ public class RuleStrategyBaseTests
         public void RecordSignal(string symbol, double signalValue, string? signalGroup = null, string? reason = null) { }
         public decimal GetPosition(string symbol) => Broker?.GetPosition(symbol) ?? 0m;
         public decimal GetAvailablePosition(string symbol) => Broker?.GetAvailablePosition(symbol) ?? 0m;
+        public double GetPositionCost(string symbol) => Broker?.GetPositionCost(symbol) ?? 0.0;
         public double AvailableCash => Broker?.AvailableCash ?? 0.0;
         public double TotalEquity => Broker?.GetTotalEquity() ?? 0.0;
 

@@ -16,6 +16,7 @@ namespace CarrotBacktesting.NET.Indicators
         private readonly double _invPeriod;
         private readonly double[] _window;
         private double _sum;
+        private double _sumSq;
         private int _samples;
         private int _windowIndex;
 
@@ -71,6 +72,7 @@ namespace CarrotBacktesting.NET.Indicators
             _invPeriod = 1.0 / period;
             _window = new double[period];
             _sum = 0.0;
+            _sumSq = 0.0;
             _samples = 0;
             _windowIndex = 0;
 
@@ -82,8 +84,8 @@ namespace CarrotBacktesting.NET.Indicators
         /// <inheritdoc />
         public override void Update(double open, double high, double low, double close, double volume)
         {
-            // 停牌与脏数据防御（行业标准：冻结跳过 Skip & Freeze）
-            if (double.IsNaN(close) || close <= 0.0)
+            // 停牌与脏数据防御（行业标准：冻结跳过 Skip & Freeze；支持差离值、收益率与价差实数序列）
+            if (double.IsNaN(close) || double.IsInfinity(close))
             {
                 return;
             }
@@ -92,6 +94,7 @@ namespace CarrotBacktesting.NET.Indicators
             {
                 _window[_windowIndex] = close;
                 _sum += close;
+                _sumSq += close * close;
                 _samples++;
                 _windowIndex = (_windowIndex + 1) % _period;
 
@@ -104,8 +107,10 @@ namespace CarrotBacktesting.NET.Indicators
             {
                 double oldest = _window[_windowIndex];
                 _sum = _sum - oldest + close;
+                _sumSq = _sumSq - (oldest * oldest) + (close * close);
                 _window[_windowIndex] = close;
                 _windowIndex = (_windowIndex + 1) % _period;
+                _samples++;
 
                 CalculateBands();
             }
@@ -115,15 +120,15 @@ namespace CarrotBacktesting.NET.Indicators
         {
             double mean = _sum * _invPeriod;
 
-            // 针对 20 个元素的紧凑向量计算样本标准差（纳秒级硬件 SIMD，彻底杜绝浮点减法负数下溢开方异常）
-            double varianceSum = 0.0;
-            for (int i = 0; i < _period; i++)
+            // O(1) 增量方差计算：Var = E[X^2] - (E[X])^2
+            // 彻底杜绝 O(N) 循环遍历；严格防范浮点舍入负数下溢开方异常
+            double variance = (_sumSq * _invPeriod) - (mean * mean);
+            if (variance < 0.0)
             {
-                double diff = _window[i] - mean;
-                varianceSum += diff * diff;
+                variance = 0.0;
             }
 
-            double stdDev = Math.Sqrt(varianceSum * _invPeriod);
+            double stdDev = Math.Sqrt(variance);
             double upper = mean + _k * stdDev;
             double lower = mean - _k * stdDev;
 
@@ -141,6 +146,7 @@ namespace CarrotBacktesting.NET.Indicators
         {
             base.Reset();
             _sum = 0.0;
+            _sumSq = 0.0;
             _samples = 0;
             _windowIndex = 0;
             Array.Clear(_window, 0, _period);

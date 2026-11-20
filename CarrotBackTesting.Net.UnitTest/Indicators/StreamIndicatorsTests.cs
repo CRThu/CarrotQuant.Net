@@ -310,7 +310,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             double expectedHist = (macd.Dif.Current - macd.Dea.Current) * 2.0;
             Assert.AreEqual(expectedHist, macd.Hist.Current, 1e-12);
 
-            // 防偷价熔断
+            // 负索引访问边界检查：正数索引代表未来时间步，显式抛出越界异常以防止前向时间偏差（Lookahead Bias）
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => _ = macd.Dif[1]);
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => _ = macd.Dea[1]);
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => _ = macd.Hist[1]);
@@ -398,7 +398,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 
             // 停牌
             boll.Update(double.NaN);
-            boll.Update(0.0);
+            boll.Update(double.NaN);
             Assert.AreEqual(midBefore, boll.Middle.Current, 1e-12);
             Assert.AreEqual(upBefore, boll.Upper.Current, 1e-12);
             Assert.AreEqual(lowBefore, boll.Lower.Current, 1e-12);
@@ -427,6 +427,69 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.IsTrue(double.IsNaN(boll.Upper.Current));
             Assert.IsTrue(double.IsNaN(boll.Middle.Current));
             Assert.IsTrue(double.IsNaN(boll.Lower.Current));
+        }
+
+        [TestMethod]
+        public void BollingerBands_O1Recurrence_ShouldMatchBruteForceVarianceExactly()
+        {
+            const int period = 20;
+            const double k = 2.0;
+            var boll = new BollingerBands(period, k);
+
+            // 构造伪随机但可复现的波动序列 (1000 步)
+            var random = new Random(42);
+            var history = new List<double>();
+
+            for (int step = 0; step < 1000; step++)
+            {
+                double price = 50.0 + random.NextDouble() * 20.0 + Math.Sin(step * 0.1) * 10.0;
+                history.Add(price);
+                boll.Update(price);
+
+                if (step >= period - 1)
+                {
+                    // 暴力重算最近 period 个元素的均值与方差
+                    double sum = 0.0;
+                    for (int i = step - period + 1; i <= step; i++)
+                    {
+                        sum += history[i];
+                    }
+                    double mean = sum / period;
+
+                    double varianceSum = 0.0;
+                    for (int i = step - period + 1; i <= step; i++)
+                    {
+                        double diff = history[i] - mean;
+                        varianceSum += diff * diff;
+                    }
+                    double expectedVariance = varianceSum / period;
+                    double expectedStdDev = Math.Sqrt(expectedVariance);
+
+                    Assert.AreEqual(mean, boll.Middle.Current, 1e-10, $"Step {step} 中轨 SMA 精度必须在 1e-10 以内");
+                    Assert.AreEqual(mean + k * expectedStdDev, boll.Upper.Current, 1e-9, $"Step {step} 上轨精度必须在 1e-9 以内");
+                    Assert.AreEqual(mean - k * expectedStdDev, boll.Lower.Current, 1e-9, $"Step {step} 下轨精度必须在 1e-9 以内");
+                }
+            }
+        }
+
+        [TestMethod]
+        public void BollingerBands_ConstantValueSeries_ShouldHandleZeroVarianceWithoutNegativeSqrtException()
+        {
+            var boll = new BollingerBands(5, 2.0);
+            for (int i = 0; i < 20; i++)
+            {
+                boll.Update(100.0);
+            }
+
+            Assert.IsTrue(boll.IsReady);
+            Assert.AreEqual(100.0, boll.Middle.Current, 1e-12);
+            Assert.AreEqual(100.0, boll.Upper.Current, 1e-12, "常数序列标准差应为 0，上轨必须等于中轨");
+            Assert.AreEqual(100.0, boll.Lower.Current, 1e-12, "常数序列标准差应为 0，下轨必须等于中轨");
+
+            // 验证 Reset 后正确重新开始
+            boll.Reset();
+            Assert.IsFalse(boll.IsReady);
+            Assert.IsTrue(double.IsNaN(boll.Current));
         }
 
         [TestMethod]
@@ -752,6 +815,41 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 
             // offset -8 超出容量 8，必须安全返回 NaN
             Assert.IsTrue(double.IsNaN(sma[-8]));
+        }
+
+        [TestMethod]
+        public void Indicators_InfinityAndNegativeValues_ShouldHandleRobustly()
+        {
+            var bb = new BollingerBands(3, 2.0);
+            var macd = new Macd(3, 6, 3);
+            var rsi = new Rsi(3);
+            var atr = new Atr(3);
+
+            // 1. 输入正负无穷大，指标必须安全冻结跳过（Skip & Freeze），严禁污染状态与崩溃
+            bb.Update(double.PositiveInfinity);
+            bb.Update(double.NegativeInfinity);
+            Assert.IsFalse(bb.IsReady);
+
+            macd.Update(double.PositiveInfinity);
+            macd.Update(double.NegativeInfinity);
+            Assert.IsFalse(macd.IsReady);
+
+            rsi.Update(double.PositiveInfinity);
+            rsi.Update(double.NegativeInfinity);
+            Assert.IsFalse(rsi.IsReady);
+
+            atr.Update(double.PositiveInfinity, double.PositiveInfinity, double.NegativeInfinity, double.NegativeInfinity, 100);
+            Assert.IsFalse(atr.IsReady);
+
+            // 2. 支持跨期套利/负油价等负数价差序列输入并正确计算
+            // BollingerBands 支持负数均值与带宽计算
+            bb.Update(-10.0);
+            bb.Update(-20.0);
+            bb.Update(-30.0);
+            Assert.IsTrue(bb.IsReady);
+            Assert.AreEqual(-20.0, bb.Current, 1e-12); // (-10 - 20 - 30) / 3 = -20
+            Assert.IsTrue(bb.Upper.Current > bb.Middle.Current);
+            Assert.IsTrue(bb.Lower.Current < bb.Middle.Current);
         }
 
         #endregion

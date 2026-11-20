@@ -266,6 +266,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             public double GetTotalEquity() => GetCash();
             public decimal GetPosition(string symbol) => 0m;
             public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
+            public double GetPositionCost(string symbol) => 0.0;
             public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
             public string SubmitOrder(OrderRequest request) => "ord-1";
             public void CancelOrder(string orderId) { }

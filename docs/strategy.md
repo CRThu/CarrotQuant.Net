@@ -88,7 +88,28 @@ public interface IStrategy
 }
 ```
 
-### 2. 纯信号 / Alpha 策略范式 (Signal & Alpha Strategy Pattern)
+### 2. `StrategyBase` 与通用策略抽象基类
+为避免策略开发者重复实现 `IStrategy` 的空白生命周期与元数据属性，框架提供 `StrategyBase` 抽象基类：
+```csharp
+namespace CarrotBacktesting.NET.Strategy;
+
+public abstract class StrategyBase : IStrategy
+{
+    public virtual string Name => GetType().Name;
+    public virtual int Lookback => 200;
+
+    public virtual void OnStart(IEngineContext context) { }
+    public abstract void OnUpdate(IEngineContext context);
+    public virtual void OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events) { }
+    public virtual void OnStop(IEngineContext context) { }
+    public virtual void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status) { }
+    public virtual void OnTrade(IEngineContext context, ExecutionReport e) { }
+    public virtual void OnPositionChanged(IEngineContext context, PositionEvent e) { }
+}
+```
+开发者只需继承 `StrategyBase` 并覆写 `OnUpdate(IEngineContext context)`，结合高频交易动词（`context.Buy`、`context.Sell`、`context.ClosePosition`）与一级标的门面（`context.Symbols`），即可编写极简紧凑的策略代码。
+
+### 3. 纯信号 / Alpha 策略范式 (Signal & Alpha Strategy Pattern)
 纯信号或特征生产策略无需额外的空标记接口，直接实现 `IStrategy`：
 - **职责专注**：专注于特征工程、数学打分与信号生产，不触碰 `context.Broker` 报单接口；
 - **状态解耦**：通过通用黑板（`context.Market.SetState<T>`）发布打分向量、概率分布或状态标签；
@@ -391,15 +412,15 @@ public class SimpleRuleStrategy : RuleStrategyBase
 
     protected override void CheckExit(IEngineContext context, string symbol, decimal position)
     {
-        // 已有持仓时：检查止盈止损条件
-        var closeMatrix = context.Timeseries.GetMatrix<double>("close");
-        int col = context.Timeseries.Metadata.GetSymbolIndex(symbol);
-        double price = closeMatrix[context.CurrentIndex, col];
+        // 已有持仓时：通过 context.GetPositionCost 原生获取加权持仓成本，轻松实现止盈止损
+        double cost = context.GetPositionCost(symbol);
+        double currentPrice = context.GetClose(symbol);
 
-        if (price < 9.5) // 示例止损条件
+        // 浮盈超过 10% 止盈，或浮亏超过 5% 止损
+        if (currentPrice >= cost * 1.10 || currentPrice <= cost * 0.95)
         {
             context.Broker.SubmitOrder(new OrderRequest(
-                symbol, OrderDirection.Sell, OrderType.Limit, price, position));
+                symbol, OrderDirection.Sell, OrderType.Market, currentPrice, position));
         }
     }
 }

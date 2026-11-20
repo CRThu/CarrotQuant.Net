@@ -9,7 +9,7 @@ namespace CarrotBacktesting.NET.Data
     /// 高性能动态市场元数据实现。
     /// 满足 <see cref="IMarketMetadata"/> 契约，支持高并发无锁点查与实盘时序推进。
     /// </summary>
-    public class DynamicMarketMetadata : IMarketMetadata
+    public class DynamicMarketMetadata : IMutableMarketMetadata
     {
         private readonly List<string> _symbols;
         private readonly List<MarketTime> _tradeDates;
@@ -19,41 +19,18 @@ namespace CarrotBacktesting.NET.Data
         private readonly ConcurrentDictionary<string, Type> _fieldTypes = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _gate = new();
 
-        /// <inheritdoc />
-        public IReadOnlyList<string> Symbols
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    return _symbols.ToArray();
-                }
-            }
-        }
+        private volatile string[] _cachedSymbols;
+        private volatile MarketTime[] _cachedTradeDates;
+        private volatile string[] _cachedFieldNames;
 
         /// <inheritdoc />
-        public IReadOnlyList<string> FieldNames
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    return _fieldNames.ToArray();
-                }
-            }
-        }
+        public IReadOnlyList<string> Symbols => _cachedSymbols;
 
         /// <inheritdoc />
-        public IReadOnlyList<MarketTime> TradeDates
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    return _tradeDates.ToArray();
-                }
-            }
-        }
+        public IReadOnlyList<string> FieldNames => _cachedFieldNames;
+
+        /// <inheritdoc />
+        public IReadOnlyList<MarketTime> TradeDates => _cachedTradeDates;
 
         /// <summary>
         /// 从已有的基准元数据构造动态市场元数据。
@@ -79,6 +56,10 @@ namespace CarrotBacktesting.NET.Data
             {
                 _fieldTypes[field] = baseMetadata.GetFieldType(field);
             }
+
+            _cachedSymbols = _symbols.ToArray();
+            _cachedTradeDates = _tradeDates.ToArray();
+            _cachedFieldNames = _fieldNames.ToArray();
         }
 
         /// <summary>
@@ -107,6 +88,10 @@ namespace CarrotBacktesting.NET.Data
                     _fieldTypes[kvp.Key] = kvp.Value;
                 }
             }
+
+            _cachedSymbols = _symbols.ToArray();
+            _cachedTradeDates = _tradeDates.ToArray();
+            _cachedFieldNames = _fieldNames.ToArray();
         }
 
         /// <inheritdoc />
@@ -127,6 +112,7 @@ namespace CarrotBacktesting.NET.Data
                 int index = _tradeDates.Count;
                 _tradeDates.Add(date);
                 _dateMap[date] = index;
+                _cachedTradeDates = _tradeDates.ToArray();
                 return index;
             }
         }
@@ -151,6 +137,7 @@ namespace CarrotBacktesting.NET.Data
                 int index = _symbols.Count;
                 _symbols.Add(symbol);
                 _symbolMap[symbol] = index;
+                _cachedSymbols = _symbols.ToArray();
                 return index;
             }
         }

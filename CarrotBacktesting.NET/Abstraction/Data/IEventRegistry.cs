@@ -24,11 +24,6 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         bool HasTable(string name);
 
         /// <summary>
-        /// 注册事件表。
-        /// </summary>
-        void Register(string name, IEventTable table);
-
-        /// <summary>
         /// 获取所有已加载的事件表名称列表。
         /// </summary>
         IReadOnlyList<string> GetTableNames();

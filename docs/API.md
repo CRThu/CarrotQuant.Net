@@ -699,6 +699,23 @@ public interface IEngineContext
     IIndicatorRegistry Indicators { get; }  // 全局指标注册中心（瘦契约挂载，零反向穿透）
     T? GetExtension<T>() where T : class;   // 引擎扩展组件与插件查询
 
+    // 标的元数据门面 (Symbols Metadata Facades)
+    IReadOnlyList<string> Symbols { get; }      // 当前标的列表（固定顺序，与列索引一一对应）
+    int SymbolCount { get; }                    // 当前标的总数量
+    int GetSymbolIndex(string symbol);          // 获取标的列索引（无则 -1）
+
+    // 高频交易动词门面 (High-Frequency Trading Verbs)
+    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
+    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
+    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
+
+    // 当期账户与持仓门面 (Account & Position Facades)
+    decimal GetPosition(string symbol);
+    decimal GetAvailablePosition(string symbol);
+    double GetPositionCost(string symbol);  // 加权持仓成本价（无持仓为 0.0）
+    double AvailableCash { get; }
+    double TotalEquity { get; }
+
     // 当期极简取价门面（专职当期快照，统一 double，默认 Post 后复权，根除因子时间错位）
     double GetClose(string symbol, PriceMode mode = PriceMode.Post);
     double GetClose(int symbolIndex, PriceMode mode = PriceMode.Post);
@@ -737,8 +754,12 @@ public interface IBroker
     double GetTotalEquity();
     decimal GetPosition(string symbol);
     decimal GetAvailablePosition(string symbol);
+    double GetPositionCost(string symbol);
     IReadOnlyDictionary<string, decimal> GetPositions();
     string SubmitOrder(OrderRequest request);
+    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
+    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
+    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
     void CancelOrder(string orderId);
     OrderStatus GetOrderStatus(string orderId);
     void Step(DateTime currentTime);
@@ -784,6 +805,14 @@ public interface ISimulatedExchange : IExchangeGateway
     void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null);
     void SetCurrentTime(DateTime currentTime);
     double GetMarketPrice(string symbol);
+}
+
+/// <summary>
+/// 交易所网关提供者显式契约，受保护地获取底层网关。
+/// </summary>
+public interface IExchangeGatewayProvider
+{
+    IExchangeGateway Gateway { get; }
 }
 ```
 
@@ -911,7 +940,8 @@ public interface IStrategy
 ```
 
 ### 2. 模板基类与开发范式
-- **`RuleStrategyBase`**: 规则交易便利模板基类，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
+- **`StrategyBase`**: 通用策略抽象基类，默认提供类名反射名称、Lookback（200）以及空生命周期安全实现。开发者仅需覆写 `OnUpdate(IEngineContext context)`，彻底告别样板代码。
+- **`RuleStrategyBase`**: 规则交易便利模板基类，继承自 `StrategyBase`，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
 - **纯信号/Alpha 策略范式**: 直接实现 `IStrategy` 契约，专注于特征计算与信号生产，通过黑板（`context.Market.SetState<T>`）发布打分或状态，与后续执行策略正交解耦。
 
 ### 3. 组合策略管线 (StrategyPipeline)

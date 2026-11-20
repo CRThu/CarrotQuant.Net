@@ -14,21 +14,6 @@ public interface IStrategyPipeline : IStrategy
     IStrategyPipeline Add(IStrategy strategy);
 
     /// <summary>
-    /// 注册与当前管线生命周期绑定的外部托管/非托管资源。
-    /// 在管线释放时按序统一释放。
-    /// </summary>
-    /// <param name="disposable">待释放资源对象。</param>
-    /// <returns>返回管线自身，支持链式调用。</returns>
-    IStrategyPipeline RegisterDisposable(IDisposable disposable);
-
-    /// <summary>
-    /// 注册与当前管线生命周期绑定的清理回调委托（例如动态程序集卸载、临时句柄释放等）。
-    /// </summary>
-    /// <param name="onDispose">管线释放时执行的清理操作。</param>
-    /// <returns>返回管线自身，支持链式调用。</returns>
-    IStrategyPipeline RegisterOnDispose(Action onDispose);
-
-    /// <summary>
     /// 对管线进行编译或密封优化。
     /// 在引擎正式运行前调用，用于冻结管线结构并执行可能的性能优化。
     /// </summary>

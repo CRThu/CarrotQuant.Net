@@ -39,6 +39,13 @@ public interface IBroker
     decimal GetAvailablePosition(string symbol);
 
     /// <summary>
+    /// 获取指定品种的加权平均持仓成本价（无持仓时返回 0.0）。
+    /// </summary>
+    /// <param name="symbol">品种代码。</param>
+    /// <returns>加权平均持仓成本价。</returns>
+    double GetPositionCost(string symbol);
+
+    /// <summary>
     /// 获取当前账户中所有活跃持仓的只读快照字典。
     /// </summary>
     /// <returns>代码与持仓数量的映射字典。</returns>
@@ -50,6 +57,50 @@ public interface IBroker
     /// <param name="request">订单请求参数。</param>
     /// <returns>由经纪商系统内部生成的唯一订单 ID。</returns>
     string SubmitOrder(OrderRequest request);
+
+    /// <summary>
+    /// 便捷提交买入订单（默认以市价单形式发出）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="quantity">买入数量（股数/张数）。</param>
+    /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
+    /// <param name="type">订单类型（缺省为市价单）。</param>
+    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <returns>分配的唯一订单标识 ID。</returns>
+    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+
+    /// <summary>
+    /// 便捷提交卖出订单（默认以市价单形式发出）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="quantity">卖出数量（股数/张数）。</param>
+    /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
+    /// <param name="type">订单类型（缺省为市价单）。</param>
+    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <returns>分配的唯一订单标识 ID。</returns>
+    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+
+    /// <summary>
+    /// 便捷全额平仓指定标的持仓。
+    /// 若当前无持仓则返回空字符串，不产生任何订单。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
+    /// <param name="type">订单类型（缺省为市价单）。</param>
+    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <returns>分配的唯一订单标识 ID；若无持仓则返回 string.Empty。</returns>
+    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+    {
+        var pos = GetPosition(symbol);
+        if (pos == 0m) return string.Empty;
+        var dir = pos > 0m ? OrderDirection.Sell : OrderDirection.Buy;
+        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+    }
 
     /// <summary>
     /// 撤销指定的订单。

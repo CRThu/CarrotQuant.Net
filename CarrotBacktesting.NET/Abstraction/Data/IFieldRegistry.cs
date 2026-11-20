@@ -25,11 +25,6 @@ namespace CarrotBacktesting.NET.Abstraction.Data
         bool HasTable(string name);
 
         /// <summary>
-        /// 注册静态维表。
-        /// </summary>
-        void Register(string name, IFieldTable table);
-
-        /// <summary>
         /// 获取所有已加载的维表名称列表。
         /// </summary>
         IReadOnlyList<string> GetTableNames();

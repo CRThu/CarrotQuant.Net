@@ -10,7 +10,7 @@ namespace CarrotBacktesting.NET.Analysis;
 /// 交易事实记录器，负责接收运行期的交割单、平仓结算、净值点、每日快照与策略信号，生成交易账本结果。
 /// 实现 ITradingRecorder 与 ICheckpointable，回测与实盘通用。
 /// </summary>
-public sealed class TradingRecorder : ITradingRecorder, ICheckpointable
+public sealed class TradingRecorder : ITradingRecorder, ICheckpointable, ICheckpointable<TradingRecorderSnapshot>
 {
     private const uint StateMagic = 0x54524452; // "TRDR"
     private const int StateVersion = 2;
@@ -374,6 +374,72 @@ public sealed class TradingRecorder : ITradingRecorder, ICheckpointable
                 string reason = reader.ReadString();
                 _signals.Add(new SignalRecord(time, symbol, sigVal, sigGroup, reason));
             }
+        }
+    }
+
+    /// <summary>
+    /// 获取当前已记录的所有已平仓交易不可变快照。
+    /// </summary>
+    public IReadOnlyList<Trade> GetClosedTradesSnapshot()
+    {
+        lock (_syncLock)
+        {
+            return _closedTrades.ToArray();
+        }
+    }
+
+    /// <summary>
+    /// 恢复历史已平仓交易列表。
+    /// </summary>
+    public void RestoreClosedTrades(IEnumerable<Trade> trades)
+    {
+        ArgumentNullException.ThrowIfNull(trades);
+        lock (_syncLock)
+        {
+            _closedTrades.Clear();
+            _closedTrades.AddRange(trades);
+        }
+    }
+
+    /// <summary>
+    /// 保存交易事实记录器不可变状态快照。
+    /// </summary>
+    public TradingRecorderSnapshot SaveState()
+    {
+        lock (_syncLock)
+        {
+            return new TradingRecorderSnapshot(
+                _settlements.ToArray(),
+                _closedTrades.ToArray(),
+                _equityCurve.ToArray(),
+                _dailySnapshots.ToArray(),
+                _signals.ToArray()
+            );
+        }
+    }
+
+    /// <summary>
+    /// 恢复交易事实记录器不可变状态快照。
+    /// </summary>
+    public void RestoreState(TradingRecorderSnapshot state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        lock (_syncLock)
+        {
+            _settlements.Clear();
+            if (state.Settlements != null) _settlements.AddRange(state.Settlements);
+
+            _closedTrades.Clear();
+            if (state.ClosedTrades != null) _closedTrades.AddRange(state.ClosedTrades);
+
+            _equityCurve.Clear();
+            if (state.EquityCurve != null) _equityCurve.AddRange(state.EquityCurve);
+
+            _dailySnapshots.Clear();
+            if (state.DailySnapshots != null) _dailySnapshots.AddRange(state.DailySnapshots);
+
+            _signals.Clear();
+            if (state.Signals != null) _signals.AddRange(state.Signals);
         }
     }
 }

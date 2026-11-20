@@ -118,4 +118,20 @@ public class MarketStateTests
         Assert.IsNull(result);
         Assert.IsFalse(blackboard.HasState<SampleRegime>("MyKey"));
     }
+
+    [TestMethod]
+    public void SetState_ShouldPreventUtcNowPollution()
+    {
+        // 1. 无参 SetState 时，时间戳默认为 MinValue，绝不能穿透到现实世界 UtcNow
+        var defaultBlackboard = new MarketState();
+        defaultBlackboard.SetState("SignalValue", key: "sig1");
+        Assert.IsTrue(defaultBlackboard.TryGetState<string>(out var val1, out var time1, "sig1"));
+        Assert.AreEqual(MarketTime.MinValue, time1);
+
+        // 2. 显式传入仿真时间戳时，精准记录该时间戳
+        var simTime = new MarketTime(2021, 5, 20);
+        defaultBlackboard.SetState("SignalValue", simTime, key: "sig2");
+        Assert.IsTrue(defaultBlackboard.TryGetState<string>(out var val2, out var time2, "sig2"));
+        Assert.AreEqual(simTime, time2);
+    }
 }

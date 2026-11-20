@@ -103,6 +103,7 @@ public class StrategyPipelineFactoryTests
         public void RecordSignal(string symbol, double signalValue, string? signalGroup = null, string? reason = null) { }
         public decimal GetPosition(string symbol) => 0m;
         public decimal GetAvailablePosition(string symbol) => 0m;
+        public double GetPositionCost(string symbol) => 0.0;
         public double AvailableCash => 0.0;
         public double TotalEquity => 0.0;
         public CarrotBacktesting.NET.Abstraction.Indicators.IIndicatorRegistry Indicators => throw new NotImplementedException();

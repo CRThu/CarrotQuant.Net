@@ -15,6 +15,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public double GetTotalEquity() => GetCash();
             public decimal GetPosition(string symbol) => 0m;
             public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
+            public double GetPositionCost(string symbol) => 0.0;
             public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
             public string SubmitOrder(OrderRequest request) => "ord-1";
             public void CancelOrder(string orderId) { }
@@ -122,12 +123,15 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
-        public void Broker_ExposesGatewayDirectly_ForSimulationInspection()
+        public void Broker_EncapsulatesGateway_OnlyAccessibleViaIExchangeGatewayProvider()
         {
             var sim = new CarrotBacktesting.NET.Engine.Exchange.SimulatedExchangeGateway(new CarrotBacktesting.NET.Config.BrokerConfig());
             var broker = new CarrotBacktesting.NET.Engine.Broker.Broker(sim, new CarrotBacktesting.NET.Config.BrokerConfig());
 
-            Assert.AreSame(sim, broker.Gateway);
+            // 验证 Broker.Gateway 为显式接口实现，策略面向的 IBroker 契约无法直接访问底层网关
+            Assert.IsTrue(broker is IExchangeGatewayProvider);
+            var provider = (IExchangeGatewayProvider)broker;
+            Assert.AreSame(sim, provider.Gateway);
         }
     }
 }

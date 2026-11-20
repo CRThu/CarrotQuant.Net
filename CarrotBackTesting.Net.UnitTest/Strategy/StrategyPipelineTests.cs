@@ -19,6 +19,7 @@ public class StrategyPipelineTests
         public double GetTotalEquity() => GetCash();
         public decimal GetPosition(string symbol) => 0m;
         public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
+        public double GetPositionCost(string symbol) => 0.0;
         public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
         public string SubmitOrder(OrderRequest request) => "ord-1";
         public void CancelOrder(string orderId) { }
@@ -44,6 +45,7 @@ public class StrategyPipelineTests
         public void RecordSignal(string symbol, double signalValue, string? signalGroup = null, string? reason = null) { }
         public decimal GetPosition(string symbol) => Broker?.GetPosition(symbol) ?? 0m;
         public decimal GetAvailablePosition(string symbol) => Broker?.GetAvailablePosition(symbol) ?? 0m;
+        public double GetPositionCost(string symbol) => Broker?.GetPositionCost(symbol) ?? 0.0;
         public double AvailableCash => Broker?.AvailableCash ?? 0.0;
         public double TotalEquity => Broker?.GetTotalEquity() ?? 0.0;
 
@@ -689,5 +691,40 @@ public class FileStrategy : IStrategy {
         {
             pipeline.Add(new StepTraceStrategy("Leaf2", 10, new List<string>()));
         });
+    }
+
+    private sealed class MinimalSampleStrategy : StrategyBase
+    {
+        public int UpdateCount { get; private set; }
+
+        public override void OnUpdate(IEngineContext context)
+        {
+            UpdateCount++;
+        }
+    }
+
+    [TestMethod]
+    public void StrategyBase_SubClass_ShouldInheritDefaultPropertiesAndLifecycle()
+    {
+        var strategy = new MinimalSampleStrategy();
+
+        // 默认名称等于类名
+        Assert.AreEqual(nameof(MinimalSampleStrategy), strategy.Name);
+        // 默认 Lookback 为 200
+        Assert.AreEqual(200, strategy.Lookback);
+
+        // 空生命周期安全调用不抛异常
+        strategy.OnStart(null!);
+        strategy.OnEvent(null!, "tbl", Array.Empty<IDataRow>());
+        strategy.OnOrderStatusChanged(null!, "ord1", OrderStatus.Filled);
+        strategy.OnStop(null!);
+
+        strategy.OnUpdate(null!);
+        Assert.AreEqual(1, strategy.UpdateCount);
+
+        // 可作为子策略无缝加入管线
+        using var pipeline = StrategyPipeline.Sequential();
+        pipeline.Add(strategy);
+        Assert.AreEqual(200, pipeline.Lookback);
     }
 }

@@ -12,7 +12,7 @@ namespace CarrotBacktesting.NET.Engine.Broker;
 /// 专职负责资金余额、冻结资金、多空持仓、加权平均成本、T+N 日切解锁与资产盯市估值。
 /// 零网络、零 I/O、纯算术驱动，回测与实盘 100% 共享单一内核。
 /// </summary>
-internal sealed class AccountLedger
+internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 {
     private readonly BrokerConfig _config;
     private readonly IFieldRegistry? _fields;
@@ -51,6 +51,15 @@ internal sealed class AccountLedger
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         return _positions.TryGetValue(symbol, out var pos) ? pos.AvailableQuantity : 0m;
+    }
+
+    /// <summary>
+    /// 获取指定标的的加权平均持仓成本价（无持仓时返回 0.0）。
+    /// </summary>
+    public double GetPositionCost(string symbol)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        return _positions.TryGetValue(symbol, out var pos) ? pos.AverageCost : 0.0;
     }
 
     /// <summary>
@@ -257,10 +266,9 @@ internal sealed class AccountLedger
 
         // 3. 资金可用性校验：纯平仓所需现金为 0（手续费在成交回款中扣除）；新开仓部分需冻结保证金与预估手续费
         double requiredMargin = (double)openQty * estimatedPrice * multiplier * marginRate;
+        double estimatedTurnover = (double)openQty * estimatedPrice * multiplier;
         double estimatedFee = openQty > 0m && estimatedPrice > 0.0
-            ? (_config.OnCalculateFee != null
-                ? _config.OnCalculateFee(request, (double)openQty * estimatedPrice * multiplier)
-                : Math.Max(_config.MinFee, (double)openQty * estimatedPrice * multiplier * _config.FeeRate))
+            ? FeeCalculator.CalculateFee(estimatedTurnover, request, _config)
             : 0.0;
         double requiredCash = requiredMargin + estimatedFee;
 
@@ -341,6 +349,29 @@ internal sealed class AccountLedger
     }
 
     /// <summary>
+    /// 便捷重载：获取平仓结算记录（Trade）。
+    /// </summary>
+    public void CommitFill(
+        ExecutionReport report,
+        bool isBuy,
+        decimal closeQty,
+        decimal openQty,
+        double multiplier,
+        double marginRate,
+        int settleDays,
+        double unfreezeCash,
+        decimal unfreezePosition,
+        MarketTime exchangeDate,
+        out PositionEvent posEvent,
+        out Trade? closedTrade)
+    {
+        CommitFill(
+            report, isBuy, closeQty, openQty, multiplier, marginRate, settleDays,
+            unfreezeCash, unfreezePosition, exchangeDate, string.Empty,
+            out posEvent, out closedTrade, out _);
+    }
+
+    /// <summary>
     /// 订单物理成交落账（Phase 2 Commit）。
     /// 释放对应比例预冻结额度、扣除实际手续费、正式结转持仓成本并结转已实现盈亏，生成交割单与平仓记录。
     /// </summary>
@@ -390,11 +421,17 @@ internal sealed class AccountLedger
             double grossPnL = pnlPerUnit * (double)closeQty * multiplier;
             double marginReleased = (double)closeQty * pos.AverageCost * multiplier * marginRate;
 
-            // 分摊平仓手续费
+            // 分摊开仓在途手续费池与平仓当笔手续费
+            decimal currentAbsTotal = Math.Abs(pos.TotalQuantity);
+            double allocatedOpenFee = currentAbsTotal > 0m
+                ? (double)(closeQty / currentAbsTotal) * pos.OpenCommission
+                : 0.0;
+            pos.OpenCommission = Math.Max(0.0, pos.OpenCommission - allocatedOpenFee);
+
             double closeFee = report.FillQuantity > 0m
                 ? (double)(closeQty / report.FillQuantity) * report.Commission
                 : 0.0;
-            closeRealizedPnL = grossPnL - closeFee;
+            closeRealizedPnL = grossPnL - allocatedOpenFee - closeFee;
 
             _cash += (marginReleased + grossPnL);
 
@@ -414,7 +451,7 @@ internal sealed class AccountLedger
                 multiplier,
                 closeRealizedPnL,
                 returnRate,
-                closeFee,
+                allocatedOpenFee + closeFee,
                 0.0,
                 holdingSteps,
                 pos.OpenTag,
@@ -433,6 +470,7 @@ internal sealed class AccountLedger
             if (pos.TotalQuantity == 0m)
             {
                 pos.AverageCost = 0.0;
+                pos.OpenCommission = 0.0;
                 pos.OpenTime = MarketTime.MinValue;
                 pos.OpenTag = string.Empty;
                 if (openQty == 0m && pos.PendingLots.Count == 0 && pos.FrozenQuantity == 0m)
@@ -448,6 +486,12 @@ internal sealed class AccountLedger
             double openTurnover = (double)openQty * report.FillPrice * multiplier;
             double marginAdded = openTurnover * marginRate;
             _cash -= marginAdded;
+
+            // 分摊并累加开仓在途手续费池
+            double openFee = report.FillQuantity > 0m
+                ? (double)(openQty / report.FillQuantity) * report.Commission
+                : 0.0;
+            pos.OpenCommission += openFee;
 
             if (pos.TotalQuantity == 0m)
             {
@@ -580,6 +624,73 @@ internal sealed class AccountLedger
                     AvailableQuantity = kvp.Value
                 };
             }
+        }
+    }
+
+    /// <summary>
+    /// 保存账本不可变状态快照（支持检查点持久化）。
+    /// </summary>
+    public AccountLedgerSnapshot SaveState()
+    {
+        var positionsList = new List<LedgerPositionSnapshot>(_positions.Count);
+        foreach (var pos in _positions.Values)
+        {
+            var lots = new List<PendingLotSnapshot>(pos.PendingLots.Count);
+            foreach (var lot in pos.PendingLots)
+            {
+                lots.Add(new PendingLotSnapshot(lot.Quantity, lot.AvailableDate));
+            }
+
+            positionsList.Add(new LedgerPositionSnapshot(
+                pos.Symbol,
+                pos.TotalQuantity,
+                pos.AvailableQuantity,
+                pos.FrozenQuantity,
+                pos.AverageCost,
+                pos.OpenCommission,
+                pos.LastPrice,
+                pos.OpenTime,
+                pos.OpenTag,
+                lots
+            ));
+        }
+
+        return new AccountLedgerSnapshot(_cash, _frozenCash, positionsList);
+    }
+
+    /// <summary>
+    /// 基于不可变状态快照精确恢复账本（支持断点续跑）。
+    /// </summary>
+    public void RestoreState(AccountLedgerSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        _cash = snapshot.Cash;
+        _frozenCash = snapshot.FrozenCash;
+        _positions.Clear();
+        _positionsSnapshot = null;
+        _positionVersion++;
+
+        foreach (var snap in snapshot.Positions)
+        {
+            var pos = new PositionData(snap.Symbol)
+            {
+                TotalQuantity = snap.TotalQuantity,
+                AvailableQuantity = snap.AvailableQuantity,
+                FrozenQuantity = snap.FrozenQuantity,
+                AverageCost = snap.AverageCost,
+                OpenCommission = snap.OpenCommission,
+                LastPrice = snap.LastPrice,
+                OpenTime = snap.OpenTime,
+                OpenTag = snap.OpenTag
+            };
+
+            foreach (var lot in snap.PendingLots)
+            {
+                pos.PendingLots.Add(new PendingLot(lot.Quantity, lot.AvailableDate));
+            }
+
+            _positions[snap.Symbol] = pos;
         }
     }
 

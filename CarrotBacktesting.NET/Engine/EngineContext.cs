@@ -64,6 +64,27 @@ namespace CarrotBacktesting.NET.Engine
         public IBroker Broker { get; }
 
         /// <inheritdoc />
+        public IReadOnlyList<string> Symbols => Timeseries.Metadata.Symbols;
+
+        /// <inheritdoc />
+        public int SymbolCount => Timeseries.Metadata.Symbols.Count;
+
+        /// <inheritdoc />
+        public int GetSymbolIndex(string symbol) => Timeseries.Metadata.GetSymbolIndex(symbol);
+
+        /// <inheritdoc />
+        public string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+            => Broker.Buy(symbol, quantity, price, type, clientOrderId, orderTag);
+
+        /// <inheritdoc />
+        public string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+            => Broker.Sell(symbol, quantity, price, type, clientOrderId, orderTag);
+
+        /// <inheritdoc />
+        public string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+            => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag);
+
+        /// <inheritdoc />
         public ITradingRecorder? Recorder { get; }
 
         /// <inheritdoc />
@@ -86,6 +107,9 @@ namespace CarrotBacktesting.NET.Engine
 
         /// <inheritdoc />
         public decimal GetAvailablePosition(string symbol) => Broker.GetAvailablePosition(symbol);
+
+        /// <inheritdoc />
+        public double GetPositionCost(string symbol) => Broker.GetPositionCost(symbol);
 
         /// <inheritdoc />
         public double AvailableCash => Broker.GetCash();

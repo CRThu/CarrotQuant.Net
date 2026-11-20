@@ -67,6 +67,9 @@ Row N-1 [ val ]     [ val ]    ...     [ val ]
 - **非托管连续内存**：底层通过 `NativeMemory.AllocZeroed` 或连续物理块管理，内存布局紧凑，严格规避 .NET 托管堆 GC 开销；
 - **消除 JIT 边界检查 (BCE)**：行切片 `ReadOnlyRowView<T>` 与列切片 `ReadOnlyColumnView<T>` 基于指针或固定跨度索引提供 `ref readonly T this[int index]`，提速 20%~30%；
 - **标的维度单调递增 (SSOT)**：标的代码对应的列索引（`SymbolIndex`）单调递增，已有列索引绝不修改；退市股票保留列位置并填充 NaN，彻底消除幸存者偏差。
+- **只读描述与可变写契约物理隔离 (`IMarketMetadata` vs `IMutableMarketMetadata`)**：
+  - `IMarketMetadata`：纯只读元数据契约，严格收敛为读取属性（`Symbols`, `TradeDates`, `FieldNames`, `GetSymbolIndex`, `GetDateIndex`），彻底消除抛出 `NotSupportedException` 的伪实现；
+  - `IMutableMarketMetadata`：专有写端契约，仅在实盘增量写入与动态扩列场景使用（`AppendDate`, `AppendSymbol`），由可变实现 `DynamicMarketMetadata` 显式承载。
 
 ### 2. 全局日历对齐与物理真相投影 (MarketDataAligner)
 原始行情源由于标的停牌、上市时间差异，其物理文件时间戳是参差不齐的。`MarketDataAligner` 负责将离散数据投射到全局交易日历网格：

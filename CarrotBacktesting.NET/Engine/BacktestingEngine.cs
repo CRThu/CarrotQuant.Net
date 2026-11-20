@@ -24,7 +24,7 @@ namespace CarrotBacktesting.NET.Engine
     /// 统领时序滑动窗口、T+N 跨日结算驱动、异构离散事件派发、策略管线步进与状态机生命周期控制。
     /// 遵循热路径零堆分配（零 GC）原则，基于确定性时间步循环驱动与线程安全状态机。
     /// </summary>
-    public class BacktestingEngine : IEngine, ICheckpointable, IDisposable
+    public class BacktestingEngine : IEngine, ICheckpointable, ICheckpointable<EngineCheckpointState>, IDisposable
     {
         private readonly ITimeseriesRegistry _timeseries;
         private readonly ITimeseriesScheduler? _timeseriesScheduler;
@@ -128,7 +128,7 @@ namespace CarrotBacktesting.NET.Engine
             _timeseriesScheduler = timeseries as ITimeseriesScheduler;
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _snapshotProvider = broker as IAccountSnapshotProvider;
-            _simExchange = simExchange ?? (broker as ISimulatedExchange) ?? ((broker as Broker.Broker)?.Gateway as ISimulatedExchange);
+            _simExchange = simExchange ?? (broker as ISimulatedExchange) ?? ((broker as IExchangeGatewayProvider)?.Gateway as ISimulatedExchange);
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
             _config = config ?? new EngineConfig();
             _monitor = monitor ?? NullMonitor.Instance;
@@ -299,7 +299,8 @@ namespace CarrotBacktesting.NET.Engine
                 }
 
                 // 若存在断点续跑索引，则从断点向后推进
-                if (_resumeFromIndex >= 0)
+                bool isResuming = _resumeFromIndex >= 0;
+                if (isResuming)
                 {
                     startIndex = Math.Max(startIndex, _resumeFromIndex);
                     _resumeFromIndex = -1;
@@ -316,8 +317,17 @@ namespace CarrotBacktesting.NET.Engine
                 // 4. 触发策略启动生命周期
                 _pipeline.OnStart(_context);
 
+                // 若处于断点续跑模式，策略在 OnStart 中刚刚注册就绪的指标池必须在此刻执行历史时序补齐预热
+                if (isResuming && startIndex > 0)
+                {
+                    PrewarmIndicatorsAfterRestore(startIndex - 1);
+                }
+
                 int totalSteps = endIndex - startIndex + 1;
-                _lastDate = MarketTime.MinValue;
+                if (!isResuming)
+                {
+                    _lastDate = MarketTime.MinValue;
+                }
                 long runStartTimestamp = Stopwatch.GetTimestamp();
 
                 // 5. 核心时间步驱动循环（热路径零分配）
@@ -710,29 +720,125 @@ namespace CarrotBacktesting.NET.Engine
         }
 
         /// <inheritdoc />
-        public byte[] SaveCheckpoint()
+        public EngineCheckpointState SaveState()
         {
             lock (_stateLock)
             {
-                using var ms = new MemoryStream();
-                using var writer = new BinaryWriter(ms);
-                writer.Write(StateMagic);
-                writer.Write(StateVersion);
-                writer.Write((int)_status);
-                writer.Write(_context.CurrentIndex);
-                writer.Write(_context.CurrentTime.Ticks);
-                writer.Write(_progress);
-                return ms.ToArray();
+                BrokerSnapshot brokerSnap = (_broker as ICheckpointable<BrokerSnapshot>)?.SaveState()
+                    ?? throw new NotSupportedException($"当前 Broker 实例 '{_broker.GetType().FullName}' 未实现 ICheckpointable<BrokerSnapshot>，无法抓取检查点。");
+
+                ExchangeSnapshot exchangeSnap = (_simExchange as ICheckpointable<ExchangeSnapshot>)?.SaveState()
+                    ?? throw new NotSupportedException($"当前 Exchange 实例 '{_simExchange?.GetType().FullName}' 未实现 ICheckpointable<ExchangeSnapshot>，无法抓取检查点。");
+
+                TradingRecorderSnapshot? recorderSnap = (_recorder as ICheckpointable<TradingRecorderSnapshot>)?.SaveState();
+
+                MarketStateSnapshot? marketSnap = (_context.Market as ICheckpointable<MarketStateSnapshot>)?.SaveState();
+
+                return new EngineCheckpointState(
+                    StateVersion,
+                    _context.CurrentIndex,
+                    _context.CurrentTime,
+                    _lastDate,
+                    _progress,
+                    brokerSnap,
+                    exchangeSnap,
+                    recorderSnap,
+                    marketSnap
+                );
             }
+        }
+
+        /// <inheritdoc />
+        public void RestoreState(EngineCheckpointState state)
+        {
+            ArgumentNullException.ThrowIfNull(state);
+
+            lock (_stateLock)
+            {
+                if (_status != EngineStatus.Idle)
+                {
+                    throw new InvalidOperationException($"仅可在引擎处于 Idle 状态时恢复检查点，当前状态为: {_status}");
+                }
+
+                if (_broker is ICheckpointable<BrokerSnapshot> brokerCheckpointable)
+                {
+                    brokerCheckpointable.RestoreState(state.Broker);
+                }
+
+                if (_simExchange is ICheckpointable<ExchangeSnapshot> exchangeCheckpointable)
+                {
+                    exchangeCheckpointable.RestoreState(state.Exchange);
+                }
+
+                if (_recorder is ICheckpointable<TradingRecorderSnapshot> recorderCheckpointable && state.Recorder != null)
+                {
+                    recorderCheckpointable.RestoreState(state.Recorder);
+                }
+
+                if (_context.Market is ICheckpointable<MarketStateSnapshot> marketCheckpointable && state.Market != null)
+                {
+                    marketCheckpointable.RestoreState(state.Market);
+                }
+
+                _context.UpdateStep(state.CurrentIndex, state.CurrentTime);
+                _lastDate = state.LastDate;
+                _progress = state.Progress;
+                _resumeFromIndex = state.CurrentIndex >= 0 ? state.CurrentIndex + 1 : -1;
+
+                PrewarmIndicatorsAfterRestore(state.CurrentIndex);
+
+                _status = EngineStatus.Idle;
+            }
+        }
+
+        private void PrewarmIndicatorsAfterRestore(int restoredIndex)
+        {
+            var dates = _timeseries.Metadata.TradeDates;
+            if (restoredIndex < 0 || dates.Count == 0 || restoredIndex >= dates.Count)
+            {
+                return;
+            }
+
+            int lookback = Math.Max(20, _pipeline.Lookback);
+            int startPrewarm = Math.Max(0, restoredIndex - lookback);
+
+            _indicators.Reset();
+
+            for (int k = startPrewarm; k <= restoredIndex; k++)
+            {
+                _context.UpdateStep(k, dates[k]);
+                _timeseriesScheduler?.StepTo(k);
+                _indicators.Step(_context);
+            }
+
+            _context.UpdateStep(restoredIndex, dates[restoredIndex]);
+        }
+
+        /// <inheritdoc />
+        public byte[] SaveCheckpoint()
+        {
+            var state = SaveState();
+            return System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(state);
         }
 
         /// <inheritdoc />
         public void RestoreCheckpoint(byte[] checkpoint)
         {
             ArgumentNullException.ThrowIfNull(checkpoint);
+
+            if (checkpoint.Length > 0 && checkpoint[0] == (byte)'{')
+            {
+                var state = System.Text.Json.JsonSerializer.Deserialize<EngineCheckpointState>(checkpoint);
+                if (state != null)
+                {
+                    RestoreState(state);
+                    return;
+                }
+            }
+
             if (checkpoint.Length < 32)
             {
-                throw new ArgumentException($"恢复检查点数据字节长度不足，预期至少 32 字节，实际为 {checkpoint.Length} 字节。", nameof(checkpoint));
+                throw new ArgumentException($"恢复检查点数据字节长度不足，实际为 {checkpoint.Length} 字节。", nameof(checkpoint));
             }
 
             lock (_stateLock)
@@ -754,14 +860,14 @@ namespace CarrotBacktesting.NET.Engine
                 {
                     throw new InvalidDataException($"不支持的检查点数据版本: {version}，当前引擎版本为: {StateVersion}。");
                 }
-
-                _ = reader.ReadInt32(); // 忽略旧状态，恢复后保持 Idle
+                _ = reader.ReadInt32();
                 int restoredIndex = reader.ReadInt32();
                 MarketTime restoredTime = MarketTime.FromTicks(reader.ReadInt64());
                 _progress = reader.ReadDouble();
 
                 _context.UpdateStep(restoredIndex, restoredTime);
                 _resumeFromIndex = restoredIndex >= 0 ? restoredIndex + 1 : -1;
+                PrewarmIndicatorsAfterRestore(restoredIndex);
                 _status = EngineStatus.Idle;
             }
         }

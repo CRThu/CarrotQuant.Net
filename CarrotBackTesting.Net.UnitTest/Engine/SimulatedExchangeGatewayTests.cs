@@ -33,6 +33,31 @@ public class SimulatedExchangeGatewayTests
     }
 
     [TestMethod]
+    public void SendOrder_WithSlippage_ShouldNotPollutePublicMarketPrice()
+    {
+        // 配置买入正滑点 1% (0.01)
+        var config = new BrokerConfig
+        {
+            Slippage = 0.01
+        };
+        var gateway = new SimulatedExchangeGateway(config);
+        ExecutionReport? report = null;
+        gateway.OnExecution += r => report = r;
+
+        // 基准市价 100.0，买入 100 股
+        var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 100.0, 100m);
+        gateway.SendOrder("ord-slip-1", req);
+
+        Assert.IsNotNull(report);
+        // 成交价包含 1% 滑点：100.0 * (1 + 0.01) = 101.0
+        Assert.AreEqual(101.0, report.FillPrice, 1e-6, "成交回报应准确计入 1% 滑点");
+
+        // 关键断言：公允市场价格必须保持 100.0，绝对不可被 101.0 的滑点成交价反向污染
+        double fairPrice = gateway.GetMarketPrice("sh.600000");
+        Assert.AreEqual(100.0, fairPrice, 1e-6, "公允市场价格必须与订单执行滑点价物理隔离，严禁被成交滑点污染");
+    }
+
+    [TestMethod]
     public void SendOrder_UnfilledLimitOrder_ShouldEnqueueAndDispatchSubmitted()
     {
         var config = new BrokerConfig();

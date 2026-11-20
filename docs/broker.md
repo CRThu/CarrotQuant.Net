@@ -74,10 +74,14 @@ public interface IBroker
     double GetTotalEquity();
     decimal GetPosition(string symbol);
     decimal GetAvailablePosition(string symbol);
+    double GetPositionCost(string symbol);
     IReadOnlyDictionary<string, decimal> GetPositions();
 
-    // 订单生命周期管理
+    // 订单生命周期管理与高频交易动词
     string SubmitOrder(OrderRequest request);
+    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
+    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
+    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
     void CancelOrder(string orderId);
     OrderStatus GetOrderStatus(string orderId);
 
@@ -107,7 +111,8 @@ public interface IBroker
    - `TotalQuantity`: 总持仓数量（正数为多头，负数为空头）；
    - `FrozenQuantity`: 挂单预冻结持仓（平仓委托占用的锁定份额）；
    - `AvailableQuantity`: 当前可平仓数量，恒等于 `TotalQuantity - FrozenQuantity`；
-   - `AveragePrice`: 加权成本持仓均价；
+   - `AverageCost`: 加权平均持仓买入成本均价；
+   - `OpenCommission`: 在途开仓手续费池（等比平摊）。
    - `PendingLots`: T+N 冻结批次队列，记录每一笔买入成交的锁定份额与解锁到期日。
 
 ---
@@ -266,3 +271,14 @@ public interface IAccountSnapshotProvider
 }
 ```
 - **记账器彻底解耦**：分析记录器（`TradingRecorder`）仅依赖 `IAccountSnapshotProvider` 能力契约，完全杜绝了对具体 `Broker` 类的反向依赖与强制向下转换。
+
+### 2. 交易所网关提供者 (`IExchangeGatewayProvider`) 与安全封装
+为了防御外部策略穿透 `Broker` 绕过两阶段预冻结直接向网关违规发单，`Broker` 对底层网关 `Gateway` 实行**显式接口实现**：
+```csharp
+public interface IExchangeGatewayProvider
+{
+    IExchangeGateway Gateway { get; }
+}
+```
+- **封装安全闭环**：`Broker` 不暴露公共的 `Gateway` 属性。策略持有 `IBroker` 或 `Broker` 引用无法直接访问底层网关；
+- **受保护的受控发现**：回测引擎在装配或步进阶段通过 `(broker as IExchangeGatewayProvider)?.Gateway` 安全感知仿真网关，兼顾了架构的灵活性与风控封装的绝对安全。

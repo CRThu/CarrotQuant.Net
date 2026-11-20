@@ -51,6 +51,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 字段类型
             Assert.AreEqual(typeof(double), metadata.GetFieldType("close"));
             Assert.AreEqual(typeof(double), metadata.GetFieldType("unknown"));
+
+            // 3. 验证零堆分配快照引用恒等性（Zero-Allocation Snapshot）
+            var symbols1 = metadata.Symbols;
+            var symbols2 = metadata.Symbols;
+            Assert.AreSame(symbols1, symbols2, "多次获取 Symbols 应直接返回不可变快照引用，严禁重复 ToArray 分配！");
+
+            var dates1 = metadata.TradeDates;
+            var dates2 = metadata.TradeDates;
+            Assert.AreSame(dates1, dates2, "多次获取 TradeDates 应直接返回不可变快照引用，严禁重复 ToArray 分配！");
         }
 
         private sealed class ReadOnlyMetadataMock : IMarketMetadata
@@ -64,12 +73,17 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         }
 
         [TestMethod]
-        public void TestDefaultIMarketMetadata_AppendMethods_ThrowNotSupported()
+        public void TestMarketMetadata_ReadOnlyVsMutable_ContractSeparation()
         {
             IMarketMetadata readOnlyMeta = new ReadOnlyMetadataMock();
+            Assert.IsFalse(readOnlyMeta is IMutableMarketMetadata, "只读元数据契约严禁混入突变状态机方法");
 
-            Assert.ThrowsException<NotSupportedException>(() => readOnlyMeta.AppendDate(new DateTime(2025, 1, 2)));
-            Assert.ThrowsException<NotSupportedException>(() => readOnlyMeta.AppendSymbol("600000.SH"));
+            var dynamicMeta = new DynamicMarketMetadata(new[] { "000001.SZ" }, new[] { new MarketTime(new DateTime(2025, 1, 1).Ticks) });
+            Assert.IsTrue(dynamicMeta is IMutableMarketMetadata, "可变元数据实例必须显式实现 IMutableMarketMetadata 专有写契约");
+
+            var mutable = (IMutableMarketMetadata)dynamicMeta;
+            int newIdx = mutable.AppendSymbol("600000.SH");
+            Assert.AreEqual(1, newIdx);
         }
     }
 }

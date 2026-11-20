@@ -32,6 +32,11 @@ internal sealed class PositionData
     public double AverageCost { get; set; }
 
     /// <summary>
+    /// 在途累计开仓手续费池（用于平仓时等比分摊计入 Trade 闭环净盈亏，保障财务勾稽 100% 守恒）。
+    /// </summary>
+    public double OpenCommission { get; set; }
+
+    /// <summary>
     /// 该标的的最新行情基准价（用于资产盯市估值）。
     /// </summary>
     public double LastPrice { get; set; }

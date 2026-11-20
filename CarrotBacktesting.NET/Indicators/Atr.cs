@@ -42,9 +42,10 @@ namespace CarrotBacktesting.NET.Indicators
         /// <inheritdoc />
         public override void Update(double open, double high, double low, double close, double volume)
         {
-            // 停牌与脏数据防御（行业标准：冻结跳过 Skip & Freeze）
+            // 停牌与脏数据防御（行业标准：冻结跳过 Skip & Freeze；支持负值与实数差价波幅）
             if (double.IsNaN(high) || double.IsNaN(low) || double.IsNaN(close) ||
-                high <= 0.0 || low <= 0.0 || close <= 0.0)
+                double.IsInfinity(high) || double.IsInfinity(low) || double.IsInfinity(close) ||
+                high < low)
             {
                 return;
             }

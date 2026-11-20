@@ -42,6 +42,63 @@ public interface IEngineContext
     IBroker Broker { get; }
 
     /// <summary>
+    /// 获取当前加载的全市场标的代码只读列表（固定顺序，与列索引一一对应）。
+    /// 作为高频访问门面直通 <see cref="ITimeseriesRegistry.Metadata"/>，消除多层穿透。
+    /// </summary>
+    IReadOnlyList<string> Symbols => Timeseries.Metadata.Symbols;
+
+    /// <summary>
+    /// 获取当前市场标的总数量。
+    /// </summary>
+    int SymbolCount => Timeseries.Metadata.Symbols.Count;
+
+    /// <summary>
+    /// 获取指定股票代码对应的全局列索引。
+    /// </summary>
+    /// <param name="symbol">股票代码。</param>
+    /// <returns>列索引，若不存在则返回 -1。</returns>
+    int GetSymbolIndex(string symbol) => Timeseries.Metadata.GetSymbolIndex(symbol);
+
+    /// <summary>
+    /// 便捷提交买入订单（默认以市价单形式发出）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="quantity">买入数量（股数/张数）。</param>
+    /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
+    /// <param name="type">订单类型（缺省为市价单）。</param>
+    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <returns>分配的唯一订单标识 ID。</returns>
+    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+        => Broker.Buy(symbol, quantity, price, type, clientOrderId, orderTag);
+
+    /// <summary>
+    /// 便捷提交卖出订单（默认以市价单形式发出）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="quantity">卖出数量（股数/张数）。</param>
+    /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
+    /// <param name="type">订单类型（缺省为市价单）。</param>
+    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <returns>分配的唯一订单标识 ID。</returns>
+    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+        => Broker.Sell(symbol, quantity, price, type, clientOrderId, orderTag);
+
+    /// <summary>
+    /// 便捷全额平仓指定标的持仓。
+    /// 若当前无持仓则返回空字符串，不产生任何订单。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
+    /// <param name="type">订单类型（缺省为市价单）。</param>
+    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <returns>分配的唯一订单标识 ID；若无持仓则返回 string.Empty。</returns>
+    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+        => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag);
+
+    /// <summary>
     /// 获取交易事实记录器接口（可选），用于沉淀策略信号打点或扩展归因。
     /// </summary>
     ITradingRecorder? Recorder { get; }
@@ -61,15 +118,39 @@ public interface IEngineContext
     IMarketState Market { get; }
 
     /// <summary>
+    /// 便捷门面：向市场状态黑板写入当前时间步的状态（自动注入当期逻辑仿真时间戳 <see cref="CurrentTime"/>）。
+    /// </summary>
+    /// <typeparam name="T">状态数据类型。</typeparam>
+    /// <param name="state">状态实例。</param>
+    /// <param name="key">自定义业务 Key（缺省为 T 的类型全名）。</param>
+    void SetState<T>(T state, string? key = null) => Market.SetState(state, CurrentTime, key);
+
+    /// <summary>
+    /// 便捷门面：从市场状态黑板读取强类型状态。
+    /// </summary>
+    /// <typeparam name="T">状态数据类型。</typeparam>
+    /// <param name="key">自定义业务 Key（缺省为 T 的类型全名）。</param>
+    /// <returns>状态实例或 default。</returns>
+    T? GetState<T>(string? key = null) => Market.GetState<T>(key);
+
+    /// <summary>
+    /// 便捷门面：判断市场状态黑板是否存在指定状态。
+    /// </summary>
+    /// <typeparam name="T">状态数据类型。</typeparam>
+    /// <param name="key">自定义业务 Key（缺省为 T 的类型全名）。</param>
+    /// <returns>是否存在。</returns>
+    bool HasState<T>(string? key = null) => Market.HasState<T>(key);
+
+    /// <summary>
     /// 获取全局指标注册中心，统筹增量流式指标池的注册、多策略共享与引擎步进泵送。
     /// </summary>
     IIndicatorRegistry Indicators { get; }
 
-    #region 当期账户与持仓权威门面 (Account & Position SSOT Facades)
+    #region 当期账户与持仓查询门面 (Account & Position Facades)
 
     /// <summary>
     /// 获取指定标的当前总持仓量（多头为正，空头为负，无持仓为 0）。
-    /// 作为策略判断单一事实来源（SSOT），严禁在策略内部私存或自行推算仓位。
+    /// 反映底层账本记录的物理实际头寸。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
     /// <returns>物理总持仓数量。</returns>
@@ -81,6 +162,14 @@ public interface IEngineContext
     /// <param name="symbol">标的代码。</param>
     /// <returns>可用持仓数量。</returns>
     decimal GetAvailablePosition(string symbol);
+
+    /// <summary>
+    /// 获取指定标的的加权平均持仓成本价（开仓总金额除以总股数，不含手续费；无持仓时返回 0.0）。
+    /// 供策略端计算持仓浮动盈亏与动态止盈止损条件。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <returns>标的加权持仓成本价。</returns>
+    double GetPositionCost(string symbol);
 
     /// <summary>
     /// 获取当前账户可用现金余额。

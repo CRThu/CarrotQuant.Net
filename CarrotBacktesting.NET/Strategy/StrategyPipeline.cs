@@ -50,8 +50,8 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     /// </summary>
     public int Lookback => _isCompiled ? _sealedLookback : CalculateMaxLookback();
 
-    /// <inheritdoc />
-    public IStrategyPipeline Add(IStrategy strategy)
+    /// <inheritdoc cref="IStrategyPipeline.Add(IStrategy)" />
+    public StrategyPipeline Add(IStrategy strategy)
     {
         ArgumentNullException.ThrowIfNull(strategy);
 
@@ -64,12 +64,15 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
         return this;
     }
 
+    /// <inheritdoc />
+    IStrategyPipeline IStrategyPipeline.Add(IStrategy strategy) => Add(strategy);
+
     /// <summary>
     /// 注册与当前管线生命周期绑定的外部托管/非托管资源。
     /// 在管线调用 <see cref="Dispose"/> 时按序统一触发释放。
     /// </summary>
     /// <param name="disposable">待释放资源对象。</param>
-    public IStrategyPipeline RegisterDisposable(IDisposable disposable)
+    public StrategyPipeline RegisterDisposable(IDisposable disposable)
     {
         ArgumentNullException.ThrowIfNull(disposable);
 
@@ -86,7 +89,7 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     /// 注册与当前管线生命周期绑定的清理回调委托（例如动态程序集卸载、临时句柄释放等）。
     /// </summary>
     /// <param name="onDispose">管线释放时执行的清理操作。</param>
-    public IStrategyPipeline RegisterOnDispose(Action onDispose)
+    public StrategyPipeline RegisterOnDispose(Action onDispose)
     {
         ArgumentNullException.ThrowIfNull(onDispose);
         return RegisterDisposable(new ActionDisposable(onDispose));
@@ -99,7 +102,8 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     /// 3. 锁定最大 Lookback 回溯深度；
     /// 4. 锁定拓扑结构，杜绝运行期竞态。
     /// </summary>
-    public virtual IStrategyPipeline Compile()
+    /// <inheritdoc cref="IStrategyPipeline.Compile" />
+    public virtual StrategyPipeline Compile()
     {
         // 递归预编译嵌套子管线
         foreach (var s in _strategies)
@@ -115,6 +119,9 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
         _isCompiled = true;
         return this;
     }
+
+    /// <inheritdoc />
+    IStrategyPipeline IStrategyPipeline.Compile() => Compile();
 
     /// <inheritdoc />
     public IEnumerable<IStrategy> GetStrategies()

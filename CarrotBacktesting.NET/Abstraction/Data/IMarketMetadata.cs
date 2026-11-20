@@ -44,21 +44,4 @@ public interface IMarketMetadata
     /// <param name="date">交易时间戳。</param>
     /// <returns>行索引，若不存在则返回 -1。</returns>
     int GetDateIndex(MarketTime date);
-
-    /// <summary>
-    /// 原子追加新的交易时间戳（时步推进）。
-    /// 默认抛出 <see cref="NotSupportedException"/>，由支持动态推进的元数据实现重写。
-    /// </summary>
-    /// <param name="date">新增的交易时间戳。</param>
-    /// <returns>新增时间戳对应的行索引。</returns>
-    int AppendDate(MarketTime date) => throw new NotSupportedException("当前元数据实例不支持动态追加交易时间戳。");
-
-    /// <summary>
-    /// 原子追加新的标的代码（新标的上市扩列）。
-    /// 默认抛出 <see cref="NotSupportedException"/>，由支持动态拓宽的元数据实现重写。
-    /// 遵循 SSOT 原则：标的代码只增不减，已有索引绝对守恒。
-    /// </summary>
-    /// <param name="symbol">新增的品种代码。</param>
-    /// <returns>新增标的对应的列索引。</returns>
-    int AppendSymbol(string symbol) => throw new NotSupportedException("当前元数据实例不支持动态追加标的代码。");
 }

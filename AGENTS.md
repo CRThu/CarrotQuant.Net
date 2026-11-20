@@ -12,7 +12,7 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 | :--- | :--- | :--- |
 | **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvTimeseriesSource`, `ParquetTimeseriesSource`, `TimeseriesRegistry`, `TimeseriesCacheManager<T>`, `ITimeseriesRegistry`, `IEventTable`, `IEventRegistry`, `IFieldRegistry`, `FieldRegistry`, `FieldSourceFactory`, `FieldTable` |
 | **Indicator Layer (指标体系)** | 增量流式指标计算、全市场标的数组连续容器、多策略共享单次驱动与极简取价门面 | `IStreamIndicator`, `IndicatorPool`, `IndicatorPool<T>`, `IndicatorRegistry`, `Sma`, `Ema`, `Wma`, `Vwap`, `Kdj`, `Sar`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
-| **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
+| **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `IExchangeGatewayProvider`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
 | **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机、实盘增量事件循环、上下文注入、可观测性监控 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
 | **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
 | **Analysis Layer (绩效分析与报表层)** | 交易事实沉淀、单路径分析器管线、四层量化统计、Alpha信号前向质量评估与多渠道报告呈现 | `ITradingRecorder`, `TradingRecorder`, `TradingResult`, `IAnalysisEngine`, `AnalysisEngine`, `IAnalyzer`, `AnalyzerBase<T>`, `IAnalysisResult`, `PortfolioAnalyzer`, `CapitalAnalyzer`, `TradeAnalyzer`, `CostAnalyzer`, `SignalAnalyzer`, `PortfolioStatistics`, `CapitalStatistics`, `TradeStatistics`, `CostStatistics`, `SignalStatistics`, `AnalysisReport`, `ConsoleExporter` |
@@ -36,8 +36,10 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 
 ### 1. 核心契约分层
 - `IStrategy`: 统一顶层抽象，单一 `OnUpdate(IEngineContext context)` 与离散事件 `OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events)` 入口，信号生产（Alpha）与交易风控统一基于此契约，原生支持全市场截面排序、单标的时序与网格双向调仓。
-- `RuleStrategyBase`: 规则交易便利模板基类，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
+- `StrategyBase`: 通用策略抽象基类，内置默认 `Name`、`Lookback` 及安全生命周期虚方法，开发者仅需覆写 `OnUpdate`，消灭空白样板代码。
+- `RuleStrategyBase`: 规则交易便利模板基类，继承自 `StrategyBase`，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
 - `IStrategyPipeline`: 组合策略管线契约，定义拓扑添加 `Add`、密封优化 `Compile`、策略展开 `GetStrategies` 与递归最大 `Lookback` 汇总。
+- **高频交易动词与上下文直通门面**: 策略在 `OnUpdate` 中可直接调用 `context.Buy(...)`、`context.Sell(...)`、`context.ClosePosition(...)` 以及 `context.Symbols` / `context.GetSymbolIndex(...)` 进行极简直通交易与标的遍历，彻底消除多层穿透与底层 `OrderRequest` 样板代码。
 - **流式指标与统一门面调用**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd` 声明全市场标的池并持有极速索引引用，在 `OnUpdate` 中利用 `pool[symbolIndex]` 高速直取或通过 `context.Indicators.Get<T>` 免声明读取，详见 [第六节](#六流式指标与计算属性体系-indicator--computed-property-architecture)。
 
 ### 2. 通用强类型黑板 (`IMarketState`)
@@ -80,7 +82,8 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 
 | 接口 / 类型 | 文件 | 职责 |
 | :--- | :--- | :--- |
-| `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 统一元数据契约（描述时间与代码维度及物理寻址） |
+| `IMarketMetadata` | `Abstraction/Data/IMarketMetadata.cs` | 统一只读元数据契约（描述时间与代码维度及物理寻址） |
+| `IMutableMarketMetadata` | `Abstraction/Data/IMutableMarketMetadata.cs` | 动态追加元数据写端契约（实盘增量写入与动态扩列拓宽） |
 | `ITimeseriesSource`  | `Abstraction/Data/ITimeseriesSource.cs`   | 批量读取个股序列（Col = 股票，Row = 时间序列） |
 
 **物理实现与设计细节**：
@@ -234,10 +237,12 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | :--- | :--- | :--- |
 | `IBroker` | `Abstraction/Engine/IBroker.cs` | 客户端交易账户统一门面契约：资金持仓查询、订单提交与撤销、`Step` 跨日结算推进、`SyncState` 实盘对账、异步回报通知 |
 | `IExchangeGateway` | `Abstraction/Engine/IExchangeGateway.cs` | 通用物理网关契约：报单 `SendOrder`、撤单 `CancelOrder`、成交回报 `OnExecution`、订单状态流转 `OnOrderStateChanged` |
+| `IExchangeGatewayProvider` | `Abstraction/Engine/IExchangeGatewayProvider.cs` | 交易所网关提供者显式契约：受保护地访问底层网关，避免外部策略直接穿透两阶段预冻结 |
 | `ISimulatedExchange` | `Abstraction/Engine/ISimulatedExchange.cs` | 仿真交易所驱动契约：离线时间步推进 `Step`、纯行情驱动撮合 `OnMarketData`、时钟显式校准 `SetCurrentTime`、最新市价查询 `GetMarketPrice` |
 | `Broker` | `Engine/Broker/Broker.cs` | 客户端经纪商门面实现：维护订单生命周期追踪、锁外调用网关、锁外派发异步事件（Open Calls） |
 | `AccountLedger` | `Engine/Broker/AccountLedger.cs` | 纯财务账户账本（SSOT）：资金管理、两阶段挂单冻结（Phase 1 `TryFreeze` / Phase 2 `CommitFill`）、零现金平仓支持与 T+N 跨日划转 |
-| `PositionData` | `Engine/Broker/PositionData.cs` | 单标的持仓实体与批次队列：总持仓、冻结持仓、可用持仓、持仓均价、`PendingLots` 结算队列 |
+| `PositionData` | `Engine/Broker/PositionData.cs` | 单标的持仓实体与批次队列：总持仓、冻结持仓、可用持仓、纯净加权成交均价（不含费用）、在途开仓手续费池（`OpenCommission` 等比分摊）、`PendingLots` 结算队列 |
+| `FeeCalculator` | `Engine/Broker/FeeCalculator.cs` | 手续费单一事实来源（SSOT）无状态纯函数：统筹费率、最低费用与自定义委托计算 |
 | `SimulatedExchangeGateway` | `Engine/Exchange/SimulatedExchangeGateway.cs` | 仿真交易所网关：单一撮合内核 `MatchSymbolOrders`、锁外派发回报 `DispatchReports`、纯行情驱动 `OnMarketData` |
 | `OrderBook` | `Engine/Exchange/OrderBook.cs` | 标的桶化 FIFO 限价挂单簿：时间优先排队撮合、`_ordersById` 常数时间撤单寻址、空桶物理注销杜绝内存泄漏 |
 | `MatchingEngine` | `Engine/Exchange/MatchingEngine.cs` | 纯计算撮合引擎：无状态纯函数、Maker/Taker 规则分发、动态滑点模型与限价截断保护、流动性与涨跌停拦截 |
@@ -269,7 +274,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | 契约 / 类型 | 文件 | 职责说明 |
 | :--- | :--- | :--- |
 | `IEngine` | `Abstraction/Engine/IEngine.cs` | 核心驱动瘦接口，支持 `Run` / `RunAsync` / `Pause` / `Resume` / `Stop` 与只读 `Context` 暴露 |
-| `ICheckpointable` | `Abstraction/Engine/ICheckpointable.cs` | 检查点持久化能力正交契约，支持 `SaveCheckpoint` / `RestoreCheckpoint` 与断点续跑 |
+| `ICheckpointable` / `ICheckpointable<TState>` | `Abstraction/Engine/ICheckpointable.cs` | 检查点持久化能力契约（强类型泛型状态与备忘录模式），支持 `SaveCheckpoint` / `RestoreCheckpoint` 与逐层无损状态断点续跑 |
 | `BacktestingEngine` | `Engine/BacktestingEngine.cs` | 回测驱动单一权威内核，实现 `IEngine` 与 `ICheckpointable`，统筹时间步切片裁剪、缓存滑动、跨日结算驱动、事件派发与策略生命周期 |
 | `LivingEngine` | `Engine/LivingEngine.cs` | 实盘事件驱动执行引擎，支持异步行情监听、实时 Bar 追加与实时风险监控 |
 | `IEngineContext` | `Abstraction/Engine/IEngineContext.cs` | 策略运行环境，封装 `ITimeseriesRegistry`, `IBroker`, `IMarketState`, `IEventRegistry`, `IFieldRegistry`, `IIndicatorRegistry`、当期极简取价门面及权威账户持仓门面 |

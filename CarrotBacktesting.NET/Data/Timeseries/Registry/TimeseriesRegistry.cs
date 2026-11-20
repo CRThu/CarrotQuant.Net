@@ -49,7 +49,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 初始化 <see cref="TimeseriesRegistry"/> 实例（以数据源为单一事实来源的便捷构造函数）。
+        /// 初始化 <see cref="TimeseriesRegistry"/> 实例（直接基于时序数据源构建的便捷构造函数）。
         /// </summary>
         public TimeseriesRegistry(
             ITimeseriesSource source, 
@@ -191,7 +191,14 @@ namespace CarrotBacktesting.NET.Data
         public void AppendCol(string symbol)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _metadata.AppendSymbol(symbol);
+            if (_metadata is IMutableMarketMetadata mutableMeta)
+            {
+                mutableMeta.AppendSymbol(symbol);
+            }
+            else
+            {
+                throw new NotSupportedException($"当前元数据实例 '{_metadata.GetType().Name}' 未实现 IMutableMarketMetadata，不支持动态拓宽标的代码。");
+            }
 
             foreach (var manager in _managers.Values)
             {

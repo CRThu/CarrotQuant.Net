@@ -92,12 +92,17 @@ public class AccountLedgerTests
         ledger.TryFreeze(sellReq, 15.0, 1.0, 1.0, out cQty, out oQty, out fCash, out fPos, out _);
 
         var fillSell = new ExecutionReport("ord-2", "sh.600000", 15.0, 1000m, 15.0, DateTime.UtcNow); // 手续费 15.0
-        ledger.CommitFill(fillSell, false, cQty, oQty, 1.0, 1.0, 0, fCash, fPos, DateTime.UtcNow, out _);
+        ledger.CommitFill(fillSell, false, cQty, oQty, 1.0, 1.0, 0, fCash, fPos, DateTime.UtcNow, out _, out var closedTrade);
 
         // 现金 = 89,990 + 15,000 (回款) - 15 (佣金) = 104,975
         Assert.AreEqual(104975.0, ledger.Cash, 1e-4);
         Assert.AreEqual(0m, ledger.GetPosition("sh.600000"));
         Assert.AreEqual(104975.0, ledger.GetTotalEquity(), 1e-4); // 净赚 4975 元
+
+        // 验证闭环 Trade 必须包含开平双边手续费并与账户现金净收益 100% 勾稽守恒
+        Assert.IsNotNull(closedTrade);
+        Assert.AreEqual(25.0, closedTrade.Commission, 1e-4, "Trade 总佣金必须包含开仓 10 元 + 平仓 15 元 = 25 元");
+        Assert.AreEqual(4975.0, closedTrade.RealizedPnL, 1e-4, "Trade 已实现净盈亏必须精确等于账户终局净利润 (5000 - 25 = 4975)");
     }
 
     [TestMethod]
@@ -338,8 +343,9 @@ public class AccountLedgerTests
         Assert.AreEqual(t2, closedTrade2.ExitTime);
         Assert.AreEqual("TagBuy", closedTrade2.EntryTag);
         Assert.AreEqual("TagSell", closedTrade2.ExitTag);
-        // 平仓实现盈亏：毛利 500 - 卖出手续费 8 = 492
-        Assert.AreEqual(492.0, closedTrade2.RealizedPnL, 1e-4);
+        // 平仓实现净盈亏：毛利 500 - 开仓手续费 5 - 卖出手续费 8 = 487 (与终局现金 100,487 保持 100% 勾稽守恒)
+        Assert.AreEqual(487.0, closedTrade2.RealizedPnL, 1e-4);
+        Assert.AreEqual(13.0, closedTrade2.Commission, 1e-4);
 
         Assert.IsNotNull(settlement2, "平仓成交必须生成权威交割单流水");
         Assert.AreEqual(OrderDirection.Sell, settlement2.Direction);
@@ -347,7 +353,7 @@ public class AccountLedgerTests
         Assert.AreEqual(15.0, settlement2.Price);
         Assert.AreEqual(1500.0, settlement2.Turnover);
         Assert.AreEqual(8.0, settlement2.Commission);
-        Assert.AreEqual(492.0, settlement2.RealizedPnL, 1e-4);
+        Assert.AreEqual(487.0, settlement2.RealizedPnL, 1e-4);
         Assert.AreEqual("TagSell", settlement2.OrderTag);
         Assert.AreEqual(100_487.0, ledger.Cash, 1e-4);
         Assert.AreEqual(ledger.Cash, settlement2.BalanceCash);

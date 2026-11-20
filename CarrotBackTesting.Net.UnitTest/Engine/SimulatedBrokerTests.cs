@@ -48,6 +48,23 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
+        public void Broker_Gateway_MustBeExplicitInterfaceImplementation_ToSealBackdoor()
+        {
+            var config = new BrokerConfig();
+            var gateway = new SimulatedExchangeGateway(config);
+            var broker = new Broker(gateway, config);
+
+            // 接口契约与多态隔离验证：只有通过显式转换至内部基础设施契约 IExchangeGatewayProvider 才能合法获取底层网关
+            Assert.IsTrue(broker is IExchangeGatewayProvider, "Broker 必须实现内部 IExchangeGatewayProvider 基础设施契约");
+            var provider = (IExchangeGatewayProvider)broker;
+            Assert.AreSame(gateway, provider.Gateway, "显式接口实现必须返回底层绑定的网关实例");
+
+            // 验证策略面向的 IBroker 契约独立性
+            IBroker strategyBroker = broker;
+            Assert.IsNotNull(strategyBroker);
+        }
+
+        [TestMethod]
         public void SpotStock_StandardBuyAndSell_ShouldWorkCorrectly()
         {
             var config = new BrokerConfig
@@ -1383,7 +1400,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         [TestMethod]
         public void ShortPosition_PendingBuyLimitOrders_ShouldPreventDoubleSpending()
         {
-            // 验证持有期货空头时，连续提交买平挂单，系统必须精确扣减空头平仓可用额度，彻底阻断平仓双花超卖漏洞
+            // 验证持有期货空头时连续提交买平挂单，挂单预冻结准确扣减可用持仓额度，防止平仓委托超出实际持仓量
             var config = new BrokerConfig
             {
                 InitialCash = 50_000.0,
@@ -1483,13 +1500,106 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(12.34, hookReport.Commission, 1e-4, "券商必须调用自定义 OnCalculateFee Hook 计算佣金");
             Assert.AreEqual(100_000.0 - 1000.0 - 12.34, broker2.GetCash(), 1e-4);
         }
+
+        [TestMethod]
+        public void SubmitOrder_WithDuplicateClientOrderId_ShouldBeRejectedAndNotOverwriteExistingOrder()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                FeeRate = 0.0,
+                MinFee = 0.0,
+                Slippage = 0.0,
+                SettleDays = 0
+            };
+            var broker = CreateBroker(config);
+
+            // 预设市场公允价为 10.0
+            broker.UpdateMarketPrice("SH.600000", 10.0);
+
+            // 1. 提交首笔带有 ClientOrderId 的限价买单（限价 9.0 低于市价 10.0，进入挂单簿排队）
+            string clientOrderId = "cli_ord_unique_001";
+            var req1 = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m)
+            {
+                ClientOrderId = clientOrderId
+            };
+
+            string id1 = broker.SubmitOrder(req1);
+            Assert.AreEqual(clientOrderId, id1);
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id1));
+
+            // 首笔订单冻结资金：9.0 * 1000 = 9,000 元，现金剩余 91,000 元
+            Assert.AreEqual(91_000.0, broker.GetCash(), 1e-4);
+
+            // 2. 提交第二笔相同 ClientOrderId 的订单（试图覆盖），监听拒绝通知
+            OrderStatus? notifiedStatus = null;
+            broker.OnOrderStatusChanged += (oid, st) =>
+            {
+                if (oid == clientOrderId) notifiedStatus = st;
+            };
+
+            var req2 = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 500m)
+            {
+                ClientOrderId = clientOrderId
+            };
+
+            string id2 = broker.SubmitOrder(req2);
+            Assert.AreEqual(clientOrderId, id2);
+            // 必须派发 Rejected 事件通知！
+            Assert.AreEqual(OrderStatus.Rejected, notifiedStatus);
+            // 原订单在字典中必须完好无损，依然保持 Submitted，严禁被覆盖篡改！
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id1));
+
+            // 资金绝不能被二次冻结，依旧保持 91,000 元
+            Assert.AreEqual(91_000.0, broker.GetCash(), 1e-4);
+
+            // 3. 市价下跌触及 9.0，撮合第一笔订单成交，验证第一笔订单生命周期与冻结结算完全未受影响
+            broker.UpdateMarketPrice("SH.600000", 9.0);
+            broker.Step(DateTime.UtcNow);
+
+            // 第一笔订单成交为 1000 股持仓
+            Assert.AreEqual(1000m, broker.GetPosition("SH.600000"));
+            Assert.AreEqual(91_000.0, broker.GetCash(), 1e-4);
+        }
+
+        [TestMethod]
+        public void Broker_HighFrequencyTradeVerbs_BuySellAndClosePosition_ShouldGenerateCorrectOrders()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                FeeRate = 0.0,
+                MinFee = 0.0,
+                Slippage = 0.0,
+                SettleDays = 0
+            };
+            var broker = CreateBroker(config);
+
+            // 1. 便捷 Buy 动词下单并以市价成交
+            string buyId = broker.Buy("SH.600000", 1000m, 10.0, OrderType.Market, "buy_001");
+            Assert.AreEqual("buy_001", buyId);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyId));
+            Assert.AreEqual(1000m, broker.GetPosition("SH.600000"));
+            Assert.AreEqual(90_000.0, broker.GetCash(), 1e-4);
+
+            // 2. 便捷 ClosePosition 动词全额平仓多头
+            string closeId = broker.ClosePosition("SH.600000", 10.5, OrderType.Market, "close_001");
+            Assert.AreEqual("close_001", closeId);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(closeId));
+            Assert.AreEqual(0m, broker.GetPosition("SH.600000"));
+            Assert.AreEqual(100_500.0, broker.GetCash(), 1e-4);
+
+            // 3. 无持仓时 ClosePosition 应返回空字符串且不产生任何订单
+            string noOpId = broker.ClosePosition("SH.600000", 10.5);
+            Assert.AreEqual(string.Empty, noOpId);
+        }
     }
 
     internal static class BrokerTestExtensions
     {
         public static void OnMarketData(this Broker broker, string symbol, double price, DateTime time, IDataRow? bar = null)
         {
-            if (broker.Gateway is ISimulatedExchange sim)
+            if (((IExchangeGatewayProvider)broker).Gateway is ISimulatedExchange sim)
             {
                 sim.OnMarketData(symbol, price, time, bar);
             }
@@ -1497,7 +1607,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
         public static void UpdateMarketPrice(this Broker broker, string symbol, double price, IDataRow? bar = null)
         {
-            if (broker.Gateway is ISimulatedExchange sim)
+            if (((IExchangeGatewayProvider)broker).Gateway is ISimulatedExchange sim)
             {
                 MarketTime effectiveTime = broker.CurrentTime != MarketTime.MinValue ? broker.CurrentTime : MarketTime.UtcNow;
                 sim.OnMarketData(symbol, price, effectiveTime, bar);
@@ -1506,7 +1616,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
         public static string ExecuteOrder(this Broker broker, OrderRequest request, double basePrice, IDataRow? bar = null)
         {
-            if (broker.Gateway is ISimulatedExchange sim)
+            if (((IExchangeGatewayProvider)broker).Gateway is ISimulatedExchange sim)
             {
                 if (basePrice > 0.0 && !double.IsNaN(basePrice) && !double.IsInfinity(basePrice))
                 {

@@ -98,13 +98,13 @@ public class TradingRecorderTests
         Assert.AreEqual("Signal_Breakout", closedTrade2.EntryTag);
         Assert.AreEqual("Exit_TakeProfit", closedTrade2.ExitTag);
 
-        // 毛利 2000 - 平仓手续费 6.0 = 1994.0
-        Assert.AreEqual(1994.0, closedTrade2.RealizedPnL, 1e-4);
-        Assert.AreEqual(6.0, closedTrade2.Commission, 1e-4);
+        // 毛利 2000 - 开仓手续费 5.0 - 平仓手续费 6.0 = 1989.0
+        Assert.AreEqual(1989.0, closedTrade2.RealizedPnL, 1e-4);
+        Assert.AreEqual(11.0, closedTrade2.Commission, 1e-4);
 
         Assert.IsNotNull(settlement2);
         Assert.AreEqual(OrderDirection.Sell, settlement2.Direction);
-        Assert.AreEqual(1994.0, settlement2.RealizedPnL);
+        Assert.AreEqual(1989.0, settlement2.RealizedPnL, 1e-4);
         Assert.AreEqual(0.0, ledger.GetTotalUnrealizedPnL());
     }
 
@@ -171,9 +171,10 @@ public class TradingRecorderTests
         Assert.AreEqual(500m, closedTrade2.Quantity);
         Assert.AreEqual(20.0, closedTrade2.EntryPrice);
         Assert.AreEqual(18.0, closedTrade2.ExitPrice);
-        // 毛利 1000 - 平仓手续费 9 = 991.0
-        Assert.AreEqual(991.0, closedTrade2.RealizedPnL, 1e-4);
-        Assert.AreEqual(991.0, settlement2.RealizedPnL, 1e-4);
+        // 毛利 1000 - 开仓手续费 10 - 平仓手续费 9 = 981.0
+        Assert.AreEqual(981.0, closedTrade2.RealizedPnL, 1e-4);
+        Assert.AreEqual(19.0, closedTrade2.Commission, 1e-4);
+        Assert.AreEqual(981.0, settlement2.RealizedPnL, 1e-4);
     }
 
     [TestMethod]
@@ -206,8 +207,9 @@ public class TradingRecorderTests
 
         Assert.IsNotNull(trade1);
         Assert.AreEqual(400m, trade1.Quantity);
-        // 毛利 (11 - 10) * 400 = 400 - 平仓手续费 4.4 = 395.6
-        Assert.AreEqual(395.6, trade1.RealizedPnL, 1e-4);
+        // 毛利 (11 - 10) * 400 = 400 - 开仓分摊手续费 4.0 - 平仓手续费 4.4 = 391.6
+        Assert.AreEqual(391.6, trade1.RealizedPnL, 1e-4);
+        Assert.AreEqual(8.4, trade1.Commission, 1e-4);
 
         // 3. 此时剩余 600 股持仓，在最新价 12.0 时的未实现收益 = (12 - 10) * 600 = 1200.0
         double remainingUnrealized = ledger.GetTotalUnrealizedPnL(sym => 12.0);

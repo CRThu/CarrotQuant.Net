@@ -406,7 +406,14 @@ namespace CarrotBacktesting.NET.Data
 
                 _matrix.SetRow(_totalRows, 0, rowValues);
                 _uncommittedDates.Add(timestamp);
-                _metadata.AppendDate(timestamp);
+                if (_metadata is IMutableMarketMetadata mutableMeta)
+                {
+                    mutableMeta.AppendDate(timestamp);
+                }
+                else
+                {
+                    throw new NotSupportedException($"当前元数据实例 '{_metadata.GetType().Name}' 未实现 IMutableMarketMetadata，不支持动态追加时间戳。");
+                }
                 _totalRows++;
                 _isDirty = true;
 
@@ -450,7 +457,11 @@ namespace CarrotBacktesting.NET.Data
                 }
 
                 // 2. 元数据追加新标的代码
-                int newColIndex = _metadata.AppendSymbol(symbol);
+                if (_metadata is not IMutableMarketMetadata mutableMeta)
+                {
+                    throw new NotSupportedException($"当前元数据实例 '{_metadata.GetType().Name}' 未实现 IMutableMarketMetadata，不支持动态拓宽标的代码。");
+                }
+                int newColIndex = mutableMeta.AppendSymbol(symbol);
                 int newWidth = _metadata.Symbols.Count;
 
                 // 3. 内存矩阵拓宽，新列的历史行全部自动填入 NaN

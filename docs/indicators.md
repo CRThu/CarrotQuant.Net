@@ -166,7 +166,7 @@ public sealed class IndicatorRegistry : IIndicatorRegistry
 | **`Kdj`** (随机指标) | `period=9, m1=3, m2=3` | $RSV = \frac{C - L_n}{H_n - L_n}\times 100$<br>$K, D$ 平滑递推, $J = 3K - 2D$ | 极盘无波动（$H_n = L_n$）防除零保护（$RSV=50$）；`K/D/J` 子流只读展开 |
 | **`Sar`** (抛物转向) | `acc=0.02, max=0.2` | $SAR_{t+1} = SAR_t + AF\cdot (EP - SAR_t)$<br>多空反向限幅与翻转 | Welles Wilder 经典物理状态机；首步特殊反转对齐；$< 10^{-14}$ 极限精度 |
 | **`Macd`** (异同移动平均) | `fast=12, slow=26, signal=9` | $DIF = EMA_{fast} - EMA_{slow}$<br>$DEA = EMA(DIF, signal)$<br>$HIST = (DIF - DEA)\times 2$ | **熊市负数 DIF 严格防御**：解除 $<=0$ 限制，负值死叉不挂死；子流只读保护 |
-| **`BollingerBands`** | `period=20, stdDev=2.0` | $MB = SMA_p$<br>$\sigma = \sqrt{\frac{1}{p}\sum(C_i - MB)^2}$<br>$UP/DN = MB \pm k\sigma$ | 样本方差无偏递推；子流 `Upper/Middle/Lower` 正交只读展开 |
+| **`BollingerBands`** | `period=20, stdDev=2.0` | $MB = SMA_p$<br>$\text{Var} = E[X^2] - (E[X])^2$<br>$UP/DN = MB \pm k\sqrt{\max(0, \text{Var})}$ | **$O(1)$ 增量平方和递推**：彻底消除 $O(N)$ 遍历循环；开方防负数下溢守卫；256 步抗浮点漂移自愈；子流 `Upper/Middle/Lower` 正交只读展开 |
 | **`Atr`** (真实波幅) | `period=14` | $TR = \max(H-L, \|H-C_{prev}\|, \|L-C_{prev}\|)$<br>$ATR_t = EMA(TR, p)$ | 首步平滑预热；大幅跳空缺口真实波幅精准捕获 |
 | **`Rsi`** (相对强弱) | `period=14` | $RS = \frac{EMA(Gain, p)}{EMA(Loss, p)}$<br>$RSI = 100 - \frac{100}{1 + RS}$ | 单边单调行情极值（0.0 或 100.0）极值防御；分母为零安全兜底 |
 
