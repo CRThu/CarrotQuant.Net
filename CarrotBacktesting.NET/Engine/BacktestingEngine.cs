@@ -83,7 +83,34 @@ namespace CarrotBacktesting.NET.Engine
         /// </summary>
         public TradingResult GetResult()
         {
-            var endingPositions = _snapshotProvider?.GetActivePositions() ?? Array.Empty<PositionSnapshot>();
+            Func<string, double>? finalPriceResolver = null;
+            IReadOnlyMatrix2D<double>? closeMatrix = null;
+            try
+            {
+                closeMatrix = _timeseries.GetMatrix<double>("close");
+            }
+            catch { }
+
+            if (closeMatrix != null)
+            {
+                var metadata = _timeseries.Metadata;
+                int finalIndex = _context.CurrentIndex >= 0 ? _context.CurrentIndex : closeMatrix.RowCount - 1;
+                if (finalIndex >= 0 && finalIndex < closeMatrix.RowCount)
+                {
+                    finalPriceResolver = sym =>
+                    {
+                        int col = metadata.GetSymbolIndex(sym);
+                        if (col >= 0 && col < closeMatrix.Width)
+                        {
+                            double p = closeMatrix[finalIndex, col];
+                            if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
+                        }
+                        return 0.0;
+                    };
+                }
+            }
+
+            var endingPositions = _snapshotProvider?.GetActivePositions(finalPriceResolver) ?? Array.Empty<PositionSnapshot>();
             return _recorder.GetResult(endingPositions);
         }
 
@@ -330,6 +357,28 @@ namespace CarrotBacktesting.NET.Engine
                 }
                 long runStartTimestamp = Stopwatch.GetTimestamp();
 
+                // 尝试获取必选 close 时序矩阵用于持仓盯市
+                IReadOnlyMatrix2D<double>? closeMatrix = null;
+                try
+                {
+                    closeMatrix = _timeseries.GetMatrix<double>("close");
+                }
+                catch { }
+
+                var metadata = _timeseries.Metadata;
+
+                double ResolveStepPrice(string symbol, int step)
+                {
+                    if (closeMatrix == null) return 0.0;
+                    int col = metadata.GetSymbolIndex(symbol);
+                    if (col >= 0 && col < closeMatrix.Width && step >= 0 && step < closeMatrix.RowCount)
+                    {
+                        double p = closeMatrix[step, col];
+                        if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
+                    }
+                    return 0.0;
+                }
+
                 // 5. 核心时间步驱动循环（热路径零分配）
                 for (int i = startIndex; i <= endIndex; i++)
                 {
@@ -357,7 +406,10 @@ namespace CarrotBacktesting.NET.Engine
                     {
                         if (_lastDate != MarketTime.MinValue && _snapshotProvider != null && i > startIndex)
                         {
-                            _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(tradeDates[i - 1]));
+                            int prevIndex = i - 1;
+                            _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(
+                                tradeDates[prevIndex],
+                                sym => ResolveStepPrice(sym, prevIndex)));
                         }
                         _lastDate = currentTime.Date;
                         if (_hasAdjustments && _events.HasNewEvents(currentTime, _adjustConfig.Table))
@@ -390,7 +442,10 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.6 记录当前时间步净值点
                     if (_snapshotProvider != null)
                     {
-                        _recorder.RecordStep(_snapshotProvider.CreateEquityPoint(currentTime));
+                        int currentIdx = i;
+                        _recorder.RecordStep(_snapshotProvider.CreateEquityPoint(
+                            currentTime,
+                            sym => ResolveStepPrice(sym, currentIdx)));
                     }
 
                     // 5.7 上报执行进度
@@ -406,7 +461,9 @@ namespace CarrotBacktesting.NET.Engine
                 // 记录最终交易日收盘快照
                 if (_snapshotProvider != null && endIndex >= startIndex)
                 {
-                    _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(tradeDates[endIndex]));
+                    _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(
+                        tradeDates[endIndex],
+                        sym => ResolveStepPrice(sym, endIndex)));
                 }
 
                 // 6. 正常收尾触发策略终止

@@ -304,7 +304,7 @@ public class SimulatedExchangeGatewayTests
 
         public IMarketMetadata Metadata => _metadata;
         public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged => (IReadOnlyMatrix2D<T>)_matrix;
-        public bool HasField(string fieldName) => true;
+        public bool HasField(string fieldName) => string.Equals(fieldName, "close", StringComparison.OrdinalIgnoreCase);
         public IReadOnlyList<T> GetSeries<T>(string fieldName) where T : unmanaged => throw new NotImplementedException();
         public void StepTo(int index) { }
         public bool IsUpdated(int tableIndex) => false;

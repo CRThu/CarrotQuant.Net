@@ -49,7 +49,7 @@ public class BrokerMatchingMicroBenchmark
     [Benchmark]
     public bool MatchingEngine_LimitOrder_Immediate()
     {
-        var result = _engine.EvaluateImmediateOrder(_limitBuyRequest, basePrice: 10.0, bar: null, multiplier: 1.0, _tradeTime);
+        var result = _engine.EvaluateImmediateOrder(_limitBuyRequest, basePrice: 10.0, bar: BarSnapshot.Empty, multiplier: 1.0, _tradeTime);
         return result.IsFilled;
     }
 
@@ -59,7 +59,7 @@ public class BrokerMatchingMicroBenchmark
     [Benchmark]
     public bool MatchingEngine_MarketOrder_Evaluation()
     {
-        var result = _engine.EvaluateImmediateOrder(_marketBuyRequest, basePrice: 10.0, bar: null, multiplier: 1.0, _tradeTime);
+        var result = _engine.EvaluateImmediateOrder(_marketBuyRequest, basePrice: 10.0, bar: BarSnapshot.Empty, multiplier: 1.0, _tradeTime);
         return result.IsFilled;
     }
 

@@ -97,6 +97,10 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             double mult = GetMultiplier(pos.Symbol);
             double marginRate = GetMarginRate(pos.Symbol);
             double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
+            if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
+            {
+                pos.LastPrice = resolvedPrice;
+            }
             double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
 
             double marginOccupied = Math.Abs((double)pos.TotalQuantity) * pos.AverageCost * mult * marginRate;
@@ -133,6 +137,10 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             if (pos.TotalQuantity == 0m) continue;
             double mult = GetMultiplier(pos.Symbol);
             double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
+            if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
+            {
+                pos.LastPrice = resolvedPrice;
+            }
             double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
             double pnl = (price - pos.AverageCost) * (double)pos.TotalQuantity * mult;
             total += pnl;
@@ -156,6 +164,10 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             double mult = GetMultiplier(pos.Symbol);
             double marginRate = GetMarginRate(pos.Symbol);
             double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
+            if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
+            {
+                pos.LastPrice = resolvedPrice;
+            }
             double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
 
             TradeSide side = pos.TotalQuantity >= 0m ? TradeSide.Long : TradeSide.Short;
@@ -199,6 +211,10 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             if (pos.TotalQuantity == 0m) continue;
             double mult = GetMultiplier(pos.Symbol);
             double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
+            if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
+            {
+                pos.LastPrice = resolvedPrice;
+            }
             double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
             total += Math.Abs((double)pos.TotalQuantity) * price * mult;
         }

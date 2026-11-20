@@ -469,14 +469,14 @@ public class TradingFinancialPipelineIntegrationTests
         var closeData = new double[,] { { 10.0 }, { 10.0 } };
         tsRegistry.SetMatrix("close", new MockMatrix(closeData));
 
-        // 开启 CheckLimit，挂载 OnCheckLimit 检查（若 bar 中标记为涨停板 limit_up 则拒绝买入）
+        // 开启 CheckLimit，挂载 OnCheckLimit 检查（若 bar 中 close 达到涨停价则拒绝买入）
         var brokerConfig = new BrokerConfig
         {
             InitialCash = 1000000.0,
             CheckLimit = true,
             OnCheckLimit = (req, bar) =>
             {
-                if (req.IsBuy && bar.GetBoolean("is_limit_up", false))
+                if (req.IsBuy && bar.HasClose && bar.Close >= 10.0)
                 {
                     return false; // 涨停封板，买单无法成交
                 }
@@ -793,6 +793,268 @@ public class TradingFinancialPipelineIntegrationTests
         var result = engine.GetResult();
         Assert.IsNotNull(result);
         Assert.IsTrue(result.DailySnapshots.Count > 0, "回测应该产生每日快照记录");
+    }
+
+    #endregion
+
+    #region 7. 持仓盯市真实波动、首根Bar市价单撮合与撮合风控闭环
+
+    /// <summary>
+    /// 验证在无新挂单交易期间，持仓盯市（Mark-to-Market）浮动盈亏与账户总资产随每日市场收盘价真实波动。
+    /// 杜绝无挂单日净值曲线变成平坦死线的问题。
+    /// </summary>
+    [TestMethod]
+    public void MarkToMarket_WithoutNewOrders_EquityCurveMustFluctuateWithDailyClose()
+    {
+        var dates = new[]
+        {
+            new MarketTime(2025, 1, 2),
+            new MarketTime(2025, 1, 3),
+            new MarketTime(2025, 1, 4),
+            new MarketTime(2025, 1, 5),
+            new MarketTime(2025, 1, 6)
+        };
+        var symbols = new[] { "SH.600000" };
+
+        var metadata = new MockMetadata(symbols, dates, new[] { "close" });
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+
+        // 连续 5 天收盘价持续上涨：10.0 -> 11.0 -> 12.0 -> 13.0 -> 14.0
+        var closeData = new double[,] { { 10.0 }, { 11.0 }, { 12.0 }, { 13.0 }, { 14.0 } };
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = 100000.0,
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            MinFee = 0.0,
+            VolumeLimit = 0.0
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+        var broker = new Broker(simExchange, brokerConfig);
+
+        // 仅在第 0 步买入 1000 股，后续 4 天完全不发任何新订单
+        var strategy = new BuyOnceAndHoldStrategy("SH.600000", 1000m);
+        var pipeline = StrategyPipeline.Sequential();
+        pipeline.Add(strategy);
+
+        var engineConfig = new EngineConfig
+        {
+            Mode = "backtest",
+            StartDate = dates[0],
+            EndDate = dates[^1]
+        };
+
+        using var engine = new BacktestingEngine(
+            tsRegistry,
+            broker,
+            pipeline,
+            config: engineConfig,
+            simExchange: simExchange);
+
+        engine.Run();
+
+        var result = engine.GetResult();
+        Assert.IsNotNull(result);
+        Assert.AreEqual(5, result.EquityCurve.Count, "净值曲线应包含全部 5 个交易日的时间步记录");
+
+        // 验证每日未实现浮动盈亏严格随收盘价递增：0 -> 1000 -> 2000 -> 3000 -> 4000
+        double[] expectedPnL = [0.0, 1000.0, 2000.0, 3000.0, 4000.0];
+        double[] expectedEquity = [100000.0, 101000.0, 102000.0, 103000.0, 104000.0];
+
+        for (int i = 0; i < result.EquityCurve.Count; i++)
+        {
+            var pt = result.EquityCurve[i];
+            Assert.AreEqual(expectedPnL[i], pt.UnrealizedPnL, 1e-4, $"第 {i} 天浮动盈亏必须随收盘价实时波动");
+            Assert.AreEqual(expectedEquity[i], pt.TotalEquity, 1e-4, $"第 {i} 天总资产净值必须随收盘价实时波动");
+        }
+
+        // 验证终局持仓实体的 CurrentPrice 准确更新为最后一天收盘价 14.0
+        Assert.AreEqual(1, result.OpenPositions.Count);
+        Assert.AreEqual(14.0, result.OpenPositions[0].CurrentPrice, 1e-4, "持仓快照的 CurrentPrice 必须与终局市场价格保持同步");
+        Assert.AreEqual(1000m, result.OpenPositions[0].Quantity);
+        Assert.AreEqual(10.0, result.OpenPositions[0].CostPrice, 1e-4);
+    }
+
+    /// <summary>
+    /// 验证在首根 Bar（未有任何前序历史挂单时），策略下达标准市价单（Price = 0.0）能即时撮合成交，不被拒单。
+    /// </summary>
+    [TestMethod]
+    public void FirstBar_MarketOrder_WithZeroPrice_ShouldFillImmediatelyWithoutRejection()
+    {
+        var dates = new[] { new MarketTime(2025, 1, 2), new MarketTime(2025, 1, 3) };
+        var symbols = new[] { "SH.600000" };
+
+        var metadata = new MockMetadata(symbols, dates, new[] { "close" });
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+
+        var closeData = new double[,] { { 10.0 }, { 10.5 } };
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = 50000.0,
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            MinFee = 0.0,
+            VolumeLimit = 0.0
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+        var broker = new Broker(simExchange, brokerConfig);
+
+        // 首根 Bar 发出 Price=0.0 的标准便捷市价买单
+        var strategy = new BuyOnceAndHoldStrategy("SH.600000", 1000m);
+        var pipeline = StrategyPipeline.Sequential();
+        pipeline.Add(strategy);
+
+        var engineConfig = new EngineConfig
+        {
+            Mode = "backtest",
+            StartDate = dates[0],
+            EndDate = dates[^1]
+        };
+
+        using var engine = new BacktestingEngine(
+            tsRegistry,
+            broker,
+            pipeline,
+            config: engineConfig,
+            simExchange: simExchange);
+
+        engine.Run();
+
+        var result = engine.GetResult();
+        Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.OpenPositions.Count, "首根 Bar 发出的市价单必须成功建仓");
+        Assert.AreEqual(1000m, result.OpenPositions[0].Quantity);
+        Assert.AreEqual(10.0, result.OpenPositions[0].CostPrice, 1e-4, "市价单必须以首根 Bar 公允基准价撮合成交");
+    }
+
+    /// <summary>
+    /// 验证撮合引擎在真实 Bar 行情下，能严格执行 VolumeLimit 流动性硬约束拦截。
+    /// </summary>
+    [TestMethod]
+    public void MatchingEngine_WithRealBar_ShouldEnforceVolumeLimitAndRejectExcessiveOrder()
+    {
+        var dates = new[] { new MarketTime(2025, 1, 2) };
+        var symbols = new[] { "SH.600000" };
+
+        var metadata = new MockMetadata(symbols, dates, new[] { "close", "volume" });
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+
+        var closeData = new double[,] { { 10.0 } };
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+
+        // 当日成交量为 1000 股
+        var volumeData = new double[,] { { 1000.0 } };
+        tsRegistry.SetMatrix("volume", new MockMatrix(volumeData));
+
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = 100000.0,
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            VolumeLimit = 0.05 // 单笔最大允许 5% 即 50 股
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+        var broker = new Broker(simExchange, brokerConfig);
+
+        // 提交 100 股买单（超出允许的 50 股）
+        var strategy = new BuyOnceAndHoldStrategy("SH.600000", 100m);
+        var pipeline = StrategyPipeline.Sequential();
+        pipeline.Add(strategy);
+
+        var engineConfig = new EngineConfig
+        {
+            Mode = "backtest",
+            StartDate = dates[0],
+            EndDate = dates[0]
+        };
+
+        using var engine = new BacktestingEngine(
+            tsRegistry,
+            broker,
+            pipeline,
+            config: engineConfig,
+            simExchange: simExchange);
+
+        engine.Run();
+
+        var result = engine.GetResult();
+        Assert.AreEqual(0, result.OpenPositions.Count, "超出流动性约束的委托单应被撮合内核拦截拒单，无持仓生成");
+    }
+
+    /// <summary>
+    /// 验证限价单在日内最低价触碰委托限价时能够成功被动撮合成交（即使收盘价高于委托价）。
+    /// </summary>
+    [TestMethod]
+    public void MatchingEngine_PendingLimitOrder_ShouldFillOnIntradayLowTouch()
+    {
+        var dates = new[] { new MarketTime(2025, 1, 2) };
+        var symbols = new[] { "SH.600000" };
+
+        var metadata = new MockMetadata(symbols, dates, new[] { "close", "low" });
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+
+        // 收盘价 10.0，日内最低价跌至 9.4，委托买入限价为 9.5
+        var closeData = new double[,] { { 10.0 } };
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+
+        var lowData = new double[,] { { 9.4 } };
+        tsRegistry.SetMatrix("low", new MockMatrix(lowData));
+
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = 50000.0,
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            VolumeLimit = 0.0
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+
+        ExecutionReport? report = null;
+        simExchange.OnExecution += r => report = r;
+
+        // 提交限价 9.5 买单
+        simExchange.SendOrder("limit-touch-1", new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
+
+        // 推进步进，驱动挂单簿被动撮合
+        simExchange.Step(dates[0], tsRegistry, 0);
+
+        Assert.IsNotNull(report, "日内最低价 9.4 触碰了买入限价 9.5，限价单应成功撮合成交");
+        Assert.AreEqual(9.5, report.FillPrice, 1e-4, "Maker 限价单成交价严格遵循委托限价 9.5");
+        Assert.AreEqual(100m, report.FillQuantity);
+    }
+
+    #endregion
+
+    #region 测试辅助策略类
+
+    private sealed class BuyOnceAndHoldStrategy : StrategyBase
+    {
+        private readonly string _symbol;
+        private readonly decimal _quantity;
+        private bool _bought;
+
+        public BuyOnceAndHoldStrategy(string symbol, decimal quantity)
+        {
+            _symbol = symbol;
+            _quantity = quantity;
+        }
+
+        public override void OnUpdate(IEngineContext context)
+        {
+            if (!_bought)
+            {
+                context.Buy(_symbol, _quantity);
+                _bought = true;
+            }
+        }
     }
 
     #endregion

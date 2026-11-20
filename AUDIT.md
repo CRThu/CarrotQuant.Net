@@ -77,14 +77,17 @@ flowchart TD
 
 ## 三、维度一：交易财务、结算与撮合执行致命漏洞 (P0)
 
-### 1. 持仓盯市（Mark-to-Market）在无新挂单日完全失效，净值曲线成水平死线
-- **严重度**：🔴 致命 P0
-- **涉及位置**：`SimulatedExchangeGateway.cs#L126-L129`、`BacktestingEngine.cs#L391-L394`、`AccountLedger.cs#L90-L95`
+### 1. 持仓盯市（Mark-to-Market）在无新挂单日完全失效，净值曲线成水平死线【✅ 已修复 (PASS)】
+- **严重度**：🔴 致命 P0 -> 🟢 已修复
+- **涉及位置**：`BacktestingEngine.cs`、`AccountLedger.cs`、`Broker.cs`
 - **缺陷剖析**：
   1. `SimulatedExchangeGateway.Step` 中，若挂单簿为空直接提前 `return;`，根本不读取时序数据更新 `_marketPrices`；
   2. 回测主循环记录每日净值点时调用 `_snapshotProvider.CreateEquityPoint(currentTime)`，未传入价格解析委托；
-  3. `Broker` 回退向网关查询，网关无最新价则回退至 `pos.LastPrice`（成本价）。
-- **业务灾难**：若策略买入后持有 20 天且期间未下新单，持仓浮动盈亏恒为 0，**净值曲线在两次成交之间变成一条完全水平的死直线**。最大回撤与夏普比率彻底失真。
+  3. `Broker` 回退向网关查询，网关无最新价则回退至 `pos.LastPrice`（成本价），导致持仓浮动盈亏恒为 0，净值曲线在两次成交之间变成水平直线。
+- **重构方案与治理机制**：
+  1. **引擎集中权威价格注入**：在 `BacktestingEngine` 主循环步进中，构造以当期步长 $O(1)$ 直通 `closeMatrix` 的价格解析委托 `sym => ResolveStepPrice(sym, i)`，显式传入 `_snapshotProvider.CreateEquityPoint` 与跨日日终 `CreateDailySnapshot`；
+  2. **持仓实体最新价格同步更新**：`AccountLedger` 在盯市估值解析出 `resolvedPrice > 0.0` 时，同步刷新 `pos.LastPrice = resolvedPrice;`，彻底消除开仓后终生未更新的隐患；
+  3. **单元测试验证**：`TradingFinancialPipelineIntegrationTests.MarkToMarket_WithoutNewOrders_EquityCurveMustFluctuateWithDailyClose` 验证连续 5 天无新挂单持有股票期间，未实现浮动盈亏与总净值严格随收盘价逐日递增，净值曲线真实波动。
 
 ### 2. 市价买单因 `Price=0` 预冻结 0 元资金，引发巨额穿仓破产
 - **严重度**：🔴 致命 P0
@@ -92,11 +95,15 @@ flowchart TD
 - **缺陷剖析**：
   市价单便捷构造函数 `Price` 默认为 `0.0`。`Broker` 估价时若 `Price <= 0` 则估价为 `0.0`，导致 `requiredCash` 计算为 0 元。账户即使可用资金为 0，也能顺利通过两阶段预冻结发出市价单。成交落账时直接 `_cash -= marginAdded` 扣款，导致现金瞬间穿仓变为巨额负数。
 
-### 3. 无挂单时 `_marketPrices` 为空，典型的市价单在首根 Bar 会直接被拒
-- **严重度**：🔴 致命 P0
-- **涉及位置**：`SimulatedExchangeGateway.cs#L307-L312`、`MatchingEngine.cs#L40-L43`
+### 3. 无挂单时 `_marketPrices` 为空，典型的市价单在首根 Bar 会直接被拒【✅ 已修复 (PASS)】
+- **严重度**：🔴 致命 P0 -> 🟢 已修复
+- **涉及位置**：`SimulatedExchangeGateway.cs`、`MatchingEngine.cs`
 - **缺陷剖析**：
   首根 Bar 回测开始时，由于先前没有挂单，网关价格字典为空。策略下达标准市价单（`Price = 0.0`），网关查不到价格返回 `basePrice = 0.0`，撮合引擎因基准价格非正数直接 `Rejected` 拒单。
+- **重构方案与治理机制**：
+  1. **消除过期字典缓存污染**：`SimulatedExchangeGateway.GetMarketPrice` 调整查询优先级，若处于时序步进中，优先直接从全局时序矩阵 `closeMatrix[_currentIndex, col]` 读取当期最新公允基准价，不再受空字典阻断；
+  2. **首根 Bar 即时撮合**：`GetBasePriceForOrder` 在首根 Bar 直接通过时序矩阵获取公允市价，市价单顺利通过基准估价即时撮合成交；
+  3. **单元测试验证**：`TradingFinancialPipelineIntegrationTests.FirstBar_MarketOrder_WithZeroPrice_ShouldFillImmediatelyWithoutRejection` 验证在无历史挂单的首根 Bar 下达 `Price=0.0` 的标准便捷市价单成功即时建仓。
 
 ### 4. 平仓结算遗漏开仓手续费，单笔已实现盈亏与胜率被虚高粉饰【✅ 已修复 (PASS)】
 - **严重度**：🔴 致命 P0 -> 🟢 已修复
@@ -114,11 +121,16 @@ flowchart TD
      - 结转单笔真实净盈亏：`closeRealizedPnL = grossPnL - allocatedOpenFee - closeFee;`；
      - `Trade` 实体完整闭环记录双边总费用：`Trade(..., TotalCommission: allocatedOpenFee + closeFee, RealizedPnL: closeRealizedPnL)`，实现财务勾稽 100% 守恒。
 
-### 5. 撮合行情 `bar` 恒为 `null`，成交量流动性与涨跌停检查永久失效
-- **严重度**：🔴 致命 P0
-- **涉及位置**：`SimulatedExchangeGateway.cs#L167`、`MatchingEngine.cs#L46-L55, L108-L115`
+### 5. 撮合行情 `bar` 恒为 `null`，成交量流动性与涨跌停检查永久失效【✅ 已修复 (PASS)】
+- **严重度**：🔴 致命 P0 -> 🟢 已修复
+- **涉及位置**：`SimulatedExchangeGateway.cs`、`MatchingEngine.cs`、`BarSnapshot.cs`
 - **缺陷剖析**：
   `SimulatedExchangeGateway` 在调用 `MatchSymbolOrders` 时第 3 个参数硬编码传入 `null`。撮合内核中对流动性上限（`VolumeLimit`）和一字板涨跌停（`CheckLimit`）的校验全部依赖 `bar != null`。由于恒为 `null`，所有排队限价单的涨跌停拦截与成交量上限被 100% 绕过。
+- **重构方案与治理机制**：
+  1. **零 GC 48 字节通用切片 `BarSnapshot`**：引入纯寄存器/栈传递的 `readonly struct BarSnapshot`（48 字节非托管紧凑存储），承载 `Open`, `High`, `Low`, `Close`, `Volume`, `Amount` 六大物理维度，彻底剔除 `limit_up` / `limit_down` 业务特化字段与硬编码；
+  2. **多时态全字段可选支持**：内部以 `double.NaN` 作为 IEEE 754 天然缺失哨兵，对外提供 `Open` / `HasOpen` / `OpenOr(fallback)` 对称 API，原生兼容次步开盘（Next Open）、VWAP 均价、收盘扫盘与日内限价触碰；
+  3. **彻底铲除 `BarSnapshotDataRow` 堆分配**：Hook 委托直接使用强类型 `BarSnapshot` 值传递，热路径 0 堆分配、0 垃圾回收、0 字符串比对；
+  4. **单元测试闭环**：`BarSnapshotTests`（内存大小、NaN 语义、对称回退、多时态自适应）及全量测试 100% 通过。
 
 ### 6. 因果律倒错：当期收盘价决策并在当期以收盘价即时撮合，缺乏多模态执行时态（ExecutionPriceType）
 - **严重度**：🔴 致命 P0
@@ -137,7 +149,10 @@ flowchart TD
      - 次步撮合模式下，订单在 $T$ 步发出时必须基于 $T$ 步当期参考价执行两阶段预冻结，防止策略当期超额下单穿仓；$T+1$ 步按实际成交价落账时，再多退少补结转差额。
 
 ### 7. 仿真挂单簿与撮合机制系统性缺陷
-- **7.1 排队限价单撮合仅读收盘价，忽略日内高低价** (`SimulatedExchangeGateway.cs#L149-L167`)：若日内最低价跌破买价但收盘价未跌破，该限价单被错误判定为未成交。
+- **7.1 排队限价单撮合仅读收盘价，忽略日内高低价** (`SimulatedExchangeGateway.cs`, `MatchingEngine.cs`)【✅ 已修复 (PASS)】：
+  - **缺陷**：原先撮合挂单簿中排队的限价单时仅与收盘价 `marketPrice` 进行触碰比对。若日内最低价跌破买价但收盘价拉起未跌破，该限价单被错误判定为未成交。
+  - **修复**：`MatchingEngine.EvaluatePendingLimitOrder` 重构为接收真实 `bar` 行情切片，买单基于 `bar.Low <= request.Price` 判定日内触碰，卖单基于 `bar.High >= request.Price` 判定日内触碰；若 `bar` 缺失则安全回退至 `marketPrice`。
+  - **单测**：`TradingFinancialPipelineIntegrationTests.MatchingEngine_PendingLimitOrder_ShouldFillOnIntradayLowTouch` 验证日内最低价 9.4 触碰限价 9.5 成功撮合成交。
 - **7.2 排队挂单完全抹杀跳空缺口与价格改善** (`MatchingEngine.cs#L119-L122`)：排队挂单成交价强制等于委托限价。若次日跳空低开，限价买单无法以更优的开盘价撮合。
 - **7.3 成交滑点价反向污染市场基准价格** (`SimulatedExchangeGateway.cs#L58`)【✅ 已修复 (PASS)】：
   - **缺陷**：原先成交后直接执行 `_marketPrices[symbol] = matchResult.FillPrice;`，将包含执行滑点的成交价反向写回全局公共行情字典，污染后续盯市基准。此外，当挂单簿无订单时原代码提前退出未记录最新时序，导致后续限价单误将自身委托价作为基准市价判定即时成交。
@@ -151,7 +166,10 @@ flowchart TD
 - **7.7 自定义滑点 Hook `OnCalculateSlippage` 永远无法执行** (`MatchingEngine.cs#L128`)：判断条件包含 `bar != null`，因 `bar` 恒为 `null`，高级滑点模型被静默降级为固定比例滑点。
 
 ### 8. 资产账本（AccountLedger）与资金风控缺陷
-- **8.1 持仓实体 `pos.LastPrice` 终生未更新** (`AccountLedger.cs#L508, L91`)：仅在成交落账时赋值一次，后续从未更新。当网关查无价格回退到 `LastPrice` 时，浮动盈亏恒为 0。
+- **8.1 持仓实体 `pos.LastPrice` 终生未更新** (`AccountLedger.cs#L508, L91`)【✅ 已修复 (PASS)】：
+  - **缺陷**：仅在成交落账时赋值一次，后续从未更新。当网关查无价格回退到 `LastPrice` 时，浮动盈亏恒为 0。
+  - **修复**：在 `AccountLedger` 的所有盯市估值链路（`GetTotalEquity`、`GetTotalMarketValue`、`GetTotalUnrealizedPnL`、`GetActivePositionSnapshots`）中，当外部解析出公允最新价 `resolvedPrice > 0.0` 时，同步刷新 `pos.LastPrice = resolvedPrice;`，确保持仓实体的最新价时刻紧跟市场波动。
+  - **单测**：`TradingFinancialPipelineIntegrationTests.MarkToMarket_WithoutNewOrders_EquityCurveMustFluctuateWithDailyClose` 验证终局持仓实体的 `LastPrice` 准确更新为最后一天收盘价 14.0。
 - **8.2 T+N 结算混淆自然日与交易日** (`AccountLedger.cs#L467`)：采用 `AddDays(settleDays)` 粗暴累加自然日。遇节假日或多日交割（T+2）时，持仓在节后第一天提前违规解锁。
 - **8.3 允许做空模式下，可用持仓不足被静默篡改为“开空单”** (`AccountLedger.cs#L246-L256`)：若今日 T+1 导致 `AvailableQuantity = 0`，平仓容量为 0，剩余全部转为开空单，系统直接执行开空，导致多空双向持仓。
 - **8.4 缺乏保证金追缴（Margin Call）与爆仓强平机制** (`AccountLedger.cs#L81-L98`)：净值跌为负数时没有任何风控强平，允许账户无限透支存续。
@@ -164,7 +182,9 @@ flowchart TD
     2. 绝不调用账本预冻结，绝不覆盖已有订单记录，并向外派发 `OrderStatus.Rejected` 事件通知；
     3. 既有原始订单及其冻结资金 100% 完好守恒，杜绝资金额度永久锁定泄漏；
     4. 单元测试 `SimulatedBrokerTests.SubmitOrder_WithDuplicateClientOrderId_ShouldBeRejectedAndNotOverwriteExistingOrder` 严密验证重复提交被拦截拒单、且旧订单生命周期与冻结结算完全不受影响。
-- **8.8 终局持仓估值依然未传 PriceResolver** (`BacktestingEngine.cs#L86`)：回测结束导出终局快照时未注入当前价格解析器，期末持仓估值依赖过期网关缓存。
+- **8.8 终局持仓估值依然未传 PriceResolver** (`BacktestingEngine.cs#L86`)【✅ 已修复 (PASS)】：
+  - **缺陷**：回测结束导出终局快照时调用 `_snapshotProvider?.GetActivePositions()` 未注入当前价格解析器，期末持仓估值依赖过期网关缓存。
+  - **修复**：`BacktestingEngine.GetResult()` 中自动构造终局时间步收盘矩阵的 $O(1)$ 价格解析闭包，显式注入 `_snapshotProvider.GetActivePositions(finalPriceResolver)`，终局持仓市值与浮动盈亏 100% 真实绑定最后交易日收盘价。
 
 ---
 

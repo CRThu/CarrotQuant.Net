@@ -105,10 +105,10 @@ namespace CarrotBacktesting.NET.Config
 
         /// <summary>
         /// 成交量流动性检查 Hook。用于自定义日内动态成交量、分档分批撮合模型。
-        /// 参数：(OrderRequest order, IDataRow bar) -> bool (是否允许成交或合规)
+        /// 参数：(OrderRequest order, BarSnapshot bar) -> bool (是否允许成交或合规)
         /// </summary>
         [YamlIgnore]
-        public Func<OrderRequest, IDataRow, bool>? OnCheckVolume { get; set; }
+        public Func<OrderRequest, BarSnapshot, bool>? OnCheckVolume { get; set; }
 
         /// <summary>
         /// 结算可用天数 Hook。用于多资产混合时按标的动态返回（如股票返回 1，ETF/期货返回 0）。
@@ -118,11 +118,11 @@ namespace CarrotBacktesting.NET.Config
         public Func<string, int>? OnGetSettleDays { get; set; }
 
         /// <summary>
-        /// 涨跌停封板与停牌拦截 Hook。由用户自主比对数据列（如 limit_up）或自定义板块阈值。
-        /// 参数：(OrderRequest order, IDataRow bar) -> bool (是否通过检查，false 则拦截)
+        /// 涨跌停封板与停牌拦截 Hook。由用户自主比对数据列或自定义板块阈值。
+        /// 参数：(OrderRequest order, BarSnapshot bar) -> bool (是否通过检查，false 则拦截)
         /// </summary>
         [YamlIgnore]
-        public Func<OrderRequest, IDataRow, bool>? OnCheckLimit { get; set; }
+        public Func<OrderRequest, BarSnapshot, bool>? OnCheckLimit { get; set; }
 
         /// <summary>
         /// 手续费与税费计算 Hook。覆盖默认费率，用于实现单向印花税、阶梯佣金或返佣。
@@ -133,10 +133,10 @@ namespace CarrotBacktesting.NET.Config
 
         /// <summary>
         /// 滑点计算 Hook。覆盖默认固定比例滑点，用于实现非线性冲击成本模型。
-        /// 参数：(OrderRequest order, double basePrice, IDataRow bar) -> double (实际撮合价格)
+        /// 参数：(OrderRequest order, double basePrice, BarSnapshot bar) -> double (实际撮合价格)
         /// </summary>
         [YamlIgnore]
-        public Func<OrderRequest, double, IDataRow, double>? OnCalculateSlippage { get; set; }
+        public Func<OrderRequest, double, BarSnapshot, double>? OnCalculateSlippage { get; set; }
 
         /// <summary>
         /// 合约乘数 Hook。在多品种期货回测中，显式由用户读取维表获取一手乘数。

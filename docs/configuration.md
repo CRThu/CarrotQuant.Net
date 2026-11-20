@@ -204,11 +204,11 @@ CarrotQuant.NET 采用纯 YAML 文件驱动引擎生命周期与数据供给，�
 
 | 交易控制环节 | 基础配置参数 (纯数值/全局开关) | 对称 Hook 委托签名 | 默认行为与覆盖逻辑 |
 | :--- | :--- | :--- | :--- |
-| **成交量流动性** | `volume_limit` (`double`) | `Func<OrderRequest, IDataRow, bool>? OnCheckVolume` | 默认：若配置大于 0，单笔订单量超过 `bar.Volume * volume_limit` 则拦截或部分成交；<br>Hook 覆盖：自定义日内动态成交量、分档撮合。 |
+| **成交量流动性** | `volume_limit` (`double`) | `Func<OrderRequest, BarSnapshot, bool>? OnCheckVolume` | 默认：若配置大于 0，单笔订单量超过 `bar.Volume * volume_limit` 则拦截或部分成交；<br>Hook 覆盖：自定义日内动态成交量、分档撮合。 |
 | **结算可用天数** | `settle_days` (`int`) | `Func<string, int>? OnGetSettleDays` | 默认：全品种统一按配置结算天数执行（`0` 即 T+0，`1` 即 T+1）；<br>Hook 覆盖：多资产混合时按标的动态返回（如股票返回 1，ETF/期货返回 0）。 |
-| **涨跌停判定** | `check_limit` (`bool`) | `Func<OrderRequest, IDataRow, bool>? OnCheckLimit` | 默认：若未挂载 Hook 则不限制；<br>Hook 覆盖：用户自主比对数据列（如 `limit_up`）或自定义板块涨跌停阈值。 |
+| **涨跌停判定** | `check_limit` (`bool`) | `Func<OrderRequest, BarSnapshot, bool>? OnCheckLimit` | 默认：若未挂载 Hook 则不限制；<br>Hook 覆盖：用户自主比对数据列或自定义板块涨跌停阈值。 |
 | **交易手续费** | `fee_rate` + `min_fee` (`double`) | `Func<OrderRequest, double, double>? OnCalculateFee` | 默认：$\max(\text{min\_fee}, \text{turnover} \times \text{fee\_rate})$；<br>Hook 覆盖：用户自定义单向印花税、阶梯费率或返佣。 |
-| **滑点摩擦** | `slippage` (`double`) | `Func<OrderRequest, double, IDataRow, double>? OnCalculateSlippage` | 默认：$\text{Price} \times (1 \pm \text{slippage})$；<br>Hook 覆盖：基于订单规模占全市场成交量比例计算二次方冲击成本。 |
+| **滑点摩擦** | `slippage` (`double`) | `Func<OrderRequest, double, BarSnapshot, double>? OnCalculateSlippage` | 默认：$\text{Price} \times (1 \pm \text{slippage})$；<br>Hook 覆盖：基于订单规模占全市场成交量比例计算二次方冲击成本。 |
 | **合约乘数** | `multiplier` (`double`) | `Func<string, IFieldRegistry?, double>? OnGetMultiplier` | 默认：全品种使用配置纯数值（股票为 1.0）；<br>Hook 覆盖：多品种期货回测中，显式由用户读取 `fields?["specs"][symbol]` 维表。 |
 | **保证金率** | `margin_rate` (`double`) | `Func<string, IFieldRegistry?, double>? OnGetMarginRate` | 默认：全品种使用配置纯数值（现货全额为 1.0）；<br>Hook 覆盖：按品种或杠杆分级显式从维表动态获取。 |
 
@@ -230,10 +230,11 @@ var config = new SessionConfig
     }
 };
 
-// 1. 自定义涨跌停拦截 Hook（检查数据中是否包含权威 limit_up 列）
+// 1. 自定义涨跌停拦截 Hook（例如结合标的当日涨停价或自定义阈值）
 config.Broker.OnCheckLimit = (order, bar) =>
 {
-    if (order.IsBuy && bar.TryGetDouble("limit_up", out var upPrice) && bar.Close >= upPrice)
+    // 例如：当前收盘价触及涨停阈值 11.0 时禁止追高买入
+    if (order.IsBuy && bar.CloseOr(0.0) >= 11.0)
         return false; // 涨停禁止买入
     return true;
 };

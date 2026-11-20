@@ -23,8 +23,17 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     private readonly object _syncLock = new();
 
     private MarketTime _currentTime = MarketTime.MinValue;
-    private ITimeseriesRegistry? _currentTimeseries;
     private int _currentIndex = -1;
+
+    // 热路径物理矩阵引用绑定（在 timeseries 引用不变时实现零字典寻址、零字符串哈希）
+    private ITimeseriesRegistry? _boundTimeseries;
+    private IMarketMetadata? _boundMetadata;
+    private IReadOnlyMatrix2D<double>? _closeMatrix;
+    private IReadOnlyMatrix2D<double>? _openMatrix;
+    private IReadOnlyMatrix2D<double>? _highMatrix;
+    private IReadOnlyMatrix2D<double>? _lowMatrix;
+    private IReadOnlyMatrix2D<double>? _volumeMatrix;
+    private IReadOnlyMatrix2D<double>? _amountMatrix;
 
     public event Action<ExecutionReport>? OnExecution;
     public event Action<string, OrderStatus>? OnOrderStateChanged;
@@ -51,8 +60,17 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
             double multiplier = GetMultiplier(request.Symbol);
             MarketTime tradeTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
-            _currentBars.TryGetValue(request.Symbol, out var currentBar);
-            var matchResult = _matcher.EvaluateImmediateOrder(request, basePrice, currentBar, multiplier, tradeTime);
+            BarSnapshot currentBar = BarSnapshot.Empty;
+            if (_currentBars.TryGetValue(request.Symbol, out var explicitBar))
+            {
+                currentBar = BarSnapshot.FromDataRow(explicitBar, basePrice);
+            }
+            else if (_closeMatrix != null && _currentIndex >= 0)
+            {
+                currentBar = GetBarSnapshot(request.Symbol, _currentIndex);
+            }
+
+            var matchResult = _matcher.EvaluateImmediateOrder(request, basePrice, in currentBar, multiplier, tradeTime);
 
             if (matchResult.IsFilled)
             {
@@ -129,33 +147,29 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         lock (_syncLock)
         {
             _currentTime = currentTime;
-            _currentTimeseries = timeseries;
             _currentIndex = currentIndex;
+            EnsureTimeseriesBound(timeseries);
 
             if (_orderBook.Count == 0)
             {
                 return;
             }
 
-            IReadOnlyMatrix2D<double>? closeMatrix = null;
-            try
+            if (_closeMatrix == null)
             {
-                closeMatrix = timeseries.GetMatrix<double>("close");
-            }
-            catch
-            {
-                // 时序中可能不存在 close 字段
+                throw new InvalidOperationException("时序注册表中缺少必选矩阵 'close'，无法获取基准行情与执行仿真撮合。");
             }
 
             var activeSymbols = new List<string>(_orderBook.ActiveSymbols);
-            foreach (var symbol in activeSymbols)
+            for (int i = 0; i < activeSymbols.Count; i++)
             {
+                string symbol = activeSymbols[i];
                 double marketPrice = 0.0;
-                int colIndex = timeseries.Metadata.GetSymbolIndex(symbol);
+                int colIndex = _boundMetadata != null ? _boundMetadata.GetSymbolIndex(symbol) : -1;
 
-                if (closeMatrix != null && colIndex >= 0 && currentIndex < closeMatrix.RowCount)
+                if (colIndex >= 0 && currentIndex < _closeMatrix.RowCount)
                 {
-                    double p = closeMatrix[currentIndex, colIndex];
+                    double p = _closeMatrix[currentIndex, colIndex];
                     if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p))
                     {
                         marketPrice = p;
@@ -173,7 +187,14 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     continue;
                 }
 
-                MatchSymbolOrders(symbol, marketPrice, null, currentTime, ref fillReports, ref rejectedOrders);
+                double open = (colIndex >= 0 && _openMatrix != null && currentIndex < _openMatrix.RowCount) ? _openMatrix[currentIndex, colIndex] : double.NaN;
+                double high = (colIndex >= 0 && _highMatrix != null && currentIndex < _highMatrix.RowCount) ? _highMatrix[currentIndex, colIndex] : double.NaN;
+                double low = (colIndex >= 0 && _lowMatrix != null && currentIndex < _lowMatrix.RowCount) ? _lowMatrix[currentIndex, colIndex] : double.NaN;
+                double volume = (colIndex >= 0 && _volumeMatrix != null && currentIndex < _volumeMatrix.RowCount) ? _volumeMatrix[currentIndex, colIndex] : double.NaN;
+                double amount = (colIndex >= 0 && _amountMatrix != null && currentIndex < _amountMatrix.RowCount) ? _amountMatrix[currentIndex, colIndex] : double.NaN;
+
+                BarSnapshot bar = new(open, high, low, marketPrice, volume, amount);
+                MatchSymbolOrders(symbol, marketPrice, in bar, currentTime, ref fillReports, ref rejectedOrders);
             }
         }
 
@@ -187,34 +208,24 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         if (string.IsNullOrWhiteSpace(symbol)) return 0.0;
         lock (_syncLock)
         {
+            // 1. 若处于回测时间步进驱动中，优先直接从绑定的收盘价矩阵读取当期最新收盘价（零哈希寻址热路径）
+            if (_closeMatrix != null && _boundMetadata != null && _currentIndex >= 0 && _currentIndex < _closeMatrix.RowCount)
+            {
+                int colIndex = _boundMetadata.GetSymbolIndex(symbol);
+                if (colIndex >= 0)
+                {
+                    double cp = _closeMatrix[_currentIndex, colIndex];
+                    if (cp > 0.0 && !double.IsNaN(cp) && !double.IsInfinity(cp))
+                    {
+                        return cp;
+                    }
+                }
+            }
+
+            // 2. 离散行情注入或无全局时序步进时，回退到局部行情字典
             if (_marketPrices.TryGetValue(symbol, out var p) && p > 0.0)
             {
                 return p;
-            }
-
-            if (_currentTimeseries != null && _currentIndex >= 0)
-            {
-                int colIndex = _currentTimeseries.Metadata.GetSymbolIndex(symbol);
-                if (colIndex >= 0)
-                {
-                    try
-                    {
-                        var closeMatrix = _currentTimeseries.GetMatrix<double>("close");
-                        if (closeMatrix != null && _currentIndex < closeMatrix.RowCount)
-                        {
-                            double cp = closeMatrix[_currentIndex, colIndex];
-                            if (cp > 0.0 && !double.IsNaN(cp) && !double.IsInfinity(cp))
-                            {
-                                _marketPrices[symbol] = cp;
-                                return cp;
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // 时序中可能不存在 close 字段
-                    }
-                }
             }
 
             return 0.0;
@@ -258,7 +269,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 _currentBars.Remove(symbol);
             }
 
-            MatchSymbolOrders(symbol, price, bar, tradeTime, ref fillReports, ref rejectedOrders);
+            BarSnapshot snapshot = BarSnapshot.FromDataRow(bar, price);
+            MatchSymbolOrders(symbol, price, in snapshot, tradeTime, ref fillReports, ref rejectedOrders);
         }
 
         // 锁外派发成交回报与拒绝事件
@@ -268,7 +280,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     private void MatchSymbolOrders(
         string symbol,
         double marketPrice,
-        IDataRow? bar,
+        in BarSnapshot bar,
         MarketTime tradeTime,
         ref List<ExecutionReport>? fillReports,
         ref List<string>? rejectedOrders)
@@ -284,7 +296,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         for (int i = 0; i < ordersToMatch.Count; i++)
         {
             var order = ordersToMatch[i];
-            var matchResult = _matcher.EvaluatePendingLimitOrder(order, marketPrice, bar, tradeTime);
+            var matchResult = _matcher.EvaluatePendingLimitOrder(order, marketPrice, in bar, tradeTime);
 
             if (matchResult.IsFilled)
             {
@@ -377,6 +389,62 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
             return _config.OnGetSettleDays(symbol);
         }
         return _config.SettleDays;
+    }
+
+    private void EnsureTimeseriesBound(ITimeseriesRegistry timeseries)
+    {
+        if (ReferenceEquals(_boundTimeseries, timeseries))
+        {
+            return;
+        }
+
+        _boundTimeseries = timeseries;
+        _boundMetadata = timeseries.Metadata;
+
+        IReadOnlyMatrix2D<double>? closeMatrix = null;
+        try
+        {
+            closeMatrix = timeseries.GetMatrix<double>(StandardFields.Close);
+        }
+        catch
+        {
+            // 矩阵未注册
+        }
+
+        if (_config.OnCheckVolume != null && !timeseries.HasField(StandardFields.Volume))
+        {
+            throw new InvalidOperationException(
+                "BrokerConfig 已挂载自定义 OnCheckVolume 成交量委托，但时序注册表中未找到 'volume' 矩阵。");
+        }
+
+        _closeMatrix = closeMatrix;
+        _openMatrix = timeseries.HasField(StandardFields.Open) ? timeseries.GetMatrix<double>(StandardFields.Open) : null;
+        _highMatrix = timeseries.HasField(StandardFields.High) ? timeseries.GetMatrix<double>(StandardFields.High) : null;
+        _lowMatrix = timeseries.HasField(StandardFields.Low) ? timeseries.GetMatrix<double>(StandardFields.Low) : null;
+        _volumeMatrix = timeseries.HasField(StandardFields.Volume) ? timeseries.GetMatrix<double>(StandardFields.Volume) : null;
+        _amountMatrix = timeseries.HasField(StandardFields.Amount) ? timeseries.GetMatrix<double>(StandardFields.Amount) : null;
+    }
+
+    private BarSnapshot GetBarSnapshot(string symbol, int rowIndex)
+    {
+        if (_closeMatrix == null || _boundMetadata == null || rowIndex < 0 || rowIndex >= _closeMatrix.RowCount)
+        {
+            return BarSnapshot.Empty;
+        }
+
+        int colIndex = _boundMetadata.GetSymbolIndex(symbol);
+        if (colIndex < 0) return BarSnapshot.Empty;
+
+        double close = _closeMatrix[rowIndex, colIndex];
+        if (close <= 0.0 || double.IsNaN(close) || double.IsInfinity(close)) return BarSnapshot.Empty;
+
+        double open = _openMatrix != null && rowIndex < _openMatrix.RowCount ? _openMatrix[rowIndex, colIndex] : double.NaN;
+        double high = _highMatrix != null && rowIndex < _highMatrix.RowCount ? _highMatrix[rowIndex, colIndex] : double.NaN;
+        double low = _lowMatrix != null && rowIndex < _lowMatrix.RowCount ? _lowMatrix[rowIndex, colIndex] : double.NaN;
+        double volume = _volumeMatrix != null && rowIndex < _volumeMatrix.RowCount ? _volumeMatrix[rowIndex, colIndex] : double.NaN;
+        double amount = _amountMatrix != null && rowIndex < _amountMatrix.RowCount ? _amountMatrix[rowIndex, colIndex] : double.NaN;
+
+        return new BarSnapshot(open, high, low, close, volume, amount);
     }
 
     /// <summary>

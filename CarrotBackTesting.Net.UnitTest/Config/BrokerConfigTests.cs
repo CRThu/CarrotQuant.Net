@@ -109,16 +109,16 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             };
 
             var dummyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, 50m);
-            var dummyRow = new DataRow("sh.600000", DateTime.Today, new[] { "10.0" }, new Dictionary<string, int> { ["close"] = 0 });
+            var dummyBar = new BarSnapshot(close: 10.0);
 
-            Assert.IsTrue(config.OnCheckVolume!(dummyOrder, dummyRow));
+            Assert.IsTrue(config.OnCheckVolume!(dummyOrder, dummyBar));
             Assert.AreEqual(1, config.OnGetSettleDays!("sh.600000"));
             Assert.AreEqual(0, config.OnGetSettleDays!("sz.000001"));
             Assert.AreEqual(300.0, config.OnGetMultiplier!("IF2501", null));
             Assert.AreEqual(0.12, config.OnGetMarginRate!("IF2501", null));
             Assert.AreEqual(100.0 * 0.0001, config.OnCalculateFee!(dummyOrder, 100.0), 1e-6);
-            Assert.AreEqual(10.0 * 1.001, config.OnCalculateSlippage!(dummyOrder, 10.0, dummyRow), 1e-6);
-            Assert.IsTrue(config.OnCheckLimit!(dummyOrder, dummyRow));
+            Assert.AreEqual(10.0 * 1.001, config.OnCalculateSlippage!(dummyOrder, 10.0, dummyBar), 1e-6);
+            Assert.IsTrue(config.OnCheckLimit!(dummyOrder, dummyBar));
         }
     }
 }

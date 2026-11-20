@@ -44,4 +44,24 @@ public interface IMarketMetadata
     /// <param name="date">交易时间戳。</param>
     /// <returns>行索引，若不存在则返回 -1。</returns>
     int GetDateIndex(MarketTime date);
+
+    /// <summary>
+    /// 检查元数据中是否存在指定名称的字段。
+    /// 默认实现遍历 FieldNames 列表，实现类可覆写提供 O(1) 字典/哈希查找。
+    /// </summary>
+    /// <param name="fieldName">字段名称。</param>
+    /// <returns>若字段存在则返回 true，否则返回 false。</returns>
+    bool HasField(string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(fieldName)) return false;
+        var fields = FieldNames;
+        for (int i = 0; i < fields.Count; i++)
+        {
+            if (string.Equals(fields[i], fieldName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 }

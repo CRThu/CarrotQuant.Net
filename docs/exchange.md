@@ -139,10 +139,13 @@ public interface ISimulatedExchange : IExchangeGateway
 方法接收订单请求 `OrderRequest`、基准价格 `marketPrice`、可选行情行 `IDataRow? bar` 及时间戳，返回紧凑的只读值类型 `MatchResult`（包含 `IsFilled`, `IsPending`, `IsRejected`, `FillPrice`, `FillQuantity`, `Commission`）。
 
 ### 2. Maker 被动触碰规则与委托限价保护
-挂单簿中排队的限价单，在行情触及限价时撮合：
-- **买单成交条件**：$\text{MarketPrice} \le P_{\text{limit}}$
-- **卖单成交条件**：$\text{MarketPrice} \ge P_{\text{limit}}$
+挂单簿中排队的限价单，在行情触及限价时撮合（基于 `BarSnapshot` 纯值类型切片，零 GC）：
+- **买单成交条件**：$\text{TouchPrice} = \text{LowOr}(\text{ExecPrice}) \le P_{\text{limit}}$（日内最低价触及或跌破委托限价；若缺少 Low 则自适应平滑回退至基准执行价）
+- **卖单成交条件**：$\text{TouchPrice} = \text{HighOr}(\text{ExecPrice}) \ge P_{\text{limit}}$（日内最高价触及或突破委托限价；若缺少 High 则自适应平滑回退至基准执行价）
 - **委托限价保护契约**：Maker 挂单成交时，成交价严格遵循委托限价（$\text{FillPrice} = P_{\text{limit}}$），绝不突破限价劣质成交。
+
+> 💡 **零 GC 48 字节通用切片 (`BarSnapshot`)**：
+> 系统采用严格 48 字节非托管值类型 `BarSnapshot`（承载 `Open`, `High`, `Low`, `Close`, `Volume`, `Amount` 六大物理维度），完美容纳于单个 64 字节 CPU Cache Line。全字段原生支持缺失（内部以 `double.NaN` 表达），对称提供 `HasXxx` 探测与 `XxxOr(fallback)` 零开销内联回退，完美兼容次步开盘（Next Open）、VWAP 均价、收盘扫盘与日内限价等多种撮合时态。
 
 ### 3. Taker 即时成交规则与滑点截断保护
 市价单或提交时即穿透基准价格的限价单立即成交：

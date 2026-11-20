@@ -7,7 +7,7 @@ namespace CarrotBacktesting.NET.Engine.Exchange;
 
 /// <summary>
 /// 纯计算撮合与市场摩擦内核。
-/// 专职负责限价触碰判定、价格改善、滑点冲击模型重估与涨跌停/流动性风控合规拦截。
+/// 专职负责限价触碰判定、价格改善、滑点冲击模型重估与风控合规拦截。
 /// 纯函数设计，不持有状态，具备确定性与高可测性。
 /// </summary>
 internal sealed class MatchingEngine
@@ -20,18 +20,18 @@ internal sealed class MatchingEngine
     }
 
     /// <summary>
-    /// 评估新提交订单（市价单或即时触碰限价单）的撮合结果。
+    /// 评估新提交订单（市价单或即时触碰限价单）的撮合结果（零 GC 寄存器传参热路径）。
     /// </summary>
     /// <param name="request">订单委托意图。</param>
     /// <param name="basePrice">基准市价（通常为当前最新行情价格或当步价格）。</param>
-    /// <param name="bar">当前时间步行情数据（供流动性与涨跌停拦截）。</param>
+    /// <param name="bar">当前时间步行情切片（供流动性与风控拦截）。</param>
     /// <param name="multiplier">合约乘数。</param>
     /// <param name="tradeTime">撮合发生的时间戳。</param>
     /// <returns>撮合判定结果。</returns>
     public MatchResult EvaluateImmediateOrder(
         OrderRequest request,
         double basePrice,
-        IDataRow? bar,
+        in BarSnapshot bar,
         double multiplier,
         MarketTime tradeTime)
     {
@@ -43,13 +43,13 @@ internal sealed class MatchingEngine
         }
 
         // 1. 成交量流动性硬约束检查 (VolumeLimit)
-        if (bar != null && !CheckLiquidity(request, bar, out var reason))
+        if (bar.IsValid && !CheckLiquidity(request, in bar, out var reason))
         {
             return MatchResult.Rejected(reason);
         }
 
         // 2. 涨跌停封板拦截检查 (CheckLimit)
-        if (bar != null && _config.CheckLimit && !CheckPriceLimit(request, bar, out reason))
+        if (bar.IsValid && _config.CheckLimit && !CheckPriceLimit(request, in bar, out reason))
         {
             return MatchResult.Rejected(reason);
         }
@@ -66,23 +66,23 @@ internal sealed class MatchingEngine
         }
 
         // 4. 即时成交（Taker 规则）：计算滑点
-        double fillPrice = CalculateTakerFillPrice(request, basePrice, bar);
+        double fillPrice = CalculateTakerFillPrice(request, basePrice, in bar, tradeTime);
 
         return MatchResult.Filled(fillPrice, request.Quantity, tradeTime);
     }
 
     /// <summary>
-    /// 评估挂单簿中排队的限价单在给定最新行情下的被动撮合结果（Maker 规则）。
+    /// 评估挂单簿中排队的限价单在给定最新行情下的被动撮合结果（Maker 规则，零 GC 寄存器传参热路径）。
     /// </summary>
     /// <param name="order">排队挂单实体。</param>
     /// <param name="marketPrice">标的当前市场价格。</param>
-    /// <param name="bar">标的当前行情行（可选）。</param>
+    /// <param name="bar">标的当前行情切片。</param>
     /// <param name="tradeTime">撮合发生的时间戳。</param>
     /// <returns>撮合判定结果。</returns>
     public MatchResult EvaluatePendingLimitOrder(
         SimulatedOrder order,
         double marketPrice,
-        IDataRow? bar,
+        in BarSnapshot bar,
         MarketTime tradeTime)
     {
         ArgumentNullException.ThrowIfNull(order);
@@ -93,11 +93,12 @@ internal sealed class MatchingEngine
         }
 
         var request = order.Request;
-
-        // 限价触碰判定（买单市价 <= 委托限价；卖单市价 >= 委托限价）
+        
+        // 触碰判定：买单看 LowOr，卖单看 HighOr；若区间极值缺失，平滑自适应回退至基准价格
+        double execPrice = bar.CloseOr(bar.OpenOr(marketPrice));
         bool canFill = request.IsBuy
-            ? marketPrice <= request.Price
-            : marketPrice >= request.Price;
+            ? bar.LowOr(execPrice) <= request.Price
+            : bar.HighOr(execPrice) >= request.Price;
 
         if (!canFill)
         {
@@ -105,27 +106,31 @@ internal sealed class MatchingEngine
         }
 
         // 成交量流动性检查 (VolumeLimit)
-        if (bar != null && !CheckLiquidity(request, bar, out var reason))
+        if (bar.IsValid && !CheckLiquidity(request, in bar, out var reason))
         {
             return MatchResult.Rejected(reason);
         }
 
         // 涨跌停封板拦截检查 (CheckLimit)
-        if (bar != null && _config.CheckLimit && !CheckPriceLimit(request, bar, out reason))
+        if (bar.IsValid && _config.CheckLimit && !CheckPriceLimit(request, in bar, out reason))
         {
             return MatchResult.Rejected(reason);
         }
 
-        // Maker 限价挂单成交价：严格遵循委托限价保护（成交价 = 委托限价）
+        // Maker 限价挂单成交价：严格遵循委托限价（成交价 = 委托限价）
         double fillPrice = request.Price;
 
         return MatchResult.Filled(fillPrice, request.Quantity, tradeTime);
     }
 
-    private double CalculateTakerFillPrice(OrderRequest request, double basePrice, IDataRow? bar)
+    private double CalculateTakerFillPrice(
+        OrderRequest request,
+        double basePrice,
+        in BarSnapshot bar,
+        MarketTime tradeTime)
     {
         double fillPrice;
-        if (_config.OnCalculateSlippage != null && bar != null)
+        if (_config.OnCalculateSlippage != null && bar.IsValid)
         {
             fillPrice = _config.OnCalculateSlippage(request, basePrice, bar);
         }
@@ -136,7 +141,7 @@ internal sealed class MatchingEngine
                 : basePrice * (1.0 - _config.Slippage);
         }
 
-        // 限价委托保护：成交价绝严禁劣于限价（买入成交价 <= LimitPrice，卖出成交价 >= LimitPrice）
+        // 限价委托保护：成交价严禁劣于限价（买入成交价 <= LimitPrice，卖出成交价 >= LimitPrice）
         if (request.Type == OrderType.Limit && request.Price > 0.0)
         {
             fillPrice = request.IsBuy
@@ -147,7 +152,10 @@ internal sealed class MatchingEngine
         return fillPrice;
     }
 
-    private bool CheckLiquidity(OrderRequest request, IDataRow bar, out string reason)
+    private bool CheckLiquidity(
+        OrderRequest request,
+        in BarSnapshot bar,
+        out string reason)
     {
         reason = string.Empty;
         if (_config.OnCheckVolume != null)
@@ -158,20 +166,22 @@ internal sealed class MatchingEngine
                 return false;
             }
         }
-        else if (_config.VolumeLimit > 0.0)
+        else if (_config.VolumeLimit > 0.0 && bar.HasVolume && bar.Volume >= 0.0)
         {
-            double barVolume = bar.GetDouble("volume");
-            double maxAllowed = barVolume * _config.VolumeLimit;
+            double maxAllowed = bar.Volume * _config.VolumeLimit;
             if ((double)request.Quantity > maxAllowed)
             {
-                reason = $"Exceeded volume limit: {request.Quantity} > {maxAllowed} (BarVolume={barVolume} * {_config.VolumeLimit})";
+                reason = $"Exceeded volume limit: {request.Quantity} > {maxAllowed} (BarVolume={bar.Volume} * {_config.VolumeLimit})";
                 return false;
             }
         }
         return true;
     }
 
-    private bool CheckPriceLimit(OrderRequest request, IDataRow bar, out string reason)
+    private bool CheckPriceLimit(
+        OrderRequest request,
+        in BarSnapshot bar,
+        out string reason)
     {
         reason = string.Empty;
         if (_config.OnCheckLimit != null)

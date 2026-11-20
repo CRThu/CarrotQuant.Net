@@ -213,7 +213,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 CheckLimit = true,
                 OnCheckLimit = (order, bar) =>
                 {
-                    if (order.IsBuy && bar.ContainsColumn("limit_up") && bar.GetDouble("close") >= bar.GetDouble("limit_up"))
+                    if (order.IsBuy && bar.CloseOr(0.0) >= 11.0)
                     {
                         return false; // 涨停禁止买入
                     }

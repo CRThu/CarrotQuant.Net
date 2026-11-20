@@ -143,6 +143,12 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
+        public bool HasField(string fieldName)
+        {
+            return !string.IsNullOrWhiteSpace(fieldName) && _fieldTypes.ContainsKey(fieldName);
+        }
+
+        /// <inheritdoc />
         public Type GetFieldType(string fieldName)
         {
             return _fieldTypes.TryGetValue(fieldName, out var type)
