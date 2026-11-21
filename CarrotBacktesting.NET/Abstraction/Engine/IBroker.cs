@@ -67,9 +67,10 @@ public interface IBroker
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
 
     /// <summary>
     /// 便捷提交卖出订单（默认以市价单形式发出）。
@@ -80,9 +81,10 @@ public interface IBroker
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
 
     /// <summary>
     /// 便捷全额平仓指定标的持仓。
@@ -93,13 +95,14 @@ public interface IBroker
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID；若无持仓则返回 string.Empty。</returns>
-    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
     {
         var pos = GetPosition(symbol);
         if (pos == 0m) return string.Empty;
         var dir = pos > 0m ? OrderDirection.Sell : OrderDirection.Buy;
-        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
     }
 
     /// <summary>

@@ -94,6 +94,58 @@ internal sealed class OrderBook
         _ordersById.Clear();
         _pendingBySymbol.Clear();
     }
+
+    /// <summary>
+    /// 撤销所有当日有效（TimeInForce.Day）的挂单并移出挂单簿，保留 GTC 挂单。
+    /// </summary>
+    /// <returns>被撤销的挂单列表。</returns>
+    public List<SimulatedOrder> CancelDayOrders()
+    {
+        if (_ordersById.Count == 0)
+        {
+            return new List<SimulatedOrder>(0);
+        }
+
+        var canceled = new List<SimulatedOrder>();
+        foreach (var pair in _ordersById)
+        {
+            if (pair.Value.TimeInForce == TimeInForce.Day)
+            {
+                canceled.Add(pair.Value);
+            }
+        }
+
+        if (canceled.Count == 0)
+        {
+            return canceled;
+        }
+
+        for (int i = 0; i < canceled.Count; i++)
+        {
+            _ordersById.Remove(canceled[i].OrderId);
+        }
+
+        List<string>? emptySymbols = null;
+        foreach (var (symbol, list) in _pendingBySymbol)
+        {
+            list.RemoveAll(o => o.TimeInForce == TimeInForce.Day);
+            if (list.Count == 0)
+            {
+                emptySymbols ??= new List<string>();
+                emptySymbols.Add(symbol);
+            }
+        }
+
+        if (emptySymbols != null)
+        {
+            for (int i = 0; i < emptySymbols.Count; i++)
+            {
+                _pendingBySymbol.Remove(emptySymbols[i]);
+            }
+        }
+
+        return canceled;
+    }
 }
 
 /// <summary>
@@ -103,6 +155,7 @@ internal sealed class SimulatedOrder
 {
     public string OrderId { get; }
     public OrderRequest Request { get; }
+    public TimeInForce TimeInForce => Request.TimeInForce ?? TimeInForce.Day;
     public MarketTime SubmitTime { get; }
     public OrderStatus Status { get; set; } = OrderStatus.Submitted;
 

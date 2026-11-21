@@ -190,7 +190,7 @@ void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = nu
 
 ### 3. 离线时间步撮合与日切自动撤单 (Step & Day Order)
 在离线回测中，引擎推进主时钟时调用 `gateway.Step(currentTime, timeseries, currentIndex)`：
-1. **跨日挂单集中撤销**：若配置了 `CancelPendingOrdersOnDailyClose == true`（当日有效 Day Order 规则）且检测到全局时间戳发生跨日，网关在撮合前集中清除前一交易日未成交的全部排队挂单，并在锁外统一派发 `OrderStatus.Canceled` 回报，驱动 `Broker` 自动全额解冻预占资金与持仓；若配置为 `false`（默认 GTC 规则），挂单跨日顺延；
+1. **跨日挂单集中撤销**：检测到全局时间戳发生跨日时，网关在撮合前自动扫描挂单簿，集中撤销所有当日有效（`TimeInForce.Day`）的未成交排队挂单，并在锁外统一派发 `OrderStatus.Canceled` 回报，驱动 `Broker` 自动全额解冻预占资金与持仓；撤单前有效（`TimeInForce.GoodTilCanceled`）挂单则继续在挂单簿排队；
 2. **快速排队检查**：若挂单簿总数 `OrderBook.Count == 0`，锁外派发已撤销回报后立即常数时间安全退出；
 3. **活跃标的索引遍历**：仅遍历挂单簿中当前存在排队订单的标的集合 `OrderBook.ActiveSymbols`；
 4. **时序矩阵批量撮合**：从时序注册表提取当日行情矩阵，批量触发被动撮合。
@@ -218,7 +218,7 @@ void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = nu
 | `FeeRate` + `MinFee` | `OnCalculateFee(request, turnover)` | 动态手续费/印花税计算 | `0.001` / `0.0` |
 | `VolumeLimit` | `OnCheckVolume(request, bar)` | 成交量流动性硬约束判定 | `0.05` (5%) |
 | `CheckLimit` | `OnCheckLimit(request, bar)` | 涨跌停封板与停牌拦截判定 | `false` |
-| `CancelPendingOrdersOnDailyClose` | - | 每日收盘/日切时自动撤销挂单簿中未成交订单并全额解冻 | `false` (GTC) |
+| `DefaultTimeInForce` | - | 默认订单时效性（发单未显式指定时采用），对齐国内现货期货市场规则 | `TimeInForce.Day` |
 
 ---
 

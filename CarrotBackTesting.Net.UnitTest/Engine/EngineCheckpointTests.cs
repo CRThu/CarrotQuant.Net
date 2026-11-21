@@ -250,7 +250,8 @@ public class EngineCheckpointTests
             InitialCash = 100_000.0,
             FeeRate = 0.0003,
             MinFee = 5.0,
-            SettleDays = 0 // 当日可卖
+            SettleDays = 0, // 当日可卖
+            DefaultTimeInForce = TimeInForce.GoodTilCanceled
         };
 
         // --- 运行 A: 连续完整回测 (Day 0 ~ Day 4) ---

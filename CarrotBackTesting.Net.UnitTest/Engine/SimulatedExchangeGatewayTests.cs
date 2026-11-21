@@ -165,7 +165,7 @@ public class SimulatedExchangeGatewayTests
     {
         var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
         var gateway = new SimulatedExchangeGateway(config);
-        gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 1));
+        gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 2));
 
         // 挂单 9.5 买入
         gateway.SendOrder("step-1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
@@ -315,7 +315,7 @@ public class SimulatedExchangeGatewayTests
 
     #region 停牌拦截与日切撤单测试 (Suspended Guard & Day Order)
 
-    private class MultiMatrixTimeseriesRegistry : ITimeseriesRegistry
+    internal class MultiMatrixTimeseriesRegistry : ITimeseriesRegistry
     {
         private readonly Dictionary<string, IReadOnlyMatrix2D<double>> _matrices;
         public IMarketMetadata Metadata { get; }
@@ -391,7 +391,7 @@ public class SimulatedExchangeGatewayTests
     }
 
     [TestMethod]
-    public void Step_CancelPendingOrdersOnDailyClose_WhenTrue_ShouldCancelAndUnfreezeAcrossDays()
+    public void Step_TimeInForce_DayOrder_ShouldCancelAndUnfreezeAcrossDays()
     {
         var symbols = new[] { "sh.600000" };
         var dates = new[] { (MarketTime)new DateTime(2025, 1, 2), (MarketTime)new DateTime(2025, 1, 3) };
@@ -403,7 +403,7 @@ public class SimulatedExchangeGatewayTests
             InitialCash = 100_000.0,
             Slippage = 0.0,
             FeeRate = 0.0,
-            CancelPendingOrdersOnDailyClose = true // 开启日切自动撤单
+            DefaultTimeInForce = TimeInForce.Day
         };
         var gateway = new SimulatedExchangeGateway(config);
         var broker = new Broker(gateway, config);
@@ -412,7 +412,7 @@ public class SimulatedExchangeGatewayTests
         gateway.Step(dates[0], timeseries, 0);
         ((IBrokerEngineDriver)broker).Step(dates[0]);
 
-        // 提交限价 9.0 买单（当前市价 10.0，未触碰 -> 排队挂单）
+        // 提交限价 9.0 买单（默认 Day 时效，未触碰 -> 排队挂单）
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m);
         string orderId = broker.SubmitOrder(req);
 
@@ -423,13 +423,13 @@ public class SimulatedExchangeGatewayTests
         gateway.Step(dates[1], timeseries, 1);
         ((IBrokerEngineDriver)broker).Step(dates[1]);
 
-        // 验证：Day 1 挂单已由网关集中撤销，且 Broker 收到撤单事件全额解冻
+        // 验证：Day 挂单在跨日结算时被集中撤销，且 Broker 收到撤单事件后全额解冻资金
         Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(orderId));
         Assert.AreEqual(0.0, broker.FrozenCash);
     }
 
     [TestMethod]
-    public void Step_CancelPendingOrdersOnDailyClose_WhenFalse_ShouldPreservePendingOrdersAcrossDays()
+    public void Step_TimeInForce_GoodTilCanceled_ShouldPreservePendingOrdersAcrossDays()
     {
         var symbols = new[] { "sh.600000" };
         var dates = new[] { (MarketTime)new DateTime(2025, 1, 2), (MarketTime)new DateTime(2025, 1, 3) };
@@ -440,8 +440,7 @@ public class SimulatedExchangeGatewayTests
         {
             InitialCash = 100_000.0,
             Slippage = 0.0,
-            FeeRate = 0.0,
-            CancelPendingOrdersOnDailyClose = false // 默认 GTC：跨日保留挂单
+            FeeRate = 0.0
         };
         var gateway = new SimulatedExchangeGateway(config);
         var broker = new Broker(gateway, config);
@@ -450,8 +449,8 @@ public class SimulatedExchangeGatewayTests
         gateway.Step(dates[0], timeseries, 0);
         ((IBrokerEngineDriver)broker).Step(dates[0]);
 
-        // 提交限价 9.0 买单
-        var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m);
+        // 提交显式 GTC 时效的限价 9.0 买单
+        var req = new OrderRequest("sh.600000", OrderDirection.Buy, 9.0, 1000m, timeInForce: TimeInForce.GoodTilCanceled);
         string orderId = broker.SubmitOrder(req);
 
         Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
@@ -461,7 +460,7 @@ public class SimulatedExchangeGatewayTests
         gateway.Step(dates[1], timeseries, 1);
         ((IBrokerEngineDriver)broker).Step(dates[1]);
 
-        // 验证：挂单依然存在于挂单簿，资金继续维持冻结
+        // 验证：GTC 挂单继续保留在挂单簿排队，资金维持冻结
         Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
         Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
     }

@@ -25,6 +25,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             Assert.IsFalse(config.CheckLimit);
             Assert.AreEqual(1.0, config.Multiplier);
             Assert.AreEqual(1.0, config.MarginRate);
+            Assert.AreEqual(TimeInForce.Day, config.DefaultTimeInForce);
             Assert.AreEqual("UTC", config.TimeZoneId);
             Assert.AreEqual(TimeZoneInfo.Utc, config.TimeZone);
             Assert.IsNull(config.OnCheckVolume);

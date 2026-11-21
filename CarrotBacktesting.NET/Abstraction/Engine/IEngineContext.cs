@@ -68,9 +68,10 @@ public interface IEngineContext
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-        => Broker.Buy(symbol, quantity, price, type, clientOrderId, orderTag);
+    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.Buy(symbol, quantity, price, type, clientOrderId, orderTag, timeInForce);
 
     /// <summary>
     /// 便捷提交卖出订单（默认以市价单形式发出）。
@@ -81,9 +82,10 @@ public interface IEngineContext
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-        => Broker.Sell(symbol, quantity, price, type, clientOrderId, orderTag);
+    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.Sell(symbol, quantity, price, type, clientOrderId, orderTag, timeInForce);
 
     /// <summary>
     /// 便捷全额平仓指定标的持仓。
@@ -94,9 +96,10 @@ public interface IEngineContext
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID；若无持仓则返回 string.Empty。</returns>
-    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-        => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag);
+    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag, timeInForce);
 
     /// <summary>
     /// 获取交易事实记录器接口（可选），用于沉淀策略信号打点或扩展归因。

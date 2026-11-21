@@ -168,15 +168,17 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
             _currentIndex = currentIndex;
             EnsureTimeseriesBound(timeseries);
 
-            // 若开启了当日有效（Day Order）收盘撤单规则且检测到跨日，集中撤销前一交易日未成交的排队订单
-            if (_config.CancelPendingOrdersOnDailyClose && isNewDay && _orderBook.Count > 0)
+            // 跨日时自动撤销所有当日有效（Day）的挂单，保留 GTC 挂单
+            if (isNewDay && _orderBook.Count > 0)
             {
-                var allPending = new List<SimulatedOrder>(_orderBook.GetAllOrders());
-                _orderBook.Clear();
-                canceledOrders = new List<string>(allPending.Count);
-                for (int i = 0; i < allPending.Count; i++)
+                var dayOrders = _orderBook.CancelDayOrders();
+                if (dayOrders.Count > 0)
                 {
-                    canceledOrders.Add(allPending[i].OrderId);
+                    canceledOrders = new List<string>(dayOrders.Count);
+                    for (int i = 0; i < dayOrders.Count; i++)
+                    {
+                        canceledOrders.Add(dayOrders[i].OrderId);
+                    }
                 }
             }
 

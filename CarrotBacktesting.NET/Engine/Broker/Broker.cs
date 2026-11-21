@@ -218,6 +218,12 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        // 统一归一化订单时效，未指定时采用经纪商默认时效规则
+        if (!request.TimeInForce.HasValue)
+        {
+            request = request with { TimeInForce = _config.DefaultTimeInForce };
+        }
+
         string orderId = string.IsNullOrWhiteSpace(request.ClientOrderId)
             ? $"ord_{Interlocked.Increment(ref _orderSequence)}"
             : request.ClientOrderId;
@@ -299,22 +305,22 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     }
 
     /// <inheritdoc />
-    public string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+    public string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
 
     /// <inheritdoc />
-    public string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+    public string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
 
     /// <inheritdoc />
-    public string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
+    public string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         var pos = GetPosition(symbol);
         if (pos == 0m) return string.Empty;
 
         var dir = pos > 0m ? OrderDirection.Sell : OrderDirection.Buy;
-        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag) { ClientOrderId = clientOrderId ?? string.Empty });
+        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
     }
 
     /// <inheritdoc />

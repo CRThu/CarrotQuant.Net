@@ -1,6 +1,25 @@
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 /// <summary>
+/// 订单时效性与生命周期规则。
+/// 严格收敛为全市场日频与分钟频回测的核心时效基元，杜绝无盘口深度下的伪高频实现。
+/// </summary>
+public enum TimeInForce : byte
+{
+    /// <summary>
+    /// 当日有效（Day Order，默认）。收盘或日切结算时未成交挂单集中自动撤销并解冻资产。
+    /// 物理对齐：A 股现货、国内期货默认规则，FIX Tag 59 = 0。
+    /// </summary>
+    Day = 0,
+
+    /// <summary>
+    /// 撤单前有效（Good 'Til Canceled）。跨交易日持续在挂单簿排队，直到完全成交或主动撤销。
+    /// 物理对齐：美股、加密货币、网格长线挂单规则，FIX Tag 59 = 1。
+    /// </summary>
+    GoodTilCanceled = 1
+}
+
+/// <summary>
 /// 表示一个订单请求，包含了下单所需的全部核心参数。
 /// </summary>
 /// <param name="Symbol">交易品种代码。</param>
@@ -9,6 +28,7 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 /// <param name="Price">委托价格。对于市价单，此值通常忽略。</param>
 /// <param name="Quantity">委托数量。</param>
 /// <param name="OrderTag">策略业务标签（如开仓理由、特征 Tag），用于订单归因与成交流水追踪。</param>
+/// <param name="TimeInForce">订单时效性。缺省为 null 时由经纪商配置 DefaultTimeInForce 统一确定。</param>
 [method: System.Text.Json.Serialization.JsonConstructor]
 public record OrderRequest(
     string Symbol,
@@ -16,21 +36,22 @@ public record OrderRequest(
     OrderType Type,
     double Price,
     decimal Quantity,
-    string OrderTag = "")
+    string OrderTag = "",
+    TimeInForce? TimeInForce = null)
 {
     /// <summary>
     /// 市价单便捷构造函数（价格默认为 0.0）。
     /// </summary>
-    public OrderRequest(string symbol, OrderDirection direction, decimal quantity, string orderTag = "")
-        : this(symbol, direction, OrderType.Market, 0.0, quantity, orderTag)
+    public OrderRequest(string symbol, OrderDirection direction, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
+        : this(symbol, direction, OrderType.Market, 0.0, quantity, orderTag, timeInForce)
     {
     }
 
     /// <summary>
     /// 限价单便捷构造函数。
     /// </summary>
-    public OrderRequest(string symbol, OrderDirection direction, double price, decimal quantity, string orderTag = "")
-        : this(symbol, direction, OrderType.Limit, price, quantity, orderTag)
+    public OrderRequest(string symbol, OrderDirection direction, double price, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
+        : this(symbol, direction, OrderType.Limit, price, quantity, orderTag, timeInForce)
     {
     }
 
@@ -50,35 +71,9 @@ public record OrderRequest(
     public string ClientOrderId { get; init; } = string.Empty;
 
     /// <summary>
-    /// 开平仓标识（针对期货实盘与高级衍生品开平仓）。股票现货默认为 None。
+    /// 条件单触发价（止损单/止盈单有效，阶段三基元预留）。
     /// </summary>
-    public OrderOffset Offset { get; init; } = OrderOffset.None;
-}
-
-/// <summary>
-/// 定义订单的开平仓类型。
-/// </summary>
-public enum OrderOffset
-{
-    /// <summary>
-    /// 默认/现货无特殊开平区分（由买卖方向与持仓状态自然转移）。
-    /// </summary>
-    None,
-
-    /// <summary>
-    /// 开仓（增加多头或空头持仓）。
-    /// </summary>
-    Open,
-
-    /// <summary>
-    /// 平仓（减少已有持仓）。
-    /// </summary>
-    Close,
-
-    /// <summary>
-    /// 平今仓（针对国内部分期货交易所区分昨仓与今仓的手续费与交割）。
-    /// </summary>
-    CloseToday
+    public double StopPrice { get; init; } = 0.0;
 }
 
 /// <summary>

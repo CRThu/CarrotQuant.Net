@@ -74,16 +74,16 @@ namespace CarrotBacktesting.NET.Engine
         public int GetSymbolIndex(string symbol) => Timeseries.Metadata.GetSymbolIndex(symbol);
 
         /// <inheritdoc />
-        public string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-            => Broker.Buy(symbol, quantity, price, type, clientOrderId, orderTag);
+        public string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+            => Broker.Buy(symbol, quantity, price, type, clientOrderId, orderTag, timeInForce);
 
         /// <inheritdoc />
-        public string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-            => Broker.Sell(symbol, quantity, price, type, clientOrderId, orderTag);
+        public string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+            => Broker.Sell(symbol, quantity, price, type, clientOrderId, orderTag, timeInForce);
 
         /// <inheritdoc />
-        public string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "")
-            => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag);
+        public string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+            => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag, timeInForce);
 
         /// <inheritdoc />
         public ITradingRecorder? Recorder { get; }
