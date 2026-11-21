@@ -77,15 +77,72 @@ public record OrderRequest(
 }
 
 /// <summary>
-/// 表示一笔成交的执行回报，包含了物理成交的详细信息。
+/// 成交流动性角色标识。
+/// </summary>
+public enum LiquidityRole : byte
+{
+    /// <summary>
+    /// 未定义或非撮合角色。
+    /// </summary>
+    None = 0,
+
+    /// <summary>
+    /// 被动挂单方（Maker / 提供流动性）。
+    /// 在挂单簿中排队被动撮合，承担零滑点，享受开盘跳空价格改善。对齐 FIX Tag 851 = 1。
+    /// </summary>
+    Maker = 1,
+
+    /// <summary>
+    /// 主动吃单方（Taker / 消耗流动性）。
+    /// 市价单或穿透限价单即时成交，承担物理滑点成本。对齐 FIX Tag 851 = 2。
+    /// </summary>
+    Taker = 2
+}
+
+/// <summary>
+/// 表示一笔成交的执行回报，包含物理成交数据与生命周期进度凭证。
 /// </summary>
 /// <param name="OrderId">原始订单 ID。</param>
 /// <param name="Symbol">成交品种代码。</param>
 /// <param name="FillPrice">实际成交价格。</param>
-/// <param name="FillQuantity">实际成交数量。</param>
+/// <param name="FillQuantity">本笔实际成交数量（FIX Tag 32 LastQty）。</param>
 /// <param name="Commission">该笔成交产生的手续费。</param>
 /// <param name="Time">成交时间。</param>
-public record ExecutionReport(string OrderId, string Symbol, double FillPrice, decimal FillQuantity, double Commission, MarketTime Time);
+/// <param name="CumQuantity">该订单累计已成交数量（FIX Tag 14 CumQty）。</param>
+/// <param name="LeavesQuantity">该订单在挂单簿中剩余排队数量（FIX Tag 151 LeavesQty）。</param>
+/// <param name="Role">成交流动性角色标识（FIX Tag 851）。</param>
+public record ExecutionReport(
+    string OrderId,
+    string Symbol,
+    double FillPrice,
+    decimal FillQuantity,
+    double Commission,
+    MarketTime Time,
+    decimal CumQuantity = 0m,
+    decimal LeavesQuantity = 0m,
+    LiquidityRole Role = LiquidityRole.None);
+
+/// <summary>
+/// 表示网关或交易所订单生命周期状态变更的权威报告。
+/// 对齐 FIX 协议状态回报模型，用于精准传递报单确认、撤单、拒单及排队状态。
+/// </summary>
+/// <param name="OrderId">系统或券商内部订单标识符（对齐 FIX Tag 37 OrderID）。</param>
+/// <param name="Status">目标生命周期状态（对齐 FIX Tag 39 OrdStatus）。</param>
+/// <param name="Time">状态变更发生的时间戳（对齐 FIX Tag 60 TransactTime）。</param>
+/// <param name="Symbol">交易品种代码（对齐 FIX Tag 55 Symbol）。</param>
+/// <param name="Reason">状态变更原因说明（如废单、拒单或撤单原因，对齐 FIX Tag 58 Text）。</param>
+/// <param name="ClientOrderId">客户端自定义订单标识符（对齐 FIX Tag 11 ClOrdID）。</param>
+/// <param name="LeavesQuantity">订单在挂单簿中剩余排队数量（对齐 FIX Tag 151 LeavesQty）。</param>
+/// <param name="ErrorCode">网关或交易所原始数字错误代码（对齐 FIX Tag 103 OrdRejReason）。</param>
+public record OrderStateReport(
+    string OrderId,
+    OrderStatus Status,
+    MarketTime Time,
+    string Symbol = "",
+    string Reason = "",
+    string ClientOrderId = "",
+    decimal LeavesQuantity = 0m,
+    int ErrorCode = 0);
 
 /// <summary>
 /// 表示持仓变更事件。

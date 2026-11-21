@@ -13,31 +13,37 @@ public interface ITradingRecorder
     /// 记录时间步资产净值点（含现金、冻结、保证金与总浮动盈亏）。
     /// </summary>
     /// <param name="point">资产点数据。</param>
-    void RecordStep(EquityPoint point);
+    void Record(EquityPoint point);
 
     /// <summary>
     /// 记录日终全景资产与持仓快照（含标的未实现收益与保证金占用）。
     /// </summary>
     /// <param name="snapshot">日终快照数据。</param>
-    void RecordDailySnapshot(DailySnapshot snapshot);
+    void Record(DailySnapshot snapshot);
 
     /// <summary>
     /// 记录一笔交割单明细。
     /// </summary>
     /// <param name="settlement">交割单记录。</param>
-    void RecordSettlement(SettlementRecord settlement);
+    void Record(SettlementRecord settlement);
 
     /// <summary>
     /// 记录一笔已平仓交易结算。
     /// </summary>
     /// <param name="trade">平仓交易记录。</param>
-    void RecordClosedTrade(Trade trade);
+    void Record(Trade trade);
 
     /// <summary>
     /// 记录策略信号打点数据。
     /// </summary>
     /// <param name="signal">信号记录。</param>
-    void RecordSignal(SignalRecord signal);
+    void Record(SignalRecord signal);
+
+    /// <summary>
+    /// 记录订单生命周期动作事件。
+    /// </summary>
+    /// <param name="orderEvent">订单生命周期事件记录。</param>
+    void Record(OrderEvent orderEvent);
 
     /// <summary>
     /// 生成并返回交易账本综合结果集。

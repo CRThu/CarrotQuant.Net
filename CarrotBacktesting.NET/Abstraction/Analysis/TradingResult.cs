@@ -40,6 +40,11 @@ public sealed class TradingResult
     public IReadOnlyList<SignalRecord> Signals { get; init; } = Array.Empty<SignalRecord>();
 
     /// <summary>
+    /// 订单生命周期动作事件流水列表。
+    /// </summary>
+    public IReadOnlyList<OrderEvent> OrderEvents { get; init; } = Array.Empty<OrderEvent>();
+
+    /// <summary>
     /// 无参构造函数。
     /// </summary>
     public TradingResult() { }
@@ -53,7 +58,8 @@ public sealed class TradingResult
         IReadOnlyList<PositionSnapshot> openPositions,
         IReadOnlyList<EquityPoint> equityCurve,
         IReadOnlyList<DailySnapshot> dailySnapshots,
-        IReadOnlyList<SignalRecord> signals)
+        IReadOnlyList<SignalRecord> signals,
+        IReadOnlyList<OrderEvent>? orderEvents = null)
     {
         Settlements = settlements ?? Array.Empty<SettlementRecord>();
         ClosedTrades = closedTrades ?? Array.Empty<Trade>();
@@ -61,5 +67,6 @@ public sealed class TradingResult
         EquityCurve = equityCurve ?? Array.Empty<EquityPoint>();
         DailySnapshots = dailySnapshots ?? Array.Empty<DailySnapshot>();
         Signals = signals ?? Array.Empty<SignalRecord>();
+        OrderEvents = orderEvents ?? Array.Empty<OrderEvent>();
     }
 }

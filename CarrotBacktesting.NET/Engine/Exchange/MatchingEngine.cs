@@ -68,7 +68,7 @@ internal sealed class MatchingEngine
         // 4. 即时成交（Taker 规则）：计算滑点
         double fillPrice = CalculateTakerFillPrice(request, basePrice, in bar, tradeTime);
 
-        return MatchResult.Filled(fillPrice, request.Quantity, tradeTime);
+        return MatchResult.Filled(fillPrice, request.Quantity, tradeTime, LiquidityRole.Taker);
     }
 
     /// <summary>
@@ -128,7 +128,7 @@ internal sealed class MatchingEngine
                 : Math.Max(request.Price, bar.Open);
         }
 
-        return MatchResult.Filled(fillPrice, request.Quantity, tradeTime);
+        return MatchResult.Filled(fillPrice, request.Quantity, tradeTime, LiquidityRole.Maker);
     }
 
     private double CalculateTakerFillPrice(
@@ -205,7 +205,7 @@ internal sealed class MatchingEngine
 }
 
 /// <summary>
-/// 撮合判定执行结果模型。
+/// 撮合判定执行结果模型（零分配结构体）。
 /// </summary>
 internal readonly struct MatchResult
 {
@@ -218,6 +218,7 @@ internal readonly struct MatchResult
     public decimal FillQuantity { get; }
     public double Commission { get; }
     public MarketTime Time { get; }
+    public LiquidityRole Role { get; }
 
     private MatchResult(
         bool isFilled,
@@ -227,7 +228,8 @@ internal readonly struct MatchResult
         double fillPrice,
         decimal fillQuantity,
         double commission,
-        MarketTime time)
+        MarketTime time,
+        LiquidityRole role)
     {
         IsFilled = isFilled;
         IsPending = isPending;
@@ -237,20 +239,21 @@ internal readonly struct MatchResult
         FillQuantity = fillQuantity;
         Commission = commission;
         Time = time;
+        Role = role;
     }
 
-    public static MatchResult Filled(double fillPrice, decimal fillQuantity, MarketTime time, double commission = 0.0) =>
-        new(true, false, false, null, fillPrice, fillQuantity, commission, time);
+    public static MatchResult Filled(double fillPrice, decimal fillQuantity, MarketTime time, LiquidityRole role, double commission = 0.0) =>
+        new(true, false, false, null, fillPrice, fillQuantity, commission, time, role);
 
-    public static MatchResult Filled(double fillPrice, decimal fillQuantity, double commission, MarketTime time) =>
-        new(true, false, false, null, fillPrice, fillQuantity, commission, time);
+    public static MatchResult Filled(double fillPrice, decimal fillQuantity, double commission, MarketTime time, LiquidityRole role) =>
+        new(true, false, false, null, fillPrice, fillQuantity, commission, time, role);
 
     public static MatchResult PendingQueue() =>
-        new(false, true, false, null, 0.0, 0m, 0.0, MarketTime.MinValue);
+        new(false, true, false, null, 0.0, 0m, 0.0, MarketTime.MinValue, LiquidityRole.None);
 
     public static MatchResult NoFill() =>
-        new(false, false, false, null, 0.0, 0m, 0.0, MarketTime.MinValue);
+        new(false, false, false, null, 0.0, 0m, 0.0, MarketTime.MinValue, LiquidityRole.None);
 
     public static MatchResult Rejected(string reason) =>
-        new(false, false, true, reason, 0.0, 0m, 0.0, MarketTime.MinValue);
+        new(false, false, true, reason, 0.0, 0m, 0.0, MarketTime.MinValue, LiquidityRole.None);
 }

@@ -94,7 +94,8 @@ public sealed record TradingRecorderSnapshot(
     IReadOnlyList<Trade> ClosedTrades,
     IReadOnlyList<EquityPoint> EquityCurve,
     IReadOnlyList<DailySnapshot> DailySnapshots,
-    IReadOnlyList<SignalRecord> Signals
+    IReadOnlyList<SignalRecord> Signals,
+    IReadOnlyList<OrderEvent>? OrderEvents = null
 );
 
 /// <summary>

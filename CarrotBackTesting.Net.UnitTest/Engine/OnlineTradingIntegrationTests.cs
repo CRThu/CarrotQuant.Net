@@ -18,7 +18,7 @@ internal sealed class MockLiveExchangeGateway : IExchangeGateway
     private readonly ConcurrentDictionary<string, OrderRequest> _liveOrders = new(StringComparer.Ordinal);
 
     public event Action<ExecutionReport>? OnExecution;
-    public event Action<string, OrderStatus>? OnOrderStateChanged;
+    public event Action<OrderStateReport>? OnOrderStateChanged;
 
     public void SendOrder(string orderId, OrderRequest request)
     {
@@ -26,17 +26,17 @@ internal sealed class MockLiveExchangeGateway : IExchangeGateway
         // 模拟柜台收到委托回报
         Task.Run(() =>
         {
-            OnOrderStateChanged?.Invoke(orderId, OrderStatus.Submitted);
+            OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Submitted, DateTime.UtcNow, request.Symbol, ClientOrderId: request.ClientOrderId, LeavesQuantity: request.Quantity));
         });
     }
 
     public void CancelOrder(string orderId)
     {
-        if (_liveOrders.TryRemove(orderId, out _))
+        if (_liveOrders.TryRemove(orderId, out var req))
         {
             Task.Run(() =>
             {
-                OnOrderStateChanged?.Invoke(orderId, OrderStatus.Canceled);
+                OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Canceled, DateTime.UtcNow, req.Symbol, "Canceled", req.ClientOrderId));
             });
         }
     }
@@ -48,7 +48,11 @@ internal sealed class MockLiveExchangeGateway : IExchangeGateway
     {
         if (_liveOrders.TryGetValue(orderId, out var req))
         {
-            var report = new ExecutionReport(orderId, req.Symbol, fillPrice, fillQuantity, commission, DateTime.UtcNow);
+            var report = new ExecutionReport(
+                orderId, req.Symbol, fillPrice, fillQuantity, commission, DateTime.UtcNow,
+                CumQuantity: fillQuantity,
+                LeavesQuantity: Math.Max(0m, req.Quantity - fillQuantity),
+                Role: LiquidityRole.Taker);
             OnExecution?.Invoke(report);
         }
     }
@@ -56,11 +60,11 @@ internal sealed class MockLiveExchangeGateway : IExchangeGateway
     /// <summary>
     /// 模拟交易所废单或拒单推送。
     /// </summary>
-    public void SimulateReject(string orderId)
+    public void SimulateReject(string orderId, string? reason = null)
     {
-        if (_liveOrders.TryRemove(orderId, out _))
+        if (_liveOrders.TryRemove(orderId, out var req))
         {
-            OnOrderStateChanged?.Invoke(orderId, OrderStatus.Rejected);
+            OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Rejected, DateTime.UtcNow, req.Symbol, reason ?? "Rejected", req.ClientOrderId));
         }
     }
 }

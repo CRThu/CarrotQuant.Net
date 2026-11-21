@@ -24,6 +24,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public event Action<string, OrderStatus>? OnOrderStatusChanged;
             public event Action<ExecutionReport>? OnTrade;
             public event Action<PositionEvent>? OnPositionChanged;
+            public event Action<OrderEvent>? OnOrderEvent;
 
             public void SimulateOrderStatus(string orderId, OrderStatus status)
             {
@@ -38,6 +39,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public void SimulatePosition(PositionEvent e)
             {
                 OnPositionChanged?.Invoke(e);
+            }
+
+            public void SimulateOrderEvent(OrderEvent e)
+            {
+                OnOrderEvent?.Invoke(e);
             }
         }
 

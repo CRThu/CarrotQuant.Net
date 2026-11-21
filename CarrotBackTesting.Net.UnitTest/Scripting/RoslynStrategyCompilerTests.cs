@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Engine;
@@ -27,6 +28,7 @@ public class RoslynStrategyCompilerTests
         public event Action<string, OrderStatus>? OnOrderStatusChanged;
         public event Action<ExecutionReport>? OnTrade;
         public event Action<PositionEvent>? OnPositionChanged;
+        public event Action<OrderEvent>? OnOrderEvent;
 #pragma warning restore CS0067
     }
 
@@ -76,6 +78,7 @@ public class RoslynStrategyCompilerTests
         const string code = @"
 using System;
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 namespace MyDynamicNamespace;
@@ -117,6 +120,7 @@ public class DynamicMovingAverageStrategy : IStrategy
     {
         const string code = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 public class ParamStrategy : IStrategy
@@ -189,6 +193,7 @@ public class NotAStrategy
         var tempFile = Path.Combine(Path.GetTempPath(), $"Strategy_{Guid.NewGuid():N}.cs");
         const string code = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 public class FileBasedStrategy : IStrategy
@@ -240,6 +245,7 @@ public class FileBasedStrategy : IStrategy
     {
         const string code = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 public abstract class BaseAlpha : IStrategy
@@ -270,6 +276,7 @@ public class ConcreteAlpha : BaseAlpha
     {
         const string code = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 public class StrategyOne : IStrategy
@@ -300,6 +307,7 @@ public class StrategyTwo : IStrategy
     {
         const string code = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 public abstract class AbstractStrategy : IStrategy
@@ -320,6 +328,7 @@ public abstract class AbstractStrategy : IStrategy
         const string code = @"
 using System;
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 public class CrashingStrategy : IStrategy
@@ -345,6 +354,7 @@ public class CrashingStrategy : IStrategy
     {
         const string code = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 // 未加 public 关键字，C# 默认为 internal
@@ -373,6 +383,7 @@ class InternalScriptStrategy : IStrategy
     {
         const string code = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
 public class UnsafeFastStrategy : IStrategy
@@ -414,6 +425,7 @@ public class UnsafeFastStrategy : IStrategy
         {
             const string code = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 public class EphemeralStrategy : IStrategy {
     public string Name => ""Ephemeral"";
@@ -449,7 +461,8 @@ public class EphemeralStrategy : IStrategy {
 namespace CustomNamespace.Strategies
 {
     using CarrotBacktesting.NET.Abstraction.Strategy;
-    using CarrotBacktesting.NET.Abstraction.Engine;
+    using CarrotBacktesting.NET.Abstraction.Analysis;
+using CarrotBacktesting.NET.Abstraction.Engine;
     public class ShortNamedStrategy : IStrategy
     {
         public string Name => ""ShortNamed"";

@@ -66,6 +66,7 @@ namespace CarrotBacktesting.NET.Engine
         private readonly Action<SettlementRecord> _settlementHandler;
         private readonly Action<Trade> _tradeClosedHandler;
         private readonly Action<PositionEvent> _positionHandler;
+        private readonly Action<OrderEvent> _orderEventHandler;
         private bool _isSubscribed = false;
 
         /// <inheritdoc />
@@ -181,9 +182,10 @@ namespace CarrotBacktesting.NET.Engine
 
             _orderStatusHandler = (orderId, status) => _pipeline.OnOrderStatusChanged(_context, orderId, status);
             _tradeHandler = (report) => _pipeline.OnTrade(_context, report);
-            _settlementHandler = (settlement) => _recorder.RecordSettlement(settlement);
-            _tradeClosedHandler = (closedTrade) => _recorder.RecordClosedTrade(closedTrade);
+            _settlementHandler = (settlement) => _recorder.Record(settlement);
+            _tradeClosedHandler = (closedTrade) => _recorder.Record(closedTrade);
             _positionHandler = (posEvent) => _pipeline.OnPositionChanged(_context, posEvent);
+            _orderEventHandler = (orderEvent) => _recorder.Record(orderEvent);
         }
 
         /// <summary>
@@ -429,7 +431,7 @@ namespace CarrotBacktesting.NET.Engine
                         if (_lastDate != MarketTime.MinValue && _snapshotProvider != null && i > startIndex)
                         {
                             int prevIndex = i - 1;
-                            _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(
+                            _recorder.Record(_snapshotProvider.CreateDailySnapshot(
                                 tradeDates[prevIndex],
                                 sym => ResolveStepPrice(sym, prevIndex)));
                         }
@@ -461,7 +463,7 @@ namespace CarrotBacktesting.NET.Engine
                     if (_snapshotProvider != null)
                     {
                         int currentIdx = i;
-                        _recorder.RecordStep(_snapshotProvider.CreateEquityPoint(
+                        _recorder.Record(_snapshotProvider.CreateEquityPoint(
                             currentTime,
                             sym => ResolveStepPrice(sym, currentIdx)));
                     }
@@ -479,7 +481,7 @@ namespace CarrotBacktesting.NET.Engine
                 // 记录最终交易日收盘快照
                 if (_snapshotProvider != null && endIndex >= startIndex)
                 {
-                    _recorder.RecordDailySnapshot(_snapshotProvider.CreateDailySnapshot(
+                    _recorder.Record(_snapshotProvider.CreateDailySnapshot(
                         tradeDates[endIndex],
                         sym => ResolveStepPrice(sym, endIndex)));
                 }
@@ -590,6 +592,7 @@ namespace CarrotBacktesting.NET.Engine
                 _broker.OnOrderStatusChanged += _orderStatusHandler;
                 _broker.OnTrade += _tradeHandler;
                 _broker.OnPositionChanged += _positionHandler;
+                _broker.OnOrderEvent += _orderEventHandler;
                 if (_snapshotProvider != null)
                 {
                     _snapshotProvider.OnSettlement += _settlementHandler;
@@ -606,6 +609,7 @@ namespace CarrotBacktesting.NET.Engine
                 _broker.OnOrderStatusChanged -= _orderStatusHandler;
                 _broker.OnTrade -= _tradeHandler;
                 _broker.OnPositionChanged -= _positionHandler;
+                _broker.OnOrderEvent -= _orderEventHandler;
                 if (_snapshotProvider != null)
                 {
                     _snapshotProvider.OnSettlement -= _settlementHandler;

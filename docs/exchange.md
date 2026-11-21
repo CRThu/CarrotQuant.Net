@@ -80,7 +80,7 @@ public interface IExchangeGateway
 
     // 成交明细回报与订单状态跃迁事件
     event Action<ExecutionReport> OnExecution;
-    event Action<string, OrderStatus> OnOrderStateChanged;
+    event Action<OrderStateReport> OnOrderStateChanged;
 }
 ```
 

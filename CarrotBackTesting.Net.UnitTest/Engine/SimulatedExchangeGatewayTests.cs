@@ -68,10 +68,10 @@ public class SimulatedExchangeGatewayTests
 
         string? stateOrderId = null;
         OrderStatus? stateStatus = null;
-        gateway.OnOrderStateChanged += (id, s) =>
+        gateway.OnOrderStateChanged += rep =>
         {
-            stateOrderId = id;
-            stateStatus = s;
+            stateOrderId = rep.OrderId;
+            stateStatus = rep.Status;
         };
 
         // 市价 10.0，提交 9.0 买单 -> 未触碰，进入挂单簿
@@ -136,7 +136,7 @@ public class SimulatedExchangeGatewayTests
         var gateway = new SimulatedExchangeGateway(config);
 
         bool fired = false;
-        gateway.OnOrderStateChanged += (_, _) => fired = true;
+        gateway.OnOrderStateChanged += _ => fired = true;
 
         gateway.CancelOrder("non-existent-order");
         Assert.IsFalse(fired);
@@ -206,9 +206,14 @@ public class SimulatedExchangeGatewayTests
         gateway.SendOrder("limit-reject", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
 
         OrderStatus? finalStatus = null;
-        gateway.OnOrderStateChanged += (id, s) =>
+        string? rejectReason = null;
+        gateway.OnOrderStateChanged += rep =>
         {
-            if (id == "limit-reject") finalStatus = s;
+            if (rep.OrderId == "limit-reject")
+            {
+                finalStatus = rep.Status;
+                rejectReason = rep.Reason;
+            }
         };
         bool executed = false;
         gateway.OnExecution += _ => executed = true;
@@ -237,9 +242,9 @@ public class SimulatedExchangeGatewayTests
         gateway.SendOrder("limit-vol-exceeded", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 200m));
 
         OrderStatus? finalStatus = null;
-        gateway.OnOrderStateChanged += (id, s) =>
+        gateway.OnOrderStateChanged += rep =>
         {
-            if (id == "limit-vol-exceeded") finalStatus = s;
+            if (rep.OrderId == "limit-vol-exceeded") finalStatus = rep.Status;
         };
 
         // 当前 Bar 成交量 1000 股，10% 上限为 100 股 < 200 股

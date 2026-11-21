@@ -91,7 +91,7 @@ namespace CarrotBacktesting.NET.Engine
         /// <inheritdoc />
         public void RecordSignal(string symbol, double signalValue, string? signalGroup = null, string? reason = null)
         {
-            Recorder?.RecordSignal(new SignalRecord(CurrentTime, symbol, signalValue, signalGroup ?? string.Empty, reason ?? string.Empty));
+            Recorder?.Record(new SignalRecord(CurrentTime, symbol, signalValue, signalGroup ?? string.Empty, reason ?? string.Empty));
         }
 
         /// <inheritdoc />

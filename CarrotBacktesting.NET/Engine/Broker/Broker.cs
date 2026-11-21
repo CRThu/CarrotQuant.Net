@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
@@ -32,6 +33,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     public event Action<Trade>? OnTradeClosed;
     public event Action<SettlementRecord>? OnSettlement;
     public event Action<PositionEvent>? OnPositionChanged;
+    public event Action<OrderEvent>? OnOrderEvent;
 
     /// <summary>
     /// 显式实现 <see cref="IExchangeGatewayProvider"/>，封闭外部对原始网关的直接访问，避免策略绕过两阶段预冻结。
@@ -292,13 +294,48 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
 
         if (!freezeOk)
         {
+            var rejectTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
+            var rejectEvt = new OrderEvent(
+                rejectTime,
+                orderId,
+                request.Symbol,
+                request.Direction,
+                request.Type,
+                request.Price,
+                request.Quantity,
+                OrderEventType.Rejected,
+                OrderStatus.Rejected,
+                FillQuantity: 0m,
+                CumQuantity: 0m,
+                LeavesQuantity: request.Quantity,
+                Reason: rejectReason ?? "Pre-freeze check failed.",
+                OrderTag: request.OrderTag);
+
             // 锁外派发拒绝事件
             OnOrderStatusChanged?.Invoke(orderId, OrderStatus.Rejected);
+            OnOrderEvent?.Invoke(rejectEvt);
             return orderId;
         }
 
+        var submitTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
+        var submitEvt = new OrderEvent(
+            submitTime,
+            orderId,
+            request.Symbol,
+            request.Direction,
+            request.Type,
+            request.Price,
+            request.Quantity,
+            OrderEventType.Submitted,
+            OrderStatus.Submitted,
+            FillQuantity: 0m,
+            CumQuantity: 0m,
+            LeavesQuantity: request.Quantity,
+            OrderTag: request.OrderTag);
+
         // 锁外派发已提交事件并向网关发送订单（杜绝死锁）
         OnOrderStatusChanged?.Invoke(orderId, OrderStatus.Submitted);
+        OnOrderEvent?.Invoke(submitEvt);
         _gateway.SendOrder(orderId, request);
 
         return orderId;
@@ -351,10 +388,13 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     {
         ArgumentNullException.ThrowIfNull(positions);
         List<string>? canceledOrderIds = null;
+        List<OrderEvent>? canceledEvents = null;
 
         lock (_syncLock)
         {
             _ledger.SyncState(cash, positions);
+
+            var eventTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
             // 将所有未终结在途订单标记为 Canceled
             foreach (var kvp in _orders)
@@ -367,6 +407,23 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                     ord.RemainingFrozenPosition = 0m;
                     canceledOrderIds ??= new List<string>();
                     canceledOrderIds.Add(ord.OrderId);
+
+                    canceledEvents ??= new List<OrderEvent>();
+                    canceledEvents.Add(new OrderEvent(
+                        eventTime,
+                        ord.OrderId,
+                        ord.Request.Symbol,
+                        ord.Request.Direction,
+                        ord.Request.Type,
+                        ord.Request.Price,
+                        ord.Request.Quantity,
+                        OrderEventType.Canceled,
+                        OrderStatus.Canceled,
+                        FillQuantity: 0m,
+                        CumQuantity: ord.FilledQuantity,
+                        LeavesQuantity: Math.Max(0m, ord.Request.Quantity - ord.FilledQuantity),
+                        Reason: "Order canceled due to account state synchronization.",
+                        OrderTag: ord.Request.OrderTag));
                 }
             }
         }
@@ -376,6 +433,13 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             for (int i = 0; i < canceledOrderIds.Count; i++)
             {
                 OnOrderStatusChanged?.Invoke(canceledOrderIds[i], OrderStatus.Canceled);
+            }
+        }
+        if (canceledEvents != null)
+        {
+            for (int i = 0; i < canceledEvents.Count; i++)
+            {
+                OnOrderEvent?.Invoke(canceledEvents[i]);
             }
         }
     }
@@ -388,6 +452,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         TradeExecutionDetails? details = null;
         Trade? closedTrade = null;
         SettlementRecord? settlement = null;
+        OrderEvent? orderEvt = null;
 
         lock (_syncLock)
         {
@@ -395,6 +460,21 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             {
                 // 未知订单或外部自成交，以无订单模式直接落账
                 return;
+            }
+
+            // 若外部回报未显式填充分笔进度凭证，依据订单当前成交状态自适应推导补全
+            if (report.CumQuantity == 0m && report.LeavesQuantity == 0m)
+            {
+                decimal cum = ord.FilledQuantity + report.FillQuantity;
+                decimal leaves = Math.Max(0m, ord.Request.Quantity - cum);
+                report = report with { CumQuantity = cum, LeavesQuantity = leaves };
+            }
+
+            // 校验分笔成交不变量（CumQty + LeavesQty == OrderQty），硬断言杜绝生产 Release 下穿透
+            if (report.CumQuantity + report.LeavesQuantity != ord.Request.Quantity)
+            {
+                throw new InvalidOperationException(
+                    $"分笔成交守恒不变量被破坏: 订单 '{report.OrderId}' CumQuantity({report.CumQuantity}) + LeavesQuantity({report.LeavesQuantity}) != OrderQuantity({ord.Request.Quantity})");
             }
 
             // 按先进先出顺序，优先结转平仓额度，剩余部分作为新开仓额度
@@ -454,13 +534,49 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                 out closedTrade,
                 out settlement);
 
+            // 全额成交时吸收释放浮点尾差（解决循环小数除法导致的微小预冻结残留）
+            if (report.LeavesQuantity == 0m || ord.FilledQuantity >= ord.Request.Quantity)
+            {
+                if (ord.RemainingFrozenCash > 0.0)
+                {
+                    _ledger.Unfreeze(ord.Request.Symbol, ord.RemainingFrozenCash, 0m, ord.Request.IsBuy);
+                    ord.RemainingFrozenCash = 0.0;
+                }
+                if (ord.RemainingFrozenPosition > 0m)
+                {
+                    _ledger.Unfreeze(ord.Request.Symbol, 0.0, ord.RemainingFrozenPosition, ord.Request.IsBuy);
+                    ord.RemainingFrozenPosition = 0m;
+                }
+            }
+
             details = new TradeExecutionDetails(report, ord.Request.Direction, ord.Multiplier, ord.Request.OrderTag);
+
+            orderEvt = new OrderEvent(
+                report.Time,
+                report.OrderId,
+                report.Symbol,
+                ord.Request.Direction,
+                ord.Request.Type,
+                ord.Request.Price,
+                ord.Request.Quantity,
+                OrderEventType.Fill,
+                newStatus,
+                FillQuantity: report.FillQuantity,
+                CumQuantity: ord.FilledQuantity,
+                LeavesQuantity: report.LeavesQuantity,
+                FillPrice: report.FillPrice,
+                Role: report.Role,
+                OrderTag: ord.Request.OrderTag);
         }
 
         // 锁外派发状态、成交与持仓变更事件（Open Calls）
         if (shouldDispatchState)
         {
             OnOrderStatusChanged?.Invoke(report.OrderId, newStatus);
+        }
+        if (orderEvt != null)
+        {
+            OnOrderEvent?.Invoke(orderEvt);
         }
         if (details.HasValue)
         {
@@ -481,37 +597,89 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         }
     }
 
-    private void HandleOrderStateChanged(string orderId, OrderStatus status)
+    private void HandleOrderStateChanged(OrderStateReport report)
     {
+        ArgumentNullException.ThrowIfNull(report);
         bool shouldDispatch = false;
+        OrderEvent? orderEvt = null;
 
         lock (_syncLock)
         {
-            if (_orders.TryGetValue(orderId, out var ord))
+            if (_orders.TryGetValue(report.OrderId, out var ord))
             {
-                // 仅在撤单或拒绝时，释放订单当前剩余的预冻结额度
-                if (status == OrderStatus.Canceled || status == OrderStatus.Rejected)
+                // 终态保护：一旦订单已处于终结状态，严禁任何逆向状态跃迁或重复终结
+                if (ord.Status == OrderStatus.Filled ||
+                    ord.Status == OrderStatus.Canceled ||
+                    ord.Status == OrderStatus.Rejected)
                 {
-                    if (ord.Status != OrderStatus.Filled && ord.Status != OrderStatus.Canceled && ord.Status != OrderStatus.Rejected)
-                    {
-                        ord.Status = status;
-                        _ledger.Unfreeze(ord.Request.Symbol, ord.RemainingFrozenCash, ord.RemainingFrozenPosition, ord.Request.IsBuy);
-                        ord.RemainingFrozenCash = 0.0;
-                        ord.RemainingFrozenPosition = 0m;
-                        shouldDispatch = true;
-                    }
+                    return;
                 }
-                else if (ord.Status != OrderStatus.Filled)
+
+                // 幂等保护：若状态未发生改变，忽略重复通知
+                if (ord.Status == report.Status)
                 {
-                    ord.Status = status;
-                    shouldDispatch = true;
+                    return;
                 }
+
+                if (!string.IsNullOrWhiteSpace(report.Reason))
+                {
+                    ord.RejectReason = report.Reason;
+                }
+
+                ord.Status = report.Status;
+
+                // 终结性状态（撤单、拒绝）释放未成交的剩余预冻结资产
+                if (report.Status == OrderStatus.Canceled || report.Status == OrderStatus.Rejected)
+                {
+                    _ledger.Unfreeze(ord.Request.Symbol, ord.RemainingFrozenCash, ord.RemainingFrozenPosition, ord.Request.IsBuy);
+                    ord.RemainingFrozenCash = 0.0;
+                    ord.RemainingFrozenPosition = 0m;
+                }
+
+                shouldDispatch = true;
+
+                var eventType = report.Status switch
+                {
+                    OrderStatus.Canceled => OrderEventType.Canceled,
+                    OrderStatus.Rejected => OrderEventType.Rejected,
+                    OrderStatus.Submitted => OrderEventType.Submitted,
+                    _ => throw new ArgumentOutOfRangeException(nameof(report), report.Status, $"不受支持的网关订单生命周期状态变更: {report.Status}")
+                };
+
+                // 优先使用网关权威回报的物理时间，缺失时使用当前时间步
+                var eventTime = report.Time != MarketTime.MinValue
+                    ? report.Time
+                    : (_currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch);
+
+                decimal leavesQty = report.LeavesQuantity > 0m
+                    ? report.LeavesQuantity
+                    : Math.Max(0m, ord.Request.Quantity - ord.FilledQuantity);
+
+                orderEvt = new OrderEvent(
+                    eventTime,
+                    report.OrderId,
+                    ord.Request.Symbol,
+                    ord.Request.Direction,
+                    ord.Request.Type,
+                    ord.Request.Price,
+                    ord.Request.Quantity,
+                    eventType,
+                    report.Status,
+                    FillQuantity: 0m,
+                    CumQuantity: ord.FilledQuantity,
+                    LeavesQuantity: leavesQty,
+                    Reason: !string.IsNullOrWhiteSpace(report.Reason) ? report.Reason : (ord.RejectReason ?? string.Empty),
+                    OrderTag: ord.Request.OrderTag);
             }
         }
 
         if (shouldDispatch)
         {
-            OnOrderStatusChanged?.Invoke(orderId, status);
+            OnOrderStatusChanged?.Invoke(report.OrderId, report.Status);
+            if (orderEvt != null)
+            {
+                OnOrderEvent?.Invoke(orderEvt);
+            }
         }
     }
 

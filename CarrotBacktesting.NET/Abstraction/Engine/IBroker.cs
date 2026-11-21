@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using CarrotBacktesting.NET.Abstraction.Analysis;
+
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 /// <summary>
@@ -132,6 +136,11 @@ public interface IBroker
     /// 当账户持仓数量发生变化时触发。
     /// </summary>
     event Action<PositionEvent>? OnPositionChanged;
+
+    /// <summary>
+    /// 当订单生命周期动作事件发生时触发（包含提交排队、成交流水、撤单确认与拒绝拦截）。
+    /// </summary>
+    event Action<OrderEvent>? OnOrderEvent;
 }
 
 /// <summary>

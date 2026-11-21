@@ -28,8 +28,8 @@
 graph TD
     subgraph Phase1 [第一阶段：运行期流水记账 (Hot Path - 低开销流水)]
         Engine[BacktestingEngine / LivingEngine]
-        Recorder[TradingRecorder<br>纯事实流水沉淀 / ICheckpointable]
-        Engine -->|RecordStep / RecordSettlement / RecordClosedTrade| Recorder
+        Recorder[TradingRecorder<br>纯事实流水沉淀 / ICheckpointable&lt;TradingRecorderSnapshot&gt;]
+        Engine -->|Record(EquityPoint) / Record(Trade) / Record(OrderEvent)| Recorder
     end
 
     Recorder -->|GetResult| Facts[TradingResult<br>不可变单一事实来源 SSOT]

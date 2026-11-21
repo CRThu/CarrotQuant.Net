@@ -163,6 +163,7 @@ internal sealed class SimulatedOrder
     public decimal FrozenPosition { get; set; }
     public decimal CloseQuantity { get; set; }
     public decimal OpenQuantity { get; set; }
+    public decimal FilledQuantity { get; set; }
     public double Multiplier { get; set; }
     public double MarginRate { get; set; }
     public int SettleDays { get; set; }

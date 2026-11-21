@@ -799,7 +799,7 @@ public interface IExchangeGateway
     void CancelOrder(string orderId);
 
     event Action<ExecutionReport> OnExecution;
-    event Action<string, OrderStatus> OnOrderStateChanged;
+    event Action<OrderStateReport> OnOrderStateChanged;
 }
 
 /// <summary>
@@ -1037,20 +1037,21 @@ public class MovingAverageCrossStrategy : IStrategy
 ## 九、交易事实沉淀与分析层 (Analysis & Recorder)
 
 ### 1. ITradingRecorder
-回测与实盘量化事实纯接收记录器，实现 `ITradingRecorder` 与 `ICheckpointable`。
+回测与实盘量化事实纯接收记录器，实现 `ITradingRecorder` 与 `ICheckpointable<TradingRecorderSnapshot>`。
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Analysis;
 
 public interface ITradingRecorder
 {
-    void RecordStep(EquityPoint point);
-    void RecordDailySnapshot(DailySnapshot snapshot);
-    void RecordSettlement(SettlementRecord settlement);
-    void RecordClosedTrade(Trade trade);
-    void RecordSignal(SignalRecord signal);
+    void Record(EquityPoint point);
+    void Record(DailySnapshot snapshot);
+    void Record(SettlementRecord settlement);
+    void Record(Trade trade);
+    void Record(SignalRecord signal);
+    void Record(OrderEvent orderEvent);
+
     TradingResult GetResult(IReadOnlyList<PositionSnapshot> endingPositions);
-    void Reset();
 }
 ```
 

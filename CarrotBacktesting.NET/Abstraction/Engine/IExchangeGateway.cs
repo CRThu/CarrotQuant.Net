@@ -28,6 +28,7 @@ public interface IExchangeGateway
 
     /// <summary>
     /// 当订单的生命周期状态发生变化时触发（如：已提交排队、被拒绝、已撤销）。
+    /// 包含权威的状态变更报告，携带时间戳、原因、剩余排队量等完整凭证。
     /// </summary>
-    event Action<string, OrderStatus> OnOrderStateChanged;
+    event Action<OrderStateReport> OnOrderStateChanged;
 }

@@ -36,7 +36,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     private IReadOnlyMatrix2D<double>? _amountMatrix;
 
     public event Action<ExecutionReport>? OnExecution;
-    public event Action<string, OrderStatus>? OnOrderStateChanged;
+    public event Action<OrderStateReport>? OnOrderStateChanged;
 
     public SimulatedExchangeGateway(BrokerConfig config, IFieldRegistry? fields = null)
     {
@@ -53,6 +53,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
         ExecutionReport? fillReport = null;
         OrderStatus? stateChanged = null;
+        string? stateReason = null;
 
         lock (_syncLock)
         {
@@ -66,6 +67,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 if (double.IsNaN(rawClose) || rawClose <= 0.0 || double.IsInfinity(rawClose))
                 {
                     stateChanged = OrderStatus.Rejected;
+                    stateReason = $"Symbol '{request.Symbol}' is suspended, unlisted, or lacks valid market data.";
                 }
             }
 
@@ -102,7 +104,10 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                         matchResult.FillPrice,
                         matchResult.FillQuantity,
                         matchResult.Commission,
-                        tradeTime);
+                        tradeTime,
+                        CumQuantity: matchResult.FillQuantity,
+                        LeavesQuantity: 0m,
+                        Role: matchResult.Role);
                 }
                 else if (matchResult.IsPending)
                 {
@@ -119,6 +124,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 else if (matchResult.IsRejected)
                 {
                     stateChanged = OrderStatus.Rejected;
+                    stateReason = matchResult.RejectReason;
                 }
             }
         }
@@ -126,7 +132,16 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         // 严格在锁外派发物理回报事件
         if (stateChanged.HasValue)
         {
-            OnOrderStateChanged?.Invoke(orderId, stateChanged.Value);
+            decimal leaves = stateChanged.Value == OrderStatus.Submitted ? request.Quantity : 0m;
+            var stateReport = new OrderStateReport(
+                orderId,
+                stateChanged.Value,
+                _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch,
+                request.Symbol,
+                stateReason ?? string.Empty,
+                request.ClientOrderId,
+                LeavesQuantity: leaves);
+            OnOrderStateChanged?.Invoke(stateReport);
         }
         if (fillReport != null)
         {
@@ -139,16 +154,25 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
         bool removed;
+        SimulatedOrder? removedOrder;
 
         lock (_syncLock)
         {
-            removed = _orderBook.Remove(orderId, out _);
+            removed = _orderBook.Remove(orderId, out removedOrder);
         }
 
-        if (removed)
+        if (removed && removedOrder != null)
         {
-            // 锁外派发已撤销事件
-            OnOrderStateChanged?.Invoke(orderId, OrderStatus.Canceled);
+            var eventTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
+            var cancelReport = new OrderStateReport(
+                orderId,
+                OrderStatus.Canceled,
+                eventTime,
+                removedOrder.Request.Symbol,
+                "Order canceled by user request.",
+                removedOrder.Request.ClientOrderId,
+                LeavesQuantity: Math.Max(0m, removedOrder.Request.Quantity - removedOrder.FilledQuantity));
+            OnOrderStateChanged?.Invoke(cancelReport);
         }
     }
 
@@ -158,8 +182,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         ArgumentNullException.ThrowIfNull(timeseries);
 
         List<ExecutionReport>? fillReports = null;
-        List<string>? rejectedOrders = null;
-        List<string>? canceledOrders = null;
+        List<OrderStateReport>? stateReports = null;
 
         lock (_syncLock)
         {
@@ -174,10 +197,19 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 var dayOrders = _orderBook.CancelDayOrders();
                 if (dayOrders.Count > 0)
                 {
-                    canceledOrders = new List<string>(dayOrders.Count);
+                    stateReports = new List<OrderStateReport>(dayOrders.Count);
                     for (int i = 0; i < dayOrders.Count; i++)
                     {
-                        canceledOrders.Add(dayOrders[i].OrderId);
+                        var ord = dayOrders[i];
+                        decimal leaves = Math.Max(0m, ord.Request.Quantity - ord.FilledQuantity);
+                        stateReports.Add(new OrderStateReport(
+                            ord.OrderId,
+                            OrderStatus.Canceled,
+                            currentTime,
+                            ord.Request.Symbol,
+                            "Day order canceled on daily rollover.",
+                            ord.Request.ClientOrderId,
+                            leaves));
                     }
                 }
             }
@@ -223,13 +255,13 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     double amount = (colIndex >= 0 && _amountMatrix != null && currentIndex < _amountMatrix.RowCount) ? _amountMatrix[currentIndex, colIndex] : double.NaN;
 
                     BarSnapshot bar = new(open, high, low, marketPrice, volume, amount);
-                    MatchSymbolOrders(symbol, marketPrice, in bar, currentTime, ref fillReports, ref rejectedOrders);
+                    MatchSymbolOrders(symbol, marketPrice, in bar, currentTime, ref fillReports, ref stateReports);
                 }
             }
         }
 
         // 锁外派发成交回报、拒绝及跨日自动撤单事件
-        DispatchReports(fillReports, rejectedOrders, canceledOrders);
+        DispatchReports(fillReports, stateReports);
     }
 
     /// <inheritdoc />
@@ -280,7 +312,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         }
 
         List<ExecutionReport>? fillReports = null;
-        List<string>? rejectedOrders = null;
+        List<OrderStateReport>? stateReports = null;
 
         lock (_syncLock)
         {
@@ -300,11 +332,11 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
             }
 
             BarSnapshot snapshot = BarSnapshot.FromDataRow(bar, price);
-            MatchSymbolOrders(symbol, price, in snapshot, tradeTime, ref fillReports, ref rejectedOrders);
+            MatchSymbolOrders(symbol, price, in snapshot, tradeTime, ref fillReports, ref stateReports);
         }
 
         // 锁外派发成交回报与拒绝事件
-        DispatchReports(fillReports, rejectedOrders);
+        DispatchReports(fillReports, stateReports);
     }
 
     private void MatchSymbolOrders(
@@ -313,7 +345,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         in BarSnapshot bar,
         MarketTime tradeTime,
         ref List<ExecutionReport>? fillReports,
-        ref List<string>? rejectedOrders)
+        ref List<OrderStateReport>? stateReports)
     {
         var pendingList = _orderBook.GetPendingOrders(symbol);
         if (pendingList == null || pendingList.Count == 0)
@@ -330,7 +362,13 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
             if (matchResult.IsFilled)
             {
-                _orderBook.Remove(order.OrderId, out _);
+                order.FilledQuantity += matchResult.FillQuantity;
+                decimal leavesQuantity = Math.Max(0m, order.Request.Quantity - order.FilledQuantity);
+                if (leavesQuantity == 0m)
+                {
+                    _orderBook.Remove(order.OrderId, out _);
+                }
+
                 fillReports ??= new List<ExecutionReport>();
                 fillReports.Add(new ExecutionReport(
                     order.OrderId,
@@ -338,18 +376,31 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     matchResult.FillPrice,
                     matchResult.FillQuantity,
                     matchResult.Commission,
-                    tradeTime));
+                    tradeTime,
+                    CumQuantity: order.FilledQuantity,
+                    LeavesQuantity: leavesQuantity,
+                    Role: matchResult.Role));
             }
             else if (matchResult.IsRejected)
             {
                 _orderBook.Remove(order.OrderId, out _);
-                rejectedOrders ??= new List<string>();
-                rejectedOrders.Add(order.OrderId);
+                decimal leavesQuantity = Math.Max(0m, order.Request.Quantity - order.FilledQuantity);
+                stateReports ??= new List<OrderStateReport>();
+                stateReports.Add(new OrderStateReport(
+                    order.OrderId,
+                    OrderStatus.Rejected,
+                    tradeTime,
+                    order.Request.Symbol,
+                    matchResult.RejectReason ?? "Order rejected by matching engine.",
+                    order.Request.ClientOrderId,
+                    leavesQuantity));
             }
         }
     }
 
-    private void DispatchReports(List<ExecutionReport>? fillReports, List<string>? rejectedOrders, List<string>? canceledOrders = null)
+    private void DispatchReports(
+        List<ExecutionReport>? fillReports,
+        List<OrderStateReport>? stateReports)
     {
         if (fillReports != null)
         {
@@ -358,18 +409,11 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 OnExecution?.Invoke(fillReports[i]);
             }
         }
-        if (rejectedOrders != null)
+        if (stateReports != null)
         {
-            for (int i = 0; i < rejectedOrders.Count; i++)
+            for (int i = 0; i < stateReports.Count; i++)
             {
-                OnOrderStateChanged?.Invoke(rejectedOrders[i], OrderStatus.Rejected);
-            }
-        }
-        if (canceledOrders != null)
-        {
-            for (int i = 0; i < canceledOrders.Count; i++)
-            {
-                OnOrderStateChanged?.Invoke(canceledOrders[i], OrderStatus.Canceled);
+                OnOrderStateChanged?.Invoke(stateReports[i]);
             }
         }
     }

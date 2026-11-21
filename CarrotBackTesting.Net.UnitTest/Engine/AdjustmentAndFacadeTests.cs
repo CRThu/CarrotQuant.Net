@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using CarrotBacktesting.NET.Abstraction.Data;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Indicators;
 using CarrotBacktesting.NET.Abstraction.Strategy;
@@ -1084,6 +1085,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public event Action<string, OrderStatus>? OnOrderStatusChanged;
             public event Action<ExecutionReport>? OnTrade;
             public event Action<PositionEvent>? OnPositionChanged;
+            public event Action<OrderEvent>? OnOrderEvent;
 #pragma warning restore CS0067
         }
 

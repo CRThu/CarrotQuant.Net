@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using CarrotBacktesting.NET.Abstraction.Data;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Engine;
@@ -29,6 +30,7 @@ public class StrategyPipelineTests
         public event Action<string, OrderStatus>? OnOrderStatusChanged;
         public event Action<ExecutionReport>? OnTrade;
         public event Action<PositionEvent>? OnPositionChanged;
+        public event Action<OrderEvent>? OnOrderEvent;
 #pragma warning restore CS0067
     }
 
@@ -601,6 +603,7 @@ public class StrategyPipelineTests
         // 1. 从字符串代码编译
         const string inlineCode = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 public class InlineStrategy : IStrategy {
     public string Name => ""InlineStrategy"";
@@ -615,6 +618,7 @@ public class InlineStrategy : IStrategy {
         var tempFile = Path.Combine(Path.GetTempPath(), $"SourceStrategy_{Guid.NewGuid():N}.cs");
         const string fileCode = @"
 using CarrotBacktesting.NET.Abstraction.Strategy;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Engine;
 public class FileStrategy : IStrategy {
     public string Name => ""FileStrategy"";

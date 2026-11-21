@@ -334,10 +334,12 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             {
                 pos.AvailableQuantity += unfreezePosition;
             }
-            else
+            else if (pos.TotalQuantity < 0m)
             {
+                // 空头持仓以负数记录，解冻平空持仓时反向扣回
                 pos.AvailableQuantity -= unfreezePosition;
             }
+            // 当 TotalQuantity == 0m 时说明持仓已被平尽，可用持仓保持归零，严禁反向冲减出负持仓
             _positionsSnapshot = null;
         }
     }

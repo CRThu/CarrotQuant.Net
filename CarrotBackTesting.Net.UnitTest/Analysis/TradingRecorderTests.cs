@@ -224,22 +224,28 @@ public class TradingRecorderTests
 
         // 1. 记录包含未实现收益与保证金占用率的步进点
         var p1 = new EquityPoint(t0, 100000.0, 80000.0, 0.0, 20000.0, 20000.0, 0.0);
-        recorder.RecordStep(p1);
+        recorder.Record(p1);
         Assert.AreEqual(0.2, p1.MarginRatio, 1e-4);
 
         // 2. 记录交割单与已平仓单
         var settlement = new SettlementRecord(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 98995.0, "Alpha");
-        recorder.RecordSettlement(settlement);
+        recorder.Record(settlement);
 
         var trade = new Trade("sh.600000", TradeSide.Long, t0, 10.0, t0.AddMinutes(5), 12.0, 100m, 1.0, 195.0, 0.195, 5.0, 0.0, 5, "Alpha", "TakeProfit");
-        recorder.RecordClosedTrade(trade);
+        recorder.Record(trade);
 
         // 3. 记录日终快照
         var pos = new PositionSnapshot("sz.000001", TradeSide.Long, 200m, 200m, 0m, 10.0, 10.5, 1.0, 2100.0, 100.0, 1.0, 2000.0, 0.02);
-        recorder.RecordDailySnapshot(new DailySnapshot(t0.Date, 101000.0, 98900.0, 0.0, 2000.0, 2100.0, 100.0, new[] { pos }));
+        recorder.Record(new DailySnapshot(t0.Date, 101000.0, 98900.0, 0.0, 2000.0, 2100.0, 100.0, new[] { pos }));
 
-        // 4. 记录策略信号
-        recorder.RecordSignal(new SignalRecord(t0, "sh.600000", 0.95, "AlphaGroup", "GoldenCross"));
+        // 4. 记录策略信号与订单动作事件
+        recorder.Record(new SignalRecord(t0, "sh.600000", 0.95, "AlphaGroup", "GoldenCross"));
+        var ordEvt = new OrderEvent(
+            t0, "ord-1", "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
+            OrderEventType.Fill, OrderStatus.Filled,
+            FillQuantity: 100m, CumQuantity: 100m, LeavesQuantity: 0m,
+            FillPrice: 10.0, Role: LiquidityRole.Taker, Reason: "", OrderTag: "Alpha");
+        recorder.Record(ordEvt);
 
         // 5. 产出最终聚合结果
         var result = recorder.GetResult(new[] { pos });
@@ -249,6 +255,11 @@ public class TradingRecorderTests
         Assert.AreEqual(1, result.EquityCurve.Count);
         Assert.AreEqual(1, result.DailySnapshots.Count);
         Assert.AreEqual(1, result.Signals.Count);
+        Assert.AreEqual(1, result.OrderEvents.Count);
+        Assert.AreEqual("ord-1", result.OrderEvents[0].OrderId);
+        Assert.AreEqual(LiquidityRole.Taker, result.OrderEvents[0].Role);
+        Assert.AreEqual(1, result.OrderEvents.Count);
+        Assert.AreEqual(LiquidityRole.Taker, result.OrderEvents[0].Role);
         Assert.AreEqual(1, result.OpenPositions.Count);
         Assert.AreEqual(100.0, result.OpenPositions[0].UnrealizedPnL);
         Assert.AreEqual("ord-1", result.Settlements[0].OrderId);
@@ -260,6 +271,7 @@ public class TradingRecorderTests
         Assert.AreEqual(0, emptyResult.Settlements.Count);
         Assert.AreEqual(0, emptyResult.ClosedTrades.Count);
         Assert.AreEqual(0, emptyResult.EquityCurve.Count);
+        Assert.AreEqual(0, emptyResult.OrderEvents.Count);
     }
 
     [TestMethod]
@@ -269,30 +281,37 @@ public class TradingRecorderTests
         var t0 = new DateTime(2024, 1, 2, 9, 30, 0, DateTimeKind.Utc);
 
         // 1. 记录 2 个时间步净值点
-        recorder.RecordStep(new EquityPoint(t0, 100000.0, 100000.0, 0.0, 0.0, 0.0, 0.0));
-        recorder.RecordStep(new EquityPoint(t0.AddMinutes(1), 102000.0, 80000.0, 0.0, 20000.0, 22000.0, 2000.0));
+        recorder.Record(new EquityPoint(t0, 100000.0, 100000.0, 0.0, 0.0, 0.0, 0.0));
+        recorder.Record(new EquityPoint(t0.AddMinutes(1), 102000.0, 80000.0, 0.0, 20000.0, 22000.0, 2000.0));
 
         // 2. 记录交割单与平仓单
-        recorder.RecordSettlement(new SettlementRecord(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 98995.0, "Buy1"));
-        recorder.RecordSettlement(new SettlementRecord(t0.AddMinutes(2), "sh.600000", "ord-2", OrderDirection.Sell, 12.0, 100m, 1200.0, 6.0, 194.0, 100189.0, "Sell1"));
+        recorder.Record(new SettlementRecord(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 98995.0, "Buy1"));
+        recorder.Record(new SettlementRecord(t0.AddMinutes(2), "sh.600000", "ord-2", OrderDirection.Sell, 12.0, 100m, 1200.0, 6.0, 194.0, 100189.0, "Sell1"));
 
-        recorder.RecordClosedTrade(new Trade("sh.600000", TradeSide.Long, t0, 10.0, t0.AddMinutes(2), 12.0, 100m, 1.0, 194.0, 0.194, 6.0, 0.0, 2, "Buy1", "Sell1"));
+        recorder.Record(new Trade("sh.600000", TradeSide.Long, t0, 10.0, t0.AddMinutes(2), 12.0, 100m, 1.0, 194.0, 0.194, 6.0, 0.0, 2, "Buy1", "Sell1"));
 
         // 3. 记录快照
         var pos = new PositionSnapshot("sz.000001", TradeSide.Long, 500m, 500m, 0m, 20.0, 21.0, 1.0, 10500.0, 500.0, 1.0, 10000.0, 0.1);
-        recorder.RecordDailySnapshot(new DailySnapshot(t0.Date, 102000.0, 91500.0, 0.0, 10000.0, 10500.0, 500.0, new[] { pos }));
+        recorder.Record(new DailySnapshot(t0.Date, 102000.0, 91500.0, 0.0, 10000.0, 10500.0, 500.0, new[] { pos }));
 
-        // 4. 记录信号
-        recorder.RecordSignal(new SignalRecord(t0, "sh.600000", 0.99, "Alpha", "StrongBuy"));
+        // 4. 记录信号与订单动作事件
+        recorder.Record(new SignalRecord(t0, "sh.600000", 0.99, "Alpha", "StrongBuy"));
+        recorder.Record(new OrderEvent(
+            t0, "ord-1", "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
+            OrderEventType.Fill, OrderStatus.Filled,
+            FillQuantity: 100m, CumQuantity: 100m, LeavesQuantity: 0m,
+            FillPrice: 10.0, Role: LiquidityRole.Taker, Reason: "", OrderTag: "Buy1"));
 
-        // 5. 保存检查点
-        byte[] checkpoint = recorder.SaveCheckpoint();
+        // 5. 保存强类型快照与通用检查点字节持久化
+        var snapshot = recorder.SaveState();
+        Assert.IsNotNull(snapshot);
+        byte[] checkpoint = recorder.ToJsonBytes();
         Assert.IsNotNull(checkpoint);
         Assert.IsTrue(checkpoint.Length > 64);
 
-        // 6. 恢复至新记录器实例
+        // 6. 恢复至新记录器实例（验证通用 ToJsonBytes / RestoreFromJsonBytes 往返无损性）
         var restoredRecorder = new TradingRecorder();
-        restoredRecorder.RestoreCheckpoint(checkpoint);
+        restoredRecorder.RestoreFromJsonBytes(checkpoint);
 
         // 验证已恢复的历史状态
         var result = restoredRecorder.GetResult(new[] { pos });
@@ -301,10 +320,56 @@ public class TradingRecorderTests
         Assert.AreEqual(1, result.ClosedTrades.Count);
         Assert.AreEqual(1, result.DailySnapshots.Count);
         Assert.AreEqual(1, result.Signals.Count);
+        Assert.AreEqual(1, result.OrderEvents.Count);
+        Assert.AreEqual("ord-1", result.OrderEvents[0].OrderId);
+        Assert.AreEqual(LiquidityRole.Taker, result.OrderEvents[0].Role);
         Assert.AreEqual("ord-1", result.Settlements[0].OrderId);
         Assert.AreEqual("ord-2", result.Settlements[1].OrderId);
+
+        // 7. 验证纯内存快照直接恢复（ICheckpointable<TradingRecorderSnapshot>）
+        var memoryRestoredRecorder = new TradingRecorder();
+        memoryRestoredRecorder.RestoreState(snapshot);
+        var memResult = memoryRestoredRecorder.GetResult(new[] { pos });
+        Assert.AreEqual(2, memResult.EquityCurve.Count);
+        Assert.AreEqual(1, memResult.OrderEvents.Count);
+        Assert.AreEqual("ord-1", memResult.OrderEvents[0].OrderId);
         Assert.AreEqual(194.0, result.ClosedTrades[0].RealizedPnL);
         Assert.AreEqual(500.0, result.DailySnapshots[0].UnrealizedPnL);
         Assert.AreEqual("StrongBuy", result.Signals[0].Reason);
+    }
+
+    [TestMethod]
+    public void TradingRecorder_SnapshotIsolation_ModificationsAfterSnapshotDoNotCorruptState()
+    {
+        // 验证 TradingRecorderSnapshot 的内存不可变性与深隔离：快照抓取后的新增记录不会反向污染既有快照
+        var recorder = new TradingRecorder();
+        var t0 = new DateTime(2025, 1, 2, 9, 30, 0, DateTimeKind.Utc);
+
+        recorder.Record(new SettlementRecord(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 99000.0, "Tag1"));
+        recorder.Record(new OrderEvent(t0, "ord-1", "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
+            OrderEventType.Submitted, OrderStatus.Submitted, 0m, 0m, 100m));
+
+        var snapshot1 = recorder.SaveState();
+        Assert.IsNotNull(snapshot1.Settlements);
+        Assert.IsNotNull(snapshot1.OrderEvents);
+        Assert.AreEqual(1, snapshot1.Settlements.Count);
+        Assert.AreEqual(1, snapshot1.OrderEvents.Count);
+
+        // 产生更多后续事件与交割
+        recorder.Record(new SettlementRecord(t0.AddMinutes(1), "sh.600000", "ord-2", OrderDirection.Sell, 12.0, 100m, 1200.0, 6.0, 195.0, 100195.0, "Tag2"));
+        recorder.Record(new OrderEvent(t0.AddMinutes(1), "ord-1", "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
+            OrderEventType.Fill, OrderStatus.Filled, 100m, 100m, 0m));
+
+        // 断言 snapshot1 保持物理不可变隔离
+        Assert.AreEqual(1, snapshot1.Settlements.Count);
+        Assert.AreEqual(1, snapshot1.OrderEvents.Count);
+
+        // 使用新实例恢复 snapshot1，断言仅包含初始快照的数据
+        var restored = new TradingRecorder();
+        restored.RestoreState(snapshot1);
+        var restoredResult = restored.GetResult(Array.Empty<PositionSnapshot>());
+        Assert.AreEqual(1, restoredResult.Settlements.Count);
+        Assert.AreEqual(1, restoredResult.OrderEvents.Count);
+        Assert.AreEqual(OrderEventType.Submitted, restoredResult.OrderEvents[0].EventType);
     }
 }

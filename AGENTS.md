@@ -288,7 +288,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | `ConsoleMonitor` | `Engine/ConsoleMonitor.cs` | 控制台采样节流监控与进度上报实现，实现 `IMonitor` 与 `IProgress<EngineProgress>` |
 | `EngineProgress` | `Abstraction/Engine/EngineProgress.cs` | 引擎任务进度数据传输对象（当前步、总步数、当前时间、执行速度） |
 | `ITradingRecorder` | `Abstraction/Analysis/ITradingRecorder.cs` | 交易事实记录器契约，管理交割单、平仓记录、未平仓持仓快照、资产曲线与信号打点 |
-| `TradingRecorder` | `Analysis/TradingRecorder.cs` | 纯事实记录器权威实现，热路径零额外撮合开销，实现 `ITradingRecorder` 与 `ICheckpointable` |
+| `TradingRecorder` | `Analysis/TradingRecorder.cs` | 纯事实记录器权威实现，热路径零额外撮合开销，实现 `ITradingRecorder` 与 `ICheckpointable<TradingRecorderSnapshot>` |
 | `TradingResult` | `Abstraction/Analysis/TradingResult.cs` | 综合交易结果模型，完整聚合交割单、平仓记录、期末在手持仓、步进资产曲线与每日快照 |
 | `IAnalysisEngine` | `Abstraction/Analysis/IAnalysisEngine.cs` | 绩效分析与评估调度契约，方法 `Analyze(result, options, timeseries)` |
 | `AnalysisEngine` | `Analysis/AnalysisEngine.cs` | 绩效分析调度引擎，统筹装配五大 Statistics，详见专门白皮书 [绩效分析与报表子系统 (docs/analysis.md)](docs/analysis.md) |
