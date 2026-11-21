@@ -404,9 +404,8 @@ public class TradingFinancialPipelineIntegrationTests
         // 为网关提供当前时间步的完整 Bar（包含 volume 字段供流动性核验）
         simExchange.OnMarketData(
             "SH.600000",
-            10.0,
             dates[0],
-            new DataRow("SH.600000", new[] { "10000.0", "10.0" }, new(StringComparer.OrdinalIgnoreCase) { { "volume", 0 }, { "close", 1 } }));
+            new BarSnapshot(close: 10.0, volume: 10000.0));
 
         var strategy = new ExcessiveVolumeStrategy();
         var pipeline = StrategyPipeline.Sequential().Add(strategy);
@@ -492,9 +491,8 @@ public class TradingFinancialPipelineIntegrationTests
         // 模拟当前 Bar 已封死一字涨停板
         simExchange.OnMarketData(
             "SH.600000",
-            10.0,
             dates[0],
-            new DataRow("SH.600000", new[] { "true", "10.0" }, new(StringComparer.OrdinalIgnoreCase) { { "is_limit_up", 0 }, { "close", 1 } }));
+            new BarSnapshot(close: 10.0));
 
         var strategy = new PriceLimitStrategy();
         var pipeline = StrategyPipeline.Sequential().Add(strategy);

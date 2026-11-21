@@ -110,6 +110,75 @@ public interface IBroker
     }
 
     /// <summary>
+    /// 便捷提交止损订单（默认以市价单形式发出，默认 TIF 为 GoodTilCanceled 跨日有效）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="stopPrice">止损触发价。</param>
+    /// <param name="quantity">委托数量。</param>
+    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（缺省强制为 GoodTilCanceled）。</param>
+    /// <returns>分配的唯一订单标识 ID。</returns>
+    string StopLoss(string symbol, double stopPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    {
+        var pos = GetPosition(symbol);
+        var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
+        {
+            ClientOrderId = clientOrderId ?? string.Empty,
+            StopPrice = stopPrice
+        });
+    }
+
+    /// <summary>
+    /// 便捷提交止盈订单（默认以市价单形式发出，默认 TIF 为 GoodTilCanceled 跨日有效）。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="targetPrice">止盈触发价。</param>
+    /// <param name="quantity">委托数量。</param>
+    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（缺省强制为 GoodTilCanceled）。</param>
+    /// <returns>分配的唯一订单标识 ID。</returns>
+    string TakeProfit(string symbol, double targetPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    {
+        var pos = GetPosition(symbol);
+        var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
+        {
+            ClientOrderId = clientOrderId ?? string.Empty,
+            StopPrice = targetPrice
+        });
+    }
+
+    /// <summary>
+    /// 便捷提交成对互斥括号订单（Bracket / OCO）：同时挂出止损单与止盈单，单边触发后联动注销另一方。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="quantity">委托数量。</param>
+    /// <param name="stopPrice">止损触发价。</param>
+    /// <param name="takeProfitPrice">止盈触发价。</param>
+    /// <param name="orderTag">自定义订单业务标签（可选）。</param>
+    /// <param name="timeInForce">订单时效性（缺省强制为 GoodTilCanceled）。</param>
+    /// <returns>分配的止损单 ID 与止盈单 ID 二元组。</returns>
+    (string StopOrderId, string TakeProfitOrderId) Bracket(
+        string symbol,
+        decimal quantity,
+        double stopPrice,
+        double takeProfitPrice,
+        string orderTag = "",
+        TimeInForce? timeInForce = null)
+    {
+        var tif = timeInForce ?? TimeInForce.GoodTilCanceled;
+        var pos = GetPosition(symbol);
+        var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+
+        var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif) { StopPrice = stopPrice };
+        var tpReq = new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, tif) { StopPrice = takeProfitPrice };
+        return (SubmitOrder(stopReq), SubmitOrder(tpReq));
+    }
+
+    /// <summary>
     /// 撤销指定的订单。
     /// </summary>
     /// <param name="orderId">要撤销的订单 ID。</param>

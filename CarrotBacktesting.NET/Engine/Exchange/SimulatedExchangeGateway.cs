@@ -19,8 +19,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     private readonly IFieldRegistry? _fields;
     private readonly OrderBook _orderBook = new();
     private readonly MatchingEngine _matcher;
-    private readonly Dictionary<string, double> _marketPrices = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, IDataRow> _currentBars = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BarSnapshot> _snapshots = new(StringComparer.Ordinal);
     private readonly object _syncLock = new();
 
     private MarketTime _currentTime = MarketTime.MinValue;
@@ -61,8 +60,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         {
             // 停牌 / 未上市标的守卫拦截：
             // 若处于时序推进中（矩阵已绑定且时步有效），但标的在当前时间步无合法公允行情（NaN、<= 0 或 Infinity）
-            // 且外部未提供当期显式 Bar，说明标的处于停牌、未上市或退市状态，立即拒单，严禁入簿挂单
-            if (_closeMatrix != null && _boundMetadata != null && _currentIndex >= 0 && !_currentBars.ContainsKey(request.Symbol))
+            // 且外部未提供当期显式快照，说明标的处于停牌、未上市或退市状态，立即拒单，严禁入簿挂单
+            if (_closeMatrix != null && _boundMetadata != null && _currentIndex >= 0 && !_snapshots.ContainsKey(request.Symbol))
             {
                 int col = _boundMetadata.GetSymbolIndex(request.Symbol);
                 double rawClose = (col >= 0 && _currentIndex < _closeMatrix.RowCount) ? _closeMatrix[_currentIndex, col] : double.NaN;
@@ -94,25 +93,17 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 else
                 {
                     double basePrice = GetBasePriceForOrder(request);
-                    BarSnapshot currentBar = BarSnapshot.Empty;
-                    if (_currentBars.TryGetValue(request.Symbol, out var explicitBar))
-                    {
-                        currentBar = BarSnapshot.FromDataRow(explicitBar, basePrice);
-                    }
-                    else if (_closeMatrix != null && _currentIndex >= 0)
-                    {
-                        currentBar = GetBarSnapshot(request.Symbol, _currentIndex);
-                    }
+                    BarSnapshot currentBar = GetBar(request.Symbol);
 
                     var matchResult = _matcher.EvaluateImmediateOrder(request, basePrice, in currentBar, multiplier, tradeTime);
 
                     if (matchResult.IsFilled)
                     {
                         // 即时成交（市价单或已穿透限价的限价单）：
-                        // 若公允市价未知，记录未含滑点的基准市价 basePrice，严禁将带滑点的 FillPrice 写入 _marketPrices
-                        if (!_marketPrices.ContainsKey(request.Symbol) && basePrice > 0.0)
+                        // 若公允市价未知，记录未含滑点的基准市价 basePrice，严禁将带滑点的 FillPrice 写入快照
+                        if (!_snapshots.ContainsKey(request.Symbol) && basePrice > 0.0)
                         {
-                            _marketPrices[request.Symbol] = basePrice;
+                            _snapshots[request.Symbol] = new BarSnapshot(close: basePrice);
                         }
 
                         fillReport = new ExecutionReport(
@@ -250,7 +241,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     if (close > 0.0 && !double.IsNaN(close) && !double.IsInfinity(close))
                     {
                         marketPrice = close;
-                        _marketPrices[symbol] = close;
                     }
 
                     double open = (colIndex >= 0 && _openMatrix != null && currentIndex < _openMatrix.RowCount) ? _openMatrix[currentIndex, colIndex] : double.NaN;
@@ -304,36 +294,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     }
 
     /// <inheritdoc />
-    public double GetMarketPrice(string symbol)
-    {
-        if (string.IsNullOrWhiteSpace(symbol)) return 0.0;
-        lock (_syncLock)
-        {
-            // 1. 若处于回测时间步进驱动中，优先直接从绑定的收盘价矩阵读取当期最新收盘价（零哈希寻址热路径）
-            if (_closeMatrix != null && _boundMetadata != null && _currentIndex >= 0 && _currentIndex < _closeMatrix.RowCount)
-            {
-                int colIndex = _boundMetadata.GetSymbolIndex(symbol);
-                if (colIndex >= 0)
-                {
-                    double cp = _closeMatrix[_currentIndex, colIndex];
-                    if (cp > 0.0 && !double.IsNaN(cp) && !double.IsInfinity(cp))
-                    {
-                        return cp;
-                    }
-                }
-            }
-
-            // 2. 离散行情注入或无全局时序步进时，回退到局部行情字典
-            if (_marketPrices.TryGetValue(symbol, out var p) && p > 0.0)
-            {
-                return p;
-            }
-
-            return 0.0;
-        }
-    }
-
-    /// <inheritdoc />
     public void SetCurrentTime(MarketTime currentTime)
     {
         lock (_syncLock)
@@ -343,9 +303,9 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     }
 
     /// <inheritdoc />
-    public void OnMarketData(string symbol, double price, MarketTime time, IDataRow? bar = null)
+    public void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot)
     {
-        if (string.IsNullOrWhiteSpace(symbol) || price <= 0.0 || double.IsNaN(price) || double.IsInfinity(price))
+        if (string.IsNullOrWhiteSpace(symbol) || !snapshot.IsValid)
         {
             return;
         }
@@ -355,23 +315,18 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
         lock (_syncLock)
         {
-            _marketPrices[symbol] = price;
             MarketTime tradeTime = time != MarketTime.MinValue
                 ? time
                 : (_currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch);
             _currentTime = tradeTime;
 
-            if (bar != null)
-            {
-                _currentBars[symbol] = bar;
-            }
-            else
-            {
-                _currentBars.Remove(symbol);
-            }
+            _snapshots[symbol] = snapshot;
 
-            BarSnapshot snapshot = BarSnapshot.FromDataRow(bar, price);
-            MatchSymbolOrders(symbol, price, in snapshot, tradeTime, ref fillReports, ref stateReports);
+            double matchPrice = snapshot.CloseOr(snapshot.OpenOr(double.NaN));
+            if (!double.IsNaN(matchPrice) && matchPrice > 0.0)
+            {
+                MatchSymbolOrders(symbol, matchPrice, in snapshot, tradeTime, ref fillReports, ref stateReports);
+            }
         }
 
         // 锁外派发成交回报与拒绝事件
@@ -544,15 +499,16 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
     private double GetBasePriceForOrder(OrderRequest request)
     {
-        double currentMarketPrice = GetMarketPrice(request.Symbol);
+        var bar = GetBar(request.Symbol);
+        double currentMarketPrice = bar.CloseOr(bar.OpenOr(double.NaN));
 
-        if (request.Type == OrderType.Limit)
+        if (request.Type is OrderType.Limit or OrderType.StopLimit or OrderType.TakeProfitLimit)
         {
-            if (currentMarketPrice > 0.0)
+            if (!double.IsNaN(currentMarketPrice) && currentMarketPrice > 0.0)
             {
                 return currentMarketPrice;
             }
-            return request.Price > 0.0 ? request.Price : 0.0;
+            return request.Price > 0.0 ? request.Price : double.NaN;
         }
 
         // 市价单：若显式指定了基准价格（例如在行情 Bar 上下单），优先使用显式价格
@@ -561,12 +517,12 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
             return request.Price;
         }
 
-        if (currentMarketPrice > 0.0)
+        if (!double.IsNaN(currentMarketPrice) && currentMarketPrice > 0.0)
         {
             return currentMarketPrice;
         }
 
-        return 0.0;
+        return double.NaN;
     }
 
     private double GetMultiplier(string symbol)
@@ -631,6 +587,20 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         _vwapMatrix = timeseries.HasField("vwap") ? timeseries.GetMatrix<double>("vwap") : null;
     }
 
+    /// <inheritdoc />
+    public BarSnapshot GetBar(string symbol)
+    {
+        lock (_syncLock)
+        {
+            if (_closeMatrix != null && _boundMetadata != null && _currentIndex >= 0)
+            {
+                return GetBarSnapshot(symbol, _currentIndex);
+            }
+
+            return _snapshots.TryGetValue(symbol, out var snapshot) ? snapshot : BarSnapshot.Empty;
+        }
+    }
+
     private BarSnapshot GetBarSnapshot(string symbol, int rowIndex)
     {
         if (_closeMatrix == null || _boundMetadata == null || rowIndex < 0 || rowIndex >= _closeMatrix.RowCount)
@@ -660,7 +630,15 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     {
         lock (_syncLock)
         {
-            var prices = new Dictionary<string, double>(_marketPrices, StringComparer.Ordinal);
+            var prices = new Dictionary<string, double>(_snapshots.Count, StringComparer.Ordinal);
+            foreach (var kvp in _snapshots)
+            {
+                if (kvp.Value.HasClose)
+                {
+                    prices[kvp.Key] = kvp.Value.Close;
+                }
+            }
+
             var orders = new List<SimulatedOrderSnapshot>();
             foreach (var ord in _orderBook.GetAllOrders())
             {
@@ -687,10 +665,10 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
         lock (_syncLock)
         {
-            _marketPrices.Clear();
+            _snapshots.Clear();
             foreach (var kvp in snapshot.MarketPrices)
             {
-                _marketPrices[kvp.Key] = kvp.Value;
+                _snapshots[kvp.Key] = new BarSnapshot(close: kvp.Value);
             }
 
             _orderBook.Clear();

@@ -42,20 +42,8 @@ internal sealed class MatchingEngine
             return MatchResult.Rejected("Quantity or basePrice must be positive and finite.");
         }
 
-        // 1. 成交量流动性硬约束检查 (VolumeLimit)
-        if (bar.IsValid && !CheckLiquidity(request, in bar, out var reason))
-        {
-            return MatchResult.Rejected(reason);
-        }
-
-        // 2. 涨跌停封板拦截检查 (CheckLimit)
-        if (bar.IsValid && _config.CheckLimit && !CheckPriceLimit(request, in bar, out reason))
-        {
-            return MatchResult.Rejected(reason);
-        }
-
-        // 3. 判断限价单是否未触碰市价（未成交应入挂单簿排队）
-        if (request.Type == OrderType.Limit && request.Price > 0.0)
+        // 1. 判断限价单是否未触碰市价（未成交应直接进入挂单簿排队，不执行即时成交的 Taker 检查）
+        if ((request.Type is OrderType.Limit or OrderType.StopLimit or OrderType.TakeProfitLimit) && request.Price > 0.0)
         {
             bool isUnfilled = (request.IsBuy && request.Price < basePrice) ||
                               (!request.IsBuy && request.Price > basePrice);
@@ -63,6 +51,18 @@ internal sealed class MatchingEngine
             {
                 return MatchResult.PendingQueue();
             }
+        }
+
+        // 2. 即时成交（Taker）成交量流动性硬约束检查 (VolumeLimit)
+        if (bar.IsValid && !CheckLiquidity(request, in bar, out var reason))
+        {
+            return MatchResult.Rejected(reason);
+        }
+
+        // 3. 即时成交（Taker）涨跌停封板拦截检查 (CheckLimit)
+        if (bar.IsValid && _config.CheckLimit && !CheckPriceLimit(request, in bar, out reason))
+        {
+            return MatchResult.Rejected(reason);
         }
 
         // 4. 即时成交（Taker 规则）：计算滑点
@@ -150,7 +150,7 @@ internal sealed class MatchingEngine
         }
 
         // 限价委托保护：成交价严禁劣于限价（买入成交价 <= LimitPrice，卖出成交价 >= LimitPrice）
-        if (request.Type == OrderType.Limit && request.Price > 0.0)
+        if ((request.Type is OrderType.Limit or OrderType.StopLimit or OrderType.TakeProfitLimit) && request.Price > 0.0)
         {
             fillPrice = request.IsBuy
                 ? Math.Min(fillPrice, request.Price)

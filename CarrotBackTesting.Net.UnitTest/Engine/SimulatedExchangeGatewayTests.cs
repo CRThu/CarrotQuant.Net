@@ -30,7 +30,7 @@ public class SimulatedExchangeGatewayTests
         Assert.AreEqual("sh.600000", report.Symbol);
         Assert.AreEqual(10.0, report.FillPrice);
         Assert.AreEqual(1000m, report.FillQuantity);
-        Assert.AreEqual(10.0, gateway.GetMarketPrice("sh.600000"));
+        Assert.AreEqual(10.0, gateway.GetBar("sh.600000").Close);
     }
 
     [TestMethod]
@@ -54,7 +54,7 @@ public class SimulatedExchangeGatewayTests
         Assert.AreEqual(101.0, report.FillPrice, 1e-6, "成交回报应准确计入 1% 滑点");
 
         // 关键断言：公允市场价格必须保持 100.0，绝对不可被 101.0 的滑点成交价反向污染
-        double fairPrice = gateway.GetMarketPrice("sh.600000");
+        double fairPrice = gateway.GetBar("sh.600000").Close;
         Assert.AreEqual(100.0, fairPrice, 1e-6, "公允市场价格必须与订单执行滑点价物理隔离，严禁被成交滑点污染");
     }
 
@@ -64,7 +64,7 @@ public class SimulatedExchangeGatewayTests
         var config = new BrokerConfig();
         var gateway = new SimulatedExchangeGateway(config);
         var now = DateTime.UtcNow;
-        gateway.OnMarketData("sh.600000", 10.0, now);
+        gateway.OnMarketData("sh.600000", now, new BarSnapshot(close: 10.0));
 
         string? stateOrderId = null;
         OrderStatus? stateStatus = null;
@@ -92,7 +92,7 @@ public class SimulatedExchangeGatewayTests
         var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
         var gateway = new SimulatedExchangeGateway(config);
         var time1 = new DateTime(2025, 1, 6, 9, 30, 0);
-        gateway.OnMarketData("sh.600000", 10.0, time1);
+        gateway.OnMarketData("sh.600000", time1, new BarSnapshot(close: 10.0));
 
         // 提交限价 9.5 买单
         gateway.SendOrder("limit-1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m));
@@ -102,7 +102,7 @@ public class SimulatedExchangeGatewayTests
 
         // 行情下探到 9.4 -> 触发撮合
         var time2 = new DateTime(2025, 1, 6, 9, 35, 0);
-        gateway.OnMarketData("sh.600000", 9.4, time2);
+        gateway.OnMarketData("sh.600000", time2, new BarSnapshot(close: 9.4));
 
         Assert.IsNotNull(report);
         Assert.AreEqual("limit-1", report.OrderId);
@@ -165,7 +165,7 @@ public class SimulatedExchangeGatewayTests
     {
         var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
         var gateway = new SimulatedExchangeGateway(config);
-        gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 2));
+        gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 2), new BarSnapshot(close: 10.0));
 
         // 挂单 9.5 买入
         gateway.SendOrder("step-1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
@@ -201,7 +201,7 @@ public class SimulatedExchangeGatewayTests
         };
         var gateway = new SimulatedExchangeGateway(config);
         var time1 = new DateTime(2025, 1, 6, 9, 30, 0);
-        gateway.OnMarketData("sh.600000", 10.0, time1);
+        gateway.OnMarketData("sh.600000", time1, new BarSnapshot(close: 10.0));
 
         gateway.SendOrder("limit-reject", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
 
@@ -218,9 +218,9 @@ public class SimulatedExchangeGatewayTests
         bool executed = false;
         gateway.OnExecution += _ => executed = true;
 
-        var bar = CreateBar(10.0, 10.2, 9.0, 9.2, 5000.0);
+        var bar = new BarSnapshot(10.0, 10.2, 9.0, 9.2, 5000.0);
         var time2 = new DateTime(2025, 1, 6, 9, 31, 0);
-        gateway.OnMarketData("sh.600000", 9.2, time2, bar);
+        gateway.OnMarketData("sh.600000", time2, in bar);
 
         Assert.AreEqual(OrderStatus.Rejected, finalStatus);
         Assert.IsFalse(executed, "被涨跌停拦截的挂单绝不能产生成交回报");
@@ -236,7 +236,7 @@ public class SimulatedExchangeGatewayTests
             VolumeLimit = 0.1 // 单笔不能超过 Bar 成交量的 10%
         };
         var gateway = new SimulatedExchangeGateway(config);
-        gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 6, 9, 30, 0));
+        gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 6, 9, 30, 0), new BarSnapshot(close: 10.0));
 
         // 委托 200 股
         gateway.SendOrder("limit-vol-exceeded", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 200m));
@@ -248,8 +248,8 @@ public class SimulatedExchangeGatewayTests
         };
 
         // 当前 Bar 成交量 1000 股，10% 上限为 100 股 < 200 股
-        var bar = CreateBar(10.0, 10.0, 9.4, 9.4, 1000.0);
-        gateway.OnMarketData("sh.600000", 9.4, new DateTime(2025, 1, 6, 9, 35, 0), bar);
+        var bar = new BarSnapshot(10.0, 10.0, 9.4, 9.4, 1000.0);
+        gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 6, 9, 35, 0), in bar);
 
         Assert.AreEqual(OrderStatus.Rejected, finalStatus, "超过流动性上限必须拒单");
     }
@@ -258,20 +258,20 @@ public class SimulatedExchangeGatewayTests
     public void OnMarketData_InvalidInputs_ShouldBeSafelyIgnored()
     {
         var gateway = new SimulatedExchangeGateway(new BrokerConfig());
-        gateway.OnMarketData("sh.600000", 10.0, DateTime.UtcNow);
+        gateway.OnMarketData("sh.600000", DateTime.UtcNow, new BarSnapshot(close: 10.0));
 
         // 非法价格不应更新
-        gateway.OnMarketData("sh.600000", -5.0, DateTime.UtcNow);
-        Assert.AreEqual(10.0, gateway.GetMarketPrice("sh.600000"));
+        gateway.OnMarketData("sh.600000", DateTime.UtcNow, new BarSnapshot(close: -5.0));
+        Assert.AreEqual(10.0, gateway.GetBar("sh.600000").Close);
 
-        gateway.OnMarketData("sh.600000", double.NaN, DateTime.UtcNow);
-        Assert.AreEqual(10.0, gateway.GetMarketPrice("sh.600000"));
+        gateway.OnMarketData("sh.600000", DateTime.UtcNow, new BarSnapshot(close: double.NaN));
+        Assert.AreEqual(10.0, gateway.GetBar("sh.600000").Close);
 
-        gateway.OnMarketData("sh.600000", double.PositiveInfinity, DateTime.UtcNow);
-        Assert.AreEqual(10.0, gateway.GetMarketPrice("sh.600000"));
+        gateway.OnMarketData("sh.600000", DateTime.UtcNow, new BarSnapshot(close: double.PositiveInfinity));
+        Assert.AreEqual(10.0, gateway.GetBar("sh.600000").Close);
 
-        gateway.OnMarketData("   ", 20.0, DateTime.UtcNow);
-        Assert.AreEqual(0.0, gateway.GetMarketPrice("   "));
+        gateway.OnMarketData("   ", DateTime.UtcNow, new BarSnapshot(close: 20.0));
+        Assert.IsFalse(gateway.GetBar("   ").IsValid);
     }
 
     private static IDataRow CreateBar(double open, double high, double low, double close, double volume)

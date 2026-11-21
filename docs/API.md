@@ -807,10 +807,10 @@ public interface IExchangeGateway
 /// </summary>
 public interface ISimulatedExchange : IExchangeGateway
 {
-    void Step(DateTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
-    void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null);
-    void SetCurrentTime(DateTime currentTime);
-    double GetMarketPrice(string symbol);
+    BarSnapshot GetBar(string symbol);
+    void SetCurrentTime(MarketTime currentTime);
+    void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
+    void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot);
 }
 
 /// <summary>

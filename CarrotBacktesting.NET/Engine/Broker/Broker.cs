@@ -25,6 +25,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
 
     private readonly Dictionary<string, BrokerOrderRecord> _orders = new(StringComparer.Ordinal);
     private long _orderSequence = 0;
+    private long _ocoGroupSequence = 0;
     private MarketTime _currentTime = MarketTime.MinValue;
 
     public event Action<string, OrderStatus>? OnOrderStatusChanged;
@@ -163,7 +164,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
         if (_gateway is ISimulatedExchange sim)
         {
-            p = sim.GetMarketPrice(symbol);
+            p = sim.GetBar(symbol).CloseOr(0.0);
             if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
         }
         return 0.0;
@@ -216,14 +217,48 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     }
 
     /// <inheritdoc />
+    public (string StopOrderId, string TakeProfitOrderId) Bracket(
+        string symbol,
+        decimal quantity,
+        double stopPrice,
+        double takeProfitPrice,
+        string orderTag = "",
+        TimeInForce? timeInForce = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        if (quantity <= 0m) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
+
+        long groupId = Interlocked.Increment(ref _ocoGroupSequence);
+        var tif = timeInForce ?? TimeInForce.GoodTilCanceled;
+        var pos = GetPosition(symbol);
+        var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+
+        var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif)
+        {
+            StopPrice = stopPrice,
+            OcoGroupId = groupId
+        };
+
+        var tpReq = new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, tif)
+        {
+            StopPrice = takeProfitPrice,
+            OcoGroupId = groupId
+        };
+
+        string stopId = SubmitOrder(stopReq);
+        string tpId = SubmitOrder(tpReq);
+        return (stopId, tpId);
+    }
+
+    /// <inheritdoc />
     public string SubmitOrder(OrderRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // 统一归一化订单时效，未指定时采用经纪商默认时效规则
+        // 统一归一化订单时效，未指定时采用经纪商默认时效规则（条件单强制默认 GTC 防持仓裸奔）
         if (!request.TimeInForce.HasValue)
         {
-            request = request with { TimeInForce = _config.DefaultTimeInForce };
+            request = request with { TimeInForce = IsConditional(request.Type) ? TimeInForce.GoodTilCanceled : _config.DefaultTimeInForce };
         }
 
         string orderId = string.IsNullOrWhiteSpace(request.ClientOrderId)
@@ -233,6 +268,67 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         double multiplier = GetMultiplier(request.Symbol);
         double marginRate = GetMarginRate(request.Symbol);
         int settleDays = GetSettleDays(request.Symbol);
+        var submitTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
+
+        // 条件单处理（触发前零冻结）
+        if (IsConditional(request.Type))
+        {
+            bool isDuplicate = false;
+            lock (_syncLock)
+            {
+                if (_orders.ContainsKey(orderId))
+                {
+                    isDuplicate = true;
+                }
+                else
+                {
+                    var record = new BrokerOrderRecord(orderId, request)
+                    {
+                        Multiplier = multiplier,
+                        MarginRate = marginRate,
+                        SettleDays = settleDays,
+                        Status = OrderStatus.Pending
+                    };
+                    _orders[orderId] = record;
+                }
+            }
+
+            if (isDuplicate)
+            {
+                var rejectEvt = new OrderEvent(
+                    submitTime,
+                    orderId,
+                    request.Symbol,
+                    request.Direction,
+                    request.Type,
+                    request.Price,
+                    request.Quantity,
+                    OrderEventType.Rejected,
+                    OrderStatus.Rejected,
+                    Reason: $"Order with ID '{orderId}' already exists.",
+                    OrderTag: request.OrderTag);
+                OnOrderStatusChanged?.Invoke(orderId, OrderStatus.Rejected);
+                OnOrderEvent?.Invoke(rejectEvt);
+                return orderId;
+            }
+
+            var conditionalSubmitEvt = new OrderEvent(
+                submitTime,
+                orderId,
+                request.Symbol,
+                request.Direction,
+                request.Type,
+                request.Price,
+                request.Quantity,
+                OrderEventType.Submitted,
+                OrderStatus.Pending,
+                LeavesQuantity: request.Quantity,
+                OrderTag: request.OrderTag);
+
+            OnOrderStatusChanged?.Invoke(orderId, OrderStatus.Pending);
+            OnOrderEvent?.Invoke(conditionalSubmitEvt);
+            return orderId;
+        }
 
         bool freezeOk;
         string? rejectReason;
@@ -317,7 +413,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             return orderId;
         }
 
-        var submitTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
+        submitTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
         var submitEvt = new OrderEvent(
             submitTime,
             orderId,
@@ -361,9 +457,66 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     }
 
     /// <inheritdoc />
+    public string StopLoss(string symbol, double stopPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        var pos = GetPosition(symbol);
+        var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
+        {
+            ClientOrderId = clientOrderId ?? string.Empty,
+            StopPrice = stopPrice
+        });
+    }
+
+    /// <inheritdoc />
+    public string TakeProfit(string symbol, double targetPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        var pos = GetPosition(symbol);
+        var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
+        {
+            ClientOrderId = clientOrderId ?? string.Empty,
+            StopPrice = targetPrice
+        });
+    }
+
+    /// <inheritdoc />
     public void CancelOrder(string orderId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
+        OrderEvent? cancelEvt = null;
+        lock (_syncLock)
+        {
+            if (_orders.TryGetValue(orderId, out var ord) && ord.Status == OrderStatus.Pending && IsConditional(ord.Request.Type))
+            {
+                ord.Status = OrderStatus.Canceled;
+                ord.RejectReason = "Canceled by user.";
+                var time = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
+                cancelEvt = new OrderEvent(
+                    time,
+                    ord.OrderId,
+                    ord.Request.Symbol,
+                    ord.Request.Direction,
+                    ord.Request.Type,
+                    ord.Request.Price,
+                    ord.Request.Quantity,
+                    OrderEventType.Canceled,
+                    OrderStatus.Canceled,
+                    LeavesQuantity: 0m,
+                    Reason: "Canceled by user.",
+                    OrderTag: ord.Request.OrderTag);
+            }
+        }
+
+        if (cancelEvt != null)
+        {
+            OnOrderStatusChanged?.Invoke(orderId, OrderStatus.Canceled);
+            OnOrderEvent?.Invoke(cancelEvt);
+            return;
+        }
+
         // 严格在锁外向网关发送撤单请求（撤单成功后由 OnOrderStateChanged 回调驱动解冻）
         _gateway.CancelOrder(orderId);
     }
@@ -380,6 +533,212 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             }
             MarketTime exchangeDate = ToExchangeDate(currentTime);
             _ledger.ProcessDayRollover(exchangeDate);
+        }
+
+        ProcessConditionalOrders(currentTime);
+    }
+
+    internal void ProcessConditionalOrders(MarketTime currentTime)
+    {
+        if (_gateway is not ISimulatedExchange sim) return;
+
+        List<BrokerOrderRecord>? pendingConditionals = null;
+        lock (_syncLock)
+        {
+            foreach (var kvp in _orders)
+            {
+                var ord = kvp.Value;
+                if (ord.Status == OrderStatus.Pending && IsConditional(ord.Request.Type))
+                {
+                    pendingConditionals ??= new List<BrokerOrderRecord>();
+                    pendingConditionals.Add(ord);
+                }
+            }
+        }
+
+        if (pendingConditionals == null || pendingConditionals.Count == 0) return;
+
+        // 悲观仲裁：先排 Stop/StopLimit，再排 TakeProfit/TakeProfitLimit
+        pendingConditionals.Sort((a, b) =>
+        {
+            bool aIsStop = a.Request.Type is OrderType.Stop or OrderType.StopLimit;
+            bool bIsStop = b.Request.Type is OrderType.Stop or OrderType.StopLimit;
+            if (aIsStop && !bIsStop) return -1;
+            if (!aIsStop && bIsStop) return 1;
+            return 0;
+        });
+
+        var triggeredOrders = new List<(BrokerOrderRecord Order, double ExecPrice)>();
+        var rejectedOrders = new List<(BrokerOrderRecord Order, string Reason)>();
+        var ocoCanceledOrders = new List<(BrokerOrderRecord Order, string Reason)>();
+        var triggeredOcoGroups = new HashSet<long>();
+
+        lock (_syncLock)
+        {
+            foreach (var ord in pendingConditionals)
+            {
+                if (ord.Status != OrderStatus.Pending) continue;
+
+                if (ord.Request.OcoGroupId > 0 && triggeredOcoGroups.Contains(ord.Request.OcoGroupId))
+                {
+                    ord.Status = OrderStatus.Canceled;
+                    ord.RejectReason = "Canceled by OCO bracket trigger.";
+                    ocoCanceledOrders.Add((ord, "Canceled by OCO bracket trigger."));
+                    continue;
+                }
+
+                var bar = sim.GetBar(ord.Request.Symbol);
+                if (!bar.IsValid) continue;
+
+                if (CheckTrigger(ord.Request.Type, ord.Request.Direction, ord.Request.StopPrice, in bar))
+                {
+                    double execPrice = CalculateTriggerExecutionPrice(ord.Request.Type, ord.Request.Direction, ord.Request.StopPrice, in bar);
+
+                    bool freezeOk = _ledger.TryFreeze(
+                        ord.Request,
+                        execPrice,
+                        ord.Multiplier,
+                        ord.MarginRate,
+                        out var closeQty,
+                        out var openQty,
+                        out var frozenCash,
+                        out var frozenPos,
+                        out var rejectReason);
+
+                    if (!freezeOk)
+                    {
+                        ord.Status = OrderStatus.Rejected;
+                        ord.RejectReason = rejectReason ?? "Pre-freeze check failed due to insufficient available position/cash.";
+                        rejectedOrders.Add((ord, ord.RejectReason));
+                    }
+                    else
+                    {
+                        ord.CloseQuantity = closeQty;
+                        ord.OpenQuantity = openQty;
+                        ord.RemainingCloseQuantity = closeQty;
+                        ord.RemainingOpenQuantity = openQty;
+                        ord.InitialFrozenCash = frozenCash;
+                        ord.RemainingFrozenCash = frozenCash;
+                        ord.InitialFrozenPosition = frozenPos;
+                        ord.RemainingFrozenPosition = frozenPos;
+                        ord.Status = OrderStatus.Submitted;
+
+                        triggeredOrders.Add((ord, execPrice));
+                        if (ord.Request.OcoGroupId > 0)
+                        {
+                            triggeredOcoGroups.Add(ord.Request.OcoGroupId);
+                        }
+                    }
+                }
+            }
+
+            // 联动注销同组其他未触发单
+            if (triggeredOcoGroups.Count > 0)
+            {
+                foreach (var ord in pendingConditionals)
+                {
+                    if (ord.Status == OrderStatus.Pending && ord.Request.OcoGroupId > 0 && triggeredOcoGroups.Contains(ord.Request.OcoGroupId))
+                    {
+                        ord.Status = OrderStatus.Canceled;
+                        ord.RejectReason = "Canceled by OCO bracket trigger.";
+                        ocoCanceledOrders.Add((ord, "Canceled by OCO bracket trigger."));
+                    }
+                }
+            }
+        }
+
+        // 锁外派发拒绝事件
+        foreach (var (ord, reason) in rejectedOrders)
+        {
+            OnOrderStatusChanged?.Invoke(ord.OrderId, OrderStatus.Rejected);
+            OnOrderEvent?.Invoke(new OrderEvent(
+                currentTime,
+                ord.OrderId,
+                ord.Request.Symbol,
+                ord.Request.Direction,
+                ord.Request.Type,
+                ord.Request.Price,
+                ord.Request.Quantity,
+                OrderEventType.Rejected,
+                OrderStatus.Rejected,
+                Reason: reason,
+                OrderTag: ord.Request.OrderTag));
+        }
+
+        // 锁外派发 OCO 撤单事件
+        foreach (var (ord, reason) in ocoCanceledOrders)
+        {
+            OnOrderStatusChanged?.Invoke(ord.OrderId, OrderStatus.Canceled);
+            OnOrderEvent?.Invoke(new OrderEvent(
+                currentTime,
+                ord.OrderId,
+                ord.Request.Symbol,
+                ord.Request.Direction,
+                ord.Request.Type,
+                ord.Request.Price,
+                ord.Request.Quantity,
+                OrderEventType.Canceled,
+                OrderStatus.Canceled,
+                Reason: reason,
+                OrderTag: ord.Request.OrderTag));
+        }
+
+        // 锁外向网关发送触发后的报单
+        foreach (var (ord, execPrice) in triggeredOrders)
+        {
+            var triggeredReq = ord.Request with { Price = execPrice };
+            _gateway.SendOrder(ord.OrderId, triggeredReq);
+        }
+    }
+
+    private static bool IsConditional(OrderType type) =>
+        type is OrderType.Stop or OrderType.TakeProfit or OrderType.StopLimit or OrderType.TakeProfitLimit;
+
+    private static bool CheckTrigger(OrderType type, OrderDirection dir, double stopPrice, in BarSnapshot bar)
+    {
+        return type switch
+        {
+            OrderType.Stop or OrderType.StopLimit =>
+                dir == OrderDirection.Sell ? bar.LowOr(bar.Close) <= stopPrice : bar.HighOr(bar.Close) >= stopPrice,
+            OrderType.TakeProfit or OrderType.TakeProfitLimit =>
+                dir == OrderDirection.Sell ? bar.HighOr(bar.Close) >= stopPrice : bar.LowOr(bar.Close) <= stopPrice,
+            _ => false
+        };
+    }
+
+    private static double CalculateTriggerExecutionPrice(OrderType type, OrderDirection dir, double stopPrice, in BarSnapshot bar)
+    {
+        bool hasOpen = bar.HasOpen && bar.Open > 0.0;
+        double open = bar.Open;
+
+        switch (type)
+        {
+            case OrderType.Stop:
+                if (dir == OrderDirection.Sell)
+                {
+                    return (hasOpen && open <= stopPrice) ? open : stopPrice;
+                }
+                else
+                {
+                    return (hasOpen && open >= stopPrice) ? open : stopPrice;
+                }
+
+            case OrderType.TakeProfit:
+                if (dir == OrderDirection.Sell)
+                {
+                    return (hasOpen && open >= stopPrice) ? open : stopPrice;
+                }
+                else
+                {
+                    return (hasOpen && open <= stopPrice) ? open : stopPrice;
+                }
+
+            case OrderType.StopLimit:
+            case OrderType.TakeProfitLimit:
+                return stopPrice;
+
+            default:
+                return stopPrice;
         }
     }
 
@@ -726,11 +1085,17 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             return request.Price;
         }
 
-        // 市价单（Price <= 0.0）：尝试从绑定的网关中查询当前标的公允参考市价
+        // 市价单（Price <= 0.0）：尝试从绑定的网关中查询当前标的公允参考市价（时态自适应）
         double marketPrice = 0.0;
         if (_gateway is ISimulatedExchange sim)
         {
-            marketPrice = sim.GetMarketPrice(request.Symbol);
+            var bar = sim.GetBar(request.Symbol);
+            marketPrice = _config.DefaultExecutionPrice switch
+            {
+                ExecutionPriceType.Open => bar.OpenOr(bar.CloseOr(0.0)),
+                ExecutionPriceType.Vwap => bar.Vwap ?? bar.CloseOr(0.0),
+                _ => bar.CloseOr(0.0)
+            };
         }
 
         if (marketPrice > 0.0 && !double.IsNaN(marketPrice) && !double.IsInfinity(marketPrice))

@@ -102,6 +102,30 @@ public interface IEngineContext
         => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag, timeInForce);
 
     /// <summary>
+    /// 便捷提交止损订单（默认以市价单形式发出，默认 TIF 为 GoodTilCanceled 跨日有效）。
+    /// </summary>
+    string StopLoss(string symbol, double stopPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.StopLoss(symbol, stopPrice, quantity, clientOrderId, orderTag, timeInForce);
+
+    /// <summary>
+    /// 便捷提交止盈订单（默认以市价单形式发出，默认 TIF 为 GoodTilCanceled 跨日有效）。
+    /// </summary>
+    string TakeProfit(string symbol, double targetPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.TakeProfit(symbol, targetPrice, quantity, clientOrderId, orderTag, timeInForce);
+
+    /// <summary>
+    /// 便捷提交成对互斥括号订单（Bracket / OCO）：同时挂出止损单与止盈单，单边触发后联动注销另一方。
+    /// </summary>
+    (string StopOrderId, string TakeProfitOrderId) Bracket(
+        string symbol,
+        decimal quantity,
+        double stopPrice,
+        double takeProfitPrice,
+        string orderTag = "",
+        TimeInForce? timeInForce = null)
+        => Broker.Bracket(symbol, quantity, stopPrice, takeProfitPrice, orderTag, timeInForce);
+
+    /// <summary>
     /// 获取交易事实记录器接口（可选），用于沉淀策略信号打点或扩展归因。
     /// </summary>
     ITradingRecorder? Recorder { get; }

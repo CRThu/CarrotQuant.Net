@@ -165,7 +165,7 @@ public class BacktestingEngineRecorderIntegrationTests
         var broker = new Broker(gateway, brokerConfig);
 
         // 设置仿真交易所最新价格
-        gateway.OnMarketData("sh.600000", 10.0, dates[0]);
+        gateway.OnMarketData("sh.600000", dates[0], new BarSnapshot(close: 10.0));
 
         var pipeline = StrategyPipeline.Sequential().Add(new TradingAndSignalingStrategy());
         var recorder = new TradingRecorder();
@@ -253,7 +253,7 @@ public class BacktestingEngineRecorderIntegrationTests
         };
         var gateway = new SimulatedExchangeGateway(brokerConfig);
         var broker = new Broker(gateway, brokerConfig);
-        gateway.OnMarketData("sh.600000", 10.0, dates[0]);
+        gateway.OnMarketData("sh.600000", dates[0], new BarSnapshot(close: 10.0));
 
         var pipeline = StrategyPipeline.Sequential().Add(new BuyAndHoldStrategy());
         var engine = new BacktestingEngine(

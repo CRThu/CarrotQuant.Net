@@ -120,9 +120,14 @@ public record OrderRequest(
     public string ClientOrderId { get; init; } = string.Empty;
 
     /// <summary>
-    /// 条件单触发价（止损单/止盈单有效，阶段三基元预留）。
+    /// 条件单触发价（止损单/止盈单有效）。
     /// </summary>
     public double StopPrice { get; init; } = 0.0;
+
+    /// <summary>
+    /// 互斥订单组标识（OCO Bracket 组号，0 表示独立订单非 OCO 组）。
+    /// </summary>
+    public long OcoGroupId { get; init; } = 0;
 }
 
 /// <summary>
@@ -252,19 +257,41 @@ public enum OrderDirection
 }
 
 /// <summary>
-/// 定义订单的执行策略类型。
+/// 订单基础执行类型（对齐 FIX Protocol Tag 40 标准）。
 /// </summary>
-public enum OrderType 
+public enum OrderType : byte
 { 
     /// <summary>
-    /// 市价单：以当前市场最优价格立即成交。
+    /// 市价单：以当前市场最优价格立即成交（Taker）。对齐 FIX Tag 40 = 1。
     /// </summary>
-    Market, 
+    Market = 0, 
 
     /// <summary>
-    /// 限价单：以指定价格或更好的价格成交。
+    /// 限价单：以指定价格或更优价格成交（未触碰时在挂单簿排队，Maker）。对齐 FIX Tag 40 = 2。
     /// </summary>
-    Limit 
+    Limit = 1,
+
+    /// <summary>
+    /// 止损市价单：市场行情跌穿/涨破 StopPrice 时触发，转为市价单打出（Taker）。
+    /// 行业缩写：STOP，对齐 FIX Tag 40 = 3 (Stop / Stop Loss)。
+    /// </summary>
+    Stop = 2,
+
+    /// <summary>
+    /// 止盈市价单：市场行情冲高/回调触碰 StopPrice 时触发，转为市价单打出（Taker）。
+    /// 行业缩写：TP，对齐 FIX Tag 40 = J (Market If Touched，缩写 MIT)。
+    /// </summary>
+    TakeProfit = 3,
+
+    /// <summary>
+    /// 止损限价单：触发后转为限价单挂单排队（Maker）。对齐 FIX Tag 40 = 4。
+    /// </summary>
+    StopLimit = 4,
+
+    /// <summary>
+    /// 止盈限价单：触发后转为限价单挂单排队（Maker）。对齐 FIX Tag 40 = K (Limit If Touched，缩写 LIT)。
+    /// </summary>
+    TakeProfitLimit = 5
 }
 
 /// <summary>

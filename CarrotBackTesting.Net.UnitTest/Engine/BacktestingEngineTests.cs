@@ -730,7 +730,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             double equity = broker.GetTotalEquity();
             Assert.IsTrue(cash < 1000000.0, "资金应扣减成交金额与手续费");
             Assert.IsTrue(equity > 0.0, "总资产应为正数");
-            double latestPrice = ((ISimulatedExchange)((IExchangeGatewayProvider)broker).Gateway).GetMarketPrice(firstSymbol);
+            double latestPrice = ((ISimulatedExchange)((IExchangeGatewayProvider)broker).Gateway).GetBar(firstSymbol).Close;
             Assert.AreEqual(cash + 100.0 * latestPrice, equity, 1e-2, "总资产必须精确守恒等于现金加期末最新持仓市值");
         }
 

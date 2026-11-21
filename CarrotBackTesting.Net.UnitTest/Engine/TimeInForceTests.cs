@@ -84,9 +84,9 @@ public class TimeInForceTests
         var broker = new Broker(gateway, config);
 
         var date = new DateTime(2025, 1, 2);
-        gateway.OnMarketData("sh.600000", 15.0, date);
-        gateway.OnMarketData("sh.600001", 15.0, date);
-        gateway.OnMarketData("sh.600002", 15.0, date);
+        gateway.OnMarketData("sh.600000", date, new BarSnapshot(close: 15.0));
+        gateway.OnMarketData("sh.600001", date, new BarSnapshot(close: 15.0));
+        gateway.OnMarketData("sh.600002", date, new BarSnapshot(close: 15.0));
 
         // 1. 默认配置为 Day，请求未指定时效
         var req1 = new OrderRequest("sh.600000", OrderDirection.Buy, 10.0, 100m);
@@ -123,7 +123,7 @@ public class TimeInForceTests
         var gateway = new SimulatedExchangeGateway(config);
         var broker = new Broker(gateway, config);
 
-        gateway.OnMarketData("sh.600000", 15.0, new DateTime(2025, 1, 2));
+        gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 2), new BarSnapshot(close: 15.0));
 
         string buyId = broker.Buy("sh.600000", 100m, price: 9.0, type: OrderType.Limit, timeInForce: TimeInForce.GoodTilCanceled);
         var activeOrders = broker.SaveState().ActiveOrders;
@@ -193,7 +193,7 @@ public class TimeInForceTests
         var config = new BrokerConfig { DefaultTimeInForce = TimeInForce.GoodTilCanceled };
         var gateway = new SimulatedExchangeGateway(config);
         var broker = new Broker(gateway, config);
-        gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 2));
+        gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 2), new BarSnapshot(close: 10.0));
 
         // 通过 Broker 提交未显式指定时效的订单
         broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, 9.5, 100m));

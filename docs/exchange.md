@@ -92,19 +92,25 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 public interface ISimulatedExchange : IExchangeGateway
 {
-    // 离线时间步推进与矩阵撮合
-    void Step(DateTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
-
-    // 纯行情数据驱动撮合（明确绑定标的、价格、时间戳与可选当前 Bar）
-    void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null);
+    // 获取当前时间步的不可变行情物理切片（Open, High, Low, Close, Volume 等，零 GC 48 字节值类型）
+    BarSnapshot GetBar(string symbol);
 
     // 显式校准交易所当前物理时间
-    void SetCurrentTime(DateTime currentTime);
+    void SetCurrentTime(MarketTime currentTime);
 
-    // 查询最新已记录市场价格
-    double GetMarketPrice(string symbol);
+    // 离线时间步推进与矩阵撮合
+    void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
+
+    // 纯行情数据驱动撮合（唯一物理切片权威输入，48 字节栈传递零 GC）
+    void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot);
 }
 ```
+
+> 💡 **行情单一事实来源（SSOT）与双模式供给**：
+> 系统彻底废弃歧义的标量 `GetMarketPrice`，统一以 48 字节非托管 `BarSnapshot` 作为行情的单一事实来源：
+> 1. **矩阵回测模式**：若绑定了时序矩阵，按当前行号 `_currentIndex` 权威从 Open/High/Low/Close/Volume/Amount 矩阵常数时间提取六维真实切片；
+> 2. **事件流/单测模式**：由 `OnMarketData` 入口在接收数据时单点归一化为 `BarSnapshot` 存入 `_snapshots`，杜绝散装字典与多入口数据分裂；
+> 3. **缺失与停牌检测**：无数据时诚实返回 `BarSnapshot.Empty`，全字段为 `NaN`（`!bar.IsValid`），业务层显式熔断拦截，严禁任何伪造数据或默认返回 0.0。
 
 ---
 
@@ -183,7 +189,7 @@ $$\text{Commission} = \max(\text{Turnover} \times \text{FeeRate}, \text{MinFee})
 
 ### 2. 显式时间戳强绑定 (防时间穿越)
 ```csharp
-void OnMarketData(string symbol, double price, DateTime time, IDataRow? bar = null);
+void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot);
 ```
 - **时间戳精准绑定**：撮合触发生成的成交报告 `ExecutionReport.Time` 严格锚定传入的 `time` 参数；
 - **回测时间穿越防御**：绝不隐式回退使用系统当前时钟 `DateTime.UtcNow`，彻底消除回测报告与历史时间轴错位的隐患。

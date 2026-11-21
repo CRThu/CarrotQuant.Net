@@ -11,11 +11,12 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 public interface ISimulatedExchange : IExchangeGateway
 {
     /// <summary>
-    /// 获取当前仿真交易所中指定标的的最新基准行情价。
+    /// 获取指定标的当前时间步的行情切片（包含 Open, High, Low, Close, Volume 等）。
+    /// 若当前无可用行情或标的停牌，返回 BarSnapshot.Empty。
     /// </summary>
     /// <param name="symbol">交易标的代码。</param>
-    /// <returns>最新价格；若无记录则返回 0.0。</returns>
-    double GetMarketPrice(string symbol);
+    /// <returns>不可变行情切片。</returns>
+    BarSnapshot GetBar(string symbol);
 
     /// <summary>
     /// 设置当前仿真交易所的物理时间戳（由外部引擎或经纪商在时间步驱动时同步）。
@@ -33,14 +34,13 @@ public interface ISimulatedExchange : IExchangeGateway
     void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
 
     /// <summary>
-    /// 反应式行情数据到达驱动（供单测、离散 Tick、逐笔行情回放等事件流驱动仿真撮合）。
-    /// 纯粹的行情事实输入：强制绑定物理时间戳，彻底消除无时间价格导致的穿越 Bug。
+    /// 反应式行情数据切片到达驱动（唯一权威行情灌入入口）。
+    /// 纯栈/寄存器传递 48 字节不可变行情切片，零堆分配、零 GC 开销。
     /// </summary>
     /// <param name="symbol">交易标的代码。</param>
-    /// <param name="price">最新基准价格。</param>
     /// <param name="time">行情发生的时间戳。</param>
-    /// <param name="bar">当前时间步行情数据行（可选，供流动性与涨跌停拦截校验）。</param>
-    void OnMarketData(string symbol, double price, MarketTime time, IDataRow? bar = null);
+    /// <param name="snapshot">不可变行情切片。</param>
+    void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot);
 
     /// <summary>
     /// 在回测终局生命周期结束时，清理撤销挂单簿中所有在途未成交挂单，确保资产 100% 解冻归位。

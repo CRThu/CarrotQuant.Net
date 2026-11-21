@@ -68,7 +68,7 @@ public class MatchingEngineRoleTests
         var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
         var gateway = new SimulatedExchangeGateway(config);
         var time0 = new DateTime(2025, 1, 15, 9, 30, 0, DateTimeKind.Utc);
-        gateway.OnMarketData("sh.600000", 10.0, time0);
+        gateway.OnMarketData("sh.600000", time0, new BarSnapshot(close: 10.0));
 
         // 提交未触碰的限价单（委托总量 600 股）
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 600m);
@@ -79,34 +79,13 @@ public class MatchingEngineRoleTests
 
         // 推送触碰价格行情
         var time1 = time0.AddDays(1);
-        var bar = CreateBar(8.9, 9.2, 8.8, 9.0, 100000.0);
-        gateway.OnMarketData("sh.600000", 9.0, time1, bar);
+        var bar = new BarSnapshot(8.9, 9.2, 8.8, 9.0, 100000.0);
+        gateway.OnMarketData("sh.600000", time1, in bar);
 
         Assert.IsNotNull(capturedReport);
         Assert.AreEqual(600m, capturedReport.CumQuantity);
         Assert.AreEqual(0m, capturedReport.LeavesQuantity);
         Assert.AreEqual(req.Quantity, capturedReport.CumQuantity + capturedReport.LeavesQuantity, "CumQty + LeavesQty 必须严格守恒等于 OrderQty");
         Assert.AreEqual(LiquidityRole.Maker, capturedReport.Role);
-    }
-
-    private static IDataRow CreateBar(double open, double high, double low, double close, double volume)
-    {
-        var cols = new System.Collections.Generic.Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["open"] = 0,
-            ["high"] = 1,
-            ["low"] = 2,
-            ["close"] = 3,
-            ["volume"] = 4
-        };
-        var values = new[]
-        {
-            open.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            high.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            low.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            close.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            volume.ToString(System.Globalization.CultureInfo.InvariantCulture)
-        };
-        return new CarrotBacktesting.NET.Data.DataRow(values, cols);
     }
 }

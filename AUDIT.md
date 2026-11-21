@@ -55,8 +55,8 @@ flowchart TD
 ### 盲区 1：测试前“手工后门注入”，掩盖了主循环调用缺失
 - **现场证据**：在 `TradingFinancialPipelineIntegrationTests.cs` 中：
   ```csharp
-  simExchange.OnMarketData("SH.600000", 10.0, dates[0],
-      new DataRow("SH.600000", new[] { "10000.0", "10.0" }, ...));
+  simExchange.OnMarketData("SH.600000", dates[0],
+      new BarSnapshot(close: 10.0, volume: 10000.0));
   ```
   单测在回测启动前，**人为调用了网关后门方法塞入一个包含 Volume 或 limit_up 的 DataRow**。
 - **后果**：回测主循环自身在 `Step` 中传递 `null` 的重大缺陷被后门注入完全掩盖。
@@ -188,7 +188,13 @@ flowchart TD
   - **缺陷**：仅在成交落账时赋值一次，后续从未更新。当网关查无价格回退到 `LastPrice` 时，浮动盈亏恒为 0。
   - **修复**：在 `AccountLedger` 的所有盯市估值链路（`GetTotalEquity`、`GetTotalMarketValue`、`GetTotalUnrealizedPnL`、`GetActivePositionSnapshots`）中，当外部解析出公允最新价 `resolvedPrice > 0.0` 时，同步刷新 `pos.LastPrice = resolvedPrice;`，确保持仓实体的最新价时刻紧跟市场波动。
   - **单测**：`TradingFinancialPipelineIntegrationTests.MarkToMarket_WithoutNewOrders_EquityCurveMustFluctuateWithDailyClose` 验证终局持仓实体的 `LastPrice` 准确更新为最后一天收盘价 14.0。
-- **8.2 T+N 结算混淆自然日与交易日** (`AccountLedger.cs#L467`)：采用 `AddDays(settleDays)` 粗暴累加自然日。遇节假日或多日交割（T+2）时，持仓在节后第一天提前违规解锁。
+- **8.2 T+N 结算混淆自然日与交易日及热路径无效轮询** (`AccountLedger.cs#L529, L559`, `Broker.cs#L382`)：
+  - **缺陷剖析与机理验证**：
+    1. **交易日与自然日语义断层**：在途交收批次 `PendingLot` 使用 `exchangeDate.Date.AddDays(settleDays)` 粗暴累加自然日。在标准 A 股现货 $T+1$（`SettleDays = 1`）场景下，由于回测引擎主时钟基于纯交易日历（`TradeDates`）步进，周末与节假日无数据不走步，周五买入（设为周六到期）直到下周一开盘才触发结算，因此在常规 A 股 T+1 回测下结果自洽、未发生提前抛售；但在通用 $T+N$（$N \ge 2$，如港美股 T+2 或跨境/场外 ETF）场景下，自然日累加会将周末/节假日错误计入交收天数，导致周五买入在下周一（仅经历 1 个交易日）即被违规提前解锁。
+    2. **热路径重复比对损耗**：`Broker.Step` 在每根分钟/分时 Bar 均全量调用 `_ledger.ProcessDayRollover(exchangeDate)`，导致盘中数百根 Bar 持续对未到期的 `PendingLots` 进行无意义的遍历与日期比对，违背红线规范第 10 条（热路径零开销），缺乏日切（`currentTime.Date != _lastDate`）前置守卫。
+  - **建议重构落地方案**：
+    1. **方案 A（A 股特化极致性能，推荐）**：对标国内主流框架（RQAlpha / vn.py / QMT），将 `PendingLots` 队列重构为“今仓（`TodayVolume`）+ 昨仓（`AvailableVolume`）”双池状态机，日切时刻一句话归集，复杂度降为严格 $O(1)$ 且零堆内存分配；
+    2. **方案 B（通用多市场架构）**：保留批次队列，但到期日严禁使用自然日 `AddDays`，改由交易日历索引偏移 `TradeDates[currentTradeIndex + settleDays]` 权威计算，并严格限制在跨日时刻（`currentTime.Date != _lastDate`）才触发 `ProcessDayRollover`。
 - **8.3 允许做空模式下，可用持仓不足被静默篡改为“开空单”** (`AccountLedger.cs#L246-L256`)：若今日 T+1 导致 `AvailableQuantity = 0`，平仓容量为 0，剩余全部转为开空单，系统直接执行开空，导致多空双向持仓。
 - **8.4 缺乏保证金追缴（Margin Call）与爆仓强平机制** (`AccountLedger.cs#L81-L98`)：净值跌为负数时没有任何风控强平，允许账户无限透支存续。
 - **8.5 反向调仓（多翻空/空翻多）预冻结误拒单** (`AccountLedger.cs#L246-L271`)：多翻空时开空部分需预冻结现金，而平多释放的资金成交时才入账，资金不足时订单被错误拦截。

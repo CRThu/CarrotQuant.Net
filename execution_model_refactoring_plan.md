@@ -479,16 +479,27 @@ public enum ExecutionPriceType : byte
 
 ---
 
-### 阶段四：止损与止盈条件单机制 (P2)
+### 阶段四：止损与止盈条件单机制 (P2) - [✅ 已完成 / 759 测试全绿]
+
+> **落地状态与验收凭证（2026-11-21 归档）**：
+> - **契约标准化（FIX Tag 40）**：`OrderType : byte`（Market=0, Limit=1, Stop=2, TakeProfit=3, StopLimit=4, TakeProfitLimit=5）全面扩充，全链路基元统一；
+> - **Broker 单点算法中枢（SSOT 与零死锁）**：条件单物理属性明确为券商端算法单，统一由 `Broker` 权威托管（`OrderStatus.Pending`）；未触发前持仓保持 100% 可用（触发前零冻结），彻底解决止损与止盈双挂死锁；触发瞬间由 Broker 权威核验 `_ledger.TryFreeze`；
+> - **默认时效性收敛（GTC 防持仓裸奔）**：条件单未显式传参时强制默认采用 `TimeInForce.GoodTilCanceled`，日切结算不被误撤单；
+> - **四象限定价彻底消灭日内偷价**：纯函数一次性精确裁决，跳空开盘按 Open 惩罚成交（空头高开/多头低开），盘中击穿按 StopPrice 成交，高开止盈享受 Open 价格改善；
+> - **统一 Bracket 括号单管理**：彻底弃用散装 `string linkedOrderId`，底层引入 `OcoGroupId` 原子化管理互斥对，门面一键 `context.Bracket(...)`，任意一侧触发自动联动撤销另一侧；
+> - **合规流动性统一内核**：触发后无缝接入 `MatchingEngine` 既有的 `VolumeLimit` 与 `CheckLimit` 机制，一字跌停无量自然判定 `NoFill` 排队，拒绝特例硬编码；
+> - **单根 Bar 双触碰悲观仲裁**：极端日内波动同时触碰止损与止盈时，自营量化风控准则优先判定止损生效并联动注销止盈；
+> - **检查点快照无损守恒**：底层 `BrokerSnapshot.ActiveOrders` 原生支持 `OrderStatus.Pending`，零接口改动无损支持断点续跑；
+> - **全量测试回归**：专用测试套件 `ConditionalOrderTests.cs`（12 个严苛用例）100% 通过，全工程 759 个测试全部绿色通过（0 失败，0 跳过）。
 
 #### 1. 契约定义 (`Abstraction/Engine/OrderTypes.cs`)
-止盈作为一等公民正式纳入基元体系，对齐国际 FIX 触碰成交标准：
+止损与止盈作为一等公民正式纳入基元体系，对齐国际 FIX 协议 Tag 40 标准：
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 /// <summary>
-/// 订单基础执行类型。
+/// 订单基础执行类型（对齐 FIX Protocol Tag 40 标准）。
 /// </summary>
 public enum OrderType : byte
 {
@@ -503,56 +514,70 @@ public enum OrderType : byte
     Limit = 1,
 
     /// <summary>
-    /// 止损市价单：市场行情跌穿/涨破 StopPrice 时触发，转为市价单打出。
+    /// 止损市价单：市场行情跌穿/涨破 StopPrice 时触发，转为市价单打出（Taker）。
     /// 行业缩写：STOP，对齐 FIX Tag 40 = 3 (Stop / Stop Loss)。
     /// </summary>
     Stop = 2,
 
     /// <summary>
-    /// 止盈市价单：市场行情冲高/回调触碰 TargetPrice 时触发，转为市价单打出。
+    /// 止盈市价单：市场行情冲高/回调触碰 StopPrice 时触发，转为市价单打出（Taker）。
     /// 行业缩写：TP，对齐 FIX Tag 40 = J (Market If Touched，缩写 MIT)。
     /// </summary>
     TakeProfit = 3,
 
     /// <summary>
-    /// 止损限价单：触发后转为限价单挂单排队。对齐 FIX Tag 40 = 4。
+    /// 止损限价单：触发后转为限价单挂单排队（Maker）。对齐 FIX Tag 40 = 4。
     /// </summary>
     StopLimit = 4,
 
     /// <summary>
-    /// 止盈限价单：触发后转为限价单挂单排队。对齐 FIX Tag 40 = K (Limit If Touched，缩写 LIT)。
+    /// 止盈限价单：触发后转为限价单挂单排队（Maker）。对齐 FIX Tag 40 = K (Limit If Touched，缩写 LIT)。
     /// </summary>
     TakeProfitLimit = 5
 }
 ```
 
-#### 2. 条件单管理与物理撮合闭环
-- **触发前零冻结与显式 OCO 关联**：
-  策略挂出止损与止盈条件单时，由 `ConditionalTriggerManager` 在外部统一监听，**持仓维持完全可用状态**，彻底消灭持仓死锁；条件单通过显式关联键（如 `OrderTag` 或 Bracket 门面组号）绑定，单边触发后联动注销互斥单（OCO 语义），杜绝分批止盈下的误撤单；
-- **极值判定纯函数推导（彻底裁撤冗余枚举 TriggerDirection）**：
-  极值判定直接由 `(OrderType, Direction)` 纯函数闭环推导：
-  ```csharp
-  private static bool CheckTrigger(OrderType type, OrderDirection dir, double stopPrice, in BarSnapshot bar) => type switch
-  {
-      OrderType.Stop or OrderType.StopLimit => 
-          dir == OrderDirection.Sell ? bar.LowOr(bar.Close) <= stopPrice : bar.HighOr(bar.Close) >= stopPrice,
-      OrderType.TakeProfit or OrderType.TakeProfitLimit => 
-          dir == OrderDirection.Sell ? bar.HighOr(bar.Close) >= stopPrice : bar.LowOr(bar.Close) <= stopPrice,
-      _ => false
-  };
-  ```
-- **四象限跳空与触碰定价法则（彻底消灭日内偷价）**：
-  1. **多头止损卖单（Sell Stop）**：低开跳空（`Open <= StopPrice`）按 **`Open`** 成交（承担跳空滑点惩罚）；盘中跌破（`Open > StopPrice && Low <= StopPrice`）按 **`StopPrice`** 成交；
-  2. **空头止损买单（Buy Stop）**：高开跳空（`Open >= StopPrice`）按 **`Open`** 成交（承担跳空滑点惩罚）；盘中涨破（`Open < StopPrice && High >= StopPrice`）按 **`StopPrice`** 成交；
-  3. **多头止盈卖单（Sell TakeProfit）**：高开跳空（`Open >= TargetPrice`）按 **`Open`** 成交（享受价格改善）；盘中冲高（`High >= TargetPrice`）按 **`TargetPrice`** 成交；
-  4. **空头止盈买单（Buy TakeProfit）**：低开跳空（`Open <= TargetPrice`）按 **`Open`** 成交（享受价格改善）；盘中下探（`Low <= TargetPrice`）按 **`TargetPrice`** 成交；
-  坚决杜绝使用日终 `Close` 撮合导致虚假高位逃顶。
-- **一字跌停板流动性硬约束（杜绝假阳性逃顶）**：
-  触发转为正式报单后必须接入 `MatchingEngine` 的统一合规检查。若标的处于**一字跌停封死（`Open == High && High == Low && Low == Close` 且无成交量）**，卖出止损单必须判定为 **`NoFill`**（挂在跌停板上排队，无法出逃），严禁无脑成交！
-- **条件单触发时资产不足的闭环凭证**：
-  若在触发前持仓已被策略其他逻辑卖出平仓，触发瞬间转正式单时若 `_ledger.TryFreeze` 失败，网关必须发布状态为 `Rejected`、理由为 `"Conditional order triggered but pre-freeze failed due to insufficient available position/cash"` 的 `OrderEvent`，确保审计闭环。
+#### 2. 条件单管理与物理撮合闭环 (第一性原理设计)
+
+- **宿主归属（Broker 单点托管算法中枢，SSOT）**：
+  - 条件单物理本质属于**券商端算法单（Broker-hosted Algo Order）**，全生命周期由 **`Broker` 权威单点托管**，`SimulatedExchangeGateway`（网关）保持高内聚，纯粹处理标准报单撮合，绝不穿透持仓账本；
+  - 策略提交条件单时，订单在 `Broker` 登记为 **`OrderStatus.Pending`**，**持仓维持完全可用状态（触发前零冻结）**，彻底消灭止盈与止损在同一笔持仓上的冻结死锁；
+  - 触发瞬间由 `Broker` 单点执行 `_ledger.TryFreeze`：
+    - 若冻结成功：转为正式的市价/限价报单，推向 `_gateway.SendOrder` 撮合成交；
+    - 若冻结失败（如持仓已被提前平仓）：由 `Broker` 权威发布状态为 `Rejected`、理由为 `"Conditional order triggered but pre-freeze failed due to insufficient available position/cash"` 的 `OrderEvent`，实现审计闭环。
+
+- **默认时效性（强制 GoodTilCanceled）**：
+  - 条件单（`Stop` / `TakeProfit` / `StopLimit` / `TakeProfitLimit`）在未显式指定 `timeInForce` 时，**默认强制赋予 `TimeInForce.GoodTilCanceled`**（对齐 QuantConnect Lean、NautilusTrader 与国际券商惯例）；
+  - 杜绝因日切结算自动撤单导致隔夜持仓无保护“裸奔”；仅在用户显式传入 `TimeInForce.Day` 时遵循当日有效。
+
+- **极简 OCO 括号单（Bracket / OcoGroupId 统一管理）**：
+  - 彻底废弃散装 `string linkedOrderId` 互相引用的反模式，避免“鸡生蛋蛋生鸡”与字符串拼写风险；
+  - 系统在底层统一引入 **`OcoGroupId`（`long`）** 管理成对互斥；
+  - 策略层直接通过极简高频门面一键建仓/挂单保护：
+    ```csharp
+    // 一键挂出成对的互斥保护单（Bracket / OCO），底层分配统一 OcoGroupId
+    context.Bracket(symbol, quantity, stopPrice: 9.0, takeProfitPrice: 12.0);
+    ```
+  - 任意单边触发成交后，Broker 自动联动撤销同组另一侧条件单，派发 `OrderEvent(Canceled, Reason: "Canceled by OCO bracket trigger.")`。
+
+- **单点一次性纯函数裁决（四象限定价彻底消灭日内偷价）**：
+  - 拒绝过度设计，单步内无需开辟复杂的两阶段相位分裂，统一在时间步推进中单点执行纯函数裁决：
+    1. **多头止损卖单（Sell Stop）**：低开跳空（`Open <= StopPrice`）按 **`Open`** 成交（承担跳空滑点惩罚）；盘中跌破（`Open > StopPrice && Low <= StopPrice`）按 **`StopPrice`** 成交；
+    2. **空头止损买单（Buy Stop）**：高开跳空（`Open >= StopPrice`）按 **`Open`** 成交（承担跳空滑点惩罚）；盘中涨破（`Open < StopPrice && High >= StopPrice`）按 **`StopPrice`** 成交；
+    3. **多头止盈卖单（Sell TakeProfit）**：高开跳空（`Open >= TargetPrice`）按 **`Open`** 成交（享受价格改善）；盘中冲高（`High >= TargetPrice`）按 **`TargetPrice`** 成交；
+    4. **空头止盈买单（Buy TakeProfit）**：低开跳空（`Open <= TargetPrice`）按 **`Open`** 成交（享受价格改善）；盘中下探（`Low <= TargetPrice`）按 **`TargetPrice`** 成交；
+  - 坚决杜绝使用日终 `Close` 撮合导致虚假高位逃顶。
+
+- **合规与流动性统一内核（零特例代码）**：
+  - 条件单触发转为正式报单后，直接进入 `MatchingEngine` 既有的撮合管线，**100% 复用现有的 `VolumeLimit` 与 `CheckLimit` 机制**；
+  - 若标的出现一字跌停无量，受成交量流动性硬约束自然判定为无法成交并挂在跌停板排队（`NoFill`），严禁无脑成交逃顶。
+
 - **单根 Bar 双触碰悲观仲裁机制（Pessimistic Arbitration）**：
-  日频回测中若单根 Bar 的波动同时触碰了止盈价与止损价，依据量化自营风控准则，**默认采用悲观仲裁：优先判定止损生效**，TakeProfit 联动注销。
+  - 日频回测中若单根 Bar 振幅巨大同时触碰了止盈价与止损价，依据量化自营风控准则，**默认采用悲观仲裁：优先判定止损生效**，TakeProfit 联动注销。
+
+- **检查点持久化天然守恒（零额外数据结构）**：
+  - `Broker.cs` 的 `SaveState()` 与 `RestoreState()` 现有逻辑已原生包含 `OrderStatus.Pending` 订单；
+  - 条件单以 `Pending` 状态保存在 `Broker._orders` 中，天然被 `BrokerSnapshot.ActiveOrders` 完整序列化与还原，零接口破坏，100% 守恒无缝支持断点续跑。
 
 ---
 
@@ -563,9 +588,9 @@ public enum OrderType : byte
 | Milestone | 交付核心组件 | 关键验证手段 |
 | :--- | :--- | :--- |
 | **Milestone 1<br>(TIF 重构)**<br>`[✅ 已完成/PASS]` | 1. `TimeInForce` 枚举（全拼无缩写）与 `OrderRequest` 升级<br>2. 移除悬空的 `OrderOffset`<br>3. `BrokerConfig.DefaultTimeInForce`<br>4. 统一在 `Broker.SubmitOrder` 权威归一化（SSOT）<br>5. 网关跨日按 TIF 撤单与挂单簿清理 | **验收通过（725 测试全绿）**：<br>- `Day` 挂单跨日撤单并解冻；<br>- `GoodTilCanceled` 挂单跨日继续排队且资金维持冻结；<br>- 跨日混合挂单隔离与次日成交闭环；<br>- 策略高频交易门面（Buy/Sell）完整透传。 |
-| **Milestone 2<br>(Maker/Taker & 资产守恒 & 订单黑匣子)** | 1. `LiquidityRole` 枚举<br>2. `ExecutionReport` 挂载 `CumQuantity`, `LeavesQuantity`, `Role`<br>3. 撮合器显式打标与 Broker 尾差清零吸收<br>4. `OrderEventType` 与 `OrderEvent` 实体<br>5. `ITradingRecorder.Record(...)` 统一重载 | 单元测试验证：<br>- 即时成交报告 `Role == LiquidityRole.Taker` 且包含滑点；<br>- 排队跳空成交 `Role == LiquidityRole.Maker` 且滑点为 0；<br>- 多次分笔成交断言 `CumQty + LeavesQty == OrderQty`；<br>- 全额成交后剩余冻结资金与持仓清零；<br>- 验证订单全生命周期（Submitted, Fill, Canceled, Rejected）被准确记录。 |
-| **Milestone 3<br>(亚 Bar 撮合与时态体系)** | 1. `StrategyUpdateTiming` 与 `ExecutionPriceType` 枚举<br>2. 网关矩阵路由与两阶段步进状态机<br>3. OnOpen 模式防未来函数安全拦截 | 单元测试验证：<br>- OnClose 模式搭配 Open/VWAP 的次日撮合与跨日涨跌停拦截；<br>- OnOpen 模式在开盘即刻以当期 Open 成交；<br>- OnOpen 模式在开盘决策并在全天以当期 VWAP 拆单撮合；<br>- OnOpen 模式下尝试读取当期 Close/High/Low 时成功拦截抛错。 |
-| **Milestone 4<br>(条件单机制)** | 1. `OrderType.Stop` / `TakeProfit` / `StopLimit` / `TakeProfitLimit`<br>2. `ConditionalTriggerManager`<br>3. 策略上下文门面 `StopLoss` / `TakeProfit` | 单元测试验证：<br>- 未触发前持仓与资金维持可用，支持止损与止盈双挂无死锁；<br>- 跳空开盘以 Open 成交，盘中击穿以 StopPrice 成交；<br>- 一字跌停板卖出止损判定 NoFill，杜绝假阳性逃顶；<br>- 极值触发判定正确区分不利突破（Stop）与有利冲高（TakeProfit）。 |
+| **Milestone 2<br>(Maker/Taker & 资产守恒 & 订单黑匣子)**<br>`[✅ 已完成/PASS]` | 1. `LiquidityRole` 枚举<br>2. `ExecutionReport` 挂载 `CumQuantity`, `LeavesQuantity`, `Role`<br>3. 撮合器显式打标与 Broker 尾差清零吸收<br>4. `OrderEventType` 与 `OrderEvent` 实体<br>5. `ITradingRecorder.Record(...)` 统一重载 | **验收通过（740 测试全绿）**：<br>- 即时成交报告 `Role == LiquidityRole.Taker` 且包含滑点；<br>- 排队跳空成交 `Role == LiquidityRole.Maker` 且滑点为 0；<br>- 多次分笔成交断言 `CumQty + LeavesQty == OrderQty`；<br>- 全额成交后剩余冻结资金与持仓清零；<br>- 验证订单全生命周期（Submitted, Fill, Canceled, Rejected）被准确记录。 |
+| **Milestone 3<br>(亚 Bar 撮合与时态体系)**<br>`[✅ 已完成/PASS]` | 1. `StrategyUpdateTiming` 与 `ExecutionPriceType` 枚举<br>2. 网关矩阵路由与两阶段步进状态机<br>3. OnOpen 模式防未来函数安全拦截 | **验收通过（747 测试全绿）**：<br>- OnClose 模式搭配 Open/VWAP 的次日撮合与跨日涨跌停拦截；<br>- OnOpen 模式在开盘即刻以当期 Open 成交；<br>- OnOpen 模式在开盘决策并在全天以当期 VWAP 拆单撮合；<br>- OnOpen 模式下尝试读取当期 Close/High/Low 时成功拦截抛错。 |
+| **Milestone 4<br>(条件单机制)**<br>`[✅ 已完成/PASS]` | 1. `OrderType.Stop` / `TakeProfit` / `StopLimit` / `TakeProfitLimit`（FIX Tag 40 标准）<br>2. `Broker` 内部集成轻量条件单管理（触发前零冻结）<br>3. 条件单默认强制 `TimeInForce.GoodTilCanceled`<br>4. 统一 Bracket 括号单管理与上下文门面 `context.Bracket(...)`<br>5. 触发后无缝接入既有 `MatchingEngine` 流动性/涨跌停合规机制<br>6. 复用现有 `BrokerSnapshot.ActiveOrders` 天然实现断点续跑 | **验收通过（759 测试全绿）**：<br>- 未触发前持仓与资金维持可用，支持止损与止盈双挂无死锁；<br>- 跳空开盘以 Open 惩罚成交，盘中击穿以 StopPrice 成交；<br>- 一字跌停无量受流动性拦截判定为 NoFill 排队，杜绝假阳性逃顶；<br>- 极值触发判定正确区分不利突破（Stop）与有利冲高（TakeProfit）；<br>- 单根 Bar 双触碰确定性悲观仲裁（优先止损生效，联动注销止盈）；<br>- 检查点保存与恢复时未触发条件单 100% 守恒还原。 |
 
 ---
 
@@ -586,7 +611,7 @@ public enum OrderType : byte
      - 混合测试场景：同一交易日内混合提交 Day 与 GTC 限价单，跨日撤销 Day 保留 GTC，次日价格触碰时 GTC 正常成交入账。
   2. **全量回归**：全工程 725 个测试全部通过（0 失败，0 跳过）。
 
-#### Milestone 2: 资产守恒闭环、Maker/Taker 归因与订单黑匣子（消除浮点 Bug）
+#### Milestone 2: 资产守恒闭环、Maker/Taker 归因与订单黑匣子（消除浮点 Bug）- [✅ 已完成落地（740 测试全绿）并通过审计]
 - **交付内容**：
   1. `ExecutionReport` 挂载 `CumQuantity`, `LeavesQuantity`, `Role`；
   2. `IExchangeGateway.OnOrderStateChanged` 升级为携带原因的三元签名，打通网关拒单原因透传；
@@ -599,9 +624,9 @@ public enum OrderType : byte
      - `OrderEventBlackboxTests`：断言涨跌停被拒单时，`OrderEvent` 记录 `EventType == Rejected` 且原因清晰。
   2. **编写最小实现（Green）**：在 Broker、网关与记录器中补充尾差清理、事件通知与持久化逻辑；
   3. **老测试同步升级（DRY / 零历史包袱）**：同步更新受接口参数变更影响的已有测试，保证无过渡冗余代码；
-  4. **全量回归**：验证所有历史策略与财务报表统计 100% 绿色。
+  4. **全量回归**：验证所有历史策略与财务报表统计 100% 绿色（740 测试全绿通过）。
 
-#### Milestone 3: 亚 Bar 撮合与多模态时态体系（量化时序核心升级）
+#### Milestone 3: 亚 Bar 撮合与多模态时态体系（量化时序核心升级）- [✅ 已完成落地（747 测试全绿）并通过审计]
 - **交付内容**：
   1. 引入 `StrategyUpdateTiming`（`OnClose`, `OnOpen`，置于 `EngineConfig.UpdateTiming`，默认 `OnClose`）与 `ExecutionPriceType`（`Open`, `VolumeWeightedAveragePrice`, `Close`, `TypicalPrice`，置于 `BrokerConfig.DefaultExecutionPrice`，默认 `Open`）；
   2. 极致精简架构：彻底裁撤第二队列，所有跨步订单在提交后直接进入权威 `OrderBook` 挂单簿单点管理（SSOT）；
@@ -615,22 +640,26 @@ public enum OrderType : byte
      - `StrategyOnOpenTests`：开盘即刻 Open 成交，并在尝试读取当期收盘价/最高价/最低价（`offset = 0`）时断言严格抛出 `InvalidOperationException`；
      - `BacktestingEngineRolloverBoundaryTests`：断言回测最后一根 Bar 收盘挂出的次日单在引擎结束退出时被完全撤销解冻，无孤儿资产残留。
   2. **编写最小实现（Green）**：在引擎与网关内部补充三相位步进、开盘撮合与异常拦截；
-  3. **全量回归**：确保已有测试与新增时态测试 100% 绿色。
+  3. **全量回归**：确保已有测试与新增时态测试 100% 绿色（747 测试全绿通过）。
 
-#### Milestone 4: 条件单（Stop 止损 / TakeProfit 止盈）独立中枢（风控闭环）
+#### Milestone 4: 条件单（Stop 止损 / TakeProfit 止盈）独立中枢（风控闭环）- [✅ 已完成落地（759 测试全绿）并通过审计]
 - **交付内容**：
-  1. 引入轻量 `ConditionalTriggerManager`，触发前零资金/持仓冻结；
-  2. 纯函数极值触碰判定（跌破看 Low，突破看 High）；
-  3. 四象限定价模型（跳空低开按 Open 惩罚成交，跳空高开按 Open 价格改善成交）；
-  4. 一字跌停板流动性拦截（`NoFill` 排队防假逃顶）；
-  5. 策略上下文门面 `context.StopLoss(...)` 与 `context.TakeProfit(...)`。
+  1. `OrderType` 扩充：引入 `Stop` / `TakeProfit` / `StopLimit` / `TakeProfitLimit`（底层基元 `: byte`，对齐 FIX Tag 40）；
+  2. `Broker` 内部集成轻量条件单管理（`OrderStatus.Pending`，触发前零冻结）；
+  3. 条件单默认时效性收敛：未显式传参时强制采用 `TimeInForce.GoodTilCanceled`，防止隔夜持仓裸奔；
+  4. 纯函数单点极值触碰判定与四象限定价模型（跳空低开按 Open 惩罚成交，盘中击穿按 StopPrice 成交）；
+  5. 废弃散装 `string linkedOrderId`，统一通过 `Bracket` 括号单管理互斥对，暴露策略上下文门面 `context.Bracket(...)` 与 `context.StopLoss(...)` / `context.TakeProfit(...)`；
+  6. 触发后无缝接入既有 `MatchingEngine` 的 `VolumeLimit` 与 `CheckLimit` 合规机制（一字跌停无量自然判定 `NoFill`，杜绝特例代码）；
+  7. 检查点持久化复用既有 `BrokerSnapshot.ActiveOrders`（原生包含 `Pending` 状态），零额外结构无损支持断点续跑。
 - **TDD 落地闭环**：
   1. **先写失败测试（Red）**：
      - `ConditionalTriggerTests`：同时设置止损与限价止盈，断言持仓不被锁死；
      - `StopOrderPricingTests`：构造跳空低开 Bar，断言成交价等于 Open（非 Close）；
-     - `LimitDownStopLossLiquidityTests`：构造一字跌停 Bar，断言卖单不成交（NoFill）；
-  2. **编写最小实现（Green）**：完成触发器管理与撮合转单逻辑；
-  3. **全量回归**：最终验收。
+     - `LimitDownStopLossLiquidityTests`：构造一字跌停 Bar，断言卖单无法成交（NoFill）；
+     - `ExtremeDualTouchPessimisticArbitrationTests`：单根 Bar 振幅极大双触碰时，断言悲观仲裁优先判定止损生效并注销止盈；
+     - `ConditionalOrderCheckpointTests`：断言断点续跑保存与恢复时，未触发条件单 100% 还原；
+  2. **编写最小实现（Green）**：完成 Broker 内部条件单管理、极值判定与撮合转单逻辑；
+  3. **全量回归**：验证全量 759 个测试 100% 绿色通过，最终验收。
 
 ---
 

@@ -173,7 +173,7 @@ sequenceDiagram
 
 ### 6. 市价单保证金预估与资金校验机制 (Market Order Pricing)
 市价单委托价格通常为 `0.0`，系统在 Phase 1 预冻结阶段通过以下机制评估资金需求：
-1. **参考市价解析**：`Broker.GetEstimatedPrice` 从绑定网关（`ISimulatedExchange.GetMarketPrice`）获取标的最新基准价格；
+1. **参考市价解析**：`Broker.GetEstimatedPrice` 从绑定网关（`ISimulatedExchange.GetBar`）获取标的最新基准行情切片，根据 `ExecutionPriceType`（Open、Vwap 或 Close）精准解析公允价格；
 2. **滑点缓冲系数**：买单以 `marketPrice * (1.0 + Slippage)` 计算预估开仓成本，卖单以 `marketPrice * (1.0 - Slippage)` 预估；
 3. **资金充足性检查**：当可用资金低于预估保证金与预估手续费之和时，拒绝委托并返回 `OrderStatus.Rejected`；
 4. **无参考价处理**：当标的尚无市场行情记录（参考价 `<= 0` 或 `NaN`）时，`GetEstimatedPrice` 返回 `0.0`，买单由于无法确定资金需求直接拒绝。

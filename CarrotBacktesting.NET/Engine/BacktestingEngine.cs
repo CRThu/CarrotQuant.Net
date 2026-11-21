@@ -466,7 +466,10 @@ namespace CarrotBacktesting.NET.Engine
                     }
 
                     // ==================== Phase 2: Intraday 相位 (盘中时刻) ====================
-                    // 2.1 离散事件常数时间轻量探测与派发
+                    // 2.1 驱动盘中条件单判定（针对 OnOpen 阶段新提交的条件单）
+                    (_broker as Broker.Broker)?.ProcessConditionalOrders(currentTime);
+
+                    // 2.2 离散事件常数时间轻量探测与派发
                     if (_events.HasNewEvents(currentTime))
                     {
                         DispatchEvents(currentTime);

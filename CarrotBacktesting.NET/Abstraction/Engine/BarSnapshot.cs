@@ -27,10 +27,13 @@ public readonly struct BarSnapshot : IEquatable<BarSnapshot>
     public bool HasVolume => !double.IsNaN(Volume);
     public bool HasAmount => !double.IsNaN(Amount);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsValidPrice(double p) => !double.IsNaN(p) && !double.IsInfinity(p) && p > 0.0;
+
     /// <summary>
-    /// 是否包含任何有效行情（Close、Open、High、Low 任一有效）。
+    /// 是否包含任何有效行情（Close、Open、High、Low 任一为合法正有限值）。
     /// </summary>
-    public bool IsValid => HasClose || HasOpen || HasHigh || HasLow;
+    public bool IsValid => IsValidPrice(Close) || IsValidPrice(Open) || IsValidPrice(High) || IsValidPrice(Low);
 
     // ==================== 3. 高性能回退辅助方法（替代 ?? 运算符，零 GC） ====================
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -104,18 +107,17 @@ public readonly struct BarSnapshot : IEquatable<BarSnapshot>
 
     // ==================== 5. 从动态数据行提取强类型行情切片 ====================
     /// <summary>
-    /// 从动态数据行提取强类型行情切片。
+    /// 从动态数据行提取强类型行情切片。若数据行为空返回 BarSnapshot.Empty。
+    /// 未提供或非法的数值列自动填充为 double.NaN。
     /// </summary>
-    public static BarSnapshot FromDataRow(IDataRow? row, double fallbackPrice = double.NaN)
+    public static BarSnapshot FromDataRow(IDataRow? row)
     {
         if (row == null)
         {
-            return !double.IsNaN(fallbackPrice) && fallbackPrice > 0.0
-                ? new BarSnapshot(close: fallbackPrice)
-                : Empty;
+            return Empty;
         }
 
-        double close = row.GetDouble(StandardFields.Close, fallbackPrice);
+        double close = row.GetDouble(StandardFields.Close, double.NaN);
         double open = row.GetDouble(StandardFields.Open, double.NaN);
         double high = row.GetDouble(StandardFields.High, double.NaN);
         double low = row.GetDouble(StandardFields.Low, double.NaN);

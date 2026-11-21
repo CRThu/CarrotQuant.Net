@@ -39,7 +39,7 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 - `StrategyBase`: 通用策略抽象基类，内置默认 `Name`、`Lookback` 及安全生命周期虚方法，开发者仅需覆写 `OnUpdate`，消灭空白样板代码。
 - `RuleStrategyBase`: 规则交易便利模板基类，继承自 `StrategyBase`，内部按标的遍历并分发至 `CheckEntry(context, symbol)` 与 `CheckExit(context, symbol, position)`。
 - `IStrategyPipeline`: 组合策略管线契约，定义拓扑添加 `Add`、密封优化 `Compile`、策略展开 `GetStrategies` 与递归最大 `Lookback` 汇总。
-- **高频交易动词与上下文直通门面**: 策略在 `OnUpdate` 中可直接调用 `context.Buy(...)`、`context.Sell(...)`、`context.ClosePosition(...)` 以及 `context.Symbols` / `context.GetSymbolIndex(...)` 进行极简直通交易与标的遍历，彻底消除多层穿透与底层 `OrderRequest` 样板代码。
+- **高频交易动词与上下文直通门面**: 策略在 `OnUpdate` 中可直接调用 `context.Buy(...)`、`context.Sell(...)`、`context.ClosePosition(...)` 以及条件风控单 `context.StopLoss(...)`、`context.TakeProfit(...)`、`context.Bracket(...)`，配合 `context.Symbols` / `context.GetSymbolIndex(...)` 进行极简直通交易与标的遍历，彻底消除多层穿透与底层 `OrderRequest` 样板代码。
 - **流式指标与统一门面调用**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd` 声明全市场标的池并持有极速索引引用，在 `OnUpdate` 中利用 `pool[symbolIndex]` 高速直取或通过 `context.Indicators.Get<T>` 免声明读取，详见 [第六节](#六流式指标与计算属性体系-indicator--computed-property-architecture)。
 
 ### 2. 通用强类型黑板 (`IMarketState`)
@@ -238,7 +238,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 | `IBroker` | `Abstraction/Engine/IBroker.cs` | 客户端交易账户统一门面契约：资金持仓查询、订单提交与撤销、`Step` 跨日结算推进、`SyncState` 实盘对账、异步回报通知 |
 | `IExchangeGateway` | `Abstraction/Engine/IExchangeGateway.cs` | 通用物理网关契约：报单 `SendOrder`、撤单 `CancelOrder`、成交回报 `OnExecution`、订单状态流转 `OnOrderStateChanged` |
 | `IExchangeGatewayProvider` | `Abstraction/Engine/IExchangeGatewayProvider.cs` | 交易所网关提供者显式契约：受保护地访问底层网关，避免外部策略直接穿透两阶段预冻结 |
-| `ISimulatedExchange` | `Abstraction/Engine/ISimulatedExchange.cs` | 仿真交易所驱动契约：离线时间步推进 `Step`、纯行情驱动撮合 `OnMarketData`、时钟显式校准 `SetCurrentTime`、最新市价查询 `GetMarketPrice` |
+| `ISimulatedExchange` | `Abstraction/Engine/ISimulatedExchange.cs` | 仿真交易所驱动契约：离线时间步推进 `Step`、纯行情切片驱动撮合 `OnMarketData`、时钟显式校准 `SetCurrentTime`、当前行情物理切片查询 `GetBar` |
 | `Broker` | `Engine/Broker/Broker.cs` | 客户端经纪商门面实现：维护订单生命周期追踪、锁外调用网关、锁外派发异步事件（Open Calls） |
 | `AccountLedger` | `Engine/Broker/AccountLedger.cs` | 纯财务账户账本（SSOT）：资金管理、两阶段挂单冻结（Phase 1 `TryFreeze` / Phase 2 `CommitFill`）、零现金平仓支持与 T+N 跨日划转 |
 | `PositionData` | `Engine/Broker/PositionData.cs` | 单标的持仓实体与批次队列：总持仓、冻结持仓、可用持仓、纯净加权成交均价（不含费用）、在途开仓手续费池（`OpenCommission` 等比分摊）、`PendingLots` 结算队列 |
@@ -262,6 +262,10 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 4. **对称 Hook 矩阵与实盘对账**：
    - 遵循“静态配置覆盖常规场景，对称 Hook 动态接管定制逻辑”原则，支持流动性、手续费、滑点、涨跌停、结算天数与合约乘数的自定义注入（详见 [docs/configuration.md](docs/configuration.md)）。
    - 实盘支持通过 `broker.SyncState(liveCash, livePositions)` 进行盘前或断线重连后的原子对账重置。
+5. **券商端条件风控算法单体系 (Broker-hosted Algo Orders)**：
+   - 止损单（`Stop` / `StopLimit`）、止盈单（`TakeProfit` / `TakeProfitLimit`）与成对互斥括号单（`Bracket` / `OcoGroupId`）权威单点托管于 `Broker`（`OrderStatus.Pending`）。
+   - **触发前零冻结与默认 GTC**：持仓与资金在未触发前维持 100% 可用，彻底消除止损止盈双挂持仓死锁；未显式指定 TIF 时默认强制为 `TimeInForce.GoodTilCanceled` 防止隔夜持仓裸奔。
+   - **四象限定价与单点纯函数裁决**：跳空开盘按 Open 惩罚成交（多头低开/空头高开），盘中击穿按 StopPrice 成交，高开止盈享受 Open 价格改善；双触碰悲观仲裁优先执行止损；触发瞬间由 Broker 权威校验 `TryFreeze`，冻结成功后转入正式报单无缝接入 `MatchingEngine` 的 `VolumeLimit` 与 `CheckLimit` 机制。
 
 ---
 

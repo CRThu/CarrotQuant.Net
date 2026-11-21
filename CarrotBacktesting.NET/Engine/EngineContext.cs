@@ -86,6 +86,18 @@ namespace CarrotBacktesting.NET.Engine
             => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag, timeInForce);
 
         /// <inheritdoc />
+        public string StopLoss(string symbol, double stopPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+            => Broker.StopLoss(symbol, stopPrice, quantity, clientOrderId, orderTag, timeInForce);
+
+        /// <inheritdoc />
+        public string TakeProfit(string symbol, double targetPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+            => Broker.TakeProfit(symbol, targetPrice, quantity, clientOrderId, orderTag, timeInForce);
+
+        /// <inheritdoc />
+        public (string StopOrderId, string TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null)
+            => Broker.Bracket(symbol, quantity, stopPrice, takeProfitPrice, orderTag, timeInForce);
+
+        /// <inheritdoc />
         public ITradingRecorder? Recorder { get; }
 
         /// <inheritdoc />

@@ -72,7 +72,7 @@ public class EngineCheckpointTests
         var t0 = new MarketTime(2025, 1, 1);
 
         // 先注入当前市价 10.0
-        gateway.OnMarketData("SH.600000", 10.0, t0, null);
+        gateway.OnMarketData("SH.600000", t0, new BarSnapshot(close: 10.0));
 
         // 提交一个低于市价的限价买单 (9.5 < 10.0)，进入挂单簿排队
         var orderReq = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m);
@@ -123,7 +123,7 @@ public class EngineCheckpointTests
         var broker = new Broker(gateway, cfg);
 
         // 先注入当前市价 10.0
-        gateway.OnMarketData("SH.600000", 10.0, new MarketTime(2025, 1, 1), null);
+        gateway.OnMarketData("SH.600000", new MarketTime(2025, 1, 1), new BarSnapshot(close: 10.0));
 
         // 提交一个低于市价的限价买单，并在 Broker 层面完成两阶段预冻结
         var req = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m);
@@ -150,7 +150,7 @@ public class EngineCheckpointTests
         newBroker.OnTrade += r => capturedReport = r;
 
         // 通过网关触发该订单成交（市价跌破 9.5 触发限价单撮合）
-        gateway.OnMarketData("SH.600000", 9.0, new MarketTime(2025, 1, 2), null);
+        gateway.OnMarketData("SH.600000", new MarketTime(2025, 1, 2), new BarSnapshot(close: 9.0));
 
         Assert.IsNotNull(capturedReport, "恢复后的订单成交回报必须被正确接收派发");
         Assert.AreEqual(1000m, newBroker.GetPosition("SH.600000"), "持仓必须增加 1000 股");
@@ -256,7 +256,7 @@ public class EngineCheckpointTests
 
         // --- 运行 A: 连续完整回测 (Day 0 ~ Day 4) ---
         var simExchangeA = new SimulatedExchangeGateway(brokerConfig);
-        simExchangeA.OnMarketData("SH.600000", 10.0, dates[0], null);
+        simExchangeA.OnMarketData("SH.600000", dates[0], new BarSnapshot(close: 10.0));
         var brokerA = new Broker(simExchangeA, brokerConfig);
         var strategyA = new LimitPendingAndExecutionStrategy();
         var pipelineA = StrategyPipeline.Sequential().Add(strategyA);
@@ -269,7 +269,7 @@ public class EngineCheckpointTests
 
         // --- 运行 B: 运行至 Day 1（此时有在途挂单），保存检查点，恢复并续跑至 Day 4 ---
         var simExchangeB = new SimulatedExchangeGateway(brokerConfig);
-        simExchangeB.OnMarketData("SH.600000", 10.0, dates[0], null);
+        simExchangeB.OnMarketData("SH.600000", dates[0], new BarSnapshot(close: 10.0));
         var brokerB = new Broker(simExchangeB, brokerConfig);
         var strategyB1 = new LimitPendingAndExecutionStrategy();
         var pipelineB1 = StrategyPipeline.Sequential().Add(strategyB1);

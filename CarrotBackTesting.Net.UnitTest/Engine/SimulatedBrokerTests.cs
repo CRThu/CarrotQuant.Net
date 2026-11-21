@@ -1627,7 +1627,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             IBrokerEngineDriver driver = (IBrokerEngineDriver)broker;
 
             // 1. 下达买单 1,000 股 @ 10.0 元
-            gateway.OnMarketData("sh.600000", 10.0, new DateTime(2025, 1, 2, 9, 30, 0));
+            gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 2, 9, 30, 0), new BarSnapshot(close: 10.0));
             broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m));
 
             Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
@@ -1664,7 +1664,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var broker = new Broker(gateway, config);
 
             // 注入市场行情 10.0 元
-            gateway.OnMarketData("sh.600000", 10.0, DateTime.UtcNow);
+            gateway.OnMarketData("sh.600000", DateTime.UtcNow, new BarSnapshot(close: 10.0));
 
             // 提交市价买单 500 股，Price 为 0.0
             var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 0.0, 500m);
@@ -1691,7 +1691,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var gateway = new SimulatedExchangeGateway(config);
             var broker = new Broker(gateway, config);
 
-            gateway.OnMarketData("sh.600000", 10.0, DateTime.UtcNow);
+            gateway.OnMarketData("sh.600000", DateTime.UtcNow, new BarSnapshot(close: 10.0));
 
             // 尝试市价买入 200 股（需 2000 元 > 可用 1000 元）
             var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 0.0, 200m);
@@ -1731,7 +1731,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         {
             if (((IExchangeGatewayProvider)broker).Gateway is ISimulatedExchange sim)
             {
-                sim.OnMarketData(symbol, price, time, bar);
+                BarSnapshot snapshot = bar != null ? BarSnapshot.FromDataRow(bar) : new BarSnapshot(close: price);
+                sim.OnMarketData(symbol, time, in snapshot);
             }
         }
 
@@ -1740,7 +1741,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             if (((IExchangeGatewayProvider)broker).Gateway is ISimulatedExchange sim)
             {
                 MarketTime effectiveTime = broker.CurrentTime != MarketTime.MinValue ? broker.CurrentTime : MarketTime.UtcNow;
-                sim.OnMarketData(symbol, price, effectiveTime, bar);
+                BarSnapshot snapshot = bar != null ? BarSnapshot.FromDataRow(bar) : new BarSnapshot(close: price);
+                sim.OnMarketData(symbol, effectiveTime, in snapshot);
             }
         }
 
@@ -1751,7 +1753,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 if (basePrice > 0.0 && !double.IsNaN(basePrice) && !double.IsInfinity(basePrice))
                 {
                     MarketTime effectiveTime = broker.CurrentTime != MarketTime.MinValue ? broker.CurrentTime : MarketTime.UtcNow;
-                    sim.OnMarketData(request.Symbol, basePrice, effectiveTime, bar);
+                    BarSnapshot snapshot = bar != null ? BarSnapshot.FromDataRow(bar) : new BarSnapshot(close: basePrice);
+                    sim.OnMarketData(request.Symbol, effectiveTime, in snapshot);
                 }
                 else if (double.IsNaN(basePrice) || double.IsInfinity(basePrice))
                 {
