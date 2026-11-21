@@ -180,7 +180,7 @@ public static class BenchmarkSuite
         Console.WriteLine("\n[2/4] 正在执行增量流式指标计算吞吐压测 (5,000,000 次指标更新)...");
 
         const int Points = 1_000_000;
-        IStreamIndicator[] indicators =
+        IIndicator[] indicators =
         {
             new Sma(20),
             new Ema(20),

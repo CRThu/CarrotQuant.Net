@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using CarrotBacktesting.NET.Abstraction.Analysis;
+using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Analysis;
 using CarrotBacktesting.NET.Config;
@@ -37,6 +38,16 @@ public sealed class BacktestSession : IDisposable
     /// 获取绩效归因分析报告（在调用 <see cref="Analyze(bool)"/> 之前为 null）。
     /// </summary>
     public AnalysisReport? Report { get; private set; }
+
+    /// <summary>
+    /// 创建独立自描述的回测会话构建器（<see cref="BacktestSessionBuilder"/>），为纯代码回测提供极简链式组装门面。
+    /// </summary>
+    public static BacktestSessionBuilder CreateBuilder() => new();
+
+    /// <summary>
+    /// 默认构建器入口：创建流畅回测会话构建器（等价于 <see cref="CreateBuilder"/>）。
+    /// </summary>
+    public static BacktestSessionBuilder Create() => new();
 
     /// <summary>
     /// 基于 YAML 配置文件直接执行回测流程并输出量化分析报告。

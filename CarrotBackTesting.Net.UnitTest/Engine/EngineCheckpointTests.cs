@@ -166,8 +166,8 @@ public class EngineCheckpointTests
         var market = new MarketState();
         var t0 = new MarketTime(2025, 1, 1);
 
-        market.SetState(new TestSignal("Alpha1", 0.98), t0, "signal_alpha");
-        market.SetState(42.5, t0, "scalar_val");
+        market.SetState("signal_alpha", new TestSignal("Alpha1", 0.98), t0);
+        market.SetState("scalar_val", 42.5, t0);
 
         // 导出快照并序列化为 JSON 字节
         byte[] bytes = market.ToJsonBytes();
@@ -176,16 +176,84 @@ public class EngineCheckpointTests
         var restoredMarket = new MarketState();
         restoredMarket.RestoreFromJsonBytes(bytes);
 
-        // 验证强类型反序列化能力（即使底层由 JsonElement 恢复，也能透明转换为目标类型）
+        // 验证强类型反序列化能力
         Assert.IsTrue(restoredMarket.HasState<TestSignal>("signal_alpha"));
         var sig = restoredMarket.GetState<TestSignal>("signal_alpha");
         Assert.IsNotNull(sig);
         Assert.AreEqual("Alpha1", sig.Tag);
         Assert.AreEqual(0.98, sig.Score, 1e-6);
 
-        Assert.IsTrue(restoredMarket.TryGetState<double>(out double val, out var time, "scalar_val"));
+        Assert.IsTrue(restoredMarket.TryGetState<double>("scalar_val", out double val, out var time));
         Assert.AreEqual(42.5, val, 1e-6);
         Assert.AreEqual(t0, time);
+    }
+
+    [TestMethod]
+    public void MarketState_SingletonAndMultiKvEntries_ShouldSerializeAndRestoreAccurately()
+    {
+        var market = new MarketState();
+        var t0 = new MarketTime(2025, 1, 1);
+
+        // 1. 显式 Key 存取复合对象
+        var mainSignal = new TestSignal("GlobalMain", 100.0);
+        market.SetState("main_signal", mainSignal, t0);
+
+        // 2. 多 KV 模式（同类型 TestSignal 多个不同命名空间条目）
+        var worker1 = new TestSignal("WorkerAlpha", 10.5);
+        var worker2 = new TestSignal("WorkerBeta", 20.5);
+        var worker3 = new TestSignal("WorkerGamma", 30.5);
+        market.SetState("worker_1", worker1, t0);
+        market.SetState("worker_2", worker2, t0);
+        market.SetState("worker_3", worker3, t0);
+
+        // 3. 标量数据存取（double、string、bool）
+        market.SetState("scalar_threshold", 888.88, t0);
+        market.SetState("scalar_status", "RiskOff_Triggered", t0);
+        market.SetState("scalar_flag", true, t0);
+
+        // 导出为 JSON 字节
+        byte[] bytes = market.ToJsonBytes();
+        Assert.IsTrue(bytes.Length > 0);
+
+        // 恢复至全新的黑板实例
+        var restored = new MarketState();
+        restored.RestoreFromJsonBytes(bytes);
+
+        // 4. 验证复合对象无损还原
+        Assert.IsTrue(restored.HasState<TestSignal>("main_signal"));
+        var restoredMain = restored.GetState<TestSignal>("main_signal");
+        Assert.IsNotNull(restoredMain);
+        Assert.AreEqual("GlobalMain", restoredMain.Tag);
+        Assert.AreEqual(100.0, restoredMain.Score);
+
+        // 5. 验证多 KV 模式各个条目互不干扰、精准还原
+        Assert.IsTrue(restored.HasState<TestSignal>("worker_1"));
+        Assert.IsTrue(restored.HasState<TestSignal>("worker_2"));
+        Assert.IsTrue(restored.HasState<TestSignal>("worker_3"));
+
+        var rWorker1 = restored.GetState<TestSignal>("worker_1");
+        var rWorker2 = restored.GetState<TestSignal>("worker_2");
+        var rWorker3 = restored.GetState<TestSignal>("worker_3");
+
+        Assert.IsNotNull(rWorker1);
+        Assert.IsNotNull(rWorker2);
+        Assert.IsNotNull(rWorker3);
+        Assert.AreEqual("WorkerAlpha", rWorker1.Tag);
+        Assert.AreEqual(10.5, rWorker1.Score);
+        Assert.AreEqual("WorkerBeta", rWorker2.Tag);
+        Assert.AreEqual(20.5, rWorker2.Score);
+        Assert.AreEqual("WorkerGamma", rWorker3.Tag);
+        Assert.AreEqual(30.5, rWorker3.Score);
+
+        // 6. 验证各标量精准还原且类型纯正（绝无 JsonElement 污染）
+        Assert.IsTrue(restored.TryGetState<double>("scalar_threshold", out double valDbl, out _));
+        Assert.AreEqual(888.88, valDbl, 1e-6);
+
+        Assert.IsTrue(restored.TryGetState<string>("scalar_status", out string? valStr, out _));
+        Assert.AreEqual("RiskOff_Triggered", valStr);
+
+        Assert.IsTrue(restored.TryGetState<bool>("scalar_flag", out bool valBool, out _));
+        Assert.IsTrue(valBool);
     }
 
     private class LimitPendingAndExecutionStrategy : IStrategy

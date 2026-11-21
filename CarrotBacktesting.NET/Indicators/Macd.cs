@@ -5,8 +5,8 @@ namespace CarrotBacktesting.NET.Indicators
 {
     /// <summary>
     /// 指数平滑异同移动平均线（Moving Average Convergence Divergence, MACD）。
-    /// 遵循经典组合模式（Composite Pattern），自身实现 <see cref="IStreamIndicator"/> 契约（默认索引指向 Dif），
-    /// 同时通过强类型只读属性暴露 <see cref="Dif"/>（快线-慢线）、<see cref="Dea"/>（信号线）与 <see cref="Hist"/>（柱状图差值）。
+    /// 遵循经典组合模式（Composite Pattern），自身实现 <see cref="IIndicator"/> 契约（默认索引指向 Dif），
+    /// 同时通过强类型只读属性暴露 <see cref="Dif"/>（快线-慢线）、<see cref="Dea"/>（信号线）与 <see cref="Hist"/>（柱状图差值）子流 <see cref="IIndicatorStream"/>。
     /// 内部单次共享快速与慢速 EMA 计算，内置 NaN 停牌冻结跳过（Skip & Freeze）防御。
     /// </summary>
     public sealed class Macd : StreamIndicatorBase
@@ -22,17 +22,17 @@ namespace CarrotBacktesting.NET.Indicators
         /// <summary>
         /// 获取差离值子流（DIF = Fast EMA - Slow EMA）。
         /// </summary>
-        public IStreamIndicator Dif => _difStream;
+        public IIndicatorStream Dif => _difStream;
 
         /// <summary>
         /// 获取讯号线子流（DEA = Signal EMA of DIF）。
         /// </summary>
-        public IStreamIndicator Dea => _deaStream;
+        public IIndicatorStream Dea => _deaStream;
 
         /// <summary>
         /// 获取柱状图差值子流（HIST = (DIF - DEA) * 2）。
         /// </summary>
-        public IStreamIndicator Hist => _histStream;
+        public IIndicatorStream Hist => _histStream;
 
         /// <summary>
         /// 构建流式 MACD 指标实例。

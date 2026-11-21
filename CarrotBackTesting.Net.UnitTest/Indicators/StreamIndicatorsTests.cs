@@ -7,7 +7,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 {
     internal static class TestIndicatorExtensions
     {
-        public static void Update(this IStreamIndicator indicator, double close)
+        public static void Update(this IIndicator indicator, double close)
         {
             indicator.Update(close, close, close, close, 1000.0);
         }
@@ -681,8 +681,10 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.AreEqual(50.0, kdj.D.Current, 1e-8);
             Assert.AreEqual(50.0, kdj.J.Current, 1e-8);
 
-            // 子流只读保护：外部调用 Update 必须显式抛错
-            Assert.ThrowsException<NotSupportedException>(() => kdj.K.Update(1, 1, 1, 1, 1));
+            // 子流纯只读保护：IIndicatorStream 契约不包含 Update 方法，类型系统杜绝伪实现与误调
+            Assert.IsTrue(kdj.K is IIndicatorStream);
+            Assert.IsFalse(kdj.K is IIndicator, "受控子流绝对不实现 IIndicator 计算驱动契约");
+            Assert.IsNull(typeof(IIndicatorStream).GetMethod("Update"), "IIndicatorStream 必须保持纯净只读，绝对不暴露 Update 驱动方法");
         }
 
         #endregion
@@ -850,6 +852,67 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.AreEqual(-20.0, bb.Current, 1e-12); // (-10 - 20 - 30) / 3 = -20
             Assert.IsTrue(bb.Upper.Current > bb.Middle.Current);
             Assert.IsTrue(bb.Lower.Current < bb.Middle.Current);
+        }
+
+        #endregion
+
+        #region 14. 核心契约抽象与子流隔离架构测试 (IIndicator vs IIndicatorStream)
+
+        [TestMethod]
+        public void IndicatorContracts_InterfaceSegregation_SubStreamsMustBePureReadOnlyStreams()
+        {
+            // 1. 契约反射验证：IIndicatorStream 必须是纯只读序列契约，严禁泄露 Update 或 Reset 驱动方法
+            var streamType = typeof(IIndicatorStream);
+            Assert.IsNull(streamType.GetMethod("Update"), "IIndicatorStream 绝不能包含 Update 方法");
+            Assert.IsNull(streamType.GetMethod("Reset"), "IIndicatorStream 绝不能包含 Reset 方法");
+
+            // 2. 契约继承验证：IIndicator 必须继承自 IIndicatorStream
+            Assert.IsTrue(typeof(IIndicatorStream).IsAssignableFrom(typeof(IIndicator)), "IIndicator 必须继承自 IIndicatorStream");
+
+            // 3. 复合指标子流类型隔离：MACD, BOLL, KDJ 子流全部为 IIndicatorStream 且绝对不是 IIndicator
+            var macd = new Macd(12, 26, 9);
+            Assert.IsTrue(macd.Dif is IIndicatorStream);
+            Assert.IsFalse(macd.Dif is IIndicator, "Macd.Dif 绝对不能实现 IIndicator 驱动契约");
+            Assert.IsTrue(macd.Dea is IIndicatorStream);
+            Assert.IsFalse(macd.Dea is IIndicator);
+            Assert.IsTrue(macd.Hist is IIndicatorStream);
+            Assert.IsFalse(macd.Hist is IIndicator);
+
+            var boll = new BollingerBands(20, 2.0);
+            Assert.IsTrue(boll.Upper is IIndicatorStream);
+            Assert.IsFalse(boll.Upper is IIndicator);
+            Assert.IsTrue(boll.Middle is IIndicatorStream);
+            Assert.IsFalse(boll.Middle is IIndicator);
+            Assert.IsTrue(boll.Lower is IIndicatorStream);
+            Assert.IsFalse(boll.Lower is IIndicator);
+
+            var kdj = new Kdj(9, 3, 3);
+            Assert.IsTrue(kdj.K is IIndicatorStream);
+            Assert.IsFalse(kdj.K is IIndicator);
+            Assert.IsTrue(kdj.D is IIndicatorStream);
+            Assert.IsFalse(kdj.D is IIndicator);
+            Assert.IsTrue(kdj.J is IIndicatorStream);
+            Assert.IsFalse(kdj.J is IIndicator);
+
+            // 4. 单值指标对称性验证：SMA 自身既是 IIndicator 也是 IIndicatorStream
+            var sma = new Sma(5);
+            Assert.IsTrue(sma is IIndicator);
+            Assert.IsTrue(sma is IIndicatorStream);
+
+            // 5. 生命周期联动验证：母指标 Reset 时所有受控子流同步复位
+            for (int i = 0; i < 35; i++)
+            {
+                macd.Update(10.0 + i);
+            }
+            Assert.IsTrue(macd.IsReady);
+            Assert.IsTrue(macd.Dif.IsReady);
+            Assert.IsTrue(macd.Dea.IsReady);
+
+            macd.Reset();
+            Assert.IsFalse(macd.IsReady);
+            Assert.IsFalse(macd.Dif.IsReady, "母指标 Reset 后，Dif 子流必须同步复位为未就绪");
+            Assert.IsFalse(macd.Dea.IsReady, "母指标 Reset 后，Dea 子流必须同步复位为未就绪");
+            Assert.IsTrue(double.IsNaN(macd.Dif.Current));
         }
 
         #endregion

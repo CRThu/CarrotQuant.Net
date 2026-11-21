@@ -283,4 +283,57 @@ public class BacktestSessionTests
         // 验证底层引擎已被释放：再次尝试运行必须抛出 ObjectDisposedException
         Assert.ThrowsException<ObjectDisposedException>(() => session.Run());
     }
+
+    [TestMethod]
+    public void Builder_FluentAssembly_ShouldConfigureSessionCorrectly()
+    {
+        var dummyStrategy = new DummyStrategy();
+        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Carrot_Builder_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(tempDir);
+
+        var dates = new List<MarketTime> { new MarketTime(2021, 1, 1), new MarketTime(2021, 12, 31) };
+        var symbols = new List<string> { "sh.600000" };
+        var metadata = new DynamicMarketMetadata(symbols, dates);
+        var mockTs = new MockTimeseriesRegistry(metadata);
+
+        try
+        {
+            // 验证 BacktestSession.Create() 与 BacktestSession.CreateBuilder() 均作为标准入口产出 BacktestSessionBuilder
+            BacktestSessionBuilder builder1 = BacktestSession.Create();
+            BacktestSessionBuilder builder2 = BacktestSession.CreateBuilder();
+            Assert.IsNotNull(builder1);
+            Assert.IsNotNull(builder2);
+
+            var session = BacktestSession.Create()
+                .WithData(tempDir, "2021-01-01", "2021-12-31")
+                .WithTimeseries(mockTs)
+                .WithCash(500_000.0, allowShort: true)
+                .WithBroker(initialCash: 500_000.0, allowShort: true, feeRate: 0.0005, minFee: 10.0, slippage: 0.001, settleDays: 0)
+                .WithStrategy(dummyStrategy)
+                .Configure(cfg =>
+                {
+                    cfg.Broker.DefaultExecutionPrice = CarrotBacktesting.NET.Abstraction.Engine.ExecutionPriceType.Close;
+                })
+                .Build();
+
+            Assert.IsNotNull(session);
+            Assert.AreEqual(tempDir, session.Config.Data.Root);
+            Assert.AreEqual(new MarketTime(2021, 1, 1), session.Config.Engine.StartDate);
+            Assert.AreEqual(new MarketTime(2021, 12, 31), session.Config.Engine.EndDate);
+            Assert.AreEqual(500_000.0, session.Config.Broker.InitialCash);
+            Assert.IsTrue(session.Config.Broker.AllowShort);
+            Assert.AreEqual(0.0005, session.Config.Broker.FeeRate);
+            Assert.AreEqual(10.0, session.Config.Broker.MinFee);
+            Assert.AreEqual(0.001, session.Config.Broker.Slippage);
+            Assert.AreEqual(0, session.Config.Broker.SettleDays);
+            Assert.AreEqual(CarrotBacktesting.NET.Abstraction.Engine.ExecutionPriceType.Close, session.Config.Broker.DefaultExecutionPrice);
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(tempDir))
+            {
+                System.IO.Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
 }

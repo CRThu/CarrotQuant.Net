@@ -8,7 +8,7 @@ namespace CarrotBacktesting.NET.Indicators
     /// 统筹微型定长环形缓冲区管理、负数时序索引器边界检查、未来函数偷价熔断（offset > 0 抛错）及状态机生命周期 Reset。
     /// 热路径零堆内存分配（Zero GC）。
     /// </summary>
-    public abstract class StreamIndicatorBase : IStreamIndicator
+    public abstract class StreamIndicatorBase : IIndicator
     {
         private readonly double[] _history;
         private readonly int _capacity;

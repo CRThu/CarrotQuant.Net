@@ -29,7 +29,7 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
         IndicatorPool<T> GetOrAdd<T>(
             string name,
             Func<T> factory,
-            PriceMode mode = PriceMode.Post) where T : class, IStreamIndicator;
+            PriceMode mode = PriceMode.Post) where T : class, IIndicator;
 
         /// <summary>
         /// 声明并注册一个全市场流式指标（无需持有 Pool 实例时的声明式重载）。
@@ -37,7 +37,7 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
         void Add<T>(
             string name,
             Func<T> factory,
-            PriceMode mode = PriceMode.Post) where T : class, IStreamIndicator;
+            PriceMode mode = PriceMode.Post) where T : class, IIndicator;
 
         /// <summary>
         /// 根据注册名称获取已存在的指标池。
@@ -45,7 +45,7 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
         /// <typeparam name="T">指标类型约束。</typeparam>
         /// <param name="name">全局唯一指标标识名。</param>
         /// <returns>标的池强类型实例；若不存在则返回 null。</returns>
-        IndicatorPool<T>? GetPool<T>(string name) where T : class, IStreamIndicator;
+        IndicatorPool<T>? GetPool<T>(string name) where T : class, IIndicator;
 
         /// <summary>
         /// 获取指定名称和标的全局列索引的强类型流式指标实例（热路径 O(1) 索引，零哈希开销）。
@@ -54,7 +54,7 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
         /// <param name="name">全局唯一指标标识名。</param>
         /// <param name="symbolIndex">标的全局列索引（0 &lt;= symbolIndex &lt; SymbolCount）。</param>
         /// <returns>标的专属的强类型流式指标实例。</returns>
-        T Get<T>(string name, int symbolIndex) where T : class, IStreamIndicator;
+        T Get<T>(string name, int symbolIndex) where T : class, IIndicator;
 
         /// <summary>
         /// 获取指定名称和标的代码的强类型流式指标实例。
@@ -63,7 +63,7 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
         /// <param name="name">全局唯一指标标识名。</param>
         /// <param name="symbol">标的代码（如 "sh.600000"）。</param>
         /// <returns>标的专属的强类型流式指标实例。</returns>
-        T Get<T>(string name, string symbol) where T : class, IStreamIndicator;
+        T Get<T>(string name, string symbol) where T : class, IIndicator;
 
         /// <summary>
         /// 检查指定名称的指标是否已被注册。

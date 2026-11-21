@@ -61,7 +61,7 @@ public class AdvancedStrategyPipelineIntegrationTests
 
                 double score = Math.Sin(context.CurrentIndex + i);
                 var signal = new AlphaScoreSignal(symbols[i], score, context.CurrentTime);
-                context.Market.SetState(signal, $"alpha.{symbols[i]}");
+                context.Market.SetState($"alpha.{symbols[i]}", signal);
 
                 if (score > 0.5)
                 {
@@ -88,7 +88,7 @@ public class AdvancedStrategyPipelineIntegrationTests
             for (int i = 0; i < symbols.Count; i++)
             {
                 string sym = symbols[i];
-                if (context.Market.TryGetState<AlphaScoreSignal>(out var signal, out _, $"alpha.{sym}") && signal != null)
+                if (context.Market.TryGetState<AlphaScoreSignal>($"alpha.{sym}", out var signal, out _) && signal != null)
                 {
                     if (signal.Score > 0.8)
                     {
@@ -514,7 +514,7 @@ public class AdvancedStrategyPipelineIntegrationTests
         {
             // 向全局黑板并发读写状态，验证线程安全性
             string key = $"{Name}.Step_{context.CurrentIndex}";
-            context.Market.SetState(context.CurrentIndex * 100, key);
+            context.Market.SetState(key, context.CurrentIndex * 100);
 
             bool hasState = context.Market.HasState<int>(key);
             if (hasState)

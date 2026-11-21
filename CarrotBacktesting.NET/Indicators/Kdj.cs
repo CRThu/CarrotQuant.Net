@@ -31,17 +31,17 @@ namespace CarrotBacktesting.NET.Indicators
         /// <summary>
         /// 获取 K 线子流指标。
         /// </summary>
-        public IStreamIndicator K => _kSub;
+        public IIndicatorStream K => _kSub;
 
         /// <summary>
         /// 获取 D 线子流指标。
         /// </summary>
-        public IStreamIndicator D => _dSub;
+        public IIndicatorStream D => _dSub;
 
         /// <summary>
         /// 获取 J 线子流指标。
         /// </summary>
-        public IStreamIndicator J => _jSub;
+        public IIndicatorStream J => _jSub;
 
         /// <summary>
         /// 获取计算 RSV 所需的周期长度 N（默认 9）。

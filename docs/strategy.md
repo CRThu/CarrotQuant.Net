@@ -172,33 +172,44 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 public interface IMarketState
 {
-    // 获取强类型状态/信号（无 class 引用类型限制，原生支持 struct 只读结构体）
-    T? GetState<T>(string? key = null);
-    bool TryGetState<T>(out T? state, string? key = null);
-    void SetState<T>(T state, string? key = null);
-    bool HasState<T>(string? key = null);
+    // 获取指定 Key 的强类型状态/信号/标量
+    T? GetState<T>(string key);
+    void SetState<T>(string key, T state, MarketTime? timestamp = null);
+    bool TryGetState<T>(string key, out T? state, out MarketTime? updatedTime);
+    bool TryTakeState<T>(string key, out T? state, out MarketTime? updatedTime);
+    bool HasState<T>(string key);
+    bool ClearState<T>(string key);
     void Clear();
 }
 ```
 
-### 2. 协作范式：单类型默认单例与显式 Key 隔离
-- **默认单例（Singleton per Type）**：当某一类数据在当前决策时刻全局权威且唯一时（如宏观偏向、仓位计划），无需传入 `key`，框架自动使用 `typeof(T).FullName` 索引，消除硬编码字符串拼写错误：
+### 2. 协作范式：显式 Key 动态命名空间隔离
+- **强制显式 Key 隔离**：黑板基于统一的键值对（Key-Value）模型驱动，强制所有条目必须携带显式 Key，彻底消除隐式同类型覆盖风险。
   ```csharp
-  // 生产端
-  context.Market.SetState(new PortfolioTarget(targetWeights));
-  // 消费端
-  var target = context.Market.GetState<PortfolioTarget>();
+  // 生产端发布指定 Key 的状态或标量
+  context.Market.SetState("portfolio_target", new PortfolioTarget(targetWeights));
+  context.Market.SetState("is_risk_off", true);
+
+  // 消费端按 Key 取回强类型状态
+  var target = context.Market.GetState<PortfolioTarget>("portfolio_target");
+  bool isRiskOff = context.Market.GetState<bool>("is_risk_off");
   ```
-- **显式 Key 命名空间隔离**：当多个策略并发产生同一种数据类型（例如因子 A 与因子 B 均产生 `Dictionary<string, double>` 全市场打分字典），必须通过显式 Key 进行命名空间隔离：
+- **多 Alpha 策略并发打分隔离**：当多个策略并发产生同一种数据类型（例如因子 A 与因子 B 均产生 `Dictionary<string, double>` 全市场打分字典），通过显式 Key 进行命名空间隔离：
   ```csharp
   // 因子 A 生产端
-  context.Market.SetState(scoresA, key: "Alpha_Momentum");
+  context.Market.SetState("Alpha_Momentum", scoresA);
   // 因子 B 生产端
-  context.Market.SetState(scoresB, key: "Alpha_Reversion");
+  context.Market.SetState("Alpha_Reversion", scoresB);
 
-  // 消费端按 Key 取回
+  // 消费端按 Key 精准取回
   var scoresA = context.Market.GetState<Dictionary<string, double>>("Alpha_Momentum");
   ```
+
+### 3. 检查点持久化与自描述状态快照（第一性原理）
+黑板原生实现 `ICheckpointable<MarketStateSnapshot>`，用于系统检查点落盘与断点恢复：
+- **物理本质**：条目被抽象为自包含的四元组 `MarketStateEntrySnapshot(Key, Type, Data, Time)`；
+- **自描述序列化**：通过类型的完全限定名（`AssemblyQualifiedName`）自描述元数据，无论原生标量（`float`, `double`, `int`, `decimal`, `string` 等）、自建 `record`、自建 `struct` / `readonly record struct`、普通 `class` / POCO，还是复杂集合嵌套，均保持类型保真与精度守恒；
+- **零侵入契约**：策略开发者无需继承特定基类、无需预先注册转换器，真正实现 0 侵入。
 
 ---
 

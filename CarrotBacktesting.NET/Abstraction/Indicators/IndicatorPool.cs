@@ -52,7 +52,7 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
     /// 策略可直接持有此具象类实例，享受激进内联与零虚方法调用开销。
     /// </summary>
     /// <typeparam name="T">流式指标类型约束。</typeparam>
-    public sealed class IndicatorPool<T> : IndicatorPool where T : class, IStreamIndicator
+    public sealed class IndicatorPool<T> : IndicatorPool where T : class, IIndicator
     {
         private readonly IMarketMetadata _metadata;
         private readonly T[] _instances;

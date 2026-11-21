@@ -186,5 +186,33 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 4. 空仓调用 ClosePosition 返回 0L
             Assert.AreEqual(0L, ctx.ClosePosition("sh.600000"));
         }
+
+        [TestMethod]
+        public void EngineContext_StateBlackboardFacades_ShouldForwardProperly()
+        {
+            var ts = CreateMockRegistry();
+            var config = new BrokerConfig();
+            var broker = new Broker(new SimulatedExchangeGateway(config), config);
+            IEngineContext ctx = new EngineContext(ts, broker);
+
+            // 1. context.SetState 存储
+            ctx.SetState("sig_direct", "DirectValue");
+            Assert.IsTrue(ctx.HasState<string>("sig_direct"));
+            Assert.AreEqual("DirectValue", ctx.GetState<string>("sig_direct"));
+
+            // 2. context.TryTakeState 原子消费（输出时间戳）
+            bool taken = ctx.TryTakeState<string>("sig_direct", out var val, out var takenTime);
+            Assert.IsTrue(taken);
+            Assert.AreEqual("DirectValue", val);
+            Assert.AreEqual(ctx.CurrentTime, takenTime);
+            Assert.IsFalse(ctx.HasState<string>("sig_direct"));
+
+            // 3. context.ClearState 清理
+            ctx.SetState("scalar_key", 12345);
+            Assert.IsTrue(ctx.HasState<int>("scalar_key"));
+            bool cleared = ctx.ClearState<int>("scalar_key");
+            Assert.IsTrue(cleared);
+            Assert.IsFalse(ctx.HasState<int>("scalar_key"));
+        }
     }
 }

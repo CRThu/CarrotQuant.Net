@@ -145,28 +145,29 @@ public interface IEngineContext
     IMarketState Market { get; }
 
     /// <summary>
-    /// 便捷门面：向市场状态黑板写入当前时间步的状态（自动注入当期逻辑仿真时间戳 <see cref="CurrentTime"/>）。
+    /// 便捷门面：向市场状态黑板写入指定 Key 的状态（自动注入当期逻辑仿真时间戳 <see cref="CurrentTime"/>）。
     /// </summary>
-    /// <typeparam name="T">状态数据类型。</typeparam>
-    /// <param name="state">状态实例。</param>
-    /// <param name="key">自定义业务 Key（缺省为 T 的类型全名）。</param>
-    void SetState<T>(T state, string? key = null) => Market.SetState(state, CurrentTime, key);
+    void SetState<T>(string key, T state) => Market.SetState(key, state, CurrentTime);
 
     /// <summary>
-    /// 便捷门面：从市场状态黑板读取强类型状态。
+    /// 便捷门面：从市场状态黑板读取指定 Key 的强类型状态。
     /// </summary>
-    /// <typeparam name="T">状态数据类型。</typeparam>
-    /// <param name="key">自定义业务 Key（缺省为 T 的类型全名）。</param>
-    /// <returns>状态实例或 default。</returns>
-    T? GetState<T>(string? key = null) => Market.GetState<T>(key);
+    T? GetState<T>(string key) => Market.GetState<T>(key);
 
     /// <summary>
-    /// 便捷门面：判断市场状态黑板是否存在指定状态。
+    /// 便捷门面：判断市场状态黑板是否存在指定 Key 且匹配类型 T 的状态。
     /// </summary>
-    /// <typeparam name="T">状态数据类型。</typeparam>
-    /// <param name="key">自定义业务 Key（缺省为 T 的类型全名）。</param>
-    /// <returns>是否存在。</returns>
-    bool HasState<T>(string? key = null) => Market.HasState<T>(key);
+    bool HasState<T>(string key) => Market.HasState<T>(key);
+
+    /// <summary>
+    /// 便捷门面：精确清除市场状态黑板中指定 Key 对应的强类型状态。
+    /// </summary>
+    bool ClearState<T>(string key) => Market.ClearState<T>(key);
+
+    /// <summary>
+    /// 便捷门面：按指定 Key 原子获取并移除指定状态（先 key 后 out，读后即焚），并输出最后更新逻辑时间戳（若不存在或未设置则为 null）。
+    /// </summary>
+    bool TryTakeState<T>(string key, out T? state, out MarketTime? updatedTime) => Market.TryTakeState<T>(key, out state, out updatedTime);
 
     /// <summary>
     /// 获取全局指标注册中心，统筹增量流式指标池的注册、多策略共享与引擎步进泵送。

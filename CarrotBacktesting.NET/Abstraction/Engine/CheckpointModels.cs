@@ -101,16 +101,20 @@ public sealed record TradingRecorderSnapshot(
 );
 
 /// <summary>
-/// 市场黑板条目快照模型。
+/// 市场黑板自描述条目快照模型。
+/// 单点权威统筹条目键名、完整类型限定名、JSON 数据与更新时间戳，
+/// 100% 保持原生类型精度与保真度，天然支持标量、record、struct、class 及复杂集合。
 /// </summary>
 public sealed record MarketStateEntrySnapshot(
     string Key,
-    object Value,
-    MarketTime UpdatedTime
+    string Type,
+    string Data,
+    MarketTime? Time = null
 );
 
 /// <summary>
-/// 市场黑板状态快照。
+/// 市场黑板不可变状态快照。
+/// 基于统一自描述条目集合构建，遵循单一事实来源，消除类型穷举与字典分裂。
 /// </summary>
 public sealed record MarketStateSnapshot(
     IReadOnlyList<MarketStateEntrySnapshot> Entries

@@ -24,7 +24,8 @@
 CarrotQuant .NET 确立**三大底层原则**：
 - **真正的增量推进一步（$O(1)$ Incremental Step）**：每个指标内部仅维持状态机（如当前累加和、指数平滑值、微型环形回溯缓冲），每根 Bar 仅需固定次数的浮点运算，复杂度严格恒定为 $O(1)$，百万步计算仅需几毫秒；
 - **三位一体与瘦契约隔离（Clean Contracts & Zero Interface Bloat）**：
-  - `IStreamIndicator`（指标统一接口契约，位于 `Abstraction.Indicators`）
+  - `IIndicatorStream`（只读指标时序数值流契约，位于 `Abstraction.Indicators`）
+  - `IIndicator`（指标统一计算契约，继承自 `IIndicatorStream`，位于 `Abstraction.Indicators`）
   - `IndicatorPool<T>`（全市场标的数组连续容器，继承非泛型基类 `IndicatorPool`）
   - `IIndicatorRegistry` / `IndicatorRegistry`（全局指标管理中心，瘦契约位于 `Abstraction.Indicators` 挂载于 `context.Indicators`，具体实现类位于 `Indicators` 命名空间）
 - **引擎步进隔离与 100% 零 GC（Zero Heap Allocation & Access Isolation）**：步进调度方法 `Step` 与 `Reset` 被严格声明为 `internal`，对策略层完全隐身；策略层面向 `IIndicatorRegistry` 瘦契约编程；热路径遍历采用写时复制（COW）的平铺快照数组，单步推进零锁争用、零内存分配。
@@ -46,7 +47,7 @@ graph TD
         Reg -.内部驱动 Step.-> PoolBase
         PoolTyped -.O(1) 连续数组寻址.-> Strategy[策略层 IStrategy]
 
-        subgraph Indicators [增量流式指标库 IStreamIndicator]
+        subgraph Indicators [增量流式指标库 IIndicatorStream / IIndicator]
             SMA[Sma 简单均线]
             EMA[Ema 指数均线]
             WMA[Wma 加权均线]
@@ -67,15 +68,13 @@ graph TD
 
 ## 二、核心契约与实体模型 (Core Contracts & Entity Model)
 
-### 1. 统一指标契约 (`IStreamIndicator`)
+### 1. 统一指标流与计算契约 (`IIndicatorStream` & `IIndicator`)
 统一位于 `CarrotBacktesting.NET.Abstraction.Indicators` 命名空间：
 
 ```csharp
-public interface IStreamIndicator
+// 纯只读指标时序数值流契约（策略消费端面向的纯净视图，也是复合指标子线的暴露契约）
+public interface IIndicatorStream
 {
-    // 单一增量输入入口，5 个基础原生浮点参数，严格零装箱
-    void Update(double open, double high, double low, double close, double volume);
-
     // 当前最新指标值（等价于 this[0]）
     double Current => this[0];
 
@@ -84,6 +83,13 @@ public interface IStreamIndicator
 
     // 负数时序索引器：0 代表当期，-1 代表上一期，-2 代表上两期；正数强行熔断抛出 ArgumentOutOfRangeException
     double this[int offset] { get; }
+}
+
+// 统一指标计算契约：继承自 IIndicatorStream，作为有状态指标计算单元
+public interface IIndicator : IIndicatorStream
+{
+    // 单一增量输入入口，5 个基础原生浮点参数，严格零装箱
+    void Update(double open, double high, double low, double close, double volume);
 
     // 重置指标内部状态（回测开始前或跨周期复原）
     void Reset();
@@ -91,7 +97,9 @@ public interface IStreamIndicator
 ```
 
 > [!IMPORTANT]
-> **前瞻偏差防护（Look-ahead Bias Prevention）**：`this[int offset]` 索引器在 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，从物理内存切片与时间步推进上杜绝访问未发生的未来数据。
+> **前瞻偏差防护（Look-ahead Bias Prevention）与读写分离**：
+> 1. `this[int offset]` 索引器在 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，从物理内存切片与时间步推进上杜绝访问未发生的未来数据；
+> 2. 复合指标（如 MACD 的 `Dif`、`Dea`、`Hist`，布林带的 `Upper`、`Middle`、`Lower`）对外强类型暴露为 `IIndicatorStream`，不实现 `IIndicator`，从类型系统层面杜绝抛出 `NotSupportedException` 的恶劣伪实现。
 
 ### 2. 全市场连续标的池 (`IndicatorPool<T>`)
 作为全市场标的高性能集合容器，内部直接持有按标的全局列索引（`symbolIndex`）排列的连续扁平数组 `T[] _instances`：
@@ -107,7 +115,7 @@ public abstract class IndicatorPool
     internal abstract void Reset();
 }
 
-public sealed class IndicatorPool<T> : IndicatorPool where T : class, IStreamIndicator
+public sealed class IndicatorPool<T> : IndicatorPool where T : class, IIndicator
 {
     // 标的全局列索引寻址（热路径 O(1)，CPU L2 Cache 极致亲和）
     public T this[int symbolIndex] { get; }
@@ -130,11 +138,11 @@ public interface IIndicatorRegistry
 {
     // 声明式注册或获取（若已注册同名指标则直接返回，多策略全局单步只算一次）
     IndicatorPool<T> GetOrAdd<T>(string name, Func<T> factory, PriceMode mode = PriceMode.Post)
-        where T : class, IStreamIndicator;
+        where T : class, IIndicator;
 
     // 单标的快捷直取门面（免去策略声明字段）
-    T Get<T>(string name, int symbolIndex) where T : class, IStreamIndicator;
-    T Get<T>(string name, string symbol) where T : class, IStreamIndicator;
+    T Get<T>(string name, int symbolIndex) where T : class, IIndicator;
+    T Get<T>(string name, string symbol) where T : class, IIndicator;
 
     bool Has(string name);
 }

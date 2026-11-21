@@ -742,13 +742,15 @@ public interface IEngineContext
 ```
 
 ### 2. IMarketState (通用强类型黑板)
-策略间正交解耦与异步数据交换的通用强类型容器，底层基于 `ConcurrentDictionary<string, object>` 保障多核并发下的绝对线程安全：
-- **`GetState<T>(string? key = null)`**: 获取强类型状态/信号（无 class 引用类型限制，原生支持 struct 只读结构体）。缺省 key 时以类型全名作为权威单例索引；指定 key 时从对应命名槽位读取。
-- **`TryGetState<T>(out T? state, string? key = null)`**: 安全探测并获取强类型状态/信号。
-- **`SetState<T>(T state, string? key = null)`**: 发布强类型状态/信号，记录更新时态戳。
-- **`HasState<T>(string? key = null)`**: 探测黑板中是否存在指定类型（与可选 Key）的状态。
+策略间正交解耦与异步数据交换的通用强类型动态键值对容器，底层基于 `ConcurrentDictionary<string, StateEntry>` 保障多核并发下的绝对线程安全：
+- **`GetState<T>(string key)`**: 获取指定 Key 的强类型状态/标量/对象。
+- **`SetState<T>(string key, T state, MarketTime? timestamp = null)`**: 发布指定 Key 的强类型状态，可附带显式逻辑市场更新时态戳。
+- **`TryGetState<T>(string key, out T? state, out MarketTime? updatedTime)`**: 尝试获取指定 Key 的状态与最后更新时间戳（严格遵循先 key 后 out 规范，未命中或无时间戳时为 null）。
+- **`TryTakeState<T>(string key, out T? state, out MarketTime? updatedTime)`**: 原子消费并移除指定 Key 的状态与最后更新时间戳（读后即焚，防御跨 Bar 幽灵交易，未命中或无时间戳时为 null）。
+- **`HasState<T>(string key)`**: 探测黑板中是否存在指定 Key 且匹配类型 T 的状态。
+- **`ClearState<T>(string key)`**: 精确清理指定 Key 且匹配类型 T 的状态条目。
 - **`Clear()`**: 清理黑板中所有状态数据。
-- **协作约定**: 缺省 key 时为类型全局单例（如统一发布的宏观指标或目标持仓）；显式指定 key 时代表独立命名通道/槽位，支持同类型多实例隔离（如多因子并发打分）与跨策略协同消费。
+- **协作约定**: 全面遵循显式 Key 隔离规范，彻底终结按类型单例引发的隐式冲突；调用端统一通过显式命名空间（如标的代码、特征 Tag 或策略名）隔离条目。
 
 ### 3. IBroker 与订单交互
 
@@ -869,19 +871,28 @@ public interface ICheckpointable
 
 为彻底避免全量预计算后复权价与指标导致物理二维矩阵膨胀（20GB~30GB），CarrotQuant.NET 建立了高性能增量流式指标子系统与当期极速复权因子供给机制。
 
-### 1. IStreamIndicator (流式指标核心契约)
-统一单值与多值指标为唯一抽象契约，原生支持负数时序索引、前瞻偏差防护（当 offset > 0 时抛出 ArgumentOutOfRangeException）与停牌冻结跳过（Skip & Freeze）。每步传入完整的 OHLCV 市场行情，杜绝假参数与伪实现：
+### 1. IIndicatorStream 与 IIndicator (流式指标核心契约)
+系统遵循接口隔离原则（ISP），将纯只读时序数值流契约 `IIndicatorStream` 与母指标计算契约 `IIndicator` 严格物理二分。原生支持负数时序索引、前瞻偏差防护（当 offset > 0 时抛出 ArgumentOutOfRangeException）与停牌冻结跳过（Skip & Freeze）：
 
 ```csharp
 namespace CarrotBacktesting.NET.Abstraction.Indicators;
 
-public interface IStreamIndicator
+/// <summary>
+/// 纯只读时序数值流契约（供策略只读消费与多值指标子流暴露）
+/// </summary>
+public interface IIndicatorStream
 {
     double this[int offset] { get; } // 统一负数索引: 0 为当期，-1 为上一期；offset > 0 抛出 ArgumentOutOfRangeException
     double Current => this[0];       // 便捷当期值
     bool IsReady { get; }            // 预热期感知
-    void Reset();                    // 状态机重置守恒
+}
 
+/// <summary>
+/// 增量流式指标计算母契约（供引擎时钟推进驱动与标的池管理）
+/// </summary>
+public interface IIndicator : IIndicatorStream
+{
+    void Reset();                    // 状态机重置守恒
     void Update(double open, double high, double low, double close, double volume);
 }
 ```
@@ -891,12 +902,12 @@ public interface IStreamIndicator
 - **`Ema`**: 指数移动平均。增量平滑递推，支持周期 $p$ 与自定义平滑系数 $\alpha \in (0, 1]$ 构造，前期简单平均对齐冷启动。
 - **`Wma`**: 加权移动平均。基于差分递推公式 $W_t = W_{t-1} + N\cdot C_t - S_{t-1}$ 实现真 $O(1)$ 纳秒级加权计算。
 - **`Vwap`**: 成交量加权平均价。支持全周期累计与定长滑动窗口，成交量为 0 边界安全防御与跨日 Reset 复原。
-- **`Kdj`**: 随机指标。对齐通达信 A 股标准，极盘无波动防除零保护，通过只读属性暴露 `K`、`D`、`J` 子流。
+- **`Kdj`**: 随机指标。对齐通达信 A 股标准，极盘无波动防除零保护，通过纯只读 `IIndicatorStream` 属性暴露 `K`、`D`、`J` 子流。
 - **`Sar`**: 抛物转向系统。严格遵循 Welles Wilder 物理状态机与 TA-Lib 对齐，支持动态加速因子与多空极值跟踪。
 - **`Rsi`**: 相对强弱指标。基于 J. Welles Wilder 平滑递推算法。
 - **`Atr`**: 真实波幅均值。自动处理跨日跳空高开/低开。
-- **`Macd`**: 复合多值指标。采用组合模式实现 `IStreamIndicator`（索引器默认指向 `Dif`），通过强类型只读属性暴露 `Dif`、`Dea` 与 `Hist` 子流。
-- **`BollingerBands`**: 布林带复合指标。通过只读属性暴露 `Upper`、`Middle` 与 `Lower` 子流。
+- **`Macd`**: 复合多值指标。实现母契约 `IIndicator`（主索引器指向 `Dif`），通过强类型只读 `IIndicatorStream` 属性暴露 `Dif`、`Dea` 与 `Hist` 子流。
+- **`BollingerBands`**: 布林带复合指标。通过纯只读 `IIndicatorStream` 属性暴露 `Upper`、`Middle` 与 `Lower` 子流。
 
 ### 3. IndicatorRegistry (全局指标注册中心与标的池容器)
 - **零接口套娃与具象类挂载**：策略端直接操作纯具象类 `IndicatorRegistry`，消灭无多态价值的镜像接口与虚派发开销。

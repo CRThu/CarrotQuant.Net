@@ -5,8 +5,8 @@ namespace CarrotBacktesting.NET.Indicators
 {
     /// <summary>
     /// 布林带指标（Bollinger Bands, BOLL）。
-    /// 遵循经典组合模式（Composite Pattern），自身实现 <see cref="IStreamIndicator"/> 契约（默认索引指向中轨 Middle），
-    /// 同时通过强类型只读属性暴露 <see cref="Upper"/>（上轨）、<see cref="Middle"/>（中轨 / SMA）与 <see cref="Lower"/>（下轨）。
+    /// 遵循经典组合模式（Composite Pattern），自身实现 <see cref="IIndicator"/> 契约（默认索引指向中轨 Middle），
+    /// 同时通过强类型只读属性暴露 <see cref="Upper"/>（上轨）、<see cref="Middle"/>（中轨 / SMA）与 <see cref="Lower"/>（下轨）子流 <see cref="IIndicatorStream"/>。
     /// 内部单次共享滑动窗口均值与标准差计算，内置 NaN 停牌冻结跳过（Skip & Freeze）防御。
     /// </summary>
     public sealed class BollingerBands : StreamIndicatorBase
@@ -27,17 +27,17 @@ namespace CarrotBacktesting.NET.Indicators
         /// <summary>
         /// 获取上轨子流（Upper Band = Middle + K * StdDev）。
         /// </summary>
-        public IStreamIndicator Upper => _upperStream;
+        public IIndicatorStream Upper => _upperStream;
 
         /// <summary>
         /// 获取中轨子流（Middle Band = SMA）。
         /// </summary>
-        public IStreamIndicator Middle => _middleStream;
+        public IIndicatorStream Middle => _middleStream;
 
         /// <summary>
         /// 获取下轨子流（Lower Band = Middle - K * StdDev）。
         /// </summary>
-        public IStreamIndicator Lower => _lowerStream;
+        public IIndicatorStream Lower => _lowerStream;
 
         /// <summary>
         /// 获取布林带周期长度。

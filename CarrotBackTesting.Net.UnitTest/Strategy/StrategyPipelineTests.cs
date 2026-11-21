@@ -103,7 +103,7 @@ public class StrategyPipelineTests
         public string Name => "Producer";
         public void OnUpdate(IEngineContext context)
         {
-            context.Market.SetState(new AlphaSignals(0.95));
+            context.Market.SetState("AlphaSignal", new AlphaSignals(0.95));
         }
     }
 
@@ -114,7 +114,7 @@ public class StrategyPipelineTests
 
         public void OnUpdate(IEngineContext context)
         {
-            var sig = context.Market.GetState<AlphaSignals>();
+            var sig = context.Market.GetState<AlphaSignals>("AlphaSignal");
             if (sig != null)
             {
                 ConsumedScore = sig.Score;
@@ -288,12 +288,12 @@ public class StrategyPipelineTests
         public void OnUpdate(IEngineContext context)
         {
             // 写入带命名空间隔离的黑板状态
-            context.Market.SetState(new AlphaSignals(Factor), key: Name);
+            context.Market.SetState(Name, new AlphaSignals(Factor));
         }
 
         public void OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events)
         {
-            context.Market.SetState($"EventReceived:{tableName}", key: $"{Name}:event");
+            context.Market.SetState($"{Name}:event", $"EventReceived:{tableName}");
         }
     }
 

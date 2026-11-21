@@ -11,7 +11,7 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 | 分层 | 核心职责 | 核心组件 / 契约 |
 | :--- | :--- | :--- |
 | **Data Layer (数据层)** | 数据获取、格式转换、内存缓冲与统一供给 | `StorageResolver`, `CsvTimeseriesSource`, `ParquetTimeseriesSource`, `TimeseriesRegistry`, `TimeseriesCacheManager<T>`, `ITimeseriesRegistry`, `IEventTable`, `IEventRegistry`, `IFieldRegistry`, `FieldRegistry`, `FieldSourceFactory`, `FieldTable` |
-| **Indicator Layer (指标体系)** | 增量流式指标计算、全市场标的数组连续容器、多策略共享单次驱动与极简取价门面 | `IStreamIndicator`, `IndicatorPool`, `IndicatorPool<T>`, `IndicatorRegistry`, `Sma`, `Ema`, `Wma`, `Vwap`, `Kdj`, `Sar`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
+| **Indicator Layer (指标体系)** | 增量流式指标计算、全市场标的数组连续容器、多策略共享单次驱动与极简取价门面 | `IIndicator`, `IIndicatorStream`, `IndicatorPool`, `IndicatorPool<T>`, `IndicatorRegistry`, `Sma`, `Ema`, `Wma`, `Vwap`, `Kdj`, `Sar`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
 | **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段挂单冻结、标的桶化订单簿、摩擦撮合与实盘柜台适配 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IExchangeGateway`, `IExchangeGatewayProvider`, `ISimulatedExchange`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
 | **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机、实盘增量事件循环、上下文注入、可观测性监控 | `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
 | **Strategy Layer (策略层)** | 特征分析、信号生产、组合规划与交易风控 | `IStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline` |
@@ -43,11 +43,11 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 - **流式指标与统一门面调用**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd` 声明全市场标的池并持有极速索引引用，在 `OnUpdate` 中利用 `pool[symbolIndex]` 高速直取或通过 `context.Indicators.Get<T>` 免声明读取，详见 [第六节](#六流式指标与计算属性体系-indicator--computed-property-architecture)。
 
 ### 2. 通用强类型黑板 (`IMarketState`)
-- **通用强类型状态容器**: 支持强类型 `GetState<T>(key)`、`SetState<T>(state, key)`、`HasState<T>(key)` 与 `Clear()`，底层采用线程安全字典与不可变备忘录快照管理，用于策略间正交解耦与异步数据交换。
-- **单类型默认单例与显式 Tag 隔离**:
-  - 默认单例：缺省 `key` 时以 `typeof(T).FullName` 索引，消除硬编码字符串拼写风险；
-  - 显式命名空间隔离：多策略实例并发产生同类型数据时，通过显式 `key`（如策略名或特征 Tag）隔离。
-- **并发线程安全**: 底层采用 `ConcurrentDictionary<string, object>` 保证多核并发管线下的线程安全。
+- **通用强类型状态容器**: 基于显式键值对（Key-Value）提供纯强类型 `GetState<T>(key)`、`SetState<T>(key, state)`、`TryGetState<T>(key, out state, out time)`、`TryTakeState<T>(key, out state, out time)`、`HasState<T>(key)`、`ClearState<T>(key)` 与 `Clear()`，底层采用线程安全字典与自描述快照管理，用于策略间正交解耦与异步数据交换。彻底移除弱类型非泛型冗余方法。
+- **强制显式 Key 隔离（彻底拔除单例）**:
+  - 强制显式 Key：所有读写与消费方法均强制传入显式 `key`（如标的代码、特征 Tag 或策略命名空间），彻底杜绝按类型单例引发的跨模块盲目覆盖与同类型冲突；
+  - 规范接口签名：遵循先 key 后 value / 先 key 后 out 规范（如 `SetState(key, state)` 与 `TryGetState(key, out state, out time)`）。
+- **纯内存运行与零开销**: 运行热路径纯内存运行，无类型强转与 JSON 序列化开销；底层采用 `ConcurrentDictionary<string, StateEntry>` 保证多核并发管线下的线程安全。
 
 ### 3. 策略管线体系 (Composite Pipeline)
 - **架构对称性与单一职责**:
@@ -382,10 +382,14 @@ CarrotQuant .NET 遵循瘦契约与分层隔离原则，指标体系收敛为以
   - 引擎内部持有具象类引用，直接执行 `_indicators.Step(_context)` 泵送；
   - 基于显式双重检查锁定（DCL）实现并发线程安全，杜绝多线程竞争创建多余标的池（幽灵指标池）；
   - 维护写时复制（COW）不可变快照数组 `volatile IndicatorPool[] _activePools`，主循环每步执行局部变量快照读取，100% 纯无锁推进且零 GC。
-- **`IStreamIndicator` (`Abstraction/Indicators/IStreamIndicator.cs`)**:
-  - 增量流式指标顶层接口契约，单一输入入口 `Update(open, high, low, close, volume)`，以 5 个原生 `double` 寄存器参数对齐单值与复合指标需求，严格零装箱；
-  - 属性暴露最新值 `Value` / `Current`、预热指示 `IsReady`，支持重置状态机 `Reset()`；
-  - 负数时序索引器 `this[int offset]`：统一以 `0` 代表当期，`-1` 代表上期；当 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，**在契约层彻底杜绝前瞻偏差（Look-ahead Bias）**。
+- **`IIndicatorStream` (`Abstraction/Indicators/IIndicatorStream.cs`)**:
+  - 只读指标时序数值流纯契约，专为指标产出的数值序列设计（如 MACD 的 DIF/DEA、布林带上轨/下轨、或单值指标自身的数据线）；
+  - 属性暴露最新值 `Current`（等价于 `this[0]`）、预热指示 `IsReady`；
+  - 负数时序索引器 `this[int offset]`：统一以 `0` 代表当期，`-1` 代表上期；当 `offset > 0` 时显式抛出 `ArgumentOutOfRangeException`，**在契约层彻底杜绝前瞻偏差（Look-ahead Bias）**；不包含 `Update` 或 `Reset` 驱动方法，类型系统从根源杜绝伪实现。
+- **`IIndicator` (`Abstraction/Indicators/IIndicator.cs`)**:
+  - 增量流式指标顶层核心计算契约，继承自 `IIndicatorStream`，作为有状态指标计算单元的统一抽象；
+  - 单一增量输入入口 `Update(open, high, low, close, volume)`，以 5 个原生 `double` 寄存器参数对齐单值与复合指标需求，严格零装箱；
+  - 支持生命周期状态机复位 `Reset()`，保证策略多轮重跑与网格调优退出零脏状态。
 - **`IndicatorPool` & `IndicatorPool<T>` (`Abstraction/Indicators/IndicatorPool.cs`)**:
   - 全市场标的指标池连续扁平容器，非泛型基类 `IndicatorPool` 统筹 Name、Count 与 PriceMode，泛型具体类 `IndicatorPool<T>` 内部直接持有连续平铺数组 `T[] _instances`；
   - 热路径提供与原生数组等同的纳秒级寻址 `pool[symbolIndex]`（CPU L2 Cache 极致亲和），并支持标的代码寻址 `pool[symbol]`；
@@ -399,7 +403,7 @@ CarrotQuant .NET 遵循瘦契约与分层隔离原则，指标体系收敛为以
 - **`Vwap`**: 成交量加权平均价，基于典型价格 $TP = (H+L+C)/3$ 与成交量计算；支持累计全周期模式（`period = 0`）与定长滑动窗口模式（`period > 0`），成交量为 0 边界安全防御，支持日内跨日 `Reset` 复原；
 - **`Kdj`**: 随机指标，严格遵循中国 A 股通达信/同花顺标准（初始 $K=50, D=50, J=3K-2D$）；极盘无波动（$H_n = L_n$）除以零边界防御，通过受控只读子流 `K`、`D`、`J` 展开；
 - **`Sar`**: 抛物转向系统，严格遵循 Welles Wilder 经典物理状态机与 TA-Lib C 内核标准；首步反转对齐，极值跟踪与动态加速因子（AF）限幅，单点反转边界与多空方向无缝自适应；
-- **`Macd`**: 异同移动平均复合指标，通过只读子流 `Dif`、`Dea`、`Hist` 展开；**熊市负值 DIF 严格防御**：单边下跌死叉 DIF < 0 时信号线 DEA 正常增量平滑，绝不误判为停牌；子流直接调用 `Update` 显式抛出 `NotSupportedException`；
+- **`Macd`**: 异同移动平均复合指标，通过只读子流 `Dif`、`Dea`、`Hist` 展开（`IIndicatorStream` 契约，彻底消除伪实现与误调）；**熊市负值 DIF 严格防御**：单边下跌死叉 DIF < 0 时信号线 DEA 正常增量平滑，绝不误判为停牌；
 - **`BollingerBands`**: 布林带复合指标，无偏样本标准差增量递推，通过只读子流 `Upper`、`Middle`、`Lower` 展开；
 - **`Atr`**: 真实波幅均值，首步平滑对齐，精确捕获大幅跳空缺口真实波幅；
 - **`Rsi`**: 相对强弱指标，单边单调价格极值防御与除以零安全兜底。

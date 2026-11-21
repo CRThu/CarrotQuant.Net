@@ -138,12 +138,14 @@ graph TD
             IndicatorRegistry[IndicatorRegistry]
             IndicatorPoolBase[IndicatorPool]
             IndicatorPoolTyped[IndicatorPool&lt;T&gt;]
-            IStreamIndicator[IStreamIndicator]
+            IIndicator[IIndicator]
+            IIndicatorStream[IIndicatorStream]
 
             IndicatorRegistry --> IIndicatorRegistry
             IndicatorRegistry --> IndicatorPoolBase
             IndicatorPoolBase -->|泛型派生| IndicatorPoolTyped
-            IndicatorPoolTyped --> IStreamIndicator
+            IndicatorPoolTyped --> IIndicator
+            IIndicator --> IIndicatorStream
         end
 
         BacktestSession --> BacktestingEngine
@@ -229,7 +231,7 @@ graph TD
 | :--- | :--- | :--- |
 | **Data Layer (数据层)** | 底层存储解耦、Hive 分区解析、二进制对齐缓存与 ChunkMatrix2D 只读稠密矩阵供给。 | `StorageResolver`, `CsvTimeseriesSource`, `ParquetTimeseriesSource`, `TimeseriesRegistry`, `TimeseriesCacheManager<T>`, `ChunkMatrix2D<T>`, `ITimeseriesRegistry`, `ITimeseriesScheduler`, `IEventRegistry`, `IFieldRegistry`, `DataLayerFactory` |
 | **Broker & Exchange Layer (经纪商与交易所层)** | 账户资产财务账本、两阶段预冻结、标的桶化订单簿、滑点摩擦撮合与实盘柜台适配。 | `IBroker`, `Broker`, `AccountLedger`, `PositionData`, `IAccountSnapshotProvider`, `IExchangeGateway`, `SimulatedExchangeGateway`, `OrderBook`, `MatchingEngine` |
-| **Indicator Subsystem (流式指标体系)** | 全市场标的指标池数组连续存储、时钟步进单次递推驱动、策略免声明直接取价门面。 | `IStreamIndicator`, `IndicatorPool<T>`, `IIndicatorRegistry`, `IndicatorRegistry`, `Sma`, `Ema`, `Wma`, `Vwap`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
+| **Indicator Subsystem (流式指标体系)** | 全市场标的指标池数组连续存储、时钟步进单次递推驱动、策略免声明直接取价门面。 | `IIndicator`, `IIndicatorStream`, `IndicatorPool<T>`, `IIndicatorRegistry`, `IndicatorRegistry`, `Sma`, `Ema`, `Wma`, `Vwap`, `Macd`, `BollingerBands`, `Atr`, `Rsi` |
 | **Engine Layer (引擎驱动层)** | 回测时间步驱动与状态机推进、实盘增量事件循环、上下文注入、可观测性监控与检查点。 | `BacktestSession`, `IEngine`, `BacktestingEngine`, `LivingEngine`, `IEngineContext`, `EngineContext`, `IMonitor`, `ICheckpointable` |
 | **Strategy Layer (策略层)** | 黑板解耦多因子协同、组合模式串行/并行管线拓扑、Roslyn 源码热重载、风控与持仓规划。 | `IStrategy`, `RuleStrategyBase`, `StrategyPipeline`, `SequentialPipeline`, `ParallelPipeline`, `IMarketState` |
 | **Analysis Layer (绩效分析与报表层)** | 交易事实记账沉淀、单路径分析器管线、四层量化统计、Alpha 前向质量评估与终端/HTML/JSON 报表多介质导出。 | `ITradingRecorder`, `TradingRecorder`, `TradingResult`, `IAnalysisEngine`, `AnalysisEngine`, `AnalysisEngineFactory`, `IAnalyzer`, `AnalysisReport`, `IReportExporter`, `ConsoleExporter`, `JsonReportExporter` |

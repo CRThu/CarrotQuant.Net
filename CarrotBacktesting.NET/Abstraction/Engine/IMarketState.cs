@@ -3,54 +3,63 @@ using System;
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 /// <summary>
-/// 通用强类型黑板接口，用于不同策略、组件间状态持久化与跨时间步数据交换。
-/// 支持引用类型（class）与值类型（struct / readonly record struct）。
-/// 默认按类型单例索引（Singleton per Type），支持可选 Key 命名空间隔离。
-/// 底层采用线程安全字典与不可变备忘录快照管理生命周期；值类型在通用黑板存储中存在装箱，高频单标的极速存取建议优先使用引擎上下文强类型变量或专用状态字段。
+/// 通用强类型市场状态黑板契约，专为策略间特征传递、信号协同与检查点无损恢复设计。
+/// 基于键值对（Key-Value）提供纯内存强类型存取，统一使用显式 Key 进行命名空间隔离。
 /// </summary>
 public interface IMarketState
 {
     /// <summary>
-    /// 获取强类型自定义状态/信号对象。
+    /// 获取指定 Key 的强类型状态数据。
     /// </summary>
-    /// <typeparam name="T">状态对象的类型（支持引用类型与值类型）。</typeparam>
-    /// <param name="key">可选实例标识键（用于支持多策略实例输出同名结构隔离）。缺省时按类型全名索引。</param>
+    /// <typeparam name="T">状态对象的类型。</typeparam>
+    /// <param name="key">实例标识键。</param>
     /// <returns>若存在且类型匹配则返回实例；否则返回 default。</returns>
-    T? GetState<T>(string? key = null);
+    T? GetState<T>(string key);
 
     /// <summary>
-    /// 设置强类型状态/信号对象。
+    /// 设置指定 Key 的强类型状态数据，可附带显式逻辑市场时间戳。
     /// </summary>
     /// <typeparam name="T">状态对象的类型。</typeparam>
+    /// <param name="key">实例标识键。</param>
     /// <param name="state">要发布的状态实例。</param>
-    /// <param name="key">可选实例标识键。缺省时按类型全名索引。</param>
-    void SetState<T>(T state, string? key = null);
+    /// <param name="timestamp">状态绑定的逻辑市场时间戳（未指定时为 null）。</param>
+    void SetState<T>(string key, T state, MarketTime? timestamp = null);
 
     /// <summary>
-    /// 设置强类型状态并显式记录该状态绑定的逻辑市场时间戳（防御跨 Bar 误判）。
+    /// 尝试获取指定 Key 的强类型状态并返回更新时间戳（先 key 后 out 规范，未命中或无时间戳时为 null）。
     /// </summary>
     /// <typeparam name="T">状态对象的类型。</typeparam>
-    /// <param name="state">要发布的状态实例。</param>
-    /// <param name="timestamp">状态产生的逻辑市场时间戳。</param>
-    /// <param name="key">可选实例标识键。</param>
-    void SetState<T>(T state, MarketTime timestamp, string? key = null);
-
-    /// <summary>
-    /// 尝试获取状态并返回该状态最后一次被更新的市场时间戳。
-    /// </summary>
-    /// <typeparam name="T">状态对象的类型。</typeparam>
+    /// <param name="key">实例标识键。</param>
     /// <param name="state">输出的状态对象。</param>
-    /// <param name="updatedTime">输出的状态最后更新时间。</param>
-    /// <param name="key">可选实例标识键。</param>
+    /// <param name="updatedTime">输出的状态最后更新时间（若不存在或未设置则为 null）。</param>
     /// <returns>若存在且类型匹配则返回 true，否则返回 false。</returns>
-    bool TryGetState<T>(out T? state, out MarketTime updatedTime, string? key = null);
+    bool TryGetState<T>(string key, out T? state, out MarketTime? updatedTime);
 
     /// <summary>
-    /// 检查指定类型（与 Key）的状态在黑板中是否存在。
+    /// 检查指定 Key 的状态在黑板中是否存在且类型匹配。
     /// </summary>
     /// <typeparam name="T">状态对象的类型。</typeparam>
-    /// <param name="key">可选实例标识键。缺省时按类型全名索引。</param>
-    bool HasState<T>(string? key = null);
+    /// <param name="key">实例标识键。</param>
+    /// <returns>若存在且类型匹配返回 true，否则返回 false。</returns>
+    bool HasState<T>(string key);
+
+    /// <summary>
+    /// 精确移除指定 Key 且类型匹配的状态数据。
+    /// </summary>
+    /// <typeparam name="T">状态对象的类型。</typeparam>
+    /// <param name="key">实例标识键。</param>
+    /// <returns>若存在且类型匹配并成功移除返回 true，否则返回 false。</returns>
+    bool ClearState<T>(string key);
+
+    /// <summary>
+    /// 按指定 Key 原子获取并移除状态对象（读后即焚，防重复消费），同时输出最后更新逻辑时间戳（若不存在或未设置则为 null）。
+    /// </summary>
+    /// <typeparam name="T">状态对象的类型。</typeparam>
+    /// <param name="key">实例标识键。</param>
+    /// <param name="state">输出的状态对象。</param>
+    /// <param name="updatedTime">输出的状态最后更新时间（若不存在或未设置则为 null）。</param>
+    /// <returns>若存在且类型匹配并成功取出返回 true，否则返回 false。</returns>
+    bool TryTakeState<T>(string key, out T? state, out MarketTime? updatedTime);
 
     /// <summary>
     /// 清理黑板中的所有状态数据。

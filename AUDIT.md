@@ -5,10 +5,13 @@
 > - 《CarrotQuant .NET 核心架构与开发规范 (AGENTS.md)》
 > - 现代量化工程与回测业界标准（Pyfolio / QuantStats / Lean / Backtrader / Qlib）
 > 
-> **综合审查结论**：🟢 **PASS（第一批轻量缺陷与流派三通用净持仓/ReduceOnly闭环重构验收通过，776 单元测试全绿）**  
-> 系统历经四大阶段系统性重构与缺陷深度治理（33.1整型缺失哨兵统一、8.2热路径日切守卫、8.3国际标准通用净持仓+原生ReduceOnly闭环与多空对称翻仓、32黑板装箱事实与契约澄清），全链路打通资产财务双式记账、开仓费用等比分摊池、无未来函数撮合时态（`NextOpen` / `NextVwap`）、48 字节非托管 `BarSnapshot`、条件单与 Bracket OCO 互斥引擎、逐层组合备忘录断点恢复、策略极简交易动词门面、全套后复权历史时序取价及四层量化分析管线。
+> **综合审查结论**：🟡 **IN PROGRESS（第一批与第二批核心缺陷治理落地，782 项单测全绿；剩余全景演进项持续推进中）**  
+> 
+> 本报告对 CarrotQuant.NET 进行全景架构大体检（共 33 个专项）。目前**第一批（10 项高危架构漏洞）与第二批（指标体系契约隔离、黑板原子消费闭环、独立回测会话构建器）已高标准完成深度重构与闭环验收**，热路径零 GC 分配，消除了全部已知 LSP 伪实现与状态残留隐患。
+> 
+> 按照系统性演进路线图，后续批次（如 33.2 策略复权价与网关未复权限价单口径对齐、27 外部自定义字段流式指标计算、8.4 强平与风险释放等）仍在按计划持续治理推进中，坚决杜绝未全量闭环前的假阳性与形式主义“全盘 PASS”。
 >
-> 截至目前，全套工程 61 个测试文件、776 个单元与集成测试用例 100% 绿色通过，系统架构纯粹、热路径零 GC 分配，完全契合工程研发红线规范。
+> 截至目前，全套工程 61 个测试文件、782 个单元与集成测试用例 100% 绿色通过，系统架构纯粹、热路径零 GC 分配，完全契合工程研发红线规范。
 
 ---
 
@@ -263,9 +266,16 @@ flowchart TD
   3. 回测引擎在必要时通过 `broker as IExchangeGatewayProvider` 安全感知底层仿真网关；
   4. 单元测试 `SimulatedBrokerTests.Broker_Gateway_MustBeExplicitInterfaceImplementation_ToSealBackdoor` 通过反射严密验证公共 Getter 不存在且显式接口契约正确。
 
-### 11. `IStreamIndicator` 混淆消费与生产驱动，子流指标违反 LSP 原则
-- **涉及位置**：`IStreamIndicator.cs#L35-L48`、`SubStreamIndicator.cs#L33-L36`
-- **问题分析**：策略消费指标只需只读访问（`this[offset]`, `Current`, `IsReady`）。`Update` 和 `Reset` 属于引擎步进驱动方法。暴露在顶层接口导致 `Macd.Dif`、`BollingerBands.Upper`、`Kdj.K` 等子流实现调用 `Update` 时抛出 `NotSupportedException`，公然违背里氏替换原则（LSP）。
+### 11. `IIndicator` 与 `IIndicatorStream` 读写彻底解耦，根除子流指标违反 LSP 的伪实现【✅ 已修复 (PASS)】
+- **涉及位置**：`IIndicatorStream.cs`、`IIndicator.cs`、`SubStreamIndicator.cs`、`Macd.cs`、`BollingerBands.cs`、`Kdj.cs`
+- **问题分析**：策略消费指标只需只读访问（`this[offset]`, `Current`, `IsReady`）。`Update` 和 `Reset` 属于引擎步进驱动方法。原先暴露在单一顶层接口导致 `Macd.Dif`、`BollingerBands.Upper`、`Kdj.K` 等受控子流实现调用 `Update` 时被迫抛出 `NotSupportedException`，公然违背里氏替换原则（LSP）与红线第 8 条（严禁伪实现）。
+- **重构方案与治理机制**：
+  1. **概念重构与命名大道至简**：将顶层计算契约重命名为 `IIndicator`，消灭冗余的 `Stream` 修饰；
+  2. **只读数据流契约 `IIndicatorStream`**：抽离出纯净的只读数值序列契约，仅包含 `this[offset]` 负数索引、`Current` 与 `IsReady`，绝不暴露 `Update` 或 `Reset`；
+  3. **母体计算契约 `IIndicator : IIndicatorStream`**：继承自只读流，专属承担 `Update(open, high, low, close, volume)` 增量喂价与 `Reset()` 复位生命周期；
+  4. **子流纯粹化**：`SubStreamIndicator` 仅实现 `IIndicatorStream`，复合指标（`Macd` 的 `Dif`/`Dea`/`Hist`、`BollingerBands` 的 `Upper`/`Middle`/`Lower`、`Kdj` 的 `K`/`D`/`J`）对外全部强类型暴露为 `IIndicatorStream`；
+  5. **彻底删除抛错伪实现**：从根本上删除了 `throw new NotSupportedException` 伪代码，类型系统在编译期杜绝外部误调驱动方法；
+  6. **单测验证**：`StreamIndicatorsTests.IndicatorContracts_InterfaceSegregation_SubStreamsMustBePureReadOnlyStreams` 通过反射验证接口隔离，并全面覆盖单值/多值指标生命周期联动。
 
 ### 12. `IEventRegistry` 与 `IFieldRegistry` 暴露动态修改方法【✅ 已修复 (PASS)】
 - **涉及位置**：`IEventRegistry.cs`、`IFieldRegistry.cs`、`EventRegistry.cs`、`FieldRegistry.cs`
@@ -367,9 +377,15 @@ flowchart TD
   2. 在 `IEngineContext` 的 `Account & Position SSOT Facades` 区域增加 `double GetPositionCost(string symbol)`，并在 `EngineContext` 中直通转发；
   3. 单元测试 `EngineContextTests.Facades_AccountAndPosition_ForwardToBrokerAccurately` 完整覆盖初始无仓 (0.0)、首仓买入、多次加仓加权均价、部分平仓成本守恒与完全清仓归零的全生命周期校验。
 
-### 21. 缺少 C# 流畅回测构建器（Fluent Backtest Builder）
-- **涉及位置**：`BacktestSession.cs`、`BacktestingEngine.cs#L113-L126`
-- **问题分析**：在纯 C# 代码中启动回测体验极差：要么构造十余个层层嵌套的配置模型，要么手动实例化 8 个底层对象。`BacktestingEngine` 构造函数高达 12 个参数。
+### 21. 缺少 C# 流畅回测构建器（Fluent Backtest Builder）【✅ 已修复 (PASS)】
+- **涉及位置**：`BacktestSession.cs`
+- **问题分析**：在纯 C# 代码（单测、调试脚本、网格搜索）中启动回测体验繁琐：要么构造十余个层层嵌套的配置模型，要么手动实例化多个底层对象，缺乏声明式流畅构建门面。
+- **重构方案与治理机制**：
+  1. 在 `BacktestSession` 增加 `public static Builder Create()` 静态构建入口；
+  2. 提供 `WithData`、`WithPeriod`、`WithCash`、`WithBroker`、`WithStrategy`、`WithTimeseries` 与 `Configure` 链式方法；
+  3. 内置全市场日频、无滑点、标准费率等工业级稳健默认值；
+  4. 支持直接执行 `.Run()` 或 `.RunAndAnalyze()`，3 行代码即可启动完整回测闭环；
+  5. 单元测试 `BacktestSessionTests.Builder_FluentAssembly_ShouldConfigureSessionCorrectly` 全面验证链式组装与自定义时序注入。
 
 ### 22. `AnalysisReport` 报表缺乏扁平快捷属性【❌ 拒绝修改 (Won't Fix)】
 - **涉及位置**：`AnalysisReport.cs`
@@ -465,9 +481,16 @@ flowchart TD
   1. 彻底移除 `DateTime.UtcNow` 回退；
   2. 若引擎时钟未步进且无有效时间（如初始状态），优先安全取系统交易日历第一天 `_tradeDates[0]`，若仍不可得则抛出异常，杜绝现实物理时间穿越。
 
-### 31. 黑板跨时间步无淘汰，残留“僵尸信号”导致幽灵交易
-- **涉及位置**：`MarketState.cs`
-- **问题分析**：黑板状态永久驻留。若某标的在 $T$ 日触发买入信号写入黑板；$T+1$ 日该股停牌，生产策略未为其更新黑板。下游执行策略读取到 $T$ 日的僵尸信号，会在股票停牌时盲目重复下单。
+### 31. 黑板精确清除（ClearState）与脉冲信号原子消费（TryTakeState）闭环【✅ 已修复 (PASS)】
+- **涉及位置**：`IMarketState.cs`、`MarketState.cs`、`IEngineContext.cs`
+- **问题分析**：黑板此前仅提供全局物理清空 `Clear()`，完全缺少单条目精准删除能力。当策略在黑板中发布瞬态脉冲买卖信号后，下游执行策略无法在消费后单独删除该条目，导致条目跨 Bar 滞留为“僵尸信号”，引发重复下单（幽灵交易）。
+- **重构方案与第一性原理定调**：
+  1. **状态持久性坚决保留**：黑板底层天然保留大周期状态（宏观环境、多因子打分、持仓目标等），坚决不做任何隐式跨日定时清空；
+  2. **精确清除通道 `ClearState<T>(key)`**：补齐指定 Key 或类型全名的精准移除契约；
+  3. **原子消费原语 `TryTakeState<T>(key, out state)`**：
+     - 专为瞬态买卖脉冲信号设计，按 .NET 官方规范采用“先 key 后 out”的标准签名；
+     - 底层基于 `ConcurrentDictionary.TryRemove` 实现读后即焚原子操作，下游策略消费完后信号就地清除，彻底消除跨 Bar 幽灵交易；
+  4. **单测验证**：`MarketStateTests.ClearState_ShouldRemoveSpecificStateAccurately` 与 `TryTakeState_ShouldAtomicallyRetrieveAndRemove_PreventingGhostSignals` 验证单状态精准清除与原子消费防幽灵信号。
 
 ### 32. 黑板文档与契约规范对齐（澄清装箱事实，消除虚假承诺）【✅ 已修复 (PASS)】
 - **涉及位置**：`IMarketState.cs`、`MarketState.cs`
@@ -486,5 +509,6 @@ flowchart TD
   - **缺陷**：开启 `Concurrent = true` 时，多线程并行调用子策略 `OnUpdate` 并发下单，触发的 `OnTrade` 回调在多线程中重入，若持有非线程安全状态会导致数据损坏或锁逆序死锁。
   - **修复**：`Broker` 核心撮合回报、状态流转与条件单触发全链路推行 **Open Calls 模式**。在内部主锁内完成原子状态跃迁与缓冲区收集（复用零 GC 列表 `_orderEventsBuffer`），退出锁区后再单向分发 `OnOrderEvent`、`OnExecution` 与策略回调，彻底消灭外部策略回调重入引发的锁逆序死锁与数据竞争；
   - **单测**：`ConditionalOrderTests`、`EngineBrokerEventBridgeTests` 与 `AdvancedStrategyPipelineIntegrationTests` 严密验证回调顺序与并发隔离。
+
 
 

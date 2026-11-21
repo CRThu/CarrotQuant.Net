@@ -106,7 +106,7 @@ public class RuleStrategyBaseTests
         public string Name => "MockAlpha";
         public void OnUpdate(IEngineContext context)
         {
-            context.Market.SetState(new Dictionary<string, double> { ["sh.600000"] = 0.99 }, key: Name);
+            context.Market.SetState(Name, new Dictionary<string, double> { ["sh.600000"] = 0.99 });
         }
     }
 

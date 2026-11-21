@@ -37,7 +37,7 @@ namespace CarrotBacktesting.NET.Indicators
         public IndicatorPool<T> GetOrAdd<T>(
             string name,
             Func<T> factory,
-            PriceMode mode = PriceMode.Post) where T : class, IStreamIndicator
+            PriceMode mode = PriceMode.Post) where T : class, IIndicator
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             ArgumentNullException.ThrowIfNull(factory);
@@ -76,13 +76,13 @@ namespace CarrotBacktesting.NET.Indicators
         public void Add<T>(
             string name,
             Func<T> factory,
-            PriceMode mode = PriceMode.Post) where T : class, IStreamIndicator
+            PriceMode mode = PriceMode.Post) where T : class, IIndicator
         {
             GetOrAdd(name, factory, mode);
         }
 
         /// <inheritdoc />
-        public IndicatorPool<T>? GetPool<T>(string name) where T : class, IStreamIndicator
+        public IndicatorPool<T>? GetPool<T>(string name) where T : class, IIndicator
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             if (_pools.TryGetValue(name, out var pool))
@@ -99,7 +99,7 @@ namespace CarrotBacktesting.NET.Indicators
 
         /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T Get<T>(string name, int symbolIndex) where T : class, IStreamIndicator
+        public T Get<T>(string name, int symbolIndex) where T : class, IIndicator
         {
             var pool = GetPool<T>(name);
             if (pool != null)
@@ -111,7 +111,7 @@ namespace CarrotBacktesting.NET.Indicators
 
         /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T Get<T>(string name, string symbol) where T : class, IStreamIndicator
+        public T Get<T>(string name, string symbol) where T : class, IIndicator
         {
             var pool = GetPool<T>(name);
             if (pool != null)

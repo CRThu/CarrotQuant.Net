@@ -65,7 +65,7 @@ public class StrategyPipelineFactoryTests
             if (list == null)
             {
                 list = new List<int>();
-                context.Market.SetState(list, "ExecutionSequence");
+                context.Market.SetState("ExecutionSequence", list);
             }
             lock (list)
             {
@@ -86,7 +86,7 @@ public class StrategyPipelineFactoryTests
         public void OnUpdate(IEngineContext context)
         {
             Thread.SpinWait(100);
-            context.Market.SetState(new SignalScore(Score), SignalKey);
+            context.Market.SetState(SignalKey, new SignalScore(Score));
         }
     }
 
@@ -307,7 +307,7 @@ public class DynamicAlphaStrategy : IStrategy
 
     public void OnUpdate(IEngineContext context)
     {
-        context.Market.SetState((99.0 * Boost).ToString(), ""DynamicResult"");
+        context.Market.SetState(""DynamicResult"", (99.0 * Boost).ToString());
     }
 }
 ";

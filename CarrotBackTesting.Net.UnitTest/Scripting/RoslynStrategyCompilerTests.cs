@@ -90,7 +90,7 @@ public class DynamicMovingAverageStrategy : IStrategy
 
     public void OnUpdate(IEngineContext context)
     {
-        context.Market.SetState(""Signal_Fired"", key: ""Status"");
+        context.Market.SetState(""Status"", ""Signal_Fired"");
     }
 }
 ";
@@ -393,7 +393,7 @@ public class UnsafeFastStrategy : IStrategy
     {
         double value = 123.456;
         double* ptr = &value;
-        context.Market.SetState(new double[] { *ptr }, key: ""UnsafeResult"");
+        context.Market.SetState(""UnsafeResult"", new double[] { *ptr });
     }
 }
 ";
