@@ -28,6 +28,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     private long _orderSequence = 0;
     private long _ocoGroupSequence = 0;
     private MarketTime _currentTime = MarketTime.MinValue;
+    private MarketTime _lastRolloverDate = MarketTime.MinValue;
 
     // 活跃条件单状态机步进复用缓冲区：
     // 1. 规避高频每步 new 集合的 GC 压力，实现热路径内存零开销（Rule 10）；
@@ -254,13 +255,13 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
         }
 
-        var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif)
+        var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif, ReduceOnly: true)
         {
             StopPrice = stopPrice,
             OcoGroupId = groupId
         };
 
-        var tpReq = new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, tif)
+        var tpReq = new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, tif, ReduceOnly: true)
         {
             StopPrice = takeProfitPrice,
             OcoGroupId = groupId
@@ -470,12 +471,12 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     }
 
     /// <inheritdoc />
-    public long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce));
+    public long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce, reduceOnly));
 
     /// <inheritdoc />
-    public long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce));
+    public long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce, reduceOnly));
 
     /// <inheritdoc />
     public long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
@@ -485,7 +486,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         if (pos == 0m) return 0L;
 
         var dir = pos > 0m ? OrderDirection.Sell : OrderDirection.Buy;
-        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce));
+        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce, ReduceOnly: true));
     }
 
     /// <inheritdoc />
@@ -494,7 +495,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         var pos = GetPosition(symbol);
         var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
-        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
+        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled, ReduceOnly: true)
         {
             StopPrice = stopPrice
         });
@@ -506,7 +507,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         var pos = GetPosition(symbol);
         var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
-        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
+        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled, ReduceOnly: true)
         {
             StopPrice = targetPrice
         });
@@ -563,7 +564,11 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                 sim.SetCurrentTime(currentTime);
             }
             MarketTime exchangeDate = ToExchangeDate(currentTime);
-            _ledger.ProcessDayRollover(exchangeDate);
+            if (exchangeDate.Date != _lastRolloverDate)
+            {
+                _lastRolloverDate = exchangeDate.Date;
+                _ledger.ProcessDayRollover(exchangeDate);
+            }
         }
 
         ProcessConditionalOrders(currentTime);
@@ -787,6 +792,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         lock (_syncLock)
         {
             _ledger.SyncState(cash, positions);
+            _lastRolloverDate = MarketTime.MinValue;
 
             var eventTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
@@ -1198,6 +1204,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         lock (_syncLock)
         {
             _ledger.RestoreState(snapshot.Ledger);
+            _lastRolloverDate = MarketTime.MinValue;
             _orders.Clear();
             _pendingConditionals.Clear();
             if (snapshot.ActiveOrders != null)

@@ -4,8 +4,9 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 /// <summary>
 /// 通用强类型黑板接口，用于不同策略、组件间状态持久化与跨时间步数据交换。
-/// 支持引用类型（class）与值类型（struct / readonly record struct），实现零堆分配状态存储。
+/// 支持引用类型（class）与值类型（struct / readonly record struct）。
 /// 默认按类型单例索引（Singleton per Type），支持可选 Key 命名空间隔离。
+/// 底层采用线程安全字典与不可变备忘录快照管理生命周期；值类型在通用黑板存储中存在装箱，高频单标的极速存取建议优先使用引擎上下文强类型变量或专用状态字段。
 /// </summary>
 public interface IMarketState
 {

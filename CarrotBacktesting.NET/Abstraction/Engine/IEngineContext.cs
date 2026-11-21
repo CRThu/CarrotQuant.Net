@@ -68,9 +68,10 @@ public interface IEngineContext
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
+    /// <param name="reduceOnly">仅减仓/纯平仓标志（可选，缺省为 false）。若为 true，该订单物理上只能减少现有空头持仓，严禁开多。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
-        => Broker.Buy(symbol, quantity, price, type, orderTag, timeInForce);
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false)
+        => Broker.Buy(symbol, quantity, price, type, orderTag, timeInForce, reduceOnly);
 
     /// <summary>
     /// 便捷提交卖出订单（默认以市价单形式发出）。
@@ -81,9 +82,10 @@ public interface IEngineContext
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
+    /// <param name="reduceOnly">仅减仓/纯平仓标志（可选，缺省为 false）。若为 true，该订单物理上只能减少现有多头持仓，严禁开空。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
-        => Broker.Sell(symbol, quantity, price, type, orderTag, timeInForce);
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false)
+        => Broker.Sell(symbol, quantity, price, type, orderTag, timeInForce, reduceOnly);
 
     /// <summary>
     /// 便捷全额平仓指定标的持仓。

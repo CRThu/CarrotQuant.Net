@@ -78,6 +78,7 @@ public enum TimeInForce : byte
 /// <param name="Quantity">委托数量。</param>
 /// <param name="OrderTag">策略业务标签（如开仓理由、特征 Tag），用于订单归因与成交流水追踪。</param>
 /// <param name="TimeInForce">订单时效性。缺省为 null 时由经纪商配置 DefaultTimeInForce 统一确定。</param>
+/// <param name="ReduceOnly">仅减仓/纯平仓标志（默认 false）。若为 true，该订单物理上只能减少现有持仓绝对值，严禁产生任何反向持仓。</param>
 [method: System.Text.Json.Serialization.JsonConstructor]
 public record OrderRequest(
     string Symbol,
@@ -86,21 +87,22 @@ public record OrderRequest(
     double Price,
     decimal Quantity,
     string OrderTag = "",
-    TimeInForce? TimeInForce = null)
+    TimeInForce? TimeInForce = null,
+    bool ReduceOnly = false)
 {
     /// <summary>
     /// 市价单便捷构造函数（价格默认为 0.0）。
     /// </summary>
-    public OrderRequest(string symbol, OrderDirection direction, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
-        : this(symbol, direction, OrderType.Market, 0.0, quantity, orderTag, timeInForce)
+    public OrderRequest(string symbol, OrderDirection direction, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null, bool ReduceOnly = false)
+        : this(symbol, direction, OrderType.Market, 0.0, quantity, orderTag, timeInForce, ReduceOnly)
     {
     }
 
     /// <summary>
     /// 限价单便捷构造函数。
     /// </summary>
-    public OrderRequest(string symbol, OrderDirection direction, double price, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
-        : this(symbol, direction, OrderType.Limit, price, quantity, orderTag, timeInForce)
+    public OrderRequest(string symbol, OrderDirection direction, double price, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null, bool ReduceOnly = false)
+        : this(symbol, direction, OrderType.Limit, price, quantity, orderTag, timeInForce, ReduceOnly)
     {
     }
 

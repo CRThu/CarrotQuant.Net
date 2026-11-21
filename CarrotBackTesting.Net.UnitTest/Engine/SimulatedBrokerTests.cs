@@ -1401,7 +1401,10 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         [TestMethod]
         public void ShortPosition_PendingBuyLimitOrders_ShouldPreventDoubleSpending()
         {
-            // 验证持有期货空头时连续提交买平挂单，挂单预冻结准确扣减可用持仓额度，防止平仓委托超出实际持仓量
+            // 通用净持仓与多空镜像对称测试：
+            // 当空头持有 5 手，挂单 1 挂出 5 手平空（平仓额度被 100% 占满）后，
+            // 策略再次尝试买平 5 手（数量 <= 总持仓），由于可用平仓额度不足，系统必须严格拒单拦截，
+            // 坚决杜绝“免保证金双花”，且坚决杜绝在未声明翻多时被意外开仓！
             var config = new BrokerConfig
             {
                 InitialCash = 50_000.0,
@@ -1429,33 +1432,22 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(0m, broker.GetAvailablePosition("rb2505"), "空头平仓额度已被 100% 冻结完毕");
 
             // 3. 挂单 2（防双花触发）：策略紧接着又在 90.0 元挂单买入 5 手平空！
-            // 预期：由于 5 手空头平仓额度已全被挂单 1 冻结，此单必须被识别为反手新开 5 手多头！
-            // 所需保证金 = 5 * 90.0 * 0.1 = 45.0 元。因为账户还有足够可用现金，可以提交挂单，但必须被扣除保证金！
+            // 预期：由于 5 手空头平仓额度已被挂单 1 冻结，此单属于可用平空不足，必须被严格 Rejected！杜绝双花！
             var order2 = new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m);
             long id2 = broker.SubmitOrder(order2);
-            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id2));
-            // 账户必须额外被冻结 45.0 元反手保证金，绝不能作为平仓免保证金双花放行！
-            Assert.AreEqual(50_000.0 - 50.0 - 45.0, broker.GetCash(), 1e-4, "挂单 2 必须按反手开多收取 45 元保证金冻结");
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id2), "可用平空额度已耗尽，买平单必须直接被拒绝，杜绝双花");
+            Assert.AreEqual(50_000.0 - 50.0, broker.GetCash(), 1e-4, "被拒后现金未被任何异常扣减");
 
-            // 4. 挂单 3（超额资金拦截）：假设资金耗尽，策略再尝试挂反手单，必须立即 Rejected
-            var configPoor = new BrokerConfig
-            {
-                InitialCash = 60.0, // 仅 60 元初始资金
-                AllowShort = true,
-                MarginRate = 0.1,
-                Multiplier = 1.0,
-                FeeRate = 0.0,
-                Slippage = 0.0
-            };
-            var brokerPoor = CreateBroker(configPoor);
-            brokerPoor.UpdateMarketPrice("rb2505", 100.0);
-            // 建立 5 手空头 (消耗 50 元保证金，剩余 10 元)
-            brokerPoor.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Market, 100.0, 5m), 100.0, null);
-            // 挂单 1：5 手买平（免保证金，剩余 10 元）
-            brokerPoor.SubmitOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m));
-            // 挂单 2：试图再次双花平仓 5 手。因为额度用完必须开多，开多需 45 元保证金，但可用资金仅 10 元，必须被拒！
-            long idReject = brokerPoor.SubmitOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m));
-            Assert.AreEqual(OrderStatus.Rejected, brokerPoor.GetOrderStatus(idReject), "无平仓额度且资金不足以开多时，必须严格拒单");
+            // 4. 标准空翻多测试：在现有空头完全可用的前提下，发起 Q = 10 > Total = 5 的翻多单
+            // 先撤销挂单 1 释放平空额度
+            broker.CancelOrder(id1);
+            Assert.AreEqual(-5m, broker.GetAvailablePosition("rb2505"), "撤单后 5 手平空额度安全恢复");
+
+            // 发起 Buy 10 手翻多单：平 5 手空头 + 新开 5 手多头（按 90 元冻结 5 * 90 * 0.1 = 45 元保证金）
+            var flipOrder = new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 10m);
+            long flipId = broker.SubmitOrder(flipOrder);
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(flipId));
+            Assert.AreEqual(50_000.0 - 50.0 - 45.0, broker.GetCash(), 1e-4, "翻多单的开多部分精准冻结 45 元开多保证金");
         }
 
         [TestMethod]
@@ -1720,6 +1712,407 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
             Assert.AreEqual(100_000.0, broker.GetCash(), 1e-4);
             Assert.AreEqual(0.0, broker.FrozenCash);
+        }
+
+        [TestMethod]
+        public void Broker_Step_IntradayMultipleBars_ShouldOnlyTriggerDayRolloverOncePerDay()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = false,
+                SettleDays = 1
+            };
+            var broker = CreateBroker(config);
+
+            // Day 1: 买入 1000 股，在途 T+1 锁定
+            DateTime day1_bar1 = new DateTime(2025, 1, 6, 9, 30, 0);
+            broker.Step(day1_bar1);
+            broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m), 10.0, null);
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "Day 1 在途锁仓，可用为 0");
+
+            // 同一天内的多个高频 Bar 推进 (9:31, 10:00, 14:59)
+            broker.Step(new DateTime(2025, 1, 6, 9, 31, 0));
+            broker.Step(new DateTime(2025, 1, 6, 10, 0, 0));
+            broker.Step(new DateTime(2025, 1, 6, 14, 59, 0));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "同一天内日切守卫生效，可用持仓保持为 0");
+
+            // Day 2: 跨日首个 Bar 推进，触发日切解锁
+            broker.Step(new DateTime(2025, 1, 7, 9, 30, 0));
+            Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"), "Day 2 跨日日切触发，成功解锁持仓");
+
+            // Day 2 内部推进依然守卫
+            broker.Step(new DateTime(2025, 1, 7, 10, 0, 0));
+            Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"));
+        }
+
+        [TestMethod]
+        public void AllowShortTrue_LongPositionPartiallyFrozen_SellOrderExceedingAvailable_MustBeRejectedAndNotTurnIntoShortOrder()
+        {
+            // 防御审计 8.3：在允许做空（AllowShort=true）模式下，
+            // 若持有多头 1000 股，由于挂单排队冻结了 700 股导致可用仅剩 300 股，
+            // 策略发出卖出 1000 股（或 500 股）平仓单时，必须因可用持仓不足被明确拒绝，
+            // 坚决严禁将不足平仓的差额静默篡改为开空单，避免多空双向持仓与透支！
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = true,
+                MarginRate = 1.0,
+                FeeRate = 0.0
+            };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+
+            // 1. 建立 1000 股多头持仓
+            broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m), 10.0, null);
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"));
+
+            // 2. 挂单 1：以 12.0 元挂出限价卖单 700 股（排队未成交），冻结 700 股多头
+            long id1 = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 12.0, 700m));
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id1));
+            Assert.AreEqual(300m, broker.GetAvailablePosition("sh.600000"), "可用多头仅剩 300 股");
+
+            // 3. 策略再次下达 Sell 1000 股（或 Sell 500 股）：可用持仓不足，必须被 Rejected，严禁转为开空！
+            long id2 = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 10.0, 1000m));
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id2));
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"), "总持仓守恒为 1000，绝无空头开仓");
+            Assert.AreEqual(300m, broker.GetAvailablePosition("sh.600000"), "可用持仓守恒为 300");
+
+            // 4. 策略尝试多翻空 Sell 1500 股：由于现有多头无法全平，同样必须被 Rejected！
+            long id3 = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 10.0, 1500m));
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id3));
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"), "拒单后持仓不可变");
+        }
+
+        [TestMethod]
+        public void UniversalNetting_ReduceOnly_Contract_And_SymmetricFlip_ShouldWorkAccurately()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = true,
+                MarginRate = 0.1,
+                Multiplier = 1.0,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("BTCUSDT", 100.0);
+
+            // ==========================================
+            // 1. 无仓位时提交 ReduceOnly 订单必须严格被拒绝
+            // ==========================================
+            var noPosReduceOrder = new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Market, 100.0, 1m, ReduceOnly: true);
+            long noPosId = broker.SubmitOrder(noPosReduceOrder);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(noPosId), "无持仓时发 ReduceOnly 单必须直接被拒绝");
+
+            // ==========================================
+            // 2. 多头持仓下的 ReduceOnly 与自由翻空
+            // ==========================================
+            // 买入 5 手多头
+            broker.ExecuteOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Market, 100.0, 5m), 100.0, null);
+            Assert.AreEqual(5m, broker.GetPosition("BTCUSDT"));
+
+            // a) ReduceOnly 方向必须与持仓相反：若持有多头却发 ReduceOnly 买入，必须直接被拒！
+            var wrongDirOrder = new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Market, 100.0, 1m, ReduceOnly: true);
+            long wrongDirId = broker.SubmitOrder(wrongDirOrder);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(wrongDirId), "ReduceOnly 订单方向必须与已有持仓相反");
+
+            // b) 先挂出限价单 3 手平多，可用平多只剩 2 手
+            long limitSellId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Limit, 120.0, 3m));
+            Assert.AreEqual(2m, broker.GetAvailablePosition("BTCUSDT"));
+
+            // c) 尝试用 ReduceOnly 卖出 4 手：可用不足，必须直接被拒，绝不开空！
+            var overReduceOrder = new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Market, 100.0, 4m, ReduceOnly: true);
+            long overReduceId = broker.SubmitOrder(overReduceOrder);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(overReduceId), "ReduceOnly 可用不足必须被拒绝，严禁开空");
+            Assert.AreEqual(5m, broker.GetPosition("BTCUSDT"), "持仓完好守恒");
+
+            // 撤单恢复全部 5 手可用
+            broker.CancelOrder(limitSellId);
+            Assert.AreEqual(5m, broker.GetAvailablePosition("BTCUSDT"));
+
+            // d) 常规自由多翻空：持有 5 手多头，发普通 Sell 12 手 -> 平 5 手多头 + 开 7 手空头
+            // 开 7 手空头需扣保证金 = 7 * 100 * 0.1 = 70 元
+            long flipToShortId = broker.ExecuteOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Market, 100.0, 12m), 100.0, null);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(flipToShortId));
+            Assert.AreEqual(-7m, broker.GetPosition("BTCUSDT"), "成功平 5 手多头并反手开 7 手空头");
+            Assert.AreEqual(-7m, broker.GetAvailablePosition("BTCUSDT"));
+
+            // ==========================================
+            // 3. 空头持仓下的 ReduceOnly 与自由翻多（100% 镜像对称！）
+            // ==========================================
+            // a) 挂出限价单 4 手买平，可用平空只剩 3 手
+            long limitBuyId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Limit, 80.0, 4m));
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(limitBuyId));
+            Assert.AreEqual(-3m, broker.GetAvailablePosition("BTCUSDT"));
+
+            // b) 尝试用 ReduceOnly 买入 5 手：可用平空不足，必须直接被拒，绝不开多！
+            var overBuyReduceOrder = new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Market, 100.0, 5m, ReduceOnly: true);
+            long overBuyReduceId = broker.SubmitOrder(overBuyReduceOrder);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(overBuyReduceId), "空头 ReduceOnly 可用平空不足必须拒绝，绝不开多");
+            Assert.AreEqual(-7m, broker.GetPosition("BTCUSDT"), "空头持仓完好守恒");
+
+            // 撤单恢复全部 7 手可用空头
+            broker.CancelOrder(limitBuyId);
+            Assert.AreEqual(-7m, broker.GetAvailablePosition("BTCUSDT"));
+
+            // c) 常规自由空翻多：持有 7 手空头，发普通 Buy 15 手 -> 平 7 手空头 + 开 8 手多头
+            long flipToLongId = broker.ExecuteOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Market, 100.0, 15m), 100.0, null);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(flipToLongId));
+            Assert.AreEqual(8m, broker.GetPosition("BTCUSDT"), "成功平 7 手空头并反手开 8 手多头");
+
+            // d) 使用 ClosePosition 门面全平：内部自动携带 reduceOnly = true 且全平归零
+            long closeAllId = broker.ExecuteOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Market, 100.0, 8m, ReduceOnly: true), 100.0, null);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(closeAllId));
+            Assert.AreEqual(0m, broker.GetPosition("BTCUSDT"), "全额清平成功归零");
+        }
+
+        [TestMethod]
+        public void UniversalNetting_FlipOrder_PartialFills_AcrossZeroBoundary_ShouldTransferAccurately()
+        {
+            var gateway = new DirectCallbackGateway();
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = true,
+                SettleDays = 0,
+                FeeRate = 0.0,
+                MinFee = 0.0,
+                Slippage = 0.0
+            };
+            var broker = new Broker(gateway, config);
+            var now = new DateTime(2025, 1, 15, 9, 30, 0, DateTimeKind.Utc);
+            broker.Step(now);
+
+            // 1. 先建仓 10 手多头 @ 100
+            var buyReq = new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Limit, 100.0, 10m);
+            long buyId = broker.SubmitOrder(buyReq);
+            gateway.PushExecution(new ExecutionReport(buyId, "BTCUSDT", 100.0, 10m, 0.0, now, CumQuantity: 10m, LeavesQuantity: 0m));
+            Assert.AreEqual(10m, broker.GetPosition("BTCUSDT"));
+            Assert.AreEqual(10m, broker.GetAvailablePosition("BTCUSDT"));
+            Assert.AreEqual(100_000.0 - 1000.0, broker.GetCash());
+
+            // 2. 发起 25 手卖出（挂单 100），意图平 10 多 + 开 15 空
+            var flipReq = new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Limit, 100.0, 25m);
+            long flipId = broker.SubmitOrder(flipReq);
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(flipId));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "10 手多头全部被平仓冻结");
+            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4, "开 15 手空头需冻结 15 * 100 = 1500 现金");
+
+            // 3. 分笔 1: 成交 6 手 @ 100 (平多段)
+            gateway.PushExecution(new ExecutionReport(flipId, "BTCUSDT", 100.0, 6m, 0.0, now, CumQuantity: 6m, LeavesQuantity: 19m));
+            Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(flipId));
+            Assert.AreEqual(4m, broker.GetPosition("BTCUSDT"), "持仓剩余 4 手多头");
+            Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "剩余 4 手多头仍在冻结");
+            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4, "平多阶段尚未消耗开空保证金冻结");
+
+            // 4. 分笔 2: 成交 4 手 @ 100 (多头刚好平尽)
+            gateway.PushExecution(new ExecutionReport(flipId, "BTCUSDT", 100.0, 4m, 0.0, now, CumQuantity: 10m, LeavesQuantity: 15m));
+            Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(flipId));
+            Assert.AreEqual(0m, broker.GetPosition("BTCUSDT"), "持仓归零");
+            Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"));
+            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4, "持仓归零但开空 1500 冻结现金依然在途");
+
+            // 5. 分笔 3: 成交 5 手 @ 110 (正式翻空，建仓 5 手空头)
+            gateway.PushExecution(new ExecutionReport(flipId, "BTCUSDT", 110.0, 5m, 0.0, now, CumQuantity: 15m, LeavesQuantity: 10m));
+            Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(flipId));
+            Assert.AreEqual(-5m, broker.GetPosition("BTCUSDT"), "持仓成功翻空为 -5");
+            Assert.AreEqual(-5m, broker.GetAvailablePosition("BTCUSDT"));
+            Assert.AreEqual(1000.0, broker.FrozenCash, 1e-4, "剩余 10 手冻结现金 1000");
+
+            // 6. 分笔 4: 成交 10 手 @ 120 (完成全额成交，LeavesQty = 0)
+            gateway.PushExecution(new ExecutionReport(flipId, "BTCUSDT", 120.0, 10m, 0.0, now, CumQuantity: 25m, LeavesQuantity: 0m));
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(flipId));
+            Assert.AreEqual(-15m, broker.GetPosition("BTCUSDT"), "最终持仓为 -15 空头");
+            Assert.AreEqual(-15m, broker.GetAvailablePosition("BTCUSDT"));
+            Assert.AreEqual(0.0, broker.FrozenCash, 1e-4, "全额成交后冻结现金严格归零");
+
+            // 加权开空成本验证: (5 * 110 + 10 * 120) / 15 = 1750 / 15 = 116.66666666666667
+            var posObj = broker.GetActivePositions().First(p => p.Symbol == "BTCUSDT");
+            Assert.AreEqual(1750.0 / 15.0, posObj.CostPrice, 1e-4, "空头加权成交均价准确");
+        }
+
+        [TestMethod]
+        public void UniversalNetting_FlipOrder_RollbackAfterPartialFills_ShouldRestoreConservedState()
+        {
+            var gateway = new DirectCallbackGateway();
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = true,
+                SettleDays = 0,
+                FeeRate = 0.0,
+                MinFee = 0.0,
+                Slippage = 0.0
+            };
+            var broker = new Broker(gateway, config);
+            var now = new DateTime(2025, 1, 15, 9, 30, 0, DateTimeKind.Utc);
+            broker.Step(now);
+
+            // A. 多翻空部分成交后撤单
+            var buyId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Limit, 100.0, 10m));
+            gateway.PushExecution(new ExecutionReport(buyId, "BTCUSDT", 100.0, 10m, 0.0, now, CumQuantity: 10m, LeavesQuantity: 0m));
+            Assert.AreEqual(10m, broker.GetPosition("BTCUSDT"));
+
+            // 发起 25 手卖出（挂单 100），冻结 10 手多头 + 1500 现金
+            var flipSellId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Limit, 100.0, 25m));
+            // 分笔成交 6 手 @ 100（还剩 4 手多头待平，15 手空头待开）
+            gateway.PushExecution(new ExecutionReport(flipSellId, "BTCUSDT", 100.0, 6m, 0.0, now, CumQuantity: 6m, LeavesQuantity: 19m));
+            Assert.AreEqual(4m, broker.GetPosition("BTCUSDT"));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "剩余 4 手多头仍在冻结中");
+            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4);
+
+            // 撤单
+            broker.CancelOrder(flipSellId);
+            gateway.PushState(flipSellId, OrderStatus.Canceled, "User canceled remainder.");
+            Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(flipSellId));
+            Assert.AreEqual(4m, broker.GetPosition("BTCUSDT"), "持仓保持为 4 手多头");
+            Assert.AreEqual(4m, broker.GetAvailablePosition("BTCUSDT"), "未成交的 4 手多头成功解冻为可用！");
+            Assert.AreEqual(0.0, broker.FrozenCash, 1e-4, "未成交的 15 手开空冻结资金 100% 解冻！");
+
+            // B. 空翻多部分成交后撤单
+            // 先将 4 手多头平仓，并开 10 手空头 @ 100
+            var toShortId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Limit, 100.0, 14m));
+            gateway.PushExecution(new ExecutionReport(toShortId, "BTCUSDT", 100.0, 14m, 0.0, now, CumQuantity: 14m, LeavesQuantity: 0m));
+            Assert.AreEqual(-10m, broker.GetPosition("BTCUSDT"));
+            Assert.AreEqual(-10m, broker.GetAvailablePosition("BTCUSDT"));
+
+            // 发起 25 手买入（挂单 100），冻结 10 手平空 + 1500 现金开多
+            var flipBuyId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Limit, 100.0, 25m));
+            // 分笔成交 6 手 @ 100（平掉 6 手空头，还剩 4 手空头待平，15 手多头待开）
+            gateway.PushExecution(new ExecutionReport(flipBuyId, "BTCUSDT", 100.0, 6m, 0.0, now, CumQuantity: 6m, LeavesQuantity: 19m));
+            Assert.AreEqual(-4m, broker.GetPosition("BTCUSDT"));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "剩余 4 手空头平仓额度仍在冻结中");
+            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4);
+
+            // 撤单
+            broker.CancelOrder(flipBuyId);
+            gateway.PushState(flipBuyId, OrderStatus.Canceled, "User canceled remainder.");
+            Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(flipBuyId));
+            Assert.AreEqual(-4m, broker.GetPosition("BTCUSDT"), "持仓保持为 -4 手空头");
+            Assert.AreEqual(-4m, broker.GetAvailablePosition("BTCUSDT"), "未成交的 4 手平空额度成功解冻，负数可用持仓恢复为 -4！");
+            Assert.AreEqual(0.0, broker.FrozenCash, 1e-4, "未成交的 15 手开多冻结资金 100% 解冻！");
+        }
+
+        [TestMethod]
+        public void UniversalNetting_FlipOrder_RollbackWithoutAnyFills_ShouldBeLossless()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = true,
+                SettleDays = 0,
+                FeeRate = 0.0,
+                MinFee = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("BTCUSDT", 100.0);
+
+            // 1. 多翻空挂单撤销
+            broker.ExecuteOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Market, 100.0, 10m), 100.0, null);
+            Assert.AreEqual(10m, broker.GetPosition("BTCUSDT"));
+            Assert.AreEqual(10m, broker.GetAvailablePosition("BTCUSDT"));
+            double cashBefore = broker.GetCash();
+
+            // 发出 25 手卖出限价单（挂单 110，未成交）
+            long flipSellId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Limit, 110.0, 25m));
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(flipSellId));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "多头全部冻结");
+            Assert.AreEqual(15 * 110.0, broker.FrozenCash, 1e-4, "开空 15 手冻结 1650 现金");
+
+            // 撤单
+            broker.CancelOrder(flipSellId);
+            Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(flipSellId));
+            Assert.AreEqual(10m, broker.GetAvailablePosition("BTCUSDT"), "多头持仓 100% 恢复可用");
+            Assert.AreEqual(0.0, broker.FrozenCash, 1e-4, "冻结现金 100% 解冻归零");
+            Assert.AreEqual(cashBefore, broker.GetCash(), 1e-4, "现金完全守恒");
+
+            // 2. 空翻多挂单撤销
+            // 先平仓归零并开 10 手空头
+            broker.ExecuteOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Market, 100.0, 20m), 100.0, null);
+            Assert.AreEqual(-10m, broker.GetPosition("BTCUSDT"));
+            Assert.AreEqual(-10m, broker.GetAvailablePosition("BTCUSDT"));
+            double cashShort = broker.GetCash();
+
+            // 发出 25 手买入限价单（挂单 90，未成交）
+            long flipBuyId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Limit, 90.0, 25m));
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(flipBuyId));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "空头平仓额度被挂单冻结占满");
+            Assert.AreEqual(15 * 90.0, broker.FrozenCash, 1e-4, "开多 15 手冻结 1350 现金");
+
+            // 撤单
+            broker.CancelOrder(flipBuyId);
+            Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(flipBuyId));
+            Assert.AreEqual(-10m, broker.GetAvailablePosition("BTCUSDT"), "空头持仓 100% 恢复可用 -10");
+            Assert.AreEqual(0.0, broker.FrozenCash, 1e-4, "冻结现金 100% 解冻归零");
+            Assert.AreEqual(cashShort, broker.GetCash(), 1e-4, "现金完全守恒");
+        }
+
+        [TestMethod]
+        public void UniversalNetting_BracketOrder_ReduceOnly_Contract_And_RejectionDefense()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = true,
+                SettleDays = 0,
+                FeeRate = 0.0,
+                MinFee = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            var now = new DateTime(2025, 1, 15, 9, 30, 0, DateTimeKind.Utc);
+            broker.Step(now);
+
+            // 1. 先买入 10 手 BTCUSDT @ 100
+            broker.ExecuteOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Market, 100.0, 10m), 100.0, null);
+            Assert.AreEqual(10m, broker.GetPosition("BTCUSDT"));
+
+            // 2. 针对这 10 手多头挂出 Bracket 保护单（止损 90，止盈 110）
+            var (stopId, tpId) = broker.Bracket("BTCUSDT", 10m, 90.0, 110.0);
+
+            // 验证契约：通过反射获取 Broker 内部订单记录断言 Bracket 构造的订单 Request.ReduceOnly 必须为 true
+            var ordersField = typeof(Broker).GetField("_orders", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var ordersDict = (System.Collections.IDictionary)ordersField!.GetValue(broker)!;
+            dynamic stopRecord = ordersDict[stopId]!;
+            dynamic tpRecord = ordersDict[tpId]!;
+            Assert.IsTrue((bool)stopRecord.Request.ReduceOnly, "Bracket 止损单必须携带 ReduceOnly: true 保护契约");
+            Assert.IsTrue((bool)tpRecord.Request.ReduceOnly, "Bracket 止盈单必须携带 ReduceOnly: true 保护契约");
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(stopId));
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(tpId));
+
+            // 3. 模拟持仓被策略其它逻辑提前全额平掉（持仓归零）
+            broker.ExecuteOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Market, 100.0, 10m, ReduceOnly: true), 100.0, null);
+            Assert.AreEqual(0m, broker.GetPosition("BTCUSDT"), "持仓已归零");
+
+            // 4. 市场价格暴跌至 85，触发止损条件单
+            var bar = new BarSnapshot(open: 88.0, high: 89.0, low: 85.0, close: 86.0);
+            if (((IExchangeGatewayProvider)broker).Gateway is ISimulatedExchange sim)
+            {
+                sim.OnMarketData("BTCUSDT", now.AddMinutes(1), in bar);
+            }
+            broker.Step(now.AddMinutes(1));
+
+            // 5. 核心防御断言：由于 ReduceOnly: true 且当前无持仓，止损单在 TryFreeze 时必须被 Rejected，绝不能开出 10 手空头！
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(stopId), "持仓归零后触发的 ReduceOnly 止损单必须被拒绝");
+            Assert.AreEqual(0m, broker.GetPosition("BTCUSDT"), "持仓必须严格保持为 0，绝对防范静默反手开仓");
+        }
+
+        private sealed class DirectCallbackGateway : IExchangeGateway
+        {
+            public event Action<ExecutionReport>? OnExecution;
+            public event Action<OrderStateReport>? OnOrderStateChanged;
+
+            public void SendOrder(long orderId, OrderRequest request) { }
+            public void CancelOrder(long orderId) { }
+
+            public void PushExecution(ExecutionReport report) => OnExecution?.Invoke(report);
+            public void PushState(long orderId, OrderStatus status, string? reason = null) =>
+                OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, status, DateTime.UtcNow, Reason: reason ?? string.Empty));
         }
 
         #endregion

@@ -5,11 +5,10 @@
 > - 《CarrotQuant .NET 核心架构与开发规范 (AGENTS.md)》
 > - 现代量化工程与回测业界标准（Pyfolio / QuantStats / Lean / Backtrader / Qlib）
 > 
-> **综合审查结论**：🟢 **PASS（四大阶段系统性重构验收通过，768 单元测试全绿）**  
-> 系统历经四大阶段系统性重构与严苛独立架构审计，已全面彻底修复前序揭示的所有核心致命缺陷（P0）、高危隐患（P1/P2）及 3 大测试伪通过盲区。
-> 全链路打通资产财务双式记账、开仓费用等比分摊池、无未来函数撮合时态（`NextOpen` / `NextVwap`）、48 字节非托管 `BarSnapshot`、条件单与 Bracket OCO 互斥引擎、逐层组合备忘录断点恢复、策略极简交易动词门面、全套后复权历史时序取价及四层量化分析管线。
+> **综合审查结论**：🟢 **PASS（第一批轻量缺陷与流派三通用净持仓/ReduceOnly闭环重构验收通过，776 单元测试全绿）**  
+> 系统历经四大阶段系统性重构与缺陷深度治理（33.1整型缺失哨兵统一、8.2热路径日切守卫、8.3国际标准通用净持仓+原生ReduceOnly闭环与多空对称翻仓、32黑板装箱事实与契约澄清），全链路打通资产财务双式记账、开仓费用等比分摊池、无未来函数撮合时态（`NextOpen` / `NextVwap`）、48 字节非托管 `BarSnapshot`、条件单与 Bracket OCO 互斥引擎、逐层组合备忘录断点恢复、策略极简交易动词门面、全套后复权历史时序取价及四层量化分析管线。
 >
-> 截至目前，全套工程 61 个测试文件、768 个单元与集成测试用例 100% 绿色通过，系统架构纯粹、热路径零 GC 分配，完全契合工程研发红线规范。
+> 截至目前，全套工程 61 个测试文件、776 个单元与集成测试用例 100% 绿色通过，系统架构纯粹、热路径零 GC 分配，完全契合工程研发红线规范。
 
 ---
 
@@ -194,14 +193,36 @@ flowchart TD
   - **缺陷**：仅在成交落账时赋值一次，后续从未更新。当网关查无价格回退到 `LastPrice` 时，浮动盈亏恒为 0。
   - **修复**：在 `AccountLedger` 的所有盯市估值链路（`GetTotalEquity`、`GetTotalMarketValue`、`GetTotalUnrealizedPnL`、`GetActivePositionSnapshots`）中，当外部解析出公允最新价 `resolvedPrice > 0.0` 时，同步刷新 `pos.LastPrice = resolvedPrice;`，确保持仓实体的最新价时刻紧跟市场波动。
   - **单测**：`TradingFinancialPipelineIntegrationTests.MarkToMarket_WithoutNewOrders_EquityCurveMustFluctuateWithDailyClose` 验证终局持仓实体的 `LastPrice` 准确更新为最后一天收盘价 14.0。
-- **8.2 T+N 结算混淆自然日与交易日及热路径无效轮询** (`AccountLedger.cs#L529, L559`, `Broker.cs#L382`)：
+- **8.2 T+N 结算混淆自然日与交易日及热路径无效轮询** (`AccountLedger.cs#L529, L559`, `Broker.cs#L382`)【热路径日切守卫 ✅ 已修复 (PASS)】：
   - **缺陷剖析与机理验证**：
     1. **交易日与自然日语义断层**：在途交收批次 `PendingLot` 使用 `exchangeDate.Date.AddDays(settleDays)` 粗暴累加自然日。在标准 A 股现货 $T+1$（`SettleDays = 1`）场景下，由于回测引擎主时钟基于纯交易日历（`TradeDates`）步进，周末与节假日无数据不走步，周五买入（设为周六到期）直到下周一开盘才触发结算，因此在常规 A 股 T+1 回测下结果自洽、未发生提前抛售；但在通用 $T+N$（$N \ge 2$，如港美股 T+2 或跨境/场外 ETF）场景下，自然日累加会将周末/节假日错误计入交收天数，导致周五买入在下周一（仅经历 1 个交易日）即被违规提前解锁。
-    2. **热路径重复比对损耗**：`Broker.Step` 在每根分钟/分时 Bar 均全量调用 `_ledger.ProcessDayRollover(exchangeDate)`，导致盘中数百根 Bar 持续对未到期的 `PendingLots` 进行无意义的遍历与日期比对，违背红线规范第 10 条（热路径零开销），缺乏日切（`currentTime.Date != _lastDate`）前置守卫。
-  - **建议重构落地方案**：
-    1. **方案 A（A 股特化极致性能，推荐）**：对标国内主流框架（RQAlpha / vn.py / QMT），将 `PendingLots` 队列重构为“今仓（`TodayVolume`）+ 昨仓（`AvailableVolume`）”双池状态机，日切时刻一句话归集，复杂度降为严格 $O(1)$ 且零堆内存分配；
-    2. **方案 B（通用多市场架构）**：保留批次队列，但到期日严禁使用自然日 `AddDays`，改由交易日历索引偏移 `TradeDates[currentTradeIndex + settleDays]` 权威计算，并严格限制在跨日时刻（`currentTime.Date != _lastDate`）才触发 `ProcessDayRollover`。
-- **8.3 允许做空模式下，可用持仓不足被静默篡改为“开空单”** (`AccountLedger.cs#L246-L256`)：若今日 T+1 导致 `AvailableQuantity = 0`，平仓容量为 0，剩余全部转为开空单，系统直接执行开空，导致多空双向持仓。
+    2. **热路径重复比对损耗【✅ 已修复】**：`Broker.Step` 在每根分钟/分时 Bar 均全量调用 `_ledger.ProcessDayRollover(exchangeDate)`，导致盘中数百根 Bar 持续对未到期的 `PendingLots` 进行无意义的遍历与日期比对，违背红线规范第 10 条（热路径零开销），缺乏日切（`currentTime.Date != _lastDate`）前置守卫。
+  - **重构治理与单测验证**：
+    在 `Broker.cs` 中增加 `_lastRolloverDate` 守卫，仅在跨日时刻（`exchangeDate.Date != _lastRolloverDate`）才触发 `ProcessDayRollover`，并在 `SyncState` 与 `RestoreState` 中同步重置；单测 `SimulatedBrokerTests.Broker_Step_IntradayMultipleBars_ShouldOnlyTriggerDayRolloverOncePerDay` 严格验证日内高频 Bar 下日切守卫生效且跨日准确解锁。
+- **8.3 通用净持仓（Netting）+ 原生 ReduceOnly 闭环与多空对称翻仓重构** (`AccountLedger.cs#L246-L280`, `OrderTypes.cs`, `Broker.cs`)【✅ 已修复 (PASS)】：
+  - **严重度**：🔴 严重 -> 🟢 已修复
+  - **缺陷根因剖析**：
+    早期版本试图仅凭委托数量猜测用户交易意图，在允许做空（`AllowShort = true`）时，若多头可用持仓因排队挂单冻结不足，超出部分被静默转换为借券“开空单”，导致同一标的多空双向撕裂，既有多头冻结又有在途开空；而空头在反向买入时又缺乏对等的约束，导致多空逻辑不对称且容易透支。
+  - **国际顶层通用净持仓架构重构方案（流派三：通用净持仓 + 原生 ReduceOnly 守卫）**：
+    1. **原生 `ReduceOnly` 契约一等公民**：
+       - `OrderRequest` 引入核心属性 `bool ReduceOnly = false`；
+       - `IBroker` 与 `IEngineContext` 的 `Buy` / `Sell` 门面增加可选参数 `bool reduceOnly = false`；
+       - 保护性平仓及条件单门面 `ClosePosition`、`StopLoss`、`TakeProfit`、`Bracket` 内部自动绑定 `ReduceOnly: true`；
+       - 经独立子 Agent 严苛代码审计，排查并修复了 `Broker.cs#Bracket` 重载遗漏 `ReduceOnly: true` 参数的重大隐患，实现闭环防御；
+    2. **纯平仓意图前置硬守卫（`ReduceOnly == true`）**：
+       - 只准减少现有持仓绝对值（`|Total|` 向 0 靠拢），`openQty` 恒为 0，绝对防范反向开仓；
+       - 持仓不足、无持仓或可用平仓不足时立即 `Rejected` 拒单，杜绝超平与误翻仓；
+    3. **自由交易模式（`ReduceOnly == false`）多空 100% 镜像对称翻仓**：
+       - **多头持仓卖出**：$Q \le Total$ 为平多；$Q > Total$ 且现有多头全部可用时触发“多翻空”，自动拆分为 `closeQty = Total`（平多）与 `openQty = Q - Total`（开空冻结保证金）；若现有多头存在部分挂单冻结，直接拒单拦截并发竞争；
+       - **空头持仓买入**：$Q \le |Total|$ 为平空；$Q > |Total|$ 且现有空头全部可用时触发“空翻多”，自动拆分为 `closeQty = |Total|`（平空）与 `openQty = Q - |Total|`（开多冻结现金）；若现有空头存在平仓挂单冻结，直接拒单防双花；
+    4. **严格状态可逆性与零脏状态**：
+       - 撤单回滚（`Unfreeze`）在多翻空与空翻多场景下严格镜像对称，未成交部分持仓解冻归还可用，开仓冻结现金 100% 释放；
+    5. **单测套件全面闭环（覆盖 4 大并发/分笔边界盲区）**：
+       - `UniversalNetting_ReduceOnly_Contract_And_SymmetricFlip_ShouldWorkAccurately`：验证多空双向 ReduceOnly 拦截、自由多翻空与空翻多；
+       - `UniversalNetting_FlipOrder_PartialFills_AcrossZeroBoundary_ShouldTransferAccurately`：验证多翻空 4 阶段分笔成交（平多 -> 平尽归零 -> 翻空建仓 -> 加权成本更新）；
+       - `UniversalNetting_FlipOrder_RollbackAfterPartialFills_ShouldRestoreConservedState`：验证多翻空/空翻多部分成交后撤单，持仓与资金 100% 解冻守恒；
+       - `UniversalNetting_FlipOrder_RollbackWithoutAnyFills_ShouldBeLossless`：验证挂单未成交直接撤单无损复原；
+       - `UniversalNetting_BracketOrder_ReduceOnly_Contract_And_RejectionDefense`：验证 Bracket 订单携带 ReduceOnly 并在持仓提前平尽后安全拒单防反手。
 - **8.4 缺乏保证金追缴（Margin Call）与爆仓强平机制** (`AccountLedger.cs#L81-L98`)：净值跌为负数时没有任何风控强平，允许账户无限透支存续。
 - **8.5 反向调仓（多翻空/空翻多）预冻结误拒单** (`AccountLedger.cs#L246-L271`)：多翻空时开空部分需预冻结现金，而平多释放的资金成交时才入账，资金不足时订单被错误拦截。
 - **8.6 现货单向印花税机制缺失【❌ 拒绝修改 (Won't Fix)】**：
@@ -448,12 +469,18 @@ flowchart TD
 - **涉及位置**：`MarketState.cs`
 - **问题分析**：黑板状态永久驻留。若某标的在 $T$ 日触发买入信号写入黑板；$T+1$ 日该股停牌，生产策略未为其更新黑板。下游执行策略读取到 $T$ 日的僵尸信号，会在股票停牌时盲目重复下单。
 
-### 32. 黑板声称“零堆分配”实则值类型全量装箱（虚假宣传）
-- **涉及位置**：`IMarketState.cs#L6-L8`、`MarketState.cs#L14`
-- **问题分析**：文档声称“支持 struct / readonly record struct 实现零堆分配”，但内部载体为 `StateEntry(object Value, ...)`。值类型写入必须装箱，`ConcurrentDictionary` 插入节点也会分配内存。
+### 32. 黑板文档与契约规范对齐（澄清装箱事实，消除虚假承诺）【✅ 已修复 (PASS)】
+- **涉及位置**：`IMarketState.cs`、`MarketState.cs`
+- **缺陷剖析**：原接口注释声称“支持 struct / readonly record struct 实现零堆分配”，但内部载体为 `StateEntry(object Value, MarketTime UpdatedTime)`。值类型写入必须装箱，属于与底层实现不符的过度陈述。
+- **重构方案**：
+  1. 彻底修正 `IMarketState.cs` 与 `MarketState.cs` 接口文档注释，客观澄清底层采用线程安全字典与不可变备忘录快照管理，明确指出值类型在通用黑板存储中存在装箱；
+  2. 引导外部开发规范：高频单标的极速存取建议优先使用引擎上下文强类型变量或专用状态字段，杜绝反模式。
 
 ### 33. 多模态与多系统协同口径分叉
-- **33.1 Parquet 与 CSV 整型缺失值哨兵规范冲突** (`ParquetTimeseriesSource.cs#L226-L227` vs `MarketDataAligner.cs`)：整型缺失值规范定义为 `MinValue`，但 Parquet 读取为空列时硬编码填充为 `0`，而 `0` 在成交量与标志位中有业务含义，破坏 SSOT。
+- **33.1 Parquet 与 CSV 整型缺失值哨兵规范冲突【✅ 已修复 (PASS)】** (`ParquetTimeseriesSource.cs` vs `MarketDataAligner.cs`)：
+  - **缺陷**：整型缺失值规范在 `MarketDataAligner` 中定义为 `long.MinValue` / `int.MinValue`，但 `ParquetTimeseriesSource` 读取允许为空的列时硬编码填充为 `0`，而 `0` 在成交量与标志位中有业务含义，破坏 SSOT。
+  - **修复**：`ParquetTimeseriesSource.cs` 读取整型列时统一调用 `MarketDataAligner.GetNaNValue<long>()` 与 `MarketDataAligner.GetNaNValue<int>()` 填充缺失哨兵，消灭 0 歧义；
+  - **单测**：`ParquetTimeseriesSourceTests.ParquetTimeseriesSource_NullableIntegerColumns_ShouldFillSentinelMinValue` 严格验证 NULL 单元格被正确填充为 `long.MinValue` 与 `int.MinValue`。
 - **33.2 策略后复权价与仿真网关未复权价口径分裂（Split-brain Pricing）** (`EngineContext.cs#L238-L245` vs `SimulatedExchangeGateway.cs#L149`)：`context.GetClose` 默认返回后复权价格，若策略据此下达限价单，而仿真网关内部直接读取未复权原始时序矩阵，限价单将被错误撮合或永久挂死。
 - **33.3 并行策略管线（`ParallelPipeline`）并发重入 Broker 回调导致数据竞争** (`ParallelPipeline.cs#L47-L58`)【✅ 已修复 (PASS)】：
   - **缺陷**：开启 `Concurrent = true` 时，多线程并行调用子策略 `OnUpdate` 并发下单，触发的 `OnTrade` 回调在多线程中重入，若持有非线程安全状态会导致数据损坏或锁逆序死锁。

@@ -249,36 +249,102 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 
         var pos = GetOrCreatePosition(request.Symbol);
 
-        // 1. 卖空权限与 T+N 可用持仓校验
-        if (request.IsSell)
+        // =========================================================================
+        // A. ReduceOnly（仅减仓 / 纯平仓模式，对应 ClosePosition / StopLoss / TakeProfit）
+        // 核心契约：该订单物理上只能减少现有持仓绝对值 (|Total| 向 0 收敛)，严禁产生任何反向新持仓！
+        // =========================================================================
+        if (request.ReduceOnly)
         {
-            if (!_config.AllowShort)
+            if (pos.TotalQuantity == 0m)
             {
-                if (pos.TotalQuantity <= 0m || request.Quantity > pos.AvailableQuantity)
-                {
-                    rejectReason = $"Insufficient available position. Total={pos.TotalQuantity}, Available={pos.AvailableQuantity}, Request={request.Quantity}";
-                    return false;
-                }
-            }
-            else if (pos.PendingLots.Count > 0 && request.Quantity > pos.AvailableQuantity)
-            {
-                rejectReason = $"Cannot sell unsettled T+N pending lots. Total={pos.TotalQuantity}, Available={pos.AvailableQuantity}, Request={request.Quantity}";
+                rejectReason = $"Cannot submit ReduceOnly order for symbol '{request.Symbol}': no existing position to reduce.";
                 return false;
             }
-        }
 
-        // 2. 双段切分逻辑（支持多翻空/空翻多）
-        bool isOpposite = (request.IsBuy && pos.TotalQuantity < 0m) || (!request.IsBuy && pos.TotalQuantity > 0m);
-        decimal closableCapacity = 0m;
-        if (isOpposite)
-        {
-            closableCapacity = pos.TotalQuantity > 0m
-                ? Math.Max(0m, pos.AvailableQuantity)
+            // 方向必须与持仓严格相反（平仓反向）
+            bool isCorrectDirection = (pos.TotalQuantity > 0m && request.IsSell) || (pos.TotalQuantity < 0m && request.IsBuy);
+            if (!isCorrectDirection)
+            {
+                rejectReason = $"ReduceOnly order direction must be opposite to existing position for '{request.Symbol}'. Position={pos.TotalQuantity}, OrderDirection={request.Direction}.";
+                return false;
+            }
+
+            // 计算当前方向的在途可用平仓额度
+            decimal availableToClose = pos.TotalQuantity > 0m
+                ? pos.AvailableQuantity
                 : Math.Max(0m, Math.Abs(pos.TotalQuantity) - pos.FrozenQuantity);
-        }
 
-        closeQty = isOpposite ? Math.Min(request.Quantity, closableCapacity) : 0m;
-        openQty = request.Quantity - closeQty;
+            if (request.Quantity > availableToClose)
+            {
+                rejectReason = $"Insufficient available position for ReduceOnly order. Total={Math.Abs(pos.TotalQuantity)}, Available={availableToClose}, Request={request.Quantity}.";
+                return false;
+            }
+
+            closeQty = request.Quantity;
+            openQty = 0m;
+        }
+        else
+        {
+            // =========================================================================
+            // B. 常规自由交易模式（ReduceOnly == false，完全镜像对称，自由开仓、平仓与反手翻仓）
+            // =========================================================================
+            if (pos.TotalQuantity == 0m)
+            {
+                // 空仓开仓
+                if (request.IsSell && !_config.AllowShort)
+                {
+                    rejectReason = $"Cannot sell without existing position when short selling is disabled for '{request.Symbol}'.";
+                    return false;
+                }
+                closeQty = 0m;
+                openQty = request.Quantity;
+            }
+            else if ((pos.TotalQuantity > 0m && request.IsBuy) || (pos.TotalQuantity < 0m && request.IsSell))
+            {
+                // 同向加仓（多头买入，或空头卖出）
+                closeQty = 0m;
+                openQty = request.Quantity;
+            }
+            else
+            {
+                // 反向交易（多头卖出，或空头买入）
+                decimal currentAbsTotal = Math.Abs(pos.TotalQuantity);
+                decimal availableToClose = pos.TotalQuantity > 0m
+                    ? pos.AvailableQuantity
+                    : Math.Max(0m, currentAbsTotal - pos.FrozenQuantity);
+
+                if (request.Quantity <= currentAbsTotal)
+                {
+                    // 意图：纯平仓（部分平仓或全额平仓）
+                    if (request.Quantity > availableToClose)
+                    {
+                        rejectReason = $"Insufficient available position to close. Total={currentAbsTotal}, Available={availableToClose}, Request={request.Quantity}";
+                        return false;
+                    }
+                    closeQty = request.Quantity;
+                    openQty = 0m;
+                }
+                else
+                {
+                    // 意图：反手翻仓（多翻空 或 空翻多）
+                    if (pos.TotalQuantity > 0m && !_config.AllowShort)
+                    {
+                        rejectReason = $"Insufficient position to sell and short selling is disabled. Total={currentAbsTotal}, Request={request.Quantity}";
+                        return false;
+                    }
+
+                    // 翻仓前提：现有持仓必须全部处于可用状态（未被挂单冻结且无 T+N 在途锁定）
+                    if (availableToClose < currentAbsTotal)
+                    {
+                        rejectReason = $"Cannot flip position while existing position is partially frozen or unsettled. Total={currentAbsTotal}, Available={availableToClose}";
+                        return false;
+                    }
+
+                    closeQty = currentAbsTotal;
+                    openQty = request.Quantity - currentAbsTotal;
+                }
+            }
+        }
 
         // 3. 资金可用性校验：纯平仓所需现金为 0（手续费在成交回款中扣除）；新开仓部分需冻结保证金与预估手续费
         double requiredMargin = (double)openQty * estimatedPrice * multiplier * marginRate;

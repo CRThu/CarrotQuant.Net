@@ -71,9 +71,10 @@ public interface IBroker
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
+    /// <param name="reduceOnly">仅减仓/纯平仓标志（可选，缺省为 false）。若为 true，该订单物理上只能减少现有空头持仓，严禁开多。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce));
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce, reduceOnly));
 
     /// <summary>
     /// 便捷提交卖出订单（默认以市价单形式发出）。
@@ -84,12 +85,14 @@ public interface IBroker
     /// <param name="type">订单类型（缺省为市价单）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
+    /// <param name="reduceOnly">仅减仓/纯平仓标志（可选，缺省为 false）。若为 true，该订单物理上只能减少现有多头持仓，严禁开空。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce));
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce, reduceOnly));
 
     /// <summary>
     /// 便捷全额平仓指定标的持仓。
+    /// 自动标记为 ReduceOnly 仅减仓订单，物理上绝对保证只平仓绝不开设反向新仓。
     /// 若当前无持仓则返回 0，不产生任何订单。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
@@ -103,11 +106,11 @@ public interface IBroker
         var pos = GetPosition(symbol);
         if (pos == 0m) return 0L;
         var dir = pos > 0m ? OrderDirection.Sell : OrderDirection.Buy;
-        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce));
+        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce, ReduceOnly: true));
     }
 
     /// <summary>
-    /// 便捷提交止损订单（默认以市价单形式发出，默认 TIF 为 GoodTilCanceled 跨日有效）。
+    /// 便捷提交止损订单（默认以市价单形式发出，自动标记为 ReduceOnly 仅减仓单，默认 TIF 为 GoodTilCanceled 跨日有效）。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
     /// <param name="stopPrice">止损触发价。</param>
@@ -119,14 +122,14 @@ public interface IBroker
     {
         var pos = GetPosition(symbol);
         var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
-        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
+        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled, ReduceOnly: true)
         {
             StopPrice = stopPrice
         });
     }
 
     /// <summary>
-    /// 便捷提交止盈订单（默认以市价单形式发出，默认 TIF 为 GoodTilCanceled 跨日有效）。
+    /// 便捷提交止盈订单（默认以市价单形式发出，自动标记为 ReduceOnly 仅减仓单，默认 TIF 为 GoodTilCanceled 跨日有效）。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
     /// <param name="targetPrice">止盈触发价。</param>
@@ -138,7 +141,7 @@ public interface IBroker
     {
         var pos = GetPosition(symbol);
         var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
-        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
+        return SubmitOrder(new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled, ReduceOnly: true)
         {
             StopPrice = targetPrice
         });
@@ -147,7 +150,7 @@ public interface IBroker
     private static long s_ocoGroupSequence;
 
     /// <summary>
-    /// 便捷提交成对互斥括号订单（Bracket / OCO）：同时挂出止损单与止盈单，单边触发后联动注销另一方。
+    /// 便捷提交成对互斥括号订单（Bracket / OCO）：同时挂出止损单与止盈单（均为 ReduceOnly 仅减仓单），单边触发后联动注销另一方。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
     /// <param name="quantity">委托数量。</param>
@@ -179,12 +182,12 @@ public interface IBroker
         }
         long ocoGroupId = System.Threading.Interlocked.Increment(ref s_ocoGroupSequence);
 
-        var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif)
+        var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif, ReduceOnly: true)
         {
             StopPrice = stopPrice,
             OcoGroupId = ocoGroupId
         };
-        var tpReq = new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, tif)
+        var tpReq = new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, tif, ReduceOnly: true)
         {
             StopPrice = takeProfitPrice,
             OcoGroupId = ocoGroupId

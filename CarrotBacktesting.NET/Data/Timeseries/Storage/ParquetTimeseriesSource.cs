@@ -188,8 +188,8 @@ namespace CarrotBacktesting.NET.Data
                 int[] defLevels = new int[rowCount];
                 if (readType == typeof(double)) ReadColumnRawTyped<double>(groupReader, dataField, (double[])buffer, defLevels, double.NaN, isAllowedNull);
                 else if (readType == typeof(float)) ReadColumnRawTyped<float>(groupReader, dataField, (float[])buffer, defLevels, float.NaN, isAllowedNull);
-                else if (readType == typeof(long)) ReadColumnRawTyped<long>(groupReader, dataField, (long[])buffer, defLevels, 0, isAllowedNull);
-                else if (readType == typeof(int)) ReadColumnRawTyped<int>(groupReader, dataField, (int[])buffer, defLevels, 0, isAllowedNull);
+                else if (readType == typeof(long)) ReadColumnRawTyped<long>(groupReader, dataField, (long[])buffer, defLevels, MarketDataAligner.GetNaNValue<long>(), isAllowedNull);
+                else if (readType == typeof(int)) ReadColumnRawTyped<int>(groupReader, dataField, (int[])buffer, defLevels, MarketDataAligner.GetNaNValue<int>(), isAllowedNull);
                 else if (readType == typeof(bool)) ReadColumnRawTyped<bool>(groupReader, dataField, (bool[])buffer, defLevels, false, isAllowedNull);
                 else if (readType == typeof(DateTime))
                 {

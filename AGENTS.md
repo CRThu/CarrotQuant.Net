@@ -43,7 +43,7 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 - **流式指标与统一门面调用**: 策略在 `OnStart` 中通过 `context.Indicators.GetOrAdd` 声明全市场标的池并持有极速索引引用，在 `OnUpdate` 中利用 `pool[symbolIndex]` 高速直取或通过 `context.Indicators.Get<T>` 免声明读取，详见 [第六节](#六流式指标与计算属性体系-indicator--computed-property-architecture)。
 
 ### 2. 通用强类型黑板 (`IMarketState`)
-- **通用强类型状态容器**: 支持零装箱的 `GetState<T>(key)`、`SetState<T>(state, key)`、`HasState<T>(key)` 与 `Clear()`，用于策略间正交解耦与异步数据交换。
+- **通用强类型状态容器**: 支持强类型 `GetState<T>(key)`、`SetState<T>(state, key)`、`HasState<T>(key)` 与 `Clear()`，底层采用线程安全字典与不可变备忘录快照管理，用于策略间正交解耦与异步数据交换。
 - **单类型默认单例与显式 Tag 隔离**:
   - 默认单例：缺省 `key` 时以 `typeof(T).FullName` 索引，消除硬编码字符串拼写风险；
   - 显式命名空间隔离：多策略实例并发产生同类型数据时，通过显式 `key`（如策略名或特征 Tag）隔离。
@@ -235,7 +235,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 | 契约 / 类型 | 文件 | 职责说明 |
 | :--- | :--- | :--- |
-| `IBroker` | `Abstraction/Engine/IBroker.cs` | 客户端交易账户统一门面契约：资金持仓查询、订单提交与撤销、`Step` 跨日结算推进、`SyncState` 实盘对账、异步回报通知 |
+| `IBroker` | `Abstraction/Engine/IBroker.cs` | 客户端交易账户统一门面瘦契约：资金持仓查询、直通高频交易动词（`Buy`/`Sell`/`ClosePosition`/`StopLoss`/`TakeProfit`/`Bracket`）、订单提交与撤销、异步回报通知（`Step` 与 `SyncState` 物理隔离于 `IBrokerEngineDriver` 专有契约） |
 | `IExchangeGateway` | `Abstraction/Engine/IExchangeGateway.cs` | 通用物理网关契约：报单 `SendOrder`、撤单 `CancelOrder`、成交回报 `OnExecution`、订单状态流转 `OnOrderStateChanged` |
 | `IExchangeGatewayProvider` | `Abstraction/Engine/IExchangeGatewayProvider.cs` | 交易所网关提供者显式契约：受保护地访问底层网关，避免外部策略直接穿透两阶段预冻结 |
 | `ISimulatedExchange` | `Abstraction/Engine/ISimulatedExchange.cs` | 仿真交易所驱动契约：离线时间步推进 `Step`、纯行情切片驱动撮合 `OnMarketData`、时钟显式校准 `SetCurrentTime`、当前行情物理切片查询 `GetBar` |
@@ -249,10 +249,13 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
 
 ### 3. 核心机制与架构约束
 
-1. **两阶段挂单冻结与结算状态机**：
-   - **Phase 1: 预冻结 (`TryFreeze`)**：提交订单时原子拆分开平仓数量，平仓冻结持仓杜绝超卖，开仓冻结资金杜绝双花透支；纯平仓订单预冻结现金恒为 `0.0`，原生支持零现金卖出平仓。
-   - **Phase 2: 成交核销 (`CommitFill`)**：按实际成交逐段核销冻结资产，遵循资金持仓守恒结算；多次部分成交时严格按实际成交量先核销平仓、再累加开仓。
-   - **解冻回滚 (`Unfreeze`)**：遇拒单或撤单全额解冻，退出保持零脏状态。
+1. **两阶段挂单冻结、通用净持仓与结算状态机**：
+   - **Phase 1: 预冻结 (`TryFreeze`) 与通用净持仓（Netting）**：
+     - **原生 `ReduceOnly` 一等公民契约**：`OrderRequest` 引入核心属性 `bool ReduceOnly = false`。保护性平仓及条件单门面（`ClosePosition`、`StopLoss`、`TakeProfit`、`Bracket`）内部自动绑定 `ReduceOnly: true`。
+     - **纯平仓意图守卫 (`ReduceOnly == true`)**：严格限制只平现有持仓绝对值（`|Total|` 向 0 收敛），可用平仓不足或无持仓立即拒单，`openQty` 恒为 0，绝对防范反手开仓。
+     - **通用自由交易 (`ReduceOnly == false`) 与多空 100% 镜像对称翻仓**：多头卖出（$Q \le Total$ 平多，$Q > Total$ 多翻空）；空头买入（$Q \le |Total|$ 平空，$Q > |Total|$ 空翻多）。翻仓前提要求原方向持仓全部可用无挂单冻结（防并发双花竞争），自动切分为 `closeQty` 与 `openQty`。纯平仓部分预冻结现金恒为 `0.0`，原生支持零现金卖出平仓。
+   - **Phase 2: 成交核销 (`CommitFill`)**：按实际成交逐段核销冻结资产，遵循资金持仓守恒结算；多次部分成交时严格按实际成交量先核销平仓、再累加开仓，多空跨越零点（Zero-Crossing）平滑无脏状态。
+   - **解冻回滚 (`Unfreeze`)**：遇拒单或撤单全额解冻，多空负数可用持仓与现金双向对称回滚，退出保持零脏状态。
 2. **纯计算撮合与纯行情驱动**：
    - 撮合引擎为无状态纯函数，离线时间步（`Step`）与增量行情（`OnMarketData`）统一收敛至私有单一内核 `MatchSymbolOrders` 撮合，不依赖离散业务事件。
    - 标的挂单队列遵循严格 FIFO 时间优先，空桶即时注销防止内存泄漏。

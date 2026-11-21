@@ -79,12 +79,12 @@ public interface IBroker
 
     // 订单生命周期管理与高频交易动词
     long SubmitOrder(OrderRequest request);
-    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
-    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false);
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false);
     long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
     long StopLoss(string symbol, double stopPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
     long TakeProfit(string symbol, double targetPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
-    (long StopLossOrderId, long TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null);
+    (long StopLossOrderId, long TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null, OrderDirection? closeDirection = null);
     void CancelOrder(long orderId);
     OrderStatus GetOrderStatus(long orderId);
 
@@ -145,11 +145,17 @@ sequenceDiagram
     Broker-->>Strategy: 触发 OnTrade / OnPositionChanged [锁外开放派发]
 ```
 
-### 1. Phase 1: 预冻结 (TryFreeze) 与开平仓精准拆分
+### 1. Phase 1: 预冻结 (TryFreeze)、通用净持仓与 ReduceOnly 守卫
 当用户调用 `SubmitOrder` 时：
-1. **开平仓拆分**：依据当前标的的多空头寸，原子拆分为平仓部分 `closeQty` 与开仓部分 `openQty`（支持单笔大单原子完成多空双向反手翻仓）；
-2. **持仓预冻结**：平仓部分直接从 `AvailableQuantity` 扣减并计入 `FrozenQuantity`，杜绝超卖；
-3. **资金预冻结**：开仓部分按预估价格、乘数与保证金率计算保证金需求，并附加预估手续费，计入 `FrozenCash`，杜绝多单同时提交导致的资金双花透支。
+1. **原生 `ReduceOnly` 纯平仓意图守卫**：
+   - 当 `request.ReduceOnly == true` 时（`ClosePosition`、`StopLoss`、`TakeProfit`、`Bracket` 内部自动绑定），系统执行严格的纯平仓约束：**只准减少当前持仓绝对值（`|Total|` 向 0 收敛）**；
+   - 若可用平仓数量不足（因排队挂单冻结）或无持仓，立即返回 `OrderStatus.Rejected` 拒单，`openQty` 恒为 0，绝对防范反手开仓；
+2. **自由交易模式（`ReduceOnly == false`）与多空 100% 镜像对称翻仓**：
+   - **多头持仓卖出**：$Q \le Total$ 平多；$Q > Total$ 且现有多头全部可用时触发“多翻空”，自动拆分为 `closeQty = Total`（平多）与 `openQty = Q - Total`（开空并全额预冻结保证金）；
+   - **空头持仓买入**：$Q \le |Total|$ 平空；$Q > |Total|$ 且现有空头全部可用时触发“空翻多”，自动拆分为 `closeQty = |Total|`（平空）与 `openQty = Q - |Total|`（开多并全额预冻结现金）；
+   - **并发双花与竞争拦截**：若现有持仓存在挂单冻结，严禁反手开仓并直接拒单，确保头寸跃迁的原子性；
+3. **持仓预冻结**：平仓部分直接扣减 `AvailableQuantity` 并累加至 `FrozenQuantity`，杜绝超卖；
+4. **资金预冻结**：开仓部分按预估价格、乘数与保证金率计算保证金需求，并附加预估手续费，计入 `FrozenCash`，杜绝多单同时提交导致的资金双花透支；纯平仓部分预冻结现金恒为 `0.0`。
 
 ### 2. Phase 2: 成交核销 (CommitFill) 与守恒结算
 当网关推送成交回报 `OnExecution` 时：

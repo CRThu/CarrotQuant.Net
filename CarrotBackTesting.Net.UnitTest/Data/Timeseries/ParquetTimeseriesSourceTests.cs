@@ -276,6 +276,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             public double? Close { get; set; }
         }
 
+        public class NullableIntegerKlineSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime Date { get; set; }
+            public long? Volume { get; set; }
+            public int? TradeCount { get; set; }
+        }
+
         public class NullableDateKlineSample
         {
             public string Symbol { get; set; } = "sh.600000";
@@ -349,6 +357,50 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes);
                 Assert.IsTrue(double.IsNaN(closes[0]), "Null row should be NaN");
                 Assert.AreEqual(25.5, closes[1], 1e-4, "Non-null row must preserve value and not be shifted");
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_NullableIntegerColumns_ShouldFillSentinelMinValue()
+        {
+            // 防御审计 33.1：整型缺失哨兵规范统一。
+            // Parquet 列式存储中允许为空的整型（long/int）在遇到 NULL 时，
+            // 必须严格填充金融时序标准哨兵值 (long.MinValue / int.MinValue)，坚决杜绝以 0 充当缺失导致的业务歧义。
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_nullable_int_" + Guid.NewGuid().ToString("N"));
+            string tableDir = Path.Combine(tempDir, "test_table_nullable_int");
+            Directory.CreateDirectory(tableDir);
+
+            try
+            {
+                var samples = new List<NullableIntegerKlineSample>
+                {
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 2), Volume = null, TradeCount = null },
+                    new() { Symbol = "sh.600000", Date = new DateTime(2025, 1, 3), Volume = 100_000L, TradeCount = 500 }
+                };
+
+                string parquetPath = Path.Combine(tableDir, "data.parquet");
+                using (var fs = File.Create(parquetPath))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+
+                var allowList = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Volume", "TradeCount" };
+                using var source = TimeseriesSourceFactory.Create(tempDir, "test_table_nullable_int", nullableFields: allowList);
+                Assert.AreEqual(2, source.TradeDates.Count);
+
+                long[] volumes = new long[2];
+                source.ReadSymbolSeries("sh.600000", "Volume", 0, 2, volumes);
+                Assert.AreEqual(long.MinValue, volumes[0], "Null row for long column must be mapped to long.MinValue sentinel, not 0");
+                Assert.AreEqual(100_000L, volumes[1], "Non-null row must preserve original integer value");
+
+                int[] tradeCounts = new int[2];
+                source.ReadSymbolSeries("sh.600000", "TradeCount", 0, 2, tradeCounts);
+                Assert.AreEqual(int.MinValue, tradeCounts[0], "Null row for int column must be mapped to int.MinValue sentinel, not 0");
+                Assert.AreEqual(500, tradeCounts[1], "Non-null row must preserve original integer value");
             }
             finally
             {
