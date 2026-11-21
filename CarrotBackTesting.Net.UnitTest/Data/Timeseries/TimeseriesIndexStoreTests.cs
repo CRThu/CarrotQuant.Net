@@ -122,5 +122,71 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.IsFalse(Directory.Exists(store.GetTableDir()));
             Assert.AreEqual(0, store.ReadTradeDates().Count);
         }
+
+        private class CustomReadOnlyList<T> : IReadOnlyList<T>
+        {
+            private readonly T[] _items;
+            public CustomReadOnlyList(params T[] items) => _items = items;
+            public int Count => _items.Length;
+            public T this[int index] => _items[index];
+            public IEnumerator<T> GetEnumerator() => ((IEnumerable<T>)_items).GetEnumerator();
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => _items.GetEnumerator();
+        }
+
+        [TestMethod]
+        public void TestTradeDates_ConflictPrefix_ThrowsInvalidOperationException()
+        {
+            var store = new TimeseriesIndexStore(_tempDir, "tbl_dates_conflict");
+            var baseTime = new MarketTime(2024, 1, 1);
+            var initialDates = new[] { baseTime, baseTime.AddDays(1), baseTime.AddDays(2) };
+            store.WriteTradeDates(initialDates);
+
+            // 1. 尝试写入更短/同长但是 Ticks 冲突的时间轴
+            var conflictingDatesShort = new[] { baseTime, baseTime.AddDays(5) };
+            var ex1 = Assert.ThrowsException<InvalidOperationException>(() => store.WriteTradeDates(conflictingDatesShort));
+            StringAssert.Contains(ex1.Message, "Time index conflict");
+
+            // 2. 尝试写入更长但是前缀发生冲突的时间轴
+            var conflictingDatesLong = new[] { baseTime, baseTime.AddDays(5), baseTime.AddDays(2), baseTime.AddDays(3) };
+            var ex2 = Assert.ThrowsException<InvalidOperationException>(() => store.WriteTradeDates(conflictingDatesLong));
+            StringAssert.Contains(ex2.Message, "Time index conflict");
+        }
+
+        [TestMethod]
+        public void TestSymbols_ConflictPrefix_ThrowsInvalidOperationException()
+        {
+            var store = new TimeseriesIndexStore(_tempDir, "tbl_symbols_conflict");
+            var initialSymbols = new[] { "sh.600000", "sz.000001" };
+            store.WriteSymbols(initialSymbols);
+
+            // 前缀发生冲突：第 1 项从 sz.000001 变成 sz.000002
+            var conflictingSymbols = new[] { "sh.600000", "sz.000002", "sh.600001" };
+            var ex = Assert.ThrowsException<InvalidOperationException>(() => store.WriteSymbols(conflictingSymbols));
+            StringAssert.Contains(ex.Message, "Symbols conflict");
+        }
+
+        [TestMethod]
+        public void TestTradeDatesAndSymbols_CustomReadOnlyList_ArrayPoolFallbackPath()
+        {
+            var store = new TimeseriesIndexStore(_tempDir, "tbl_custom_list");
+            var baseTime = new MarketTime(2024, 1, 1);
+
+            // 使用非数组、非 List<T> 的通用只读集合触发 ArrayPool 租借序列化
+            var customDates = new CustomReadOnlyList<MarketTime>(baseTime, baseTime.AddDays(1), baseTime.AddDays(2));
+            store.WriteTradeDates(customDates);
+
+            var readDates = store.ReadTradeDates();
+            Assert.AreEqual(3, readDates.Count);
+            Assert.AreEqual(baseTime, readDates[0]);
+            Assert.AreEqual(baseTime.AddDays(2), readDates[2]);
+
+            var customSymbols = new CustomReadOnlyList<string>("sh.600000", "sz.000001");
+            store.WriteSymbols(customSymbols);
+
+            var readSymbols = store.ReadSymbols();
+            Assert.AreEqual(2, readSymbols.Count);
+            Assert.AreEqual("sh.600000", readSymbols[0]);
+            Assert.AreEqual("sz.000001", readSymbols[1]);
+        }
     }
 }

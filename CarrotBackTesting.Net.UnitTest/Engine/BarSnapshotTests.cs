@@ -177,4 +177,42 @@ public class BarSnapshotTests
         var result = matcher.EvaluateImmediateOrder(req, 10.0, barWithoutVol, 1.0, tradeTime);
         Assert.IsTrue(result.IsFilled);
     }
+
+    [TestMethod]
+    public void BarSnapshot_FromDataRowNull_And_ColumnAccessors_ShouldWorkAccurately()
+    {
+        // 1. FromDataRow(null) 必须返回 BarSnapshot.Empty
+        var emptyFromNull = BarSnapshot.FromDataRow(null);
+        Assert.AreEqual(BarSnapshot.Empty, emptyFromNull);
+        Assert.IsFalse(emptyFromNull.IsValid);
+
+        // 2. 字段访问器与 ContainsColumn 测试
+        var bar = new BarSnapshot(open: 10.0, high: 11.5, low: 9.5, close: 11.0, volume: 5000.0, amount: 55000.0);
+
+        Assert.IsTrue(bar.ContainsColumn("open"));
+        Assert.IsTrue(bar.ContainsColumn("High"));
+        Assert.IsTrue(bar.ContainsColumn("LOW"));
+        Assert.IsTrue(bar.ContainsColumn("close"));
+        Assert.IsTrue(bar.ContainsColumn("volume"));
+        Assert.IsTrue(bar.ContainsColumn("amount"));
+        Assert.IsFalse(bar.ContainsColumn("non_existent"));
+
+        Assert.AreEqual(10.0, bar.GetDouble("open"));
+        Assert.AreEqual(11.5, bar.GetDouble("high"));
+        Assert.AreEqual(9.5, bar.GetDouble("low"));
+        Assert.AreEqual(11.0, bar.GetDouble("close"));
+        Assert.AreEqual(5000.0, bar.GetDouble("volume"));
+        Assert.AreEqual(55000.0, bar.GetDouble("amount"));
+        Assert.AreEqual(99.0, bar.GetDouble("non_existent", 99.0));
+
+        // 3. Equals 与 GetHashCode
+        var barCopy = new BarSnapshot(open: 10.0, high: 11.5, low: 9.5, close: 11.0, volume: 5000.0, amount: 55000.0);
+        Assert.IsTrue(bar.Equals(barCopy));
+        Assert.IsTrue(bar.Equals((object)barCopy));
+        Assert.AreEqual(bar.GetHashCode(), barCopy.GetHashCode());
+
+        var barDiff = new BarSnapshot(open: 10.0, high: 11.5, low: 9.5, close: 10.5, volume: 5000.0, amount: 55000.0);
+        Assert.IsFalse(bar.Equals(barDiff));
+        Assert.IsFalse(bar.Equals("not_a_bar"));
+    }
 }

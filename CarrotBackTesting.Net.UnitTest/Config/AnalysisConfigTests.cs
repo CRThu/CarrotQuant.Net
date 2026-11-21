@@ -405,6 +405,70 @@ exporters:
         Assert.ThrowsException<TypeLoadException>(() => AnalysisEngineFactory.Create(configUnknownType));
     }
 
+    [TestMethod]
+    public void AnalysisConfigLoader_InvalidFilePathOrContent_ThrowsExpectedExceptions()
+    {
+        // 1. 空路径参数防御
+        Assert.ThrowsException<ArgumentException>(() => AnalysisConfigLoader.Load(null!));
+        Assert.ThrowsException<ArgumentException>(() => AnalysisConfigLoader.Load("   "));
+
+        // 2. 文件不存在防御
+        Assert.ThrowsException<FileNotFoundException>(() => AnalysisConfigLoader.Load("non_existent_config_file_999.yaml"));
+
+        // 3. 空 YAML 内容防御
+        Assert.ThrowsException<ArgumentException>(() => AnalysisConfigLoader.FromYaml(null!));
+        Assert.ThrowsException<ArgumentException>(() => AnalysisConfigLoader.FromYaml("   "));
+    }
+
+    [TestMethod]
+    public void AnalysisConfigLoader_WrappedInAnalysisRoot_ShouldDeserializeCorrectly()
+    {
+        string wrappedYaml = """
+        analysis:
+          options:
+            benchmark_symbol: "sh.000300"
+            risk_free_rate: 0.025
+          analyzers:
+            - type: "PortfolioAnalyzer"
+          exporters:
+            - type: "ConsoleExporter"
+        """;
+
+        var config = AnalysisConfigLoader.FromYaml(wrappedYaml, _tempDir);
+        Assert.IsNotNull(config);
+        Assert.AreEqual("sh.000300", config.Options.BenchmarkSymbol);
+        Assert.AreEqual(0.025, config.Options.RiskFreeRate);
+        Assert.AreEqual(1, config.Analyzers.Count);
+        Assert.AreEqual("PortfolioAnalyzer", config.Analyzers[0].Type);
+        Assert.AreEqual(1, config.Exporters.Count);
+        Assert.AreEqual("ConsoleExporter", config.Exporters[0].Type);
+    }
+
+    [TestMethod]
+    public void AnalysisEngineFactory_InvalidExporterConfiguration_ThrowsSafeExceptions()
+    {
+        // 1. 导出器节点缺少 type 字段
+        var configMissingType = new AnalysisConfig
+        {
+            Exporters = new List<ExporterNodeConfig> { new() { Type = "" } }
+        };
+        Assert.ThrowsException<InvalidOperationException>(() => AnalysisEngineFactory.CreateExporters(configMissingType));
+
+        // 2. 导出器类名无法解析
+        var configUnknownType = new AnalysisConfig
+        {
+            Exporters = new List<ExporterNodeConfig> { new() { Type = "NonExistentExporterClass" } }
+        };
+        Assert.ThrowsException<TypeLoadException>(() => AnalysisEngineFactory.CreateExporters(configUnknownType));
+
+        // 3. 目标类型未实现 IReportExporter
+        var configNotExporter = new AnalysisConfig
+        {
+            Exporters = new List<ExporterNodeConfig> { new() { Type = typeof(string).FullName! } }
+        };
+        Assert.ThrowsException<InvalidOperationException>(() => AnalysisEngineFactory.CreateExporters(configNotExporter));
+    }
+
     private enum TestEnum { Conservative, Aggressive }
 
     private class TestTarget

@@ -1032,5 +1032,125 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
             }
         }
+
+        public class KlineNullableSample
+        {
+            public string Symbol { get; set; } = "sh.600000";
+            public DateTime Date { get; set; }
+            public double? Close { get; set; }
+            public bool? Flag { get; set; }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_DisallowedNullInParquetColumn_ThrowsInvalidDataException_WithSampleIndices()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_disallowed_null_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                var t0 = new DateTime(2025, 1, 6, 9, 30, 0);
+                var t1 = new DateTime(2025, 1, 7, 9, 30, 0);
+
+                var samples = new List<KlineNullableSample>
+                {
+                    new() { Symbol = "sh.600000", Date = t0, Close = 10.0, Flag = true },
+                    new() { Symbol = "sh.600000", Date = t1, Close = null, Flag = null }, // 包含未授权的 NULL
+                };
+
+                string tableId = "null_kline";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+                using (var fs = File.Create(Path.Combine(tableDir, "data.parquet")))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "Close": "double",
+                        "Flag": "bool"
+                    }
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+                double[] closes = new double[2];
+
+                // 未授权 NULL 必须抛出 InvalidDataException 且包含损坏行号与占比
+                var ex = Assert.ThrowsException<InvalidDataException>(() =>
+                {
+                    source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes);
+                });
+                StringAssert.Contains(ex.Message, "检测到缺失值 (NULL)");
+                StringAssert.Contains(ex.Message, "损坏样本行号: [1]");
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [TestMethod]
+        public async Task ParquetTimeseriesSource_AllowedNullInParquetColumn_LoadsSuccessfullyWithNaN()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "test_parquet_allowed_null_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                var t0 = new DateTime(2025, 1, 6, 9, 30, 0);
+                var t1 = new DateTime(2025, 1, 7, 9, 30, 0);
+
+                var samples = new List<KlineNullableSample>
+                {
+                    new() { Symbol = "sh.600000", Date = t0, Close = 10.0, Flag = true },
+                    new() { Symbol = "sh.600000", Date = t1, Close = null, Flag = false },
+                };
+
+                string tableId = "allowed_null_kline";
+                string tableDir = Path.Combine(tempDir, tableId);
+                Directory.CreateDirectory(tableDir);
+                using (var fs = File.Create(Path.Combine(tableDir, "data.parquet")))
+                {
+                    await ParquetSerializer.SerializeAsync(samples, fs);
+                }
+                // 在 metadata.json 的 nullable_fields 白名单中显式声明 Close
+                File.WriteAllText(Path.Combine(tableDir, "metadata.json"), $$"""
+                {
+                    "table_id": "{{tableId}}",
+                    "category": "timeseries",
+                    "format": "parquet",
+                    "layout": "flat",
+                    "partition": "none",
+                    "schema": {
+                        "Symbol": "string",
+                        "Date": "datetime",
+                        "Close": "double",
+                        "Flag": "bool"
+                    },
+                    "nullable_fields": ["Close"]
+                }
+                """);
+
+                using var source = TimeseriesSourceFactory.Create(tempDir, tableId);
+                double[] closes = new double[2];
+
+                source.ReadSymbolSeries("sh.600000", "Close", 0, 2, closes);
+                Assert.AreEqual(10.0, closes[0], 1e-4);
+                Assert.IsTrue(double.IsNaN(closes[1]), "白名单中的 NULL 必须安全映射为 NaN 哨兵");
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
     }
 }

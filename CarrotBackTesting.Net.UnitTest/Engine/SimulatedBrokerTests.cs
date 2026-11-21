@@ -2106,13 +2106,165 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         {
             public event Action<ExecutionReport>? OnExecution;
             public event Action<OrderStateReport>? OnOrderStateChanged;
+            public Dictionary<long, OrderRequest> SentOrders { get; } = new();
 
-            public void SendOrder(long orderId, OrderRequest request) { }
+            public void SendOrder(long orderId, OrderRequest request)
+            {
+                SentOrders[orderId] = request;
+            }
             public void CancelOrder(long orderId) { }
 
             public void PushExecution(ExecutionReport report) => OnExecution?.Invoke(report);
             public void PushState(long orderId, OrderStatus status, string? reason = null) =>
                 OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, status, DateTime.UtcNow, Reason: reason ?? string.Empty));
+        }
+
+        [TestMethod]
+        public void Broker_DefaultInterfaceMethods_ClosePosition_StopLoss_TakeProfit_Bracket_ShouldWorkAsContracted()
+        {
+            var config = new BrokerConfig { InitialCash = 1_000_000, AllowShort = true };
+            var gateway = new DirectCallbackGateway();
+            var broker = new Broker(gateway, config);
+            IBroker iBroker = broker;
+
+            // 1. 无持仓时调用 ClosePosition 返回 0L
+            long zeroOrderId = iBroker.ClosePosition("sh.600000");
+            Assert.AreEqual(0L, zeroOrderId);
+
+            // 构造开仓成交回报同步更新持仓
+            long openOrderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m));
+            gateway.PushExecution(new ExecutionReport(openOrderId, "sh.600000", 10.0, 1000m, 5.0, MarketTime.UtcNow));
+            Assert.AreEqual(1000m, iBroker.GetPosition("sh.600000"));
+
+            // 2. 有多头持仓时调用 ClosePosition 发出仅减仓市价平仓单（立即路由网关）
+            long closeOrderId = iBroker.ClosePosition("sh.600000");
+            Assert.IsTrue(closeOrderId > 0);
+            Assert.IsTrue(gateway.SentOrders.TryGetValue(closeOrderId, out var closeReq));
+            Assert.AreEqual(OrderDirection.Sell, closeReq.Direction);
+            Assert.AreEqual(1000m, closeReq.Quantity);
+            Assert.IsTrue(closeReq.ReduceOnly);
+
+            // 3. StopLoss：条件单在触发前服务端挂起（OrderStatus.Pending），零资金仓位冻结，绝不提前路由至网关
+            long slOrderId = iBroker.StopLoss("sh.600000", stopPrice: 9.5, quantity: 500m);
+            Assert.IsTrue(slOrderId > 0);
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(slOrderId));
+            Assert.IsFalse(gateway.SentOrders.ContainsKey(slOrderId), "条件单触发前严禁向底层网关发送报单");
+
+            // 4. TakeProfit：条件单在触发前服务端挂起
+            long tpOrderId = iBroker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 500m);
+            Assert.IsTrue(tpOrderId > 0);
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(tpOrderId));
+            Assert.IsFalse(gateway.SentOrders.ContainsKey(tpOrderId));
+
+            // 5. Bracket 成对 OCO 单：双向挂起并分配关联的 OCO 组 ID
+            var (bracketSlId, bracketTpId) = iBroker.Bracket("sh.600000", quantity: 300m, stopPrice: 9.0, takeProfitPrice: 12.5);
+            Assert.IsTrue(bracketSlId > 0);
+            Assert.IsTrue(bracketTpId > 0);
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(bracketSlId));
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(bracketTpId));
+            Assert.IsFalse(gateway.SentOrders.ContainsKey(bracketSlId));
+            Assert.IsFalse(gateway.SentOrders.ContainsKey(bracketTpId));
+        }
+
+        private sealed class MinimalTestBroker : IBroker
+        {
+            public decimal Position { get; set; }
+            public OrderRequest? LastSubmittedOrder { get; private set; }
+            public List<OrderRequest> AllSubmittedOrders { get; } = new();
+            public long Sequence { get; set; } = 1;
+
+            public double GetCash() => 10000.0;
+            public double GetTotalEquity() => 10000.0;
+            public decimal GetPosition(string symbol) => Position;
+            public decimal GetAvailablePosition(string symbol) => Position;
+            public double GetPositionCost(string symbol) => 10.0;
+            public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
+            public long SubmitOrder(OrderRequest request)
+            {
+                LastSubmittedOrder = request;
+                AllSubmittedOrders.Add(request);
+                return Sequence++;
+            }
+            public void CancelOrder(long orderId) { }
+            public OrderStatus GetOrderStatus(long orderId) => OrderStatus.Submitted;
+            public void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions) { }
+
+#pragma warning disable CS0067
+            public event Action<long, OrderStatus>? OnOrderStatusChanged;
+            public event Action<ExecutionReport>? OnTrade;
+            public event Action<PositionEvent>? OnPositionChanged;
+            public event Action<CarrotBacktesting.NET.Abstraction.Analysis.OrderEvent>? OnOrderEvent;
+#pragma warning restore CS0067
+        }
+
+        [TestMethod]
+        public void IBroker_DefaultInterfaceMethods_PureContractExecution_AllBranchesCovered()
+        {
+            IBroker broker = new MinimalTestBroker();
+
+            // 1. AvailableCash 默认属性
+            Assert.AreEqual(10000.0, broker.AvailableCash);
+
+            // 2. Buy 与 Sell 便捷方法
+            var minimal = (MinimalTestBroker)broker;
+            long buyId = broker.Buy("sh.600000", 100m, price: 10.5);
+            Assert.AreEqual(1L, buyId);
+            Assert.AreEqual(OrderDirection.Buy, minimal.LastSubmittedOrder!.Direction);
+            Assert.AreEqual(10.5, minimal.LastSubmittedOrder.Price);
+
+            long sellId = broker.Sell("sh.600000", 50m, price: 11.0);
+            Assert.AreEqual(2L, sellId);
+            Assert.AreEqual(OrderDirection.Sell, minimal.LastSubmittedOrder!.Direction);
+
+            // 3. ClosePosition：无持仓返回 0，多头持仓卖出平仓，空头持仓买入平仓
+            minimal.Position = 0m;
+            Assert.AreEqual(0L, broker.ClosePosition("sh.600000"));
+
+            minimal.Position = 500m;
+            long closeLongId = broker.ClosePosition("sh.600000");
+            Assert.IsTrue(closeLongId > 0);
+            Assert.AreEqual(OrderDirection.Sell, minimal.LastSubmittedOrder!.Direction);
+            Assert.AreEqual(500m, minimal.LastSubmittedOrder.Quantity);
+            Assert.IsTrue(minimal.LastSubmittedOrder.ReduceOnly);
+
+            minimal.Position = -300m;
+            long closeShortId = broker.ClosePosition("sh.600000");
+            Assert.IsTrue(closeShortId > 0);
+            Assert.AreEqual(OrderDirection.Buy, minimal.LastSubmittedOrder!.Direction);
+            Assert.AreEqual(300m, minimal.LastSubmittedOrder.Quantity);
+            Assert.IsTrue(minimal.LastSubmittedOrder.ReduceOnly);
+
+            // 4. StopLoss (多头/空头推断)
+            minimal.Position = 500m;
+            broker.StopLoss("sh.600000", stopPrice: 9.5, quantity: 200m);
+            Assert.AreEqual(OrderDirection.Sell, minimal.LastSubmittedOrder!.Direction);
+            Assert.AreEqual(OrderType.Stop, minimal.LastSubmittedOrder.Type);
+            Assert.AreEqual(9.5, minimal.LastSubmittedOrder.StopPrice);
+
+            minimal.Position = -500m;
+            broker.StopLoss("sh.600000", stopPrice: 10.5, quantity: 200m);
+            Assert.AreEqual(OrderDirection.Buy, minimal.LastSubmittedOrder!.Direction);
+
+            // 5. TakeProfit (多头/空头推断)
+            minimal.Position = 500m;
+            broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 200m);
+            Assert.AreEqual(OrderDirection.Sell, minimal.LastSubmittedOrder!.Direction);
+            Assert.AreEqual(OrderType.TakeProfit, minimal.LastSubmittedOrder.Type);
+            Assert.AreEqual(12.0, minimal.LastSubmittedOrder.StopPrice);
+
+            minimal.Position = -500m;
+            broker.TakeProfit("sh.600000", targetPrice: 8.0, quantity: 200m);
+            Assert.AreEqual(OrderDirection.Buy, minimal.LastSubmittedOrder!.Direction);
+
+            // 6. Bracket (自动推断方向与显式传入 closeDirection)
+            minimal.Position = 500m;
+            var (sl1, tp1) = broker.Bracket("sh.600000", 100m, stopPrice: 9.0, takeProfitPrice: 12.0);
+            Assert.IsTrue(sl1 > 0);
+            Assert.IsTrue(tp1 > 0);
+
+            var (sl2, tp2) = broker.Bracket("sh.600000", 100m, stopPrice: 9.0, takeProfitPrice: 12.0, closeDirection: OrderDirection.Buy);
+            Assert.IsTrue(sl2 > 0);
+            Assert.IsTrue(tp2 > 0);
         }
 
         #endregion

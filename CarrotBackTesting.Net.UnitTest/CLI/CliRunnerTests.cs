@@ -241,4 +241,16 @@ public class CliRunnerTests
 
         return (yamlPath, strategyCodePath);
     }
+
+    [TestMethod]
+    public void Program_Main_WithHelpFlag_ReturnsSuccessExitCode()
+    {
+        var programType = typeof(CliRunner).Assembly.GetType("CarrotBacktesting.NET.CLI.Program");
+        Assert.IsNotNull(programType);
+        var mainMethod = programType.GetMethod("Main", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.IsNotNull(mainMethod);
+
+        int exitCode = (int)mainMethod.Invoke(null, new object[] { new string[] { "--help" } })!;
+        Assert.AreEqual(CliRunner.ExitSuccess, exitCode);
+    }
 }

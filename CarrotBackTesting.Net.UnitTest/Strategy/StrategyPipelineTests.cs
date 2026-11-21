@@ -731,4 +731,30 @@ public class FileStrategy : IStrategy {
         pipeline.Add(strategy);
         Assert.AreEqual(200, pipeline.Lookback);
     }
+
+    private sealed class MinimalPipeline : IStrategyPipeline
+    {
+        private readonly List<IStrategy> _strategies = new();
+        public string Name => "MinimalPipeline";
+        public IStrategyPipeline Add(IStrategy strategy) { _strategies.Add(strategy); return this; }
+        public IStrategyPipeline Compile() => this;
+        public IEnumerable<IStrategy> GetStrategies() => _strategies;
+        public void OnStart(IEngineContext context) { }
+        public void OnUpdate(IEngineContext context) { }
+        public void OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events) { }
+        public void OnOrderStatusChanged(IEngineContext context, long orderId, OrderStatus status) { }
+        public void OnStop(IEngineContext context) { }
+    }
+
+    [TestMethod]
+    public void IStrategyPipeline_DefaultLookbackProperty_ShouldAggregateOrFallback()
+    {
+        IStrategyPipeline pipeline = new MinimalPipeline();
+        // 无子策略时回退到 200
+        Assert.AreEqual(200, pipeline.Lookback);
+
+        var s1 = new MinimalSampleStrategy();
+        pipeline.Add(s1);
+        Assert.AreEqual(200, pipeline.Lookback);
+    }
 }

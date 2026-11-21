@@ -336,4 +336,124 @@ public class BacktestSessionTests
             }
         }
     }
+
+    [TestMethod]
+    public void FluentBuilder_AdditionalOverloadsAndDefaultTimeseries_ShouldConfigureCorrectly()
+    {
+        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Carrot_Builder_Overloads_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(tempDir);
+
+        var dates = new List<MarketTime> { new MarketTime(2025, 1, 1), new MarketTime(2025, 1, 10) };
+        var symbols = new List<string> { "sh.600000" };
+        var metadata = new DynamicMarketMetadata(symbols, dates);
+        var mockTs = new MockTimeseriesRegistry(metadata);
+
+        try
+        {
+            // 1. 测试 WithData(string, MarketTime, MarketTime)
+            var builder1 = BacktestSession.Create()
+                .WithData(tempDir, new MarketTime(2025, 1, 1), new MarketTime(2025, 1, 5))
+                .WithTimeseries(mockTs);
+            var session1 = builder1.Build();
+            Assert.AreEqual(tempDir, session1.Config.Data.Root);
+            Assert.AreEqual(new MarketTime(2025, 1, 1), session1.Config.Engine.StartDate);
+            Assert.AreEqual(new MarketTime(2025, 1, 5), session1.Config.Engine.EndDate);
+
+            // 2. 测试 WithStorageRoot 与 WithPeriod(string, string)
+            var builder2 = BacktestSession.Create()
+                .WithStorageRoot(tempDir)
+                .WithPeriod("2025-01-02", "2025-01-08")
+                .WithTimeseries(mockTs);
+            var session2 = builder2.Build();
+            Assert.AreEqual(tempDir, session2.Config.Data.Root);
+            Assert.AreEqual(new MarketTime(2025, 1, 2), session2.Config.Engine.StartDate);
+            Assert.AreEqual(new MarketTime(2025, 1, 8), session2.Config.Engine.EndDate);
+
+            // 3. 测试 WithPeriod(MarketTime, MarketTime)
+            var builder3 = BacktestSession.Create()
+                .WithStorageRoot(tempDir)
+                .WithPeriod(new MarketTime(2025, 1, 3), new MarketTime(2025, 1, 7))
+                .WithTimeseries(mockTs);
+            var session3 = builder3.Build();
+            Assert.AreEqual(new MarketTime(2025, 1, 3), session3.Config.Engine.StartDate);
+            Assert.AreEqual(new MarketTime(2025, 1, 7), session3.Config.Engine.EndDate);
+
+            // 4. 测试未配置 Timeseries 且无 customTimeseries 时的默认 daily 回退装配
+            string dailyDir = System.IO.Path.Combine(tempDir, "daily");
+            System.IO.Directory.CreateDirectory(dailyDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(dailyDir, "metadata.json"), """
+            {
+                "table_id": "daily",
+                "category": "timeseries",
+                "format": "csv",
+                "layout": "flat",
+                "partition": "symbol",
+                "schema": {
+                    "date": "datetime",
+                    "close": "double"
+                }
+            }
+            """);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(dailyDir, "sh.600000.csv"), """
+            date,close
+            2025-01-02,10.0
+            """);
+
+            var builder4 = BacktestSession.Create().WithStorageRoot(tempDir);
+            var session4 = builder4.Build();
+            Assert.AreEqual(1, session4.Config.Data.Timeseries.Count);
+            Assert.AreEqual("daily", session4.Config.Data.Timeseries[0].TableId);
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(tempDir))
+            {
+                System.IO.Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void FluentBuilder_RunAndRunAndAnalyze_ShouldExecuteAndReturnResults()
+    {
+        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Carrot_Builder_Run_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(tempDir);
+
+        var dates = new List<MarketTime> { new MarketTime(2025, 1, 1), new MarketTime(2025, 1, 2) };
+        var symbols = new List<string> { "sh.600000" };
+        var metadata = new DynamicMarketMetadata(symbols, dates);
+        var mockTs = new MockTimeseriesRegistry(metadata);
+        var dummyStrategy = new DummyStrategy();
+
+        try
+        {
+            // 1. builder.Run()
+            var builder1 = BacktestSession.Create()
+                .WithData(tempDir, "2025-01-01", "2025-01-02")
+                .WithTimeseries(mockTs)
+                .WithStrategy(dummyStrategy);
+
+            var tradingResult = builder1.Run();
+            Assert.IsNotNull(tradingResult);
+            Assert.AreEqual(2, dummyStrategy.UpdateCount);
+
+            // 2. builder.RunAndAnalyze()
+            var dummyStrategy2 = new DummyStrategy();
+            var builder2 = BacktestSession.Create()
+                .WithData(tempDir, "2025-01-01", "2025-01-02")
+                .WithTimeseries(mockTs)
+                .WithStrategy(dummyStrategy2);
+
+            var report = builder2.RunAndAnalyze(export: false);
+            Assert.IsNotNull(report);
+            Assert.AreEqual(2, dummyStrategy2.UpdateCount);
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(tempDir))
+            {
+                System.IO.Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
 }

@@ -1034,9 +1034,104 @@ public class TradingFinancialPipelineIntegrationTests
         Assert.AreEqual(100m, report.FillQuantity);
     }
 
+    [TestMethod]
+    public void BracketOrder_Lifecycle_TriggerAndCancelOppositeLeg_EndToEnd()
+    {
+        var symbols = new[] { "SH.600000" };
+        var dates = new[]
+        {
+            new DateTime(2024, 1, 2), // Day 0: 开仓并挂 Bracket 单
+            new DateTime(2024, 1, 3), // Day 1: 正常区间波动，均未触碰
+            new DateTime(2024, 1, 4)  // Day 2: 跌破止损价 9.5，触发止损平仓，止盈单联动撤销
+        };
+
+        var metadata = new MockMetadata(symbols, dates, new[] { "close", "open", "high", "low", "volume" });
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+
+        var openData = new double[,] { { 10.0 }, { 10.0 }, { 9.6 } };
+        var highData = new double[,] { { 10.2 }, { 10.5 }, { 9.7 } };
+        var lowData = new double[,] { { 9.8 }, { 9.9 }, { 9.0 } }; // Day 2 最低价 9.0 击穿 9.5 止损
+        var closeData = new double[,] { { 10.0 }, { 10.2 }, { 9.2 } };
+        var volData = new double[,] { { 100000.0 }, { 100000.0 }, { 100000.0 } };
+
+        tsRegistry.SetMatrix("open", new MockMatrix(openData));
+        tsRegistry.SetMatrix("high", new MockMatrix(highData));
+        tsRegistry.SetMatrix("low", new MockMatrix(lowData));
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+        tsRegistry.SetMatrix("volume", new MockMatrix(volData));
+
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = 100000.0,
+            FeeRate = 0.0,
+            MinFee = 0.0,
+            Slippage = 0.0,
+            SettleDays = 0, // 允许回测灵活测试
+            DefaultExecutionPrice = ExecutionPriceType.Close
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+        var broker = new Broker(simExchange, brokerConfig);
+
+        var strategy = new BracketLifecycleStrategy();
+        var pipeline = StrategyPipeline.Sequential().Add(strategy);
+
+        var engineConfig = new EngineConfig
+        {
+            Mode = "backtest",
+            StartDate = dates[0],
+            EndDate = dates[2]
+        };
+
+        using var engine = new BacktestingEngine(
+            tsRegistry,
+            broker,
+            pipeline,
+            config: engineConfig,
+            simExchange: simExchange);
+
+        engine.Run();
+
+        Assert.AreEqual(EngineStatus.Completed, engine.Status);
+
+        // 验证持仓已平
+        Assert.AreEqual(0m, broker.GetPosition("SH.600000"), "止损触发后持仓必须精准归零");
+
+        // 验证止损单成交，止盈单被撤销
+        Assert.IsTrue(strategy.SlOrderId > 0);
+        Assert.IsTrue(strategy.TpOrderId > 0);
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(strategy.SlOrderId), "止损单应成功触发并撮合成交");
+        Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(strategy.TpOrderId), "关联的止盈单必须被联动自动撤销 (Canceled)");
+
+        // 验证资金守恒：初始 100,000，以 10.0 买入 1000 股花 10,000，止损以 9.5 卖出收回 9,500，无手续费滑点净亏 500
+        Assert.AreEqual(99500.0, broker.GetCash(), 1e-4, "止损成交后现金精准结算");
+        Assert.AreEqual(99500.0, broker.GetTotalEquity(), 1e-4, "持仓为0时总权益严格等于现金");
+    }
+
     #endregion
 
     #region 测试辅助策略类
+
+    private sealed class BracketLifecycleStrategy : StrategyBase
+    {
+        public long SlOrderId { get; private set; }
+        public long TpOrderId { get; private set; }
+        private bool _bracketPlaced;
+
+        public override void OnUpdate(IEngineContext context)
+        {
+            if (!_bracketPlaced)
+            {
+                // Day 0: 买入 1000 股
+                context.Buy("SH.600000", 1000m, price: 10.0);
+                // 提交 Bracket 订单：止损 9.5，止盈 12.0
+                var (slId, tpId) = context.Bracket("SH.600000", 1000m, stopPrice: 9.5, takeProfitPrice: 12.0);
+                SlOrderId = slId;
+                TpOrderId = tpId;
+                _bracketPlaced = true;
+            }
+        }
+    }
 
     private sealed class BuyOnceAndHoldStrategy : StrategyBase
     {

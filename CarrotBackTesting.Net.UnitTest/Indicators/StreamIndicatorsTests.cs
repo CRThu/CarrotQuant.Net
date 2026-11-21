@@ -687,6 +687,70 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.IsNull(typeof(IIndicatorStream).GetMethod("Update"), "IIndicatorStream 必须保持纯净只读，绝对不暴露 Update 驱动方法");
         }
 
+        [TestMethod]
+        public void Kdj_ConstructorParameters_InvalidValues_ThrowsArgumentOutOfRangeException()
+        {
+            var kdj = new Kdj(9, 3, 3);
+            Assert.AreEqual(9, kdj.Period);
+
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new Kdj(0, 3, 3));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new Kdj(9, 0, 3));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => new Kdj(9, 3, 0));
+        }
+
+        [TestMethod]
+        public void Kdj_AnomalyInputs_NaNAndInfinity_ShouldBeIgnoredSafely()
+        {
+            var kdj = new Kdj(3, 3, 3);
+            kdj.Update(10, 12, 8, 11, 100);
+            kdj.Update(11, 13, 9, 12, 100);
+
+            // 注入包含 NaN 或 Infinity 的脏数据，应安全忽略并不改变样本数
+            kdj.Update(10, double.NaN, 8, 10, 100);
+            kdj.Update(10, 12, double.NaN, 10, 100);
+            kdj.Update(10, 12, 8, double.NaN, 100);
+            kdj.Update(10, double.PositiveInfinity, 8, 10, 100);
+            kdj.Update(10, 12, double.NegativeInfinity, 10, 100);
+            kdj.Update(10, 12, 8, double.PositiveInfinity, 100);
+
+            // 尚未达到 3 根有效 Bar，仍然未就绪
+            Assert.IsFalse(kdj.IsReady);
+
+            // 输入第 3 根有效 Bar
+            kdj.Update(12, 14, 10, 13, 100);
+            Assert.IsTrue(kdj.IsReady);
+            Assert.IsFalse(double.IsNaN(kdj.K.Current));
+        }
+
+        [TestMethod]
+        public void Kdj_Reset_ShouldRestoreInitialStateAndAllowRecomputation()
+        {
+            var kdj = new Kdj(3, 3, 3);
+            for (int i = 0; i < 5; i++)
+            {
+                kdj.Update(10 + i, 12 + i, 8 + i, 11 + i, 100);
+            }
+            Assert.IsTrue(kdj.IsReady);
+            Assert.IsFalse(double.IsNaN(kdj.Current));
+
+            // 执行重置
+            kdj.Reset();
+            Assert.IsFalse(kdj.IsReady);
+            Assert.IsTrue(double.IsNaN(kdj.Current));
+            Assert.IsTrue(double.IsNaN(kdj.K.Current));
+            Assert.IsTrue(double.IsNaN(kdj.D.Current));
+            Assert.IsTrue(double.IsNaN(kdj.J.Current));
+
+            // 重新输入 2 根，依然未就绪
+            kdj.Update(10, 12, 8, 11, 100);
+            kdj.Update(11, 13, 9, 12, 100);
+            Assert.IsFalse(kdj.IsReady);
+
+            // 输入第 3 根，恢复 Ready
+            kdj.Update(12, 14, 10, 13, 100);
+            Assert.IsTrue(kdj.IsReady);
+        }
+
         #endregion
 
         #region 10. SAR 抛物转向系统测试

@@ -370,5 +370,89 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(new DateTime(2024, 1, 2, 15, 0, 0), (DateTime)mt);
             Assert.AreEqual(new TimeSpan(15, 0, 0), mt.TimeOfDay);
         }
+
+        [TestMethod]
+        public void EntityMapper_MarketTimeAndDateTimeParsing_AllBranches_ShouldSucceedOrThrow()
+        {
+            // 1. ParseMarketTime 正常解析：空串、13位毫秒、10位秒、ISO 格式
+            Assert.AreEqual(MarketTime.MinValue, EntityMapper.ParseMarketTime("", "param1"));
+            Assert.AreEqual(MarketTime.MinValue, EntityMapper.ParseMarketTime("   ", "param1"));
+
+            var expectedSec = MarketTime.FromUnixTimeSeconds(1625097600L);
+            Assert.AreEqual(expectedSec, EntityMapper.ParseMarketTime("1625097600", "secTime"));
+
+            var expectedMs = MarketTime.FromUnixTimeMilliseconds(1625097600000L);
+            Assert.AreEqual(expectedMs, EntityMapper.ParseMarketTime("1625097600000", "msTime"));
+
+            var expectedIso = MarketTime.Parse("2025-01-15");
+            Assert.AreEqual(expectedIso, EntityMapper.ParseMarketTime("2025-01-15", "isoTime"));
+
+            // 异常格式抛出 InvalidDataException
+            var exMt = Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseMarketTime("invalid_time_str", "badTime"));
+            StringAssert.Contains(exMt.Message, "invalid_time_str");
+            StringAssert.Contains(exMt.Message, "badTime");
+
+            // 2. ParseDateTime 正常解析与异常格式
+            Assert.AreEqual(DateTime.MinValue, EntityMapper.ParseDateTime("", "pDt"));
+            Assert.AreEqual(expectedSec.ToDateTime(), EntityMapper.ParseDateTime("1625097600", "dtSec"));
+            Assert.AreEqual(expectedMs.ToDateTime(), EntityMapper.ParseDateTime("1625097600000", "dtMs"));
+            Assert.AreEqual(new DateTime(2025, 1, 15), EntityMapper.ParseDateTime("2025-01-15", "dtIso"));
+
+            var exDt = Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseDateTime("bad_date_format", "dtParam"));
+            StringAssert.Contains(exDt.Message, "bad_date_format");
+            StringAssert.Contains(exDt.Message, "dtParam");
+
+            // 3. ParseNullableMarketTime & ParseNullableDateTime
+            Assert.IsNull(EntityMapper.ParseNullableMarketTime("", "nullMt"));
+            Assert.AreEqual(expectedIso, EntityMapper.ParseNullableMarketTime("2025-01-15", "nullMt"));
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseNullableMarketTime("bad_null_mt", "nullMt"));
+
+            Assert.IsNull(EntityMapper.ParseNullableDateTime("", "nullDt"));
+            Assert.AreEqual(new DateTime(2025, 1, 15), EntityMapper.ParseNullableDateTime("2025-01-15", "nullDt"));
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseNullableDateTime("bad_null_dt", "nullDt"));
+        }
+
+        [TestMethod]
+        public void EntityMapper_NullablePrimitivesAndBoolParsing_AllBranches_ShouldSucceedOrThrow()
+        {
+            // 1. Bool: "1", "0", "true", "false", "", 异常
+            Assert.IsFalse(EntityMapper.ParseBool("", "b1"));
+            Assert.IsTrue(EntityMapper.ParseBool("1", "b1"));
+            Assert.IsFalse(EntityMapper.ParseBool("0", "b1"));
+            Assert.IsTrue(EntityMapper.ParseBool("true", "b1"));
+            Assert.IsFalse(EntityMapper.ParseBool("false", "b1"));
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseBool("not_bool", "b1"));
+
+            // 2. Nullable Double
+            Assert.IsNull(EntityMapper.ParseNullableDouble("", "nd"));
+            Assert.AreEqual(12.34, EntityMapper.ParseNullableDouble("12.34", "nd")!.Value, 1e-6);
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseNullableDouble("abc", "nd"));
+
+            // 3. Nullable Float
+            Assert.IsNull(EntityMapper.ParseNullableFloat("", "nf"));
+            Assert.AreEqual(5.5f, EntityMapper.ParseNullableFloat("5.5", "nf")!.Value, 1e-6f);
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseNullableFloat("abc", "nf"));
+
+            // 4. Nullable Decimal
+            Assert.IsNull(EntityMapper.ParseNullableDecimal("", "nm"));
+            Assert.AreEqual(99.99m, EntityMapper.ParseNullableDecimal("99.99", "nm")!.Value);
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseNullableDecimal("abc", "nm"));
+
+            // 5. Nullable Long & Int
+            Assert.IsNull(EntityMapper.ParseNullableLong("", "nl"));
+            Assert.AreEqual(123456789L, EntityMapper.ParseNullableLong("123456789", "nl")!.Value);
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseNullableLong("abc", "nl"));
+
+            Assert.IsNull(EntityMapper.ParseNullableInt("", "ni"));
+            Assert.AreEqual(42, EntityMapper.ParseNullableInt("42", "ni")!.Value);
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseNullableInt("abc", "ni"));
+
+            // 6. Nullable Bool
+            Assert.IsNull(EntityMapper.ParseNullableBool("", "nb"));
+            Assert.IsTrue(EntityMapper.ParseNullableBool("1", "nb")!.Value);
+            Assert.IsFalse(EntityMapper.ParseNullableBool("0", "nb")!.Value);
+            Assert.IsTrue(EntityMapper.ParseNullableBool("true", "nb")!.Value);
+            Assert.ThrowsException<System.IO.InvalidDataException>(() => EntityMapper.ParseNullableBool("abc", "nb"));
+        }
     }
 }

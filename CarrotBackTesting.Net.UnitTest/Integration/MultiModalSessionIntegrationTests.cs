@@ -322,4 +322,39 @@ public class MultiModalSessionIntegrationTests
         Assert.IsNotNull(report.Trades);
         Assert.IsTrue(report.Trades.TotalTrades > 0);
     }
+
+    [TestMethod]
+    public void FullPipeline_FluentSessionBuilder_WithStrategyAndConsoleExport_EndToEnd()
+    {
+        // 验证 BacktestSessionBuilder 极简 Fluent API 全链路驱动到底并导出控制台报表
+        var strategy = new DualMovingAverageStrategy();
+
+        var report = BacktestSession.Create()
+            .WithData(_csvRoot, "2024-01-01", "2024-01-31")
+            .WithCash(1_000_000.0, allowShort: false)
+            .WithBroker(initialCash: 1_000_000.0, feeRate: 0.0003, minFee: 5.0, slippage: 0.0002)
+            .WithStrategy(strategy)
+            .Configure(cfg =>
+            {
+                cfg.Data.Timeseries.Add(new TimeseriesConfig
+                {
+                    TableId = "ashare.kline.1d.raw.baostock",
+                    Fields = new List<string> { "open", "high", "low", "close", "volume" },
+                    Cache = false
+                });
+                cfg.Analysis ??= new AnalysisConfig();
+                cfg.Analysis.Exporters.Add(new ExporterNodeConfig
+                {
+                    Type = "ConsoleExporter"
+                });
+            })
+            .RunAndAnalyze(export: true);
+
+        Assert.IsNotNull(report, "Fluent API 驱动应成功输出 AnalysisReport");
+        Assert.IsNotNull(report.Facts, "必须沉淀不可变交易事实账本");
+        Assert.IsTrue(report.Facts.DailySnapshots.Count > 0, "应生成逐日盯市资产快照");
+        Assert.IsNotNull(report.Portfolio, "投资组合综合统计报告不可为空");
+        Assert.IsNotNull(report.Capital, "资金容量与收益报告不可为空");
+        Assert.IsNotNull(report.Trades, "交易频度与胜率报告不可为空");
+    }
 }
