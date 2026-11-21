@@ -133,7 +133,8 @@ public class TradingFinancialPipelineIntegrationTests
             FeeRate = feeRate,
             MinFee = minFee,
             Slippage = slippage,
-            SettleDays = 1 // 显式开启 A 股 T+1 交易交割制度
+            SettleDays = 1, // 显式开启 A 股 T+1 交易交割制度
+            DefaultExecutionPrice = ExecutionPriceType.Close
         };
 
         var simExchange = new SimulatedExchangeGateway(brokerConfig);
@@ -666,7 +667,8 @@ public class TradingFinancialPipelineIntegrationTests
             MarginRate = marginRate,
             SettleDays = 0,
             FeeRate = 0.0,
-            Slippage = 0.0
+            Slippage = 0.0,
+            DefaultExecutionPrice = ExecutionPriceType.Close
         };
 
         var simExchange = new SimulatedExchangeGateway(brokerConfig);
@@ -830,7 +832,8 @@ public class TradingFinancialPipelineIntegrationTests
             Slippage = 0.0,
             FeeRate = 0.0,
             MinFee = 0.0,
-            VolumeLimit = 0.0
+            VolumeLimit = 0.0,
+            DefaultExecutionPrice = ExecutionPriceType.Close
         };
 
         var simExchange = new SimulatedExchangeGateway(brokerConfig);
@@ -900,7 +903,8 @@ public class TradingFinancialPipelineIntegrationTests
             Slippage = 0.0,
             FeeRate = 0.0,
             MinFee = 0.0,
-            VolumeLimit = 0.0
+            VolumeLimit = 0.0,
+            DefaultExecutionPrice = ExecutionPriceType.Close
         };
 
         var simExchange = new SimulatedExchangeGateway(brokerConfig);

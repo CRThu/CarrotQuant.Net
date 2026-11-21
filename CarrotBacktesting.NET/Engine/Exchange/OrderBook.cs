@@ -96,7 +96,7 @@ internal sealed class OrderBook
     }
 
     /// <summary>
-    /// 撤销所有当日有效（TimeInForce.Day）的挂单并移出挂单簿，保留 GTC 挂单。
+    /// 撤销所有当日有效（TimeInForce.Day）的限价排队挂单并移出挂单簿，保留 GTC 挂单与市价撮合指令。
     /// </summary>
     /// <returns>被撤销的挂单列表。</returns>
     public List<SimulatedOrder> CancelDayOrders()
@@ -109,7 +109,8 @@ internal sealed class OrderBook
         var canceled = new List<SimulatedOrder>();
         foreach (var pair in _ordersById)
         {
-            if (pair.Value.TimeInForce == TimeInForce.Day)
+            // 依据交易所物理规则，日切清算仅撤销未成交的日内限价排队单（Limit + Day）
+            if (pair.Value.Request.Type == OrderType.Limit && pair.Value.TimeInForce == TimeInForce.Day)
             {
                 canceled.Add(pair.Value);
             }
@@ -128,7 +129,7 @@ internal sealed class OrderBook
         List<string>? emptySymbols = null;
         foreach (var (symbol, list) in _pendingBySymbol)
         {
-            list.RemoveAll(o => o.TimeInForce == TimeInForce.Day);
+            list.RemoveAll(o => o.Request.Type == OrderType.Limit && o.TimeInForce == TimeInForce.Day);
             if (list.Count == 0)
             {
                 emptySymbols ??= new List<string>();

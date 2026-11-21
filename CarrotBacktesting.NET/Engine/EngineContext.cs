@@ -256,6 +256,12 @@ namespace CarrotBacktesting.NET.Engine
             return _volumeMatrix;
         }
 
+        /// <summary>
+        /// 是否处于开盘决策相位（Phase 1）。
+        /// 在 OnOpen 开盘决策模式下激活，硬隔离当期未完结数据，防前瞻偏差（Look-ahead Bias）。
+        /// </summary>
+        internal bool IsInOpenPhase { get; set; } = false;
+
         [System.Diagnostics.CodeAnalysis.DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void ThrowFutureOffsetException(int offset)
@@ -263,11 +269,19 @@ namespace CarrotBacktesting.NET.Engine
             throw new ArgumentOutOfRangeException(nameof(offset), offset, $"时序 offset 越界 (offset = {offset} > 0)。禁止指定正向偏移量以防止前瞻偏差（Look-ahead Bias）。");
         }
 
+        [System.Diagnostics.CodeAnalysis.DoesNotReturn]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowLookAheadBiasException(string fieldName)
+        {
+            throw new InvalidOperationException($"当前处于 OnOpen 开盘决策模式，当期 '{fieldName}' 尚未完结产生，严禁读取当期数据（offset = 0）以防前瞻偏差（Look-ahead Bias）。");
+        }
+
         /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetClose(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post)
         {
             if (offset > 0) ThrowFutureOffsetException(offset);
+            if (offset == 0 && IsInOpenPhase) ThrowLookAheadBiasException("close");
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -332,6 +346,7 @@ namespace CarrotBacktesting.NET.Engine
         public double GetHigh(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post)
         {
             if (offset > 0) ThrowFutureOffsetException(offset);
+            if (offset == 0 && IsInOpenPhase) ThrowLookAheadBiasException("high");
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -364,6 +379,7 @@ namespace CarrotBacktesting.NET.Engine
         public double GetLow(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post)
         {
             if (offset > 0) ThrowFutureOffsetException(offset);
+            if (offset == 0 && IsInOpenPhase) ThrowLookAheadBiasException("low");
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -396,6 +412,7 @@ namespace CarrotBacktesting.NET.Engine
         public double GetVolume(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Raw)
         {
             if (offset > 0) ThrowFutureOffsetException(offset);
+            if (offset == 0 && IsInOpenPhase) ThrowLookAheadBiasException("volume");
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -422,6 +439,10 @@ namespace CarrotBacktesting.NET.Engine
         {
             if (offset > 0) ThrowFutureOffsetException(offset);
             if (string.IsNullOrWhiteSpace(fieldName)) return double.NaN;
+            if (offset == 0 && IsInOpenPhase && !fieldName.Equals("open", StringComparison.OrdinalIgnoreCase))
+            {
+                ThrowLookAheadBiasException(fieldName);
+            }
 
             // 高频 OHLCV 走极速直通分支
             if (fieldName.Equals("close", StringComparison.OrdinalIgnoreCase)) return GetClose(symbolIndex, offset, mode);

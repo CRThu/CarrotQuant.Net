@@ -41,4 +41,10 @@ public interface ISimulatedExchange : IExchangeGateway
     /// <param name="time">行情发生的时间戳。</param>
     /// <param name="bar">当前时间步行情数据行（可选，供流动性与涨跌停拦截校验）。</param>
     void OnMarketData(string symbol, double price, MarketTime time, IDataRow? bar = null);
+
+    /// <summary>
+    /// 在回测终局生命周期结束时，清理撤销挂单簿中所有在途未成交挂单，确保资产 100% 解冻归位。
+    /// </summary>
+    /// <param name="terminalTime">终局物理时间戳。</param>
+    void CloseGateway(MarketTime terminalTime) { }
 }

@@ -60,6 +60,12 @@ namespace CarrotBacktesting.NET.Config
         public TimeInForce DefaultTimeInForce { get; set; } = TimeInForce.Day;
 
         /// <summary>
+        /// 默认撮合成交价格基准（ExecutionPriceType）。
+        /// 默认为 ExecutionPriceType.Open（次日开盘价成交），全面对齐国际主流量化回测标准，消灭收盘偷价。
+        /// </summary>
+        public ExecutionPriceType DefaultExecutionPrice { get; set; } = ExecutionPriceType.Open;
+
+        /// <summary>
         /// 默认合约乘数。股票按“股”计算为 1.0，期货按“手”计算填一手规格（如螺纹钢填 10.0）。默认为 1.0。
         /// </summary>
         public double Multiplier { get; set; } = 1.0;

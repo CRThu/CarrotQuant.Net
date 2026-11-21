@@ -441,25 +441,51 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.2 时序滑动窗口与预读驱动
                     _timeseriesScheduler?.StepTo(i);
 
-                    // 5.3 驱动仿真交易所批量撮合在途限价单与开盘挂单
+                    // ==================== Phase 1: Open 相位 (开盘时刻) ====================
+                    // 1.1 驱动仿真交易所批量撮合在途限价单与前一日收盘跨步市价单
                     _simExchange?.Step(currentTime, _timeseries, i);
 
-                    // 5.4 推进经纪商时钟与交易所本地跨日结算（T+N 在途持仓解锁）
+                    // 1.2 推进经纪商时钟与交易所本地跨日结算（T+N 在途持仓解锁，先结算后可用）
                     _brokerDriver?.Step(currentTime);
 
-                    // 5.4 离散事件常数时间轻量探测与派发
+                    // 1.3 若 StrategyUpdateTiming == OnOpen：执行开盘策略决策
+                    if (_config.UpdateTiming == StrategyUpdateTiming.OnOpen)
+                    {
+                        _context.IsInOpenPhase = true;
+                        try
+                        {
+                            _pipeline.OnUpdate(_context);
+                        }
+                        finally
+                        {
+                            _context.IsInOpenPhase = false;
+                        }
+
+                        // 若策略在开盘发出了开盘价撮合订单，在此即刻完成开盘撮合
+                        _simExchange?.Step(currentTime, _timeseries, i);
+                    }
+
+                    // ==================== Phase 2: Intraday 相位 (盘中时刻) ====================
+                    // 2.1 离散事件常数时间轻量探测与派发
                     if (_events.HasNewEvents(currentTime))
                     {
                         DispatchEvents(currentTime);
                     }
 
-                    // 5.4.1 驱动指标注册中心步进更新（单步单次批量泵送）
+                    // ==================== Phase 3: Close 相位 (收盘时刻) ====================
+                    // 3.1 驱动指标注册中心步进更新（单步单次批量泵送当期完整 OHLCV）
                     _indicators.Step(_context);
 
-                    // 5.5 驱动策略主决策计算
-                    _pipeline.OnUpdate(_context);
+                    // 3.2 驱动仿真交易所执行收盘撮合（针对开盘挂起至收盘成交的 VWAP / Close 订单）
+                    _simExchange?.Step(currentTime, _timeseries, i);
 
-                    // 5.6 记录当前时间步净值点
+                    // 3.3 若 StrategyUpdateTiming == OnClose：执行收盘策略决策
+                    if (_config.UpdateTiming == StrategyUpdateTiming.OnClose)
+                    {
+                        _pipeline.OnUpdate(_context);
+                    }
+
+                    // 3.3 记录当前时间步净值点
                     if (_snapshotProvider != null)
                     {
                         int currentIdx = i;
@@ -468,7 +494,7 @@ namespace CarrotBacktesting.NET.Engine
                             sym => ResolveStepPrice(sym, currentIdx)));
                     }
 
-                    // 5.7 上报执行进度
+                    // 3.4 上报执行进度
                     int currentStep = i - startIndex + 1;
                     _progress = (double)currentStep / totalSteps;
                     if (_progressReporter != null)
@@ -484,6 +510,12 @@ namespace CarrotBacktesting.NET.Engine
                     _recorder.Record(_snapshotProvider.CreateDailySnapshot(
                         tradeDates[endIndex],
                         sym => ResolveStepPrice(sym, endIndex)));
+                }
+
+                // 终局边界清理：回测结束时，由网关统一撤销挂单簿中所有在途未成交挂单，确保资产 100% 解冻归位
+                if (endIndex >= 0 && endIndex < tradeDates.Count)
+                {
+                    _simExchange?.CloseGateway(tradeDates[endIndex]);
                 }
 
                 // 6. 正常收尾触发策略终止

@@ -23,6 +23,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
         private class MockTimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler
         {
+            private readonly Dictionary<string, object> _matrices = new();
             public IMarketMetadata Metadata { get; }
             public List<int> SteppedRows { get; } = new();
 
@@ -31,8 +32,21 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Metadata = metadata;
             }
 
-            public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged => null!;
-            public bool HasField(string fieldName) => true;
+            public void SetMatrix<T>(string fieldName, IReadOnlyMatrix2D<T> matrix) where T : unmanaged
+            {
+                _matrices[fieldName] = matrix;
+            }
+
+            public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
+            {
+                if (_matrices.TryGetValue(fieldName, out var m))
+                {
+                    return (IReadOnlyMatrix2D<T>)m;
+                }
+                throw new KeyNotFoundException($"矩阵 '{fieldName}' 不存在。");
+            }
+
+            public bool HasField(string fieldName) => _matrices.ContainsKey(fieldName);
 
             public void StepTo(int currentLogicalRow)
             {
@@ -416,8 +430,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_Step_TPlusOne_ShouldUnlockSharesOnNextDay()
         {
             var (ts, _) = CreateTestTimeseries(3, new DateTime(2025, 1, 1));
-            // 采用 T+1 现货配置
-            var broker = CreateBroker(new BrokerConfig { SettleDays = 1, AllowShort = false });
+            // 采用 T+1 现货配置与 Close 即时成交
+            var broker = CreateBroker(new BrokerConfig { SettleDays = 1, AllowShort = false, DefaultExecutionPrice = ExecutionPriceType.Close });
             var strategy = new TPlusOneTradeStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -470,7 +484,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         public void Run_BrokerEvents_ShouldBridgeToStrategyCallbacks()
         {
             var (ts, _) = CreateTestTimeseries(2);
-            var broker = CreateBroker(new BrokerConfig { SettleDays = 0 });
+            var broker = CreateBroker(new BrokerConfig { SettleDays = 0, DefaultExecutionPrice = ExecutionPriceType.Close });
             var strategy = new BrokerCallbackTrackingStrategy();
             var pipeline = StrategyPipeline.Sequential();
             pipeline.Add(strategy);
@@ -835,7 +849,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             {
                 InitialCash = 100_000.0,
                 SettleDays = 1,
-                TimeZoneId = "America/New_York"
+                TimeZoneId = "America/New_York",
+                DefaultExecutionPrice = ExecutionPriceType.Close
             };
             var broker = CreateBroker(brokerConfig);
 
@@ -862,7 +877,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             };
             var meta = new DynamicMarketMetadata(new[] { "sh.600000" }, dates);
             var ts = new MockTimeseriesRegistry(meta);
-            var broker = CreateBroker(new BrokerConfig { SettleDays = 0 });
+            var broker = CreateBroker(new BrokerConfig { SettleDays = 0, DefaultExecutionPrice = ExecutionPriceType.Close });
 
             var trackingStrategy = new MinuteExecutionReportTrackingStrategy();
             var pipeline = StrategyPipeline.Sequential();

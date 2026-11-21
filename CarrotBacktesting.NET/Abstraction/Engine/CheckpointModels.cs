@@ -75,7 +75,8 @@ public sealed record SimulatedOrderSnapshot(
     MarketTime CreateTime,
     double Multiplier,
     double MarginRate,
-    int SettleDays
+    int SettleDays,
+    decimal FilledQuantity = 0m
 );
 
 /// <summary>

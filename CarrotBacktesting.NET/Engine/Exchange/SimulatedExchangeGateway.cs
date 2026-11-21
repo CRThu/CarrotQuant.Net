@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
@@ -34,6 +35,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     private IReadOnlyMatrix2D<double>? _lowMatrix;
     private IReadOnlyMatrix2D<double>? _volumeMatrix;
     private IReadOnlyMatrix2D<double>? _amountMatrix;
+    private IReadOnlyMatrix2D<double>? _vwapMatrix;
 
     public event Action<ExecutionReport>? OnExecution;
     public event Action<OrderStateReport>? OnOrderStateChanged;
@@ -73,45 +75,13 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
             if (!stateChanged.HasValue)
             {
-                double basePrice = GetBasePriceForOrder(request);
                 double multiplier = GetMultiplier(request.Symbol);
                 MarketTime tradeTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
-                BarSnapshot currentBar = BarSnapshot.Empty;
-                if (_currentBars.TryGetValue(request.Symbol, out var explicitBar))
+                // 市价单处理：若处于回测时钟推进中且非 Close 即时成交模式，统一压入 OrderBook 挂单簿，留待对应相位撮合
+                bool isPendingMarketOrder = request.Type == OrderType.Market && _boundTimeseries != null && _currentIndex >= 0 && _config.DefaultExecutionPrice != ExecutionPriceType.Close;
+                if (isPendingMarketOrder)
                 {
-                    currentBar = BarSnapshot.FromDataRow(explicitBar, basePrice);
-                }
-                else if (_closeMatrix != null && _currentIndex >= 0)
-                {
-                    currentBar = GetBarSnapshot(request.Symbol, _currentIndex);
-                }
-
-                var matchResult = _matcher.EvaluateImmediateOrder(request, basePrice, in currentBar, multiplier, tradeTime);
-
-                if (matchResult.IsFilled)
-                {
-                    // 即时成交（市价单或已穿透限价的限价单）：
-                    // 若公允市价未知，记录未含滑点的基准市价 basePrice，严禁将带滑点的 FillPrice 写入 _marketPrices
-                    if (!_marketPrices.ContainsKey(request.Symbol) && basePrice > 0.0)
-                    {
-                        _marketPrices[request.Symbol] = basePrice;
-                    }
-
-                    fillReport = new ExecutionReport(
-                        orderId,
-                        request.Symbol,
-                        matchResult.FillPrice,
-                        matchResult.FillQuantity,
-                        matchResult.Commission,
-                        tradeTime,
-                        CumQuantity: matchResult.FillQuantity,
-                        LeavesQuantity: 0m,
-                        Role: matchResult.Role);
-                }
-                else if (matchResult.IsPending)
-                {
-                    // 未触碰价格的限价单，压入 OrderBook 排队
                     var simOrder = new SimulatedOrder(orderId, request, tradeTime)
                     {
                         Multiplier = multiplier,
@@ -121,10 +91,58 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     _orderBook.Add(simOrder);
                     stateChanged = OrderStatus.Submitted;
                 }
-                else if (matchResult.IsRejected)
+                else
                 {
-                    stateChanged = OrderStatus.Rejected;
-                    stateReason = matchResult.RejectReason;
+                    double basePrice = GetBasePriceForOrder(request);
+                    BarSnapshot currentBar = BarSnapshot.Empty;
+                    if (_currentBars.TryGetValue(request.Symbol, out var explicitBar))
+                    {
+                        currentBar = BarSnapshot.FromDataRow(explicitBar, basePrice);
+                    }
+                    else if (_closeMatrix != null && _currentIndex >= 0)
+                    {
+                        currentBar = GetBarSnapshot(request.Symbol, _currentIndex);
+                    }
+
+                    var matchResult = _matcher.EvaluateImmediateOrder(request, basePrice, in currentBar, multiplier, tradeTime);
+
+                    if (matchResult.IsFilled)
+                    {
+                        // 即时成交（市价单或已穿透限价的限价单）：
+                        // 若公允市价未知，记录未含滑点的基准市价 basePrice，严禁将带滑点的 FillPrice 写入 _marketPrices
+                        if (!_marketPrices.ContainsKey(request.Symbol) && basePrice > 0.0)
+                        {
+                            _marketPrices[request.Symbol] = basePrice;
+                        }
+
+                        fillReport = new ExecutionReport(
+                            orderId,
+                            request.Symbol,
+                            matchResult.FillPrice,
+                            matchResult.FillQuantity,
+                            matchResult.Commission,
+                            tradeTime,
+                            CumQuantity: matchResult.FillQuantity,
+                            LeavesQuantity: 0m,
+                            Role: matchResult.Role);
+                    }
+                    else if (matchResult.IsPending)
+                    {
+                        // 未触碰价格的限价单，压入 OrderBook 排队
+                        var simOrder = new SimulatedOrder(orderId, request, tradeTime)
+                        {
+                            Multiplier = multiplier,
+                            MarginRate = GetMarginRate(request.Symbol),
+                            SettleDays = GetSettleDays(request.Symbol)
+                        };
+                        _orderBook.Add(simOrder);
+                        stateChanged = OrderStatus.Submitted;
+                    }
+                    else if (matchResult.IsRejected)
+                    {
+                        stateChanged = OrderStatus.Rejected;
+                        stateReason = matchResult.RejectReason;
+                    }
                 }
             }
         }
@@ -228,24 +246,11 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     double marketPrice = 0.0;
                     int colIndex = _boundMetadata != null ? _boundMetadata.GetSymbolIndex(symbol) : -1;
 
-                    if (colIndex >= 0 && currentIndex < _closeMatrix.RowCount)
+                    double close = (colIndex >= 0 && currentIndex < _closeMatrix.RowCount) ? _closeMatrix[currentIndex, colIndex] : double.NaN;
+                    if (close > 0.0 && !double.IsNaN(close) && !double.IsInfinity(close))
                     {
-                        double p = _closeMatrix[currentIndex, colIndex];
-                        if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p))
-                        {
-                            marketPrice = p;
-                            _marketPrices[symbol] = p;
-                        }
-                    }
-
-                    if (marketPrice <= 0.0 && _marketPrices.TryGetValue(symbol, out var cachedPrice))
-                    {
-                        marketPrice = cachedPrice;
-                    }
-
-                    if (marketPrice <= 0.0)
-                    {
-                        continue;
+                        marketPrice = close;
+                        _marketPrices[symbol] = close;
                     }
 
                     double open = (colIndex >= 0 && _openMatrix != null && currentIndex < _openMatrix.RowCount) ? _openMatrix[currentIndex, colIndex] : double.NaN;
@@ -254,8 +259,42 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     double volume = (colIndex >= 0 && _volumeMatrix != null && currentIndex < _volumeMatrix.RowCount) ? _volumeMatrix[currentIndex, colIndex] : double.NaN;
                     double amount = (colIndex >= 0 && _amountMatrix != null && currentIndex < _amountMatrix.RowCount) ? _amountMatrix[currentIndex, colIndex] : double.NaN;
 
+                    // 1. 标的突发停牌熔断检查：
+                    // 若标的在当前时间步没有合法行情（open 与 close 均为 NaN 或 <= 0），判定为停牌！
+                    // 挂单簿中该标的订单必须全部立即熔断剔除，派发 Rejected 报告，解冻资金！
+                    bool isSuspended = (double.IsNaN(open) || open <= 0.0) && (double.IsNaN(close) || close <= 0.0);
+                    if (isSuspended)
+                    {
+                        var pending = _orderBook.GetPendingOrders(symbol);
+                        if (pending != null && pending.Count > 0)
+                        {
+                            var suspendedOrders = new List<SimulatedOrder>(pending);
+                            for (int s = 0; s < suspendedOrders.Count; s++)
+                            {
+                                var ord = suspendedOrders[s];
+                                _orderBook.Remove(ord.OrderId, out _);
+                                decimal leaves = Math.Max(0m, ord.Request.Quantity - ord.FilledQuantity);
+                                stateReports ??= new List<OrderStateReport>();
+                                stateReports.Add(new OrderStateReport(
+                                    ord.OrderId,
+                                    OrderStatus.Rejected,
+                                    currentTime,
+                                    ord.Request.Symbol,
+                                    $"Symbol '{symbol}' is suspended on step {currentIndex} (market data is NaN).",
+                                    ord.Request.ClientOrderId,
+                                    leaves));
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (marketPrice <= 0.0)
+                    {
+                        continue;
+                    }
+
                     BarSnapshot bar = new(open, high, low, marketPrice, volume, amount);
-                    MatchSymbolOrders(symbol, marketPrice, in bar, currentTime, ref fillReports, ref stateReports);
+                    MatchSymbolOrders(symbol, marketPrice, in bar, currentTime, ref fillReports, ref stateReports, colIndex, currentIndex);
                 }
             }
         }
@@ -345,7 +384,9 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         in BarSnapshot bar,
         MarketTime tradeTime,
         ref List<ExecutionReport>? fillReports,
-        ref List<OrderStateReport>? stateReports)
+        ref List<OrderStateReport>? stateReports,
+        int colIndex = -1,
+        int currentIndex = -1)
     {
         var pendingList = _orderBook.GetPendingOrders(symbol);
         if (pendingList == null || pendingList.Count == 0)
@@ -358,7 +399,56 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         for (int i = 0; i < ordersToMatch.Count; i++)
         {
             var order = ordersToMatch[i];
-            var matchResult = _matcher.EvaluatePendingLimitOrder(order, marketPrice, in bar, tradeTime);
+            MatchResult matchResult;
+
+            if (order.Request.Type == OrderType.Market)
+            {
+                // 市价跨步单按 ExecutionPriceType 撮合
+                double execPrice;
+                switch (_config.DefaultExecutionPrice)
+                {
+                    case ExecutionPriceType.Open:
+                        execPrice = bar.HasOpen && bar.Open > 0.0 ? bar.Open : marketPrice;
+                        break;
+                    case ExecutionPriceType.Vwap:
+                        if (_vwapMatrix != null && colIndex >= 0 && currentIndex >= 0 && currentIndex < _vwapMatrix.RowCount)
+                        {
+                            double v = _vwapMatrix[currentIndex, colIndex];
+                            if (v > 0.0 && !double.IsNaN(v) && !double.IsInfinity(v))
+                            {
+                                execPrice = v;
+                                break;
+                            }
+                        }
+                        if (bar.Vwap.HasValue && bar.Vwap.Value > 0.0)
+                        {
+                            execPrice = bar.Vwap.Value;
+                            break;
+                        }
+                        throw new InvalidDataException(
+                            $"标的 '{symbol}' 在时间步 {currentIndex} 配置为 Vwap 撮合，但时序数据源缺失 'vwap' 列且无法通过 amount/volume 计算。");
+
+                    case ExecutionPriceType.Average:
+                        double o = bar.OpenOr(marketPrice);
+                        double h = bar.HighOr(marketPrice);
+                        double l = bar.LowOr(marketPrice);
+                        double c = bar.CloseOr(marketPrice);
+                        execPrice = (o + h + l + c) / 4.0;
+                        break;
+
+                    case ExecutionPriceType.Close:
+                    default:
+                        execPrice = marketPrice;
+                        break;
+                }
+
+                matchResult = _matcher.EvaluateImmediateOrder(order.Request, execPrice, in bar, order.Multiplier, tradeTime);
+            }
+            else
+            {
+                // 限价单在挂单簿被动撮合（享受开盘跳空价格改善）
+                matchResult = _matcher.EvaluatePendingLimitOrder(order, marketPrice, in bar, tradeTime);
+            }
 
             if (matchResult.IsFilled)
             {
@@ -396,6 +486,40 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     leavesQuantity));
             }
         }
+    }
+
+    /// <inheritdoc />
+    public void CloseGateway(MarketTime terminalTime)
+    {
+        List<OrderStateReport>? stateReports = null;
+        lock (_syncLock)
+        {
+            var allOrders = new List<SimulatedOrder>(_orderBook.GetAllOrders());
+            if (allOrders.Count > 0)
+            {
+                stateReports = new List<OrderStateReport>();
+                for (int i = 0; i < allOrders.Count; i++)
+                {
+                    var ord = allOrders[i];
+                    // 终局边界安全清理：撤销所有未完成市价单与当日到期 Day 订单；保留 GTC 限价单排队状态以支持检查点断点续跑
+                    bool shouldCancel = ord.Request.Type == OrderType.Market || ord.Request.TimeInForce == TimeInForce.Day;
+                    if (shouldCancel)
+                    {
+                        _orderBook.Remove(ord.OrderId, out _);
+                        decimal leaves = Math.Max(0m, ord.Request.Quantity - ord.FilledQuantity);
+                        stateReports.Add(new OrderStateReport(
+                            ord.OrderId,
+                            OrderStatus.Canceled,
+                            terminalTime != MarketTime.MinValue ? terminalTime : MarketTime.UnixEpoch,
+                            ord.Request.Symbol,
+                            "Terminal cancellation on backtest completion.",
+                            ord.Request.ClientOrderId,
+                            leaves));
+                    }
+                }
+            }
+        }
+        DispatchReports(null, stateReports);
     }
 
     private void DispatchReports(
@@ -504,6 +628,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         _lowMatrix = timeseries.HasField(StandardFields.Low) ? timeseries.GetMatrix<double>(StandardFields.Low) : null;
         _volumeMatrix = timeseries.HasField(StandardFields.Volume) ? timeseries.GetMatrix<double>(StandardFields.Volume) : null;
         _amountMatrix = timeseries.HasField(StandardFields.Amount) ? timeseries.GetMatrix<double>(StandardFields.Amount) : null;
+        _vwapMatrix = timeseries.HasField("vwap") ? timeseries.GetMatrix<double>("vwap") : null;
     }
 
     private BarSnapshot GetBarSnapshot(string symbol, int rowIndex)
@@ -545,7 +670,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     ord.SubmitTime,
                     ord.Multiplier,
                     ord.MarginRate,
-                    ord.SettleDays
+                    ord.SettleDays,
+                    ord.FilledQuantity
                 ));
             }
             return new ExchangeSnapshot(prices, orders);
@@ -574,7 +700,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 {
                     Multiplier = snap.Multiplier,
                     MarginRate = snap.MarginRate,
-                    SettleDays = snap.SettleDays
+                    SettleDays = snap.SettleDays,
+                    FilledQuantity = snap.FilledQuantity
                 };
                 _orderBook.Add(ord);
             }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using CarrotBacktesting.NET.Abstraction.Data;
+using CarrotBacktesting.NET.Abstraction.Engine;
 
 namespace CarrotBacktesting.NET.Config
 {
@@ -79,6 +80,12 @@ namespace CarrotBacktesting.NET.Config
         public string Mode { get; set; } = "backtest";
         public MarketTime? StartDate { get; set; }
         public MarketTime? EndDate { get; set; }
+
+        /// <summary>
+        /// 策略决策与更新时点（StrategyUpdateTiming）。
+        /// 默认为 StrategyUpdateTiming.OnClose（收盘更新），即当期 Bar 完全走完时驱动 OnUpdate。
+        /// </summary>
+        public StrategyUpdateTiming UpdateTiming { get; set; } = StrategyUpdateTiming.OnClose;
     }
 
     /// <summary>
