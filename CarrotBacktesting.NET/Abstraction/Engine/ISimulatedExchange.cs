@@ -43,7 +43,7 @@ public interface ISimulatedExchange : IExchangeGateway
     void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot);
 
     /// <summary>
-    /// 在回测终局生命周期结束时，清理撤销挂单簿中所有在途未成交挂单，确保资产 100% 解冻归位。
+    /// 在回测时间步终止时，清理撤销挂单簿中未成交的当日到期（Day）订单与市价单，保留跨日 GTC 挂单以支持检查点状态持久化与断点续跑。
     /// </summary>
     /// <param name="terminalTime">终局物理时间戳。</param>
     void CloseGateway(MarketTime terminalTime) { }

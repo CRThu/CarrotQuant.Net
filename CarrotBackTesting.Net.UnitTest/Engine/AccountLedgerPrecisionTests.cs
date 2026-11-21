@@ -19,11 +19,11 @@ public class AccountLedgerPrecisionTests
         public event Action<ExecutionReport>? OnExecution;
         public event Action<OrderStateReport>? OnOrderStateChanged;
 
-        public void SendOrder(string orderId, OrderRequest request) { }
-        public void CancelOrder(string orderId) { }
+        public void SendOrder(long orderId, OrderRequest request) { }
+        public void CancelOrder(long orderId) { }
 
         public void PushExecution(ExecutionReport report) => OnExecution?.Invoke(report);
-        public void PushState(string orderId, OrderStatus status, string? reason = null) =>
+        public void PushState(long orderId, OrderStatus status, string? reason = null) =>
             OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, status, DateTime.UtcNow, Reason: reason ?? string.Empty));
     }
 
@@ -45,7 +45,7 @@ public class AccountLedgerPrecisionTests
         broker.Step(now);
 
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 300m);
-        string orderId = broker.SubmitOrder(req);
+        long orderId = broker.SubmitOrder(req);
 
         // 初始预冻结: 300 * 10.0 = 3000.0
         Assert.AreEqual(3000.0, broker.FrozenCash, 1e-6);
@@ -95,7 +95,7 @@ public class AccountLedgerPrecisionTests
         broker.Step(now);
 
         // 1. 买入 100 股建立持仓
-        string buyId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 100m));
+        long buyId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 100m));
         gateway.PushExecution(new ExecutionReport(
             buyId, "sh.600000", 10.0, 100m, 0.0, now,
             CumQuantity: 100m, LeavesQuantity: 0m, Role: LiquidityRole.Taker));
@@ -104,7 +104,7 @@ public class AccountLedgerPrecisionTests
         Assert.AreEqual(100m, broker.GetAvailablePosition("sh.600000"));
 
         // 2. 卖出平仓 100 股
-        string sellId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 12.0, 100m));
+        long sellId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 12.0, 100m));
         Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "挂单卖出后可用持仓应被冻结扣减");
 
         gateway.PushExecution(new ExecutionReport(

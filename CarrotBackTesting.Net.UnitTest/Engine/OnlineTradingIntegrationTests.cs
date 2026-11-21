@@ -15,28 +15,28 @@ namespace CarrotBackTesting.Net.UnitTest.Engine;
 /// </summary>
 internal sealed class MockLiveExchangeGateway : IExchangeGateway
 {
-    private readonly ConcurrentDictionary<string, OrderRequest> _liveOrders = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<long, OrderRequest> _liveOrders = new();
 
     public event Action<ExecutionReport>? OnExecution;
     public event Action<OrderStateReport>? OnOrderStateChanged;
 
-    public void SendOrder(string orderId, OrderRequest request)
+    public void SendOrder(long orderId, OrderRequest request)
     {
         _liveOrders[orderId] = request;
         // 模拟柜台收到委托回报
         Task.Run(() =>
         {
-            OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Submitted, DateTime.UtcNow, request.Symbol, ClientOrderId: request.ClientOrderId, LeavesQuantity: request.Quantity));
+            OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Submitted, DateTime.UtcNow, request.Symbol, LeavesQuantity: request.Quantity));
         });
     }
 
-    public void CancelOrder(string orderId)
+    public void CancelOrder(long orderId)
     {
         if (_liveOrders.TryRemove(orderId, out var req))
         {
             Task.Run(() =>
             {
-                OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Canceled, DateTime.UtcNow, req.Symbol, "Canceled", req.ClientOrderId));
+                OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Canceled, DateTime.UtcNow, req.Symbol, "Canceled"));
             });
         }
     }
@@ -44,7 +44,7 @@ internal sealed class MockLiveExchangeGateway : IExchangeGateway
     /// <summary>
     /// 模拟交易所撮合成交推送。
     /// </summary>
-    public void SimulateTradeFill(string orderId, double fillPrice, decimal fillQuantity, double commission)
+    public void SimulateTradeFill(long orderId, double fillPrice, decimal fillQuantity, double commission)
     {
         if (_liveOrders.TryGetValue(orderId, out var req))
         {
@@ -60,11 +60,11 @@ internal sealed class MockLiveExchangeGateway : IExchangeGateway
     /// <summary>
     /// 模拟交易所废单或拒单推送。
     /// </summary>
-    public void SimulateReject(string orderId, string? reason = null)
+    public void SimulateReject(long orderId, string? reason = null)
     {
         if (_liveOrders.TryRemove(orderId, out var req))
         {
-            OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Rejected, DateTime.UtcNow, req.Symbol, reason ?? "Rejected", req.ClientOrderId));
+            OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Rejected, DateTime.UtcNow, req.Symbol, reason ?? "Rejected"));
         }
     }
 }
@@ -87,7 +87,7 @@ public class OnlineTradingIntegrationTests
 
         // 1. 提交买入 1,000 股现货
         var order = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 1000m);
-        string orderId = broker.SubmitOrder(order);
+        long orderId = broker.SubmitOrder(order);
 
         Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
         // 本地两阶段冻结：1000 * 10 = 10000 资金
@@ -119,7 +119,7 @@ public class OnlineTradingIntegrationTests
 
         // 提交 100 股买单 @ 10 元 (冻结 1000 元)
         var order = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 100m);
-        string orderId = broker.SubmitOrder(order);
+        long orderId = broker.SubmitOrder(order);
         Assert.AreEqual(99000.0, broker.GetCash());
 
         // 批次 1: 成交 30 股
@@ -149,7 +149,7 @@ public class OnlineTradingIntegrationTests
         var broker = new Broker(gateway, config);
 
         var order = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 1000m);
-        string orderId = broker.SubmitOrder(order);
+        long orderId = broker.SubmitOrder(order);
         Assert.AreEqual(90000.0, broker.GetCash());
 
         // 模拟柜台回报拒单
@@ -167,8 +167,8 @@ public class OnlineTradingIntegrationTests
         var broker = new Broker(gateway, config);
 
         // 提交两笔在途订单
-        string id1 = broker.SubmitOrder(new OrderRequest("s1", OrderDirection.Buy, OrderType.Limit, 10.0, 500m));
-        string id2 = broker.SubmitOrder(new OrderRequest("s2", OrderDirection.Buy, OrderType.Limit, 20.0, 500m));
+        long id1 = broker.SubmitOrder(new OrderRequest("s1", OrderDirection.Buy, OrderType.Limit, 10.0, 500m));
+        long id2 = broker.SubmitOrder(new OrderRequest("s2", OrderDirection.Buy, OrderType.Limit, 20.0, 500m));
 
         // 断线重连，收到柜台权威资产与持仓同步
         broker.SyncState(200_000.0, new Dictionary<string, decimal>
@@ -236,7 +236,7 @@ public class OnlineTradingIntegrationTests
                 {
                     string symbol = $"sym_{threadId % 5}";
                     var req = new OrderRequest(symbol, OrderDirection.Buy, OrderType.Limit, 10.0, 10m);
-                    string id = broker.SubmitOrder(req);
+                    long id = broker.SubmitOrder(req);
 
                     if (i % 2 == 0)
                     {
@@ -281,7 +281,7 @@ public class OnlineTradingIntegrationTests
 
         // 提交卖出 300 股 @ 10 元（平多 100 股 + 开空 200 股，冻结现金 2000 元，冻结持仓 100 股）
         var order = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 300m);
-        string orderId = broker.SubmitOrder(order);
+        long orderId = broker.SubmitOrder(order);
 
         Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "100 股平仓额度被 100% 冻结");
         Assert.AreEqual(99_000.0 - 2000.0, broker.GetCash(), "新开空 200 股预冻结 2000 元保证金");

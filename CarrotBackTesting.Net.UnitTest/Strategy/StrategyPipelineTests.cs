@@ -22,12 +22,12 @@ public class StrategyPipelineTests
         public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
         public double GetPositionCost(string symbol) => 0.0;
         public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
-        public string SubmitOrder(OrderRequest request) => "ord-1";
-        public void CancelOrder(string orderId) { }
-        public OrderStatus GetOrderStatus(string orderId) => OrderStatus.Filled;
+        public long SubmitOrder(OrderRequest request) => 1L;
+        public void CancelOrder(long orderId) { }
+        public OrderStatus GetOrderStatus(long orderId) => OrderStatus.Filled;
 
 #pragma warning disable CS0067
-        public event Action<string, OrderStatus>? OnOrderStatusChanged;
+        public event Action<long, OrderStatus>? OnOrderStatusChanged;
         public event Action<ExecutionReport>? OnTrade;
         public event Action<PositionEvent>? OnPositionChanged;
         public event Action<OrderEvent>? OnOrderEvent;
@@ -91,7 +91,7 @@ public class StrategyPipelineTests
         public void OnUpdate(IEngineContext context) => Trace.Add($"{Name}:OnUpdate");
         public void OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events) => Trace.Add($"{Name}:OnEvent:{tableName}");
         public void OnStop(IEngineContext context) => Trace.Add($"{Name}:OnStop");
-        public void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status) => Trace.Add($"{Name}:OrderStatus:{orderId}:{status}");
+        public void OnOrderStatusChanged(IEngineContext context, long orderId, OrderStatus status) => Trace.Add($"{Name}:OrderStatus:{orderId}:{status}");
         public void OnTrade(IEngineContext context, ExecutionReport e) => Trace.Add($"{Name}:Trade:{e.OrderId}");
         public void OnPositionChanged(IEngineContext context, PositionEvent e) => Trace.Add($"{Name}:Position:{e.Symbol}");
     }
@@ -192,8 +192,8 @@ public class StrategyPipelineTests
         pipeline.OnStart(context);
         pipeline.OnUpdate(context);
         pipeline.OnEvent(context, "longhubang", Array.Empty<IDataRow>());
-        pipeline.OnOrderStatusChanged(context, "ord-1", OrderStatus.Submitted);
-        pipeline.OnTrade(context, new ExecutionReport("ord-1", "sh.600000", 10.0, 100m, 1.0, DateTime.UtcNow));
+        pipeline.OnOrderStatusChanged(context, 1L, OrderStatus.Submitted);
+        pipeline.OnTrade(context, new ExecutionReport(1L, "sh.600000", 10.0, 100m, 1.0, DateTime.UtcNow));
         pipeline.OnPositionChanged(context, new PositionEvent("sh.600000", 100m, 10.0, DateTime.UtcNow));
         pipeline.OnStop(context);
 
@@ -202,8 +202,8 @@ public class StrategyPipelineTests
             "NodeA:OnStart", "NodeB:OnStart",
             "NodeA:OnUpdate", "NodeB:OnUpdate",
             "NodeA:OnEvent:longhubang", "NodeB:OnEvent:longhubang",
-            "NodeA:OrderStatus:ord-1:Submitted", "NodeB:OrderStatus:ord-1:Submitted",
-            "NodeA:Trade:ord-1", "NodeB:Trade:ord-1",
+            "NodeA:OrderStatus:1:Submitted", "NodeB:OrderStatus:1:Submitted",
+            "NodeA:Trade:1", "NodeB:Trade:1",
             "NodeA:Position:sh.600000", "NodeB:Position:sh.600000",
             "NodeA:OnStop", "NodeB:OnStop"
         }, trace);
@@ -720,7 +720,7 @@ public class FileStrategy : IStrategy {
         // 空生命周期安全调用不抛异常
         strategy.OnStart(null!);
         strategy.OnEvent(null!, "tbl", Array.Empty<IDataRow>());
-        strategy.OnOrderStatusChanged(null!, "ord1", OrderStatus.Filled);
+        strategy.OnOrderStatusChanged(null!, 1L, OrderStatus.Filled);
         strategy.OnStop(null!);
 
         strategy.OnUpdate(null!);

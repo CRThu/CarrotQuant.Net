@@ -711,9 +711,12 @@ public interface IEngineContext
     int GetSymbolIndex(string symbol);          // 获取标的列索引（无则 -1）
 
     // 高频交易动词门面 (High-Frequency Trading Verbs)
-    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
-    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
-    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long StopLoss(string symbol, double stopPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
+    long TakeProfit(string symbol, double targetPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
+    (long StopLossOrderId, long TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null);
 
     // 当期账户与持仓门面 (Account & Position Facades)
     decimal GetPosition(string symbol);
@@ -762,24 +765,27 @@ public interface IBroker
     decimal GetAvailablePosition(string symbol);
     double GetPositionCost(string symbol);
     IReadOnlyDictionary<string, decimal> GetPositions();
-    string SubmitOrder(OrderRequest request);
-    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
-    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
-    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
-    void CancelOrder(string orderId);
-    OrderStatus GetOrderStatus(string orderId);
+    long SubmitOrder(OrderRequest request);
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long StopLoss(string symbol, double stopPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
+    long TakeProfit(string symbol, double targetPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
+    (long StopLossOrderId, long TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null);
+    void CancelOrder(long orderId);
+    OrderStatus GetOrderStatus(long orderId);
     void Step(DateTime currentTime);
     void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions);
     
-    event Action<string, OrderStatus> OnOrderStatusChanged;
+    event Action<long, OrderStatus> OnOrderStatusChanged;
     event Action<ExecutionReport> OnTrade;
     event Action<PositionEvent>? OnPositionChanged;
 }
 ```
 
 #### 核心数据模型
-- **`OrderRequest`**: `(string Symbol, OrderDirection Direction, OrderType Type, double Price, decimal Quantity)`
-- **`ExecutionReport`**: `(string OrderId, string Symbol, double FillPrice, decimal FillQuantity, double Commission, DateTime Time)`
+- **`OrderRequest`**: `(string Symbol, OrderDirection Direction, OrderType Type, double Price, decimal Quantity, string OrderTag = "", TimeInForce? TimeInForce = null, long OrderId = 0)`
+- **`ExecutionReport`**: `(long OrderId, string Symbol, double FillPrice, decimal FillQuantity, double Commission, DateTime Time)`
 - **`PositionEvent`**: `(string Symbol, decimal NewQuantity, double AveragePrice, DateTime Time)`
 - **`OrderStatus`**: `Pending`, `Submitted`, `PartialFilled`, `Filled`, `Canceled`, `Rejected`
 
@@ -795,8 +801,8 @@ namespace CarrotBacktesting.NET.Abstraction.Engine;
 /// </summary>
 public interface IExchangeGateway
 {
-    void SendOrder(string orderId, OrderRequest request);
-    void CancelOrder(string orderId);
+    void SendOrder(long orderId, OrderRequest request);
+    void CancelOrder(long orderId);
 
     event Action<ExecutionReport> OnExecution;
     event Action<OrderStateReport> OnOrderStateChanged;

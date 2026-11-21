@@ -25,12 +25,12 @@ public class RuleStrategyBaseTests
 
         public double GetCash() => 100000.0;
         public double GetTotalEquity() => GetCash();
-        public string SubmitOrder(OrderRequest request) => "ord-1";
-        public void CancelOrder(string orderId) { }
-        public OrderStatus GetOrderStatus(string orderId) => OrderStatus.Filled;
+        public long SubmitOrder(OrderRequest request) => 1L;
+        public void CancelOrder(long orderId) { }
+        public OrderStatus GetOrderStatus(long orderId) => OrderStatus.Filled;
 
 #pragma warning disable CS0067
-        public event Action<string, OrderStatus>? OnOrderStatusChanged;
+        public event Action<long, OrderStatus>? OnOrderStatusChanged;
         public event Action<ExecutionReport>? OnTrade;
         public event Action<PositionEvent>? OnPositionChanged;
         public event Action<OrderEvent>? OnOrderEvent;
@@ -204,8 +204,8 @@ public class RuleStrategyBaseTests
         // 默认空实现回调调用
         strategy.OnStart(context);
         strategy.OnEvent(context, "dividend", Array.Empty<IDataRow>());
-        strategy.OnOrderStatusChanged(context, "ord-1", OrderStatus.Filled);
-        strategy.OnTrade(context, new ExecutionReport("ord-1", "sh.600000", 10.0, 100m, 1.0, DateTime.UtcNow));
+        strategy.OnOrderStatusChanged(context, 1L, OrderStatus.Filled);
+        strategy.OnTrade(context, new ExecutionReport(1L, "sh.600000", 10.0, 100m, 1.0, DateTime.UtcNow));
         strategy.OnPositionChanged(context, new PositionEvent("sh.600000", 100m, 10.0, DateTime.UtcNow));
         strategy.OnStop(context);
 

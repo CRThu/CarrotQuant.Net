@@ -12,7 +12,7 @@ namespace CarrotBacktesting.NET.Engine.Exchange;
 internal sealed class OrderBook
 {
     private readonly Dictionary<string, List<SimulatedOrder>> _pendingBySymbol = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, SimulatedOrder> _ordersById = new(StringComparer.Ordinal);
+    private readonly Dictionary<long, SimulatedOrder> _ordersById = new();
 
     /// <summary>
     /// 当前挂单簿中的总活跃挂单数。
@@ -44,7 +44,7 @@ internal sealed class OrderBook
     /// <summary>
     /// 尝试按订单 ID 获取挂单对象。
     /// </summary>
-    public bool TryGet(string orderId, out SimulatedOrder? order)
+    public bool TryGet(long orderId, out SimulatedOrder? order)
     {
         return _ordersById.TryGetValue(orderId, out order);
     }
@@ -52,7 +52,7 @@ internal sealed class OrderBook
     /// <summary>
     /// 从挂单簿中移除指定订单（成交或撤单）。若对应标的桶清空，则及时注销字典键。
     /// </summary>
-    public bool Remove(string orderId, out SimulatedOrder? removedOrder)
+    public bool Remove(long orderId, out SimulatedOrder? removedOrder)
     {
         if (_ordersById.Remove(orderId, out removedOrder))
         {
@@ -109,8 +109,8 @@ internal sealed class OrderBook
         var canceled = new List<SimulatedOrder>();
         foreach (var pair in _ordersById)
         {
-            // 依据交易所物理规则，日切清算仅撤销未成交的日内限价排队单（Limit + Day）
-            if (pair.Value.Request.Type == OrderType.Limit && pair.Value.TimeInForce == TimeInForce.Day)
+            // 依据交易所物理规则，日切清算撤销所有未成交的日内排队限价单（非市价且 TimeInForce.Day，涵盖 Limit 与触发后排队的 StopLimit / TakeProfitLimit）
+            if (pair.Value.TimeInForce == TimeInForce.Day && pair.Value.Request.Type != OrderType.Market)
             {
                 canceled.Add(pair.Value);
             }
@@ -129,7 +129,7 @@ internal sealed class OrderBook
         List<string>? emptySymbols = null;
         foreach (var (symbol, list) in _pendingBySymbol)
         {
-            list.RemoveAll(o => o.Request.Type == OrderType.Limit && o.TimeInForce == TimeInForce.Day);
+            list.RemoveAll(o => o.TimeInForce == TimeInForce.Day && o.Request.Type != OrderType.Market);
             if (list.Count == 0)
             {
                 emptySymbols ??= new List<string>();
@@ -154,7 +154,7 @@ internal sealed class OrderBook
 /// </summary>
 internal sealed class SimulatedOrder
 {
-    public string OrderId { get; }
+    public long OrderId { get; }
     public OrderRequest Request { get; }
     public TimeInForce TimeInForce => Request.TimeInForce ?? TimeInForce.Day;
     public MarketTime SubmitTime { get; }
@@ -169,7 +169,7 @@ internal sealed class SimulatedOrder
     public double MarginRate { get; set; }
     public int SettleDays { get; set; }
 
-    public SimulatedOrder(string orderId, OrderRequest request, MarketTime submitTime)
+    public SimulatedOrder(long orderId, OrderRequest request, MarketTime submitTime)
     {
         OrderId = orderId;
         Request = request;

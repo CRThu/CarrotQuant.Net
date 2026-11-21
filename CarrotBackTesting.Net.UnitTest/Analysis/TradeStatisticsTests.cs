@@ -51,8 +51,8 @@ public class TradeStatisticsTests
 
         var settlements = new List<SettlementRecord>
         {
-            new(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 100m, 1000.0, 10.0, 0.0, 99000.0, ""),
-            new(t0.AddDays(5), "sh.600000", "ord-2", OrderDirection.Sell, 12.0, 100m, 1200.0, 10.0, 200.0, 100200.0, "")
+            new(t0, "sh.600000", 1L, OrderDirection.Buy, 10.0, 100m, 1000.0, 10.0, 0.0, 99000.0, ""),
+            new(t0.AddDays(5), "sh.600000", 2L, OrderDirection.Sell, 12.0, 100m, 1200.0, 10.0, 200.0, 100200.0, "")
         };
 
         var options = new AnalysisOptions();

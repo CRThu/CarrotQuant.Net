@@ -23,12 +23,21 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     private readonly AccountLedger _ledger;
     private readonly object _syncLock = new();
 
-    private readonly Dictionary<string, BrokerOrderRecord> _orders = new(StringComparer.Ordinal);
+    private readonly Dictionary<long, BrokerOrderRecord> _orders = new();
+    private readonly Dictionary<long, BrokerOrderRecord> _pendingConditionals = new();
     private long _orderSequence = 0;
     private long _ocoGroupSequence = 0;
     private MarketTime _currentTime = MarketTime.MinValue;
 
-    public event Action<string, OrderStatus>? OnOrderStatusChanged;
+    // 活跃条件单状态机步进复用缓冲区：
+    // 1. 规避高频每步 new 集合的 GC 压力，实现热路径内存零开销（Rule 10）；
+    // 2. 贯彻 Open Calls 模式：在临界区内完成撮合与状态跃迁，将触发单与事件暂存至缓冲区，锁外执行外部事件通知与网关下单，根除潜在死锁隐患。
+    private readonly List<BrokerOrderRecord> _conditionalSortBuffer = new();
+    private readonly List<(BrokerOrderRecord Order, double ExecPrice)> _triggeredOrdersBuffer = new();
+    private readonly List<OrderEvent> _orderEventsBuffer = new();
+    private readonly HashSet<long> _triggeredOcoGroupsBuffer = new();
+
+    public event Action<long, OrderStatus>? OnOrderStatusChanged;
     public event Action<ExecutionReport>? OnTrade;
     public event Action<TradeExecutionDetails>? OnTradeDetails;
     public event Action<Trade>? OnTradeClosed;
@@ -112,12 +121,13 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     {
         lock (_syncLock)
         {
-            double equity = _ledger.GetTotalEquity(sym => ResolvePrice(sym, priceResolver));
+            Func<string, double> priceFunc = sym => ResolvePrice(sym, priceResolver);
+            double equity = _ledger.GetTotalEquity(priceFunc);
             double cash = _ledger.AvailableCash;
             double frozenCash = _ledger.FrozenCash;
             double occupiedMargin = _ledger.GetOccupiedMargin();
-            double totalMarketValue = _ledger.GetTotalMarketValue(sym => ResolvePrice(sym, priceResolver));
-            double unrealizedPnL = _ledger.GetTotalUnrealizedPnL(sym => ResolvePrice(sym, priceResolver));
+            double totalMarketValue = _ledger.GetTotalMarketValue(priceFunc);
+            double unrealizedPnL = _ledger.GetTotalUnrealizedPnL(priceFunc);
             return new EquityPoint(time, equity, cash, frozenCash, occupiedMargin, totalMarketValue, unrealizedPnL);
         }
     }
@@ -132,13 +142,14 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     {
         lock (_syncLock)
         {
-            double equity = _ledger.GetTotalEquity(sym => ResolvePrice(sym, priceResolver));
+            Func<string, double> priceFunc = sym => ResolvePrice(sym, priceResolver);
+            double equity = _ledger.GetTotalEquity(priceFunc);
             double cash = _ledger.AvailableCash;
             double frozenCash = _ledger.FrozenCash;
             double occupiedMargin = _ledger.GetOccupiedMargin();
-            double totalMarketValue = _ledger.GetTotalMarketValue(sym => ResolvePrice(sym, priceResolver));
-            double unrealizedPnL = _ledger.GetTotalUnrealizedPnL(sym => ResolvePrice(sym, priceResolver));
-            var positions = _ledger.GetActivePositionSnapshots(sym => ResolvePrice(sym, priceResolver), equity);
+            double totalMarketValue = _ledger.GetTotalMarketValue(priceFunc);
+            double unrealizedPnL = _ledger.GetTotalUnrealizedPnL(priceFunc);
+            var positions = _ledger.GetActivePositionSnapshots(priceFunc, equity);
 
             return new DailySnapshot(time, equity, cash, frozenCash, occupiedMargin, totalMarketValue, unrealizedPnL, positions);
         }
@@ -153,8 +164,9 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     {
         lock (_syncLock)
         {
-            double equity = _ledger.GetTotalEquity(sym => ResolvePrice(sym, priceResolver));
-            return _ledger.GetActivePositionSnapshots(sym => ResolvePrice(sym, priceResolver), equity);
+            Func<string, double> priceFunc = sym => ResolvePrice(sym, priceResolver);
+            double equity = _ledger.GetTotalEquity(priceFunc);
+            return _ledger.GetActivePositionSnapshots(priceFunc, equity);
         }
     }
 
@@ -207,9 +219,9 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     }
 
     /// <inheritdoc />
-    public OrderStatus GetOrderStatus(string orderId)
+    public OrderStatus GetOrderStatus(long orderId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
+        if (orderId <= 0) return OrderStatus.Rejected;
         lock (_syncLock)
         {
             return _orders.TryGetValue(orderId, out var ord) ? ord.Status : OrderStatus.Rejected;
@@ -217,21 +229,30 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     }
 
     /// <inheritdoc />
-    public (string StopOrderId, string TakeProfitOrderId) Bracket(
+    public (long StopOrderId, long TakeProfitOrderId) Bracket(
         string symbol,
         decimal quantity,
         double stopPrice,
         double takeProfitPrice,
         string orderTag = "",
-        TimeInForce? timeInForce = null)
+        TimeInForce? timeInForce = null,
+        OrderDirection? closeDirection = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         if (quantity <= 0m) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
 
         long groupId = Interlocked.Increment(ref _ocoGroupSequence);
         var tif = timeInForce ?? TimeInForce.GoodTilCanceled;
-        var pos = GetPosition(symbol);
-        var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+        OrderDirection dir;
+        if (closeDirection.HasValue)
+        {
+            dir = closeDirection.Value;
+        }
+        else
+        {
+            var pos = GetPosition(symbol);
+            dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+        }
 
         var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif)
         {
@@ -245,13 +266,13 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             OcoGroupId = groupId
         };
 
-        string stopId = SubmitOrder(stopReq);
-        string tpId = SubmitOrder(tpReq);
+        long stopId = SubmitOrder(stopReq);
+        long tpId = SubmitOrder(tpReq);
         return (stopId, tpId);
     }
 
     /// <inheritdoc />
-    public string SubmitOrder(OrderRequest request)
+    public long SubmitOrder(OrderRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -261,9 +282,19 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             request = request with { TimeInForce = IsConditional(request.Type) ? TimeInForce.GoodTilCanceled : _config.DefaultTimeInForce };
         }
 
-        string orderId = string.IsNullOrWhiteSpace(request.ClientOrderId)
-            ? $"ord_{Interlocked.Increment(ref _orderSequence)}"
-            : request.ClientOrderId;
+        if (request.OrderId < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.OrderId, "订单 OrderId 不能为负数。");
+        }
+
+        long orderId = request.OrderId == 0
+            ? Interlocked.Increment(ref _orderSequence)
+            : request.OrderId;
+
+        if (request.OrderId == 0)
+        {
+            request = request with { OrderId = orderId };
+        }
 
         double multiplier = GetMultiplier(request.Symbol);
         double marginRate = GetMarginRate(request.Symbol);
@@ -290,6 +321,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                         Status = OrderStatus.Pending
                     };
                     _orders[orderId] = record;
+                    _pendingConditionals[orderId] = record;
                 }
             }
 
@@ -339,7 +371,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
 
         lock (_syncLock)
         {
-            // 校验订单标识唯一性：拦截重复 ClientOrderId 避免覆盖在途活跃订单及关联冻结资产
+            // 校验订单标识唯一性：拦截重复 OrderId 避免覆盖在途活跃订单及关联冻结资产
             if (_orders.ContainsKey(orderId))
             {
                 freezeOk = false;
@@ -438,59 +470,58 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     }
 
     /// <inheritdoc />
-    public string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
+    public long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce));
 
     /// <inheritdoc />
-    public string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
+    public long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce));
 
     /// <inheritdoc />
-    public string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    public long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         var pos = GetPosition(symbol);
-        if (pos == 0m) return string.Empty;
+        if (pos == 0m) return 0L;
 
         var dir = pos > 0m ? OrderDirection.Sell : OrderDirection.Buy;
-        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
+        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce));
     }
 
     /// <inheritdoc />
-    public string StopLoss(string symbol, double stopPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    public long StopLoss(string symbol, double stopPrice, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         var pos = GetPosition(symbol);
         var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
         return SubmitOrder(new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
         {
-            ClientOrderId = clientOrderId ?? string.Empty,
             StopPrice = stopPrice
         });
     }
 
     /// <inheritdoc />
-    public string TakeProfit(string symbol, double targetPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    public long TakeProfit(string symbol, double targetPrice, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
         var pos = GetPosition(symbol);
         var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
         return SubmitOrder(new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
         {
-            ClientOrderId = clientOrderId ?? string.Empty,
             StopPrice = targetPrice
         });
     }
 
     /// <inheritdoc />
-    public void CancelOrder(string orderId)
+    public void CancelOrder(long orderId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
+        if (orderId <= 0) return;
         OrderEvent? cancelEvt = null;
         lock (_syncLock)
         {
             if (_orders.TryGetValue(orderId, out var ord) && ord.Status == OrderStatus.Pending && IsConditional(ord.Request.Type))
             {
+                _pendingConditionals.Remove(orderId);
                 ord.Status = OrderStatus.Canceled;
                 ord.RejectReason = "Canceled by user.";
                 var time = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
@@ -538,52 +569,57 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         ProcessConditionalOrders(currentTime);
     }
 
-    internal void ProcessConditionalOrders(MarketTime currentTime)
+    /// <inheritdoc />
+    public void ProcessConditionalOrders(MarketTime currentTime)
     {
         if (_gateway is not ISimulatedExchange sim) return;
 
-        List<BrokerOrderRecord>? pendingConditionals = null;
         lock (_syncLock)
         {
-            foreach (var kvp in _orders)
+            if (_pendingConditionals.Count == 0) return;
+
+            _conditionalSortBuffer.Clear();
+            foreach (var kvp in _pendingConditionals)
             {
-                var ord = kvp.Value;
-                if (ord.Status == OrderStatus.Pending && IsConditional(ord.Request.Type))
-                {
-                    pendingConditionals ??= new List<BrokerOrderRecord>();
-                    pendingConditionals.Add(ord);
-                }
+                _conditionalSortBuffer.Add(kvp.Value);
             }
-        }
 
-        if (pendingConditionals == null || pendingConditionals.Count == 0) return;
-
-        // 悲观仲裁：先排 Stop/StopLimit，再排 TakeProfit/TakeProfitLimit
-        pendingConditionals.Sort((a, b) =>
-        {
-            bool aIsStop = a.Request.Type is OrderType.Stop or OrderType.StopLimit;
-            bool bIsStop = b.Request.Type is OrderType.Stop or OrderType.StopLimit;
-            if (aIsStop && !bIsStop) return -1;
-            if (!aIsStop && bIsStop) return 1;
-            return 0;
-        });
-
-        var triggeredOrders = new List<(BrokerOrderRecord Order, double ExecPrice)>();
-        var rejectedOrders = new List<(BrokerOrderRecord Order, string Reason)>();
-        var ocoCanceledOrders = new List<(BrokerOrderRecord Order, string Reason)>();
-        var triggeredOcoGroups = new HashSet<long>();
-
-        lock (_syncLock)
-        {
-            foreach (var ord in pendingConditionals)
+            // 悲观仲裁：先排 Stop/StopLimit，再排 TakeProfit/TakeProfitLimit
+            _conditionalSortBuffer.Sort((a, b) =>
             {
+                bool aIsStop = a.Request.Type is OrderType.Stop or OrderType.StopLimit;
+                bool bIsStop = b.Request.Type is OrderType.Stop or OrderType.StopLimit;
+                if (aIsStop && !bIsStop) return -1;
+                if (!aIsStop && bIsStop) return 1;
+                return 0;
+            });
+
+            _triggeredOrdersBuffer.Clear();
+            _orderEventsBuffer.Clear();
+            _triggeredOcoGroupsBuffer.Clear();
+
+            for (int i = 0; i < _conditionalSortBuffer.Count; i++)
+            {
+                var ord = _conditionalSortBuffer[i];
                 if (ord.Status != OrderStatus.Pending) continue;
 
-                if (ord.Request.OcoGroupId > 0 && triggeredOcoGroups.Contains(ord.Request.OcoGroupId))
+                if (ord.Request.OcoGroupId > 0 && _triggeredOcoGroupsBuffer.Contains(ord.Request.OcoGroupId))
                 {
                     ord.Status = OrderStatus.Canceled;
                     ord.RejectReason = "Canceled by OCO bracket trigger.";
-                    ocoCanceledOrders.Add((ord, "Canceled by OCO bracket trigger."));
+                    _pendingConditionals.Remove(ord.OrderId);
+                    _orderEventsBuffer.Add(new OrderEvent(
+                        currentTime,
+                        ord.OrderId,
+                        ord.Request.Symbol,
+                        ord.Request.Direction,
+                        ord.Request.Type,
+                        ord.Request.Price,
+                        ord.Request.Quantity,
+                        OrderEventType.Canceled,
+                        OrderStatus.Canceled,
+                        Reason: ord.RejectReason,
+                        OrderTag: ord.Request.OrderTag));
                     continue;
                 }
 
@@ -609,7 +645,19 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                     {
                         ord.Status = OrderStatus.Rejected;
                         ord.RejectReason = rejectReason ?? "Pre-freeze check failed due to insufficient available position/cash.";
-                        rejectedOrders.Add((ord, ord.RejectReason));
+                        _pendingConditionals.Remove(ord.OrderId);
+                        _orderEventsBuffer.Add(new OrderEvent(
+                            currentTime,
+                            ord.OrderId,
+                            ord.Request.Symbol,
+                            ord.Request.Direction,
+                            ord.Request.Type,
+                            ord.Request.Price,
+                            ord.Request.Quantity,
+                            OrderEventType.Rejected,
+                            OrderStatus.Rejected,
+                            Reason: ord.RejectReason,
+                            OrderTag: ord.Request.OrderTag));
                     }
                     else
                     {
@@ -623,69 +671,56 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                         ord.RemainingFrozenPosition = frozenPos;
                         ord.Status = OrderStatus.Submitted;
 
-                        triggeredOrders.Add((ord, execPrice));
+                        _pendingConditionals.Remove(ord.OrderId);
+                        _triggeredOrdersBuffer.Add((ord, execPrice));
                         if (ord.Request.OcoGroupId > 0)
                         {
-                            triggeredOcoGroups.Add(ord.Request.OcoGroupId);
+                            _triggeredOcoGroupsBuffer.Add(ord.Request.OcoGroupId);
                         }
                     }
                 }
             }
 
             // 联动注销同组其他未触发单
-            if (triggeredOcoGroups.Count > 0)
+            if (_triggeredOcoGroupsBuffer.Count > 0)
             {
-                foreach (var ord in pendingConditionals)
+                for (int i = 0; i < _conditionalSortBuffer.Count; i++)
                 {
-                    if (ord.Status == OrderStatus.Pending && ord.Request.OcoGroupId > 0 && triggeredOcoGroups.Contains(ord.Request.OcoGroupId))
+                    var ord = _conditionalSortBuffer[i];
+                    if (ord.Status == OrderStatus.Pending && ord.Request.OcoGroupId > 0 && _triggeredOcoGroupsBuffer.Contains(ord.Request.OcoGroupId))
                     {
                         ord.Status = OrderStatus.Canceled;
                         ord.RejectReason = "Canceled by OCO bracket trigger.";
-                        ocoCanceledOrders.Add((ord, "Canceled by OCO bracket trigger."));
+                        _pendingConditionals.Remove(ord.OrderId);
+                        _orderEventsBuffer.Add(new OrderEvent(
+                            currentTime,
+                            ord.OrderId,
+                            ord.Request.Symbol,
+                            ord.Request.Direction,
+                            ord.Request.Type,
+                            ord.Request.Price,
+                            ord.Request.Quantity,
+                            OrderEventType.Canceled,
+                            OrderStatus.Canceled,
+                            Reason: ord.RejectReason,
+                            OrderTag: ord.Request.OrderTag));
                     }
                 }
             }
         }
 
-        // 锁外派发拒绝事件
-        foreach (var (ord, reason) in rejectedOrders)
+        // 锁外派发拒绝与撤单事件（Open Calls 模式，杜绝死锁）
+        for (int i = 0; i < _orderEventsBuffer.Count; i++)
         {
-            OnOrderStatusChanged?.Invoke(ord.OrderId, OrderStatus.Rejected);
-            OnOrderEvent?.Invoke(new OrderEvent(
-                currentTime,
-                ord.OrderId,
-                ord.Request.Symbol,
-                ord.Request.Direction,
-                ord.Request.Type,
-                ord.Request.Price,
-                ord.Request.Quantity,
-                OrderEventType.Rejected,
-                OrderStatus.Rejected,
-                Reason: reason,
-                OrderTag: ord.Request.OrderTag));
-        }
-
-        // 锁外派发 OCO 撤单事件
-        foreach (var (ord, reason) in ocoCanceledOrders)
-        {
-            OnOrderStatusChanged?.Invoke(ord.OrderId, OrderStatus.Canceled);
-            OnOrderEvent?.Invoke(new OrderEvent(
-                currentTime,
-                ord.OrderId,
-                ord.Request.Symbol,
-                ord.Request.Direction,
-                ord.Request.Type,
-                ord.Request.Price,
-                ord.Request.Quantity,
-                OrderEventType.Canceled,
-                OrderStatus.Canceled,
-                Reason: reason,
-                OrderTag: ord.Request.OrderTag));
+            var evt = _orderEventsBuffer[i];
+            OnOrderStatusChanged?.Invoke(evt.OrderId, evt.Status);
+            OnOrderEvent?.Invoke(evt);
         }
 
         // 锁外向网关发送触发后的报单
-        foreach (var (ord, execPrice) in triggeredOrders)
+        for (int i = 0; i < _triggeredOrdersBuffer.Count; i++)
         {
+            var (ord, execPrice) = _triggeredOrdersBuffer[i];
             var triggeredReq = ord.Request with { Price = execPrice };
             _gateway.SendOrder(ord.OrderId, triggeredReq);
         }
@@ -746,7 +781,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     public void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions)
     {
         ArgumentNullException.ThrowIfNull(positions);
-        List<string>? canceledOrderIds = null;
+        List<long>? canceledOrderIds = null;
         List<OrderEvent>? canceledEvents = null;
 
         lock (_syncLock)
@@ -764,7 +799,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                     ord.Status = OrderStatus.Canceled;
                     ord.RemainingFrozenCash = 0.0;
                     ord.RemainingFrozenPosition = 0m;
-                    canceledOrderIds ??= new List<string>();
+                    canceledOrderIds ??= new List<long>();
                     canceledOrderIds.Add(ord.OrderId);
 
                     canceledEvents ??= new List<OrderEvent>();
@@ -1093,7 +1128,12 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             marketPrice = _config.DefaultExecutionPrice switch
             {
                 ExecutionPriceType.Open => bar.OpenOr(bar.CloseOr(0.0)),
-                ExecutionPriceType.Vwap => bar.Vwap ?? bar.CloseOr(0.0),
+                ExecutionPriceType.Vwap => (bar.Vwap.HasValue && bar.Vwap.Value > 0.0)
+                    ? bar.Vwap.Value
+                    : bar.CloseOr(bar.OpenOr(0.0)),
+                ExecutionPriceType.Average => (bar.HasOpen && bar.HasHigh && bar.HasLow && bar.HasClose)
+                    ? (bar.Open + bar.High + bar.Low + bar.Close) / 4.0
+                    : bar.CloseOr(bar.OpenOr(0.0)),
                 _ => bar.CloseOr(0.0)
             };
         }
@@ -1159,6 +1199,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         {
             _ledger.RestoreState(snapshot.Ledger);
             _orders.Clear();
+            _pendingConditionals.Clear();
             if (snapshot.ActiveOrders != null)
             {
                 foreach (var s in snapshot.ActiveOrders)
@@ -1181,15 +1222,14 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                         RemainingFrozenPosition = s.RemainingFrozenPosition
                     };
                     _orders[s.OrderId] = record;
+                    if (record.Status == OrderStatus.Pending && IsConditional(record.Request.Type))
+                    {
+                        _pendingConditionals[s.OrderId] = record;
+                    }
                 }
             }
         }
     }
-
-    /// <summary>
-    /// 兼容旧版仅恢复纯账本快照。
-    /// </summary>
-    public void RestoreState(AccountLedgerSnapshot snapshot) => _ledger.RestoreState(snapshot);
 }
 
 /// <summary>
@@ -1197,7 +1237,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
 /// </summary>
 internal sealed class BrokerOrderRecord
 {
-    public string OrderId { get; }
+    public long OrderId { get; }
     public OrderRequest Request { get; }
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public string? RejectReason { get; set; }
@@ -1217,7 +1257,7 @@ internal sealed class BrokerOrderRecord
     public decimal InitialFrozenPosition { get; set; }
     public decimal RemainingFrozenPosition { get; set; }
 
-    public BrokerOrderRecord(string orderId, OrderRequest request)
+    public BrokerOrderRecord(long orderId, OrderRequest request)
     {
         OrderId = orderId;
         Request = request;

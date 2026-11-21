@@ -51,7 +51,7 @@ public class MatchingEngineRoleTests
         var bar = new BarSnapshot(9.5, 9.8, 9.4, 9.7, 50000.0, 480000.0);
 
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m);
-        var simOrder = new SimulatedOrder("sim-1", req, time.AddDays(-1));
+        var simOrder = new SimulatedOrder(1L, req, time.AddDays(-1));
 
         var result = matcher.EvaluatePendingLimitOrder(simOrder, 9.7, in bar, time);
 
@@ -72,7 +72,7 @@ public class MatchingEngineRoleTests
 
         // 提交未触碰的限价单（委托总量 600 股）
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 600m);
-        gateway.SendOrder("ord-cons", req);
+        gateway.SendOrder(1L, req);
 
         ExecutionReport? capturedReport = null;
         gateway.OnExecution += r => capturedReport = r;

@@ -91,7 +91,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 }
             }
 
-            public void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status)
+            public void OnOrderStatusChanged(IEngineContext context, long orderId, OrderStatus status)
             {
                 OrderStatusChanges.Add($"{orderId}:{status}");
             }
@@ -389,7 +389,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
                     // 验证当日可用持仓受 T+1 约束仍为 0，并强行提交卖单测试风控拦截（零假阳性）
                     var avail = context.Broker.GetAvailablePosition("sh.600000");
-                    string sellOrdId = context.Broker.SubmitOrder(new OrderRequest(
+                    long sellOrdId = context.Broker.SubmitOrder(new OrderRequest(
                         "sh.600000",
                         OrderDirection.Sell,
                         OrderType.Market,
@@ -409,7 +409,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                     if (avail == 1000m)
                     {
                         // 提交卖单平仓
-                        string ordId = context.Broker.SubmitOrder(new OrderRequest(
+                        long ordId = context.Broker.SubmitOrder(new OrderRequest(
                             "sh.600000",
                             OrderDirection.Sell,
                             OrderType.Market,
@@ -607,10 +607,10 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.IsNotNull(checkpoint);
             Assert.IsTrue(checkpoint.Length >= 32);
 
-            // 1. 验证非法长度异常
-            Assert.ThrowsException<ArgumentException>(() => checkpointable1.RestoreCheckpoint(new byte[10]));
+            // 1. 验证空字节数组异常
+            Assert.ThrowsException<ArgumentException>(() => checkpointable1.RestoreCheckpoint(Array.Empty<byte>()));
 
-            // 2. 验证非法魔数异常
+            // 2. 验证非法格式数据异常
             var corrupted = (byte[])checkpoint.Clone();
             corrupted[0] = 0xFF;
             Assert.ThrowsException<System.IO.InvalidDataException>(() => checkpointable1.RestoreCheckpoint(corrupted));
@@ -1038,17 +1038,12 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var pipeline = StrategyPipeline.Sequential();
             using var engine = new BacktestingEngine(ts, broker, pipeline);
 
-            // 写入正确 Magic (0x43514254) 但错误版本号 (Version = 999) 的检查点二进制
-            using var ms = new MemoryStream();
-            using var writer = new BinaryWriter(ms);
-            writer.Write(0x43514254u);
-            writer.Write(999);
-            writer.Write(0);
-            writer.Write(0);
-            writer.Write(DateTime.Today.Ticks);
-            writer.Write(0.0);
+            var validCheckpoint = ((ICheckpointable)engine).SaveCheckpoint();
+            var state = System.Text.Json.JsonSerializer.Deserialize<EngineCheckpointState>(validCheckpoint)!;
+            var invalidVersionState = state with { Version = 999 };
+            var bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(invalidVersionState);
 
-            Assert.ThrowsException<InvalidDataException>(() => engine.RestoreCheckpoint(ms.ToArray()));
+            Assert.ThrowsException<InvalidDataException>(() => engine.RestoreCheckpoint(bytes));
         }
 
         [TestMethod]
@@ -1062,16 +1057,12 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             using var engine = new BacktestingEngine(ts, broker, pipeline);
 
             // 构造步进索引为 10（超过总交易日数 5）的合法检查点
-            using var ms = new MemoryStream();
-            using var writer = new BinaryWriter(ms);
-            writer.Write(0x43514254u); // Magic
-            writer.Write(1);           // Version = 1
-            writer.Write(1);           // Running
-            writer.Write(10);          // currentIndex = 10
-            writer.Write(DateTime.Today.Ticks);
-            writer.Write(1.0);
+            var validCheckpoint = ((ICheckpointable)engine).SaveCheckpoint();
+            var state = System.Text.Json.JsonSerializer.Deserialize<EngineCheckpointState>(validCheckpoint)!;
+            var pastEndState = state with { CurrentIndex = 10 };
+            var bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(pastEndState);
 
-            engine.RestoreCheckpoint(ms.ToArray());
+            engine.RestoreCheckpoint(bytes);
             engine.Run();
 
             Assert.AreEqual(EngineStatus.Completed, engine.Status);

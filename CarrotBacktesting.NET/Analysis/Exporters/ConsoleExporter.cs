@@ -28,7 +28,6 @@ public sealed record ConsoleExporterOptions
     public bool ShowTradeTags { get; init; } = true;
     public bool ShowSignalGroups { get; init; } = true;
     public bool ShowExtensions { get; init; } = true;
-    public bool ShowCustomArtifacts { get => ShowExtensions; init => ShowExtensions = value; }
 
     // 交付选项
     public bool SaveHtml { get; init; } = false;

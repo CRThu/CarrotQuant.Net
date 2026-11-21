@@ -87,8 +87,8 @@ public class BrokerMatchingMicroBenchmark
     [Benchmark]
     public bool OrderBook_Add_And_Remove()
     {
-        var order = new SimulatedOrder("bench_ord", _limitBuyRequest, _tradeTime);
+        var order = new SimulatedOrder(1L, _limitBuyRequest, _tradeTime);
         _orderBook.Add(order);
-        return _orderBook.Remove("bench_ord", out _);
+        return _orderBook.Remove(1L, out _);
     }
 }

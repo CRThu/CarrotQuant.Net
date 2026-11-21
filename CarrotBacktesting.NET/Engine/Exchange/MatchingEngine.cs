@@ -67,8 +67,9 @@ internal sealed class MatchingEngine
 
         // 4. 即时成交（Taker 规则）：计算滑点
         double fillPrice = CalculateTakerFillPrice(request, basePrice, in bar, tradeTime);
+        double slippageCost = Math.Abs(fillPrice - basePrice) * (double)request.Quantity * multiplier;
 
-        return MatchResult.Filled(fillPrice, request.Quantity, tradeTime, LiquidityRole.Taker);
+        return MatchResult.Filled(fillPrice, request.Quantity, tradeTime, LiquidityRole.Taker, commission: 0.0, slippage: slippageCost);
     }
 
     /// <summary>
@@ -219,6 +220,7 @@ internal readonly struct MatchResult
     public double Commission { get; }
     public MarketTime Time { get; }
     public LiquidityRole Role { get; }
+    public double Slippage { get; }
 
     private MatchResult(
         bool isFilled,
@@ -229,7 +231,8 @@ internal readonly struct MatchResult
         decimal fillQuantity,
         double commission,
         MarketTime time,
-        LiquidityRole role)
+        LiquidityRole role,
+        double slippage = 0.0)
     {
         IsFilled = isFilled;
         IsPending = isPending;
@@ -240,13 +243,14 @@ internal readonly struct MatchResult
         Commission = commission;
         Time = time;
         Role = role;
+        Slippage = slippage;
     }
 
-    public static MatchResult Filled(double fillPrice, decimal fillQuantity, MarketTime time, LiquidityRole role, double commission = 0.0) =>
-        new(true, false, false, null, fillPrice, fillQuantity, commission, time, role);
+    public static MatchResult Filled(double fillPrice, decimal fillQuantity, MarketTime time, LiquidityRole role, double commission = 0.0, double slippage = 0.0) =>
+        new(true, false, false, null, fillPrice, fillQuantity, commission, time, role, slippage);
 
-    public static MatchResult Filled(double fillPrice, decimal fillQuantity, double commission, MarketTime time, LiquidityRole role) =>
-        new(true, false, false, null, fillPrice, fillQuantity, commission, time, role);
+    public static MatchResult Filled(double fillPrice, decimal fillQuantity, double commission, MarketTime time, LiquidityRole role, double slippage = 0.0) =>
+        new(true, false, false, null, fillPrice, fillQuantity, commission, time, role, slippage);
 
     public static MatchResult PendingQueue() =>
         new(false, true, false, null, 0.0, 0m, 0.0, MarketTime.MinValue, LiquidityRole.None);

@@ -79,11 +79,11 @@ public class ConditionalOrderTests
         Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"));
 
         // 同时挂出 9.0 止损单与 12.0 止盈单
-        string stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
-        string tpId = broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 1000m);
+        long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
+        long tpId = broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 1000m);
 
-        Assert.IsFalse(string.IsNullOrWhiteSpace(stopId));
-        Assert.IsFalse(string.IsNullOrWhiteSpace(tpId));
+        Assert.IsTrue(stopId > 0);
+        Assert.IsTrue(tpId > 0);
         Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(stopId));
         Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(tpId));
 
@@ -119,7 +119,7 @@ public class ConditionalOrderTests
         gateway.Step(dates[0], timeseries, 0);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
-        string stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
+        long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
         Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(stopId));
 
         ExecutionReport? fillReport = null;
@@ -164,7 +164,7 @@ public class ConditionalOrderTests
         gateway.Step(dates[0], timeseries, 0);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
-        string stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
+        long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
 
         ExecutionReport? fillReport = null;
         broker.OnTrade += r => { if (r.OrderId == stopId) fillReport = r; };
@@ -208,7 +208,7 @@ public class ConditionalOrderTests
         gateway.Step(dates[0], timeseries, 0);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
-        string tpId = broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 1000m);
+        long tpId = broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 1000m);
 
         ExecutionReport? fillReport = null;
         broker.OnTrade += r => { if (r.OrderId == tpId) fillReport = r; };
@@ -251,7 +251,7 @@ public class ConditionalOrderTests
         gateway.Step(dates[0], timeseries, 0);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
-        string tpId = broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 1000m);
+        long tpId = broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 1000m);
 
         ExecutionReport? fillReport = null;
         broker.OnTrade += r => { if (r.OrderId == tpId) fillReport = r; };
@@ -379,7 +379,7 @@ public class ConditionalOrderTests
         gateway.Step(dates[0], timeseries, 0);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
-        string stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
+        long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
 
         // 策略在止损触发前，由于其他逻辑手动卖平了持仓
         broker.Sell("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
@@ -467,7 +467,7 @@ public class ConditionalOrderTests
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
 
         // 挂出止损单，未指定 TIF
-        string stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
+        long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
 
         // Day 2: 未触碰价格（价格维持在 10.1 以上）
         gateway.Step(dates[1], timeseries, 1);
@@ -504,7 +504,7 @@ public class ConditionalOrderTests
         gateway.Step(dates[0], timeseries, 0);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
-        string stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
+        long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
 
         // Day 2: 保持在 10.1，抓取检查点
         gateway.Step(dates[1], timeseries, 1);
@@ -560,7 +560,7 @@ public class ConditionalOrderTests
         gateway.Step(dates[0], timeseries, 0);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
-        string stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
+        long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
 
         OrderEvent? rejectEvent = null;
         broker.OnOrderEvent += ev => { if (ev.OrderId == stopId && ev.EventType == OrderEventType.Rejected) rejectEvent = ev; };
@@ -574,5 +574,165 @@ public class ConditionalOrderTests
         Assert.IsNotNull(rejectEvent);
         Assert.IsTrue(rejectEvent.Reason.Contains("volume", StringComparison.OrdinalIgnoreCase));
         Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+    }
+
+    [TestMethod]
+    public void BracketOrder_ConsecutiveCalls_ShouldHaveUniqueOcoGroupIds()
+    {
+        var config = new BrokerConfig { InitialCash = 100_000.0 };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+
+        var (stop1, tp1) = broker.Bracket("sh.600000", 100m, 9.0, 11.0);
+        var (stop2, tp2) = broker.Bracket("sz.000001", 100m, 9.0, 11.0);
+
+        Assert.AreNotEqual(stop1, stop2);
+        Assert.AreNotEqual(tp1, tp2);
+    }
+
+    [TestMethod]
+    public void BracketOrder_ExplicitCloseDirection_ShouldRespectSpecifiedDirection()
+    {
+        var config = new BrokerConfig { InitialCash = 100_000.0 };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+
+        // 显式指定平仓方向为 Buy（用于空头平仓保护）
+        var (stopId, tpId) = broker.Bracket(
+            "sh.600000",
+            100m,
+            stopPrice: 11.0,
+            takeProfitPrice: 9.0,
+            closeDirection: OrderDirection.Buy);
+
+        // 验证状态为挂单
+        Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(stopId));
+        Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(tpId));
+    }
+
+    [TestMethod]
+    public void BracketOrder_ShortPosition_TriggerStopLoss_ShouldBuyToCoverAndCancelTakeProfit()
+    {
+        // 场景：开空单 100 股，挂出买入平空止损单 (11.0) 与止盈单 (9.0)。
+        // 行情冲高至 11.5，触发止损，验证买入平仓且止盈单被自动联动撤销。
+        var (timeseries, dates) = CreateMultiFieldTimeseries(
+            "IF2412",
+            open: new[] { 10.0, 10.5 },
+            high: new[] { 10.5, 11.5 },
+            low: new[] { 9.8, 10.2 },
+            close: new[] { 10.0, 11.2 });
+
+        var config = new BrokerConfig
+        {
+            InitialCash = 100_000.0,
+            AllowShort = true,
+            Slippage = 0.0,
+            FeeRate = 0.0,
+            DefaultExecutionPrice = ExecutionPriceType.Close
+        };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+        var driver = (IBrokerEngineDriver)broker;
+
+        // Day 1: 建立空头仓位 -100 股
+        gateway.Step(dates[0], timeseries, 0);
+        driver.Step(dates[0]);
+        broker.Sell("IF2412", 100m, price: 10.0, type: OrderType.Market);
+
+        // 挂 Bracket 单，平仓方向显式为 Buy（买入平空）
+        var (stopId, tpId) = broker.Bracket(
+            "IF2412",
+            100m,
+            stopPrice: 11.0,
+            takeProfitPrice: 9.0,
+            closeDirection: OrderDirection.Buy);
+
+        Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(stopId));
+        Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(tpId));
+
+        // Day 2: 价格涨至 11.2，触发买入平空止损
+        gateway.Step(dates[1], timeseries, 1);
+        driver.Step(dates[1]);
+
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(stopId));
+        Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(tpId));
+        Assert.AreEqual(0m, broker.GetPosition("IF2412"));
+    }
+
+    [TestMethod]
+    public void ConditionalOrder_ActivePruningAndCancellation_ShouldPruneImmediately()
+    {
+        var (timeseries, dates) = CreateMultiFieldTimeseries(
+            "sh.600000",
+            open: new[] { 10.0, 8.5 },
+            high: new[] { 10.5, 8.6 },
+            low: new[] { 9.8, 8.2 },
+            close: new[] { 10.0, 8.4 });
+
+        var config = new BrokerConfig { InitialCash = 100_000.0, DefaultExecutionPrice = ExecutionPriceType.Close };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+        var driver = (IBrokerEngineDriver)broker;
+
+        gateway.Step(dates[0], timeseries, 0);
+        driver.Step(dates[0]);
+        broker.Buy("sh.600000", 200m, price: 10.0, type: OrderType.Market);
+
+        long stopId1 = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 100m);
+        long stopId2 = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 100m);
+
+        // 取消第 1 笔，验证从活跃集合移出
+        broker.CancelOrder(stopId1);
+        Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(stopId1));
+        Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(stopId2));
+
+        // Day 2 步进
+        gateway.Step(dates[1], timeseries, 1);
+        driver.Step(dates[1]);
+
+        // stopId1 依然为 Canceled，stopId2 触发成交
+        Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(stopId1));
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(stopId2));
+        Assert.AreEqual(100m, broker.GetPosition("sh.600000"));
+    }
+
+    [TestMethod]
+    public void ConditionalOrder_CheckpointRestore_PendingConditionalsPreservedAndTriggered()
+    {
+        var (timeseries, dates) = CreateMultiFieldTimeseries(
+            "sh.600000",
+            open: new[] { 10.0, 8.5 },
+            high: new[] { 10.5, 8.6 },
+            low: new[] { 9.8, 8.2 },
+            close: new[] { 10.0, 8.4 });
+
+        var config = new BrokerConfig { InitialCash = 100_000.0, DefaultExecutionPrice = ExecutionPriceType.Close };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+        var driver = (IBrokerEngineDriver)broker;
+
+        gateway.Step(dates[0], timeseries, 0);
+        driver.Step(dates[0]);
+        broker.Buy("sh.600000", 100m, price: 10.0, type: OrderType.Market);
+        long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 100m);
+
+        // 保存快照
+        var snap = broker.SaveState();
+
+        // 创建全新实例并恢复快照
+        var newGateway = new SimulatedExchangeGateway(config);
+        var newBroker = new Broker(newGateway, config);
+        var newDriver = (IBrokerEngineDriver)newBroker;
+        newBroker.RestoreState(snap);
+
+        // 验证恢复后条件单仍为 Pending
+        Assert.AreEqual(OrderStatus.Pending, newBroker.GetOrderStatus(stopId));
+
+        // 推进 Day 2 行情，验证恢复后的活跃条件单能正常触发并成交
+        newGateway.Step(dates[1], timeseries, 1);
+        newDriver.Step(dates[1]);
+
+        Assert.AreEqual(OrderStatus.Filled, newBroker.GetOrderStatus(stopId));
+        Assert.AreEqual(0m, newBroker.GetPosition("sh.600000"));
     }
 }

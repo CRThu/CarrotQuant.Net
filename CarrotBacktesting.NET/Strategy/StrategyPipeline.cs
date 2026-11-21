@@ -170,7 +170,7 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     }
 
     /// <inheritdoc />
-    public virtual void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status)
+    public virtual void OnOrderStatusChanged(IEngineContext context, long orderId, OrderStatus status)
     {
         EnsureCompiled();
         for (int i = 0; i < _compiledStrategies.Length; i++)

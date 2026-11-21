@@ -166,25 +166,25 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var ts = CreateMockRegistry();
             var config = new BrokerConfig { InitialCash = 100_000.0, SettleDays = 0, FeeRate = 0.0, Slippage = 0.0 };
             var broker = new Broker(new SimulatedExchangeGateway(config), config);
-            var ctx = new EngineContext(ts, broker);
+            IEngineContext ctx = new EngineContext(ts, broker);
 
             // 1. context.Buy 动词（默认市价单）
-            string buyId = ctx.Buy("sh.600000", 200m, 10.0, clientOrderId: "ctx_buy_01");
-            Assert.AreEqual("ctx_buy_01", buyId);
+            long buyId = ctx.Buy("sh.600000", 200m, 10.0, orderTag: "ctx_buy_01");
+            Assert.IsTrue(buyId > 0);
             Assert.AreEqual(200m, ctx.GetPosition("sh.600000"));
 
             // 2. context.Sell 动词卖出 50 股
-            string sellId = ctx.Sell("sh.600000", 50m, 10.0, clientOrderId: "ctx_sell_01");
-            Assert.AreEqual("ctx_sell_01", sellId);
+            long sellId = ctx.Sell("sh.600000", 50m, 10.0, orderTag: "ctx_sell_01");
+            Assert.IsTrue(sellId > 0);
             Assert.AreEqual(150m, ctx.GetPosition("sh.600000"));
 
             // 3. context.ClosePosition 动词全额平仓剩余 150 股
-            string closeId = ctx.ClosePosition("sh.600000", 10.0, clientOrderId: "ctx_close_01");
-            Assert.AreEqual("ctx_close_01", closeId);
+            long closeId = ctx.ClosePosition("sh.600000", 10.0, orderTag: "ctx_close_01");
+            Assert.IsTrue(closeId > 0);
             Assert.AreEqual(0m, ctx.GetPosition("sh.600000"));
 
-            // 4. 空仓调用 ClosePosition 返回 string.Empty
-            Assert.AreEqual(string.Empty, ctx.ClosePosition("sh.600000"));
+            // 4. 空仓调用 ClosePosition 返回 0L
+            Assert.AreEqual(0L, ctx.ClosePosition("sh.600000"));
         }
     }
 }

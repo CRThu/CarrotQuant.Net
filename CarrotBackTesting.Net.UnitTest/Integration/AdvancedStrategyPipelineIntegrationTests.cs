@@ -96,7 +96,7 @@ public class AdvancedStrategyPipelineIntegrationTests
                         if (!double.IsNaN(close) && close > 0)
                         {
                             var orderId = context.Broker.SubmitOrder(new OrderRequest(sym, OrderDirection.Buy, close, 500m));
-                            if (!string.IsNullOrEmpty(orderId)) OrdersPlaced++;
+                            if (orderId > 0) OrdersPlaced++;
                         }
                     }
                 }
@@ -424,7 +424,7 @@ public class AdvancedStrategyPipelineIntegrationTests
                 if (!double.IsNaN(newClose) && newClose > 0.0)
                 {
                     var orderId = context.Broker.SubmitOrder(new OrderRequest(bestSymbol, OrderDirection.Buy, newClose, 1000m));
-                    if (!string.IsNullOrEmpty(orderId))
+                    if (orderId > 0)
                     {
                         _currentlyHeld = bestSymbol;
                         RebalanceCount++;
@@ -614,7 +614,7 @@ public class AdvancedStrategyPipelineIntegrationTests
                 if (context.GetPosition(symbols[i]) == 0m)
                 {
                     var orderId = context.Broker.SubmitOrder(new OrderRequest(symbols[i], OrderDirection.Buy, close, 500m));
-                    if (!string.IsNullOrEmpty(orderId))
+                    if (orderId > 0)
                     {
                         BuyOrdersPlaced++;
                     }

@@ -33,7 +33,7 @@ public class EngineCheckpointTests
         // 买入建仓产生持仓和在途交收批次
         var buyReq = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m);
         ledger.TryFreeze(buyReq, 10.0, 1.0, 1.0, out var cQty, out var oQty, out var fCash, out var fPos, out _);
-        var fillBuy = new ExecutionReport("ord-1", "SH.600000", 10.0, 1000m, 5.0, t0);
+        var fillBuy = new ExecutionReport(1L, "SH.600000", 10.0, 1000m, 5.0, t0);
         ledger.CommitFill(fillBuy, true, cQty, oQty, 1.0, 1.0, 1, fCash, fPos, t0, out _);
 
         // 验证当前状态：现金 89995，持仓 1000，可用 0，在途批次 1000，在途手续费池 5.0
@@ -76,16 +76,16 @@ public class EngineCheckpointTests
 
         // 提交一个低于市价的限价买单 (9.5 < 10.0)，进入挂单簿排队
         var orderReq = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m);
-        gateway.SendOrder("ord-limit-1", orderReq);
+        gateway.SendOrder(101L, orderReq);
 
         // 1. 抓取快照
         var snapshot = gateway.SaveState();
         Assert.AreEqual(1, snapshot.PendingOrders.Count);
-        Assert.AreEqual("ord-limit-1", snapshot.PendingOrders[0].OrderId);
+        Assert.AreEqual(101L, snapshot.PendingOrders[0].OrderId);
         Assert.AreEqual(9.5, snapshot.PendingOrders[0].Request.Price);
 
         // 2. 撤销订单导致挂单簿清空
-        gateway.CancelOrder("ord-limit-1");
+        gateway.CancelOrder(101L);
         var emptySnapshot = gateway.SaveState();
         Assert.AreEqual(0, emptySnapshot.PendingOrders.Count);
 
@@ -93,7 +93,7 @@ public class EngineCheckpointTests
         gateway.RestoreState(snapshot);
         var restoredSnapshot = gateway.SaveState();
         Assert.AreEqual(1, restoredSnapshot.PendingOrders.Count);
-        Assert.AreEqual("ord-limit-1", restoredSnapshot.PendingOrders[0].OrderId);
+        Assert.AreEqual(101L, restoredSnapshot.PendingOrders[0].OrderId);
     }
 
     [TestMethod]
@@ -127,7 +127,7 @@ public class EngineCheckpointTests
 
         // 提交一个低于市价的限价买单，并在 Broker 层面完成两阶段预冻结
         var req = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m);
-        string orderId = broker.SubmitOrder(req);
+        long orderId = broker.SubmitOrder(req);
 
         Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
         Assert.IsTrue(broker.FrozenCash > 0, "预冻结现金必须大于 0");
@@ -191,8 +191,8 @@ public class EngineCheckpointTests
     private class LimitPendingAndExecutionStrategy : IStrategy
     {
         public string Name => "LimitPendingAndExecutionStrategy";
-        public string OrderIdBuy { get; private set; } = "";
-        public string OrderIdSell { get; private set; } = "";
+        public long OrderIdBuy { get; private set; } = 0;
+        public long OrderIdSell { get; private set; } = 0;
         public int Day3Position { get; private set; } = -1;
 
         public void OnStart(IEngineContext context) { }
@@ -298,7 +298,7 @@ public class EngineCheckpointTests
             var resultB = engineB2.GetResult();
 
             Assert.AreEqual(1000, strategyB2.Day3Position, "Day 3 持仓应该为 1000");
-            Assert.AreNotEqual("", strategyB2.OrderIdSell, "Day 3 卖单应该已被提交");
+            Assert.AreNotEqual(0L, strategyB2.OrderIdSell, "Day 3 卖单应该已被提交");
 
             // 严格断言：连续回测 与 断点恢复回测 的产出 100% 绝对一致！
             Assert.AreEqual(resultA.ClosedTrades.Count, resultB.ClosedTrades.Count, "平仓笔数一致");

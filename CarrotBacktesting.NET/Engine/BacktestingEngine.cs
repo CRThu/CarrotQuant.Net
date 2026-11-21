@@ -47,7 +47,6 @@ namespace CarrotBacktesting.NET.Engine
         private readonly IStorageResolver? _resolver;
         private MarketTime _lastDate = MarketTime.MinValue;
 
-        private const uint StateMagic = 0x43514254; // "CQBT"
         private const int StateVersion = 1;
         private int _resumeFromIndex = -1;
 
@@ -61,7 +60,7 @@ namespace CarrotBacktesting.NET.Engine
         private double _progress = 0.0;
         private bool _disposed = false;
 
-        private readonly Action<string, OrderStatus> _orderStatusHandler;
+        private readonly Action<long, OrderStatus> _orderStatusHandler;
         private readonly Action<ExecutionReport> _tradeHandler;
         private readonly Action<SettlementRecord> _settlementHandler;
         private readonly Action<Trade> _tradeClosedHandler;
@@ -368,8 +367,8 @@ namespace CarrotBacktesting.NET.Engine
                 // 4. 触发策略启动生命周期
                 _pipeline.OnStart(_context);
 
-                // 若处于断点续跑模式，策略在 OnStart 中刚刚注册就绪的指标池必须在此刻执行历史时序补齐预热
-                if (isResuming && startIndex > 0)
+                // 若存在起测点之前的历史数据（如断点续跑或显式配置了 StartDate 启动），策略在 OnStart 中刚刚注册就绪的指标池必须在此刻执行历史时序补齐预热
+                if (startIndex > 0)
                 {
                     PrewarmIndicatorsAfterRestore(startIndex - 1);
                 }
@@ -467,7 +466,7 @@ namespace CarrotBacktesting.NET.Engine
 
                     // ==================== Phase 2: Intraday 相位 (盘中时刻) ====================
                     // 2.1 驱动盘中条件单判定（针对 OnOpen 阶段新提交的条件单）
-                    (_broker as Broker.Broker)?.ProcessConditionalOrders(currentTime);
+                    _brokerDriver?.ProcessConditionalOrders(currentTime);
 
                     // 2.2 离散事件常数时间轻量探测与派发
                     if (_events.HasNewEvents(currentTime))
@@ -750,6 +749,11 @@ namespace CarrotBacktesting.NET.Engine
                     throw new InvalidOperationException($"仅可在引擎处于 Idle 状态时恢复检查点，当前状态为: {_status}");
                 }
 
+                if (state.Version != StateVersion)
+                {
+                    throw new InvalidDataException($"不支持的检查点数据版本: {state.Version}，当前引擎版本为: {StateVersion}。");
+                }
+
                 if (_broker is ICheckpointable<BrokerSnapshot> brokerCheckpointable)
                 {
                     brokerCheckpointable.RestoreState(state.Broker);
@@ -815,51 +819,23 @@ namespace CarrotBacktesting.NET.Engine
         public void RestoreCheckpoint(byte[] checkpoint)
         {
             ArgumentNullException.ThrowIfNull(checkpoint);
-
-            if (checkpoint.Length > 0 && checkpoint[0] == (byte)'{')
+            if (checkpoint.Length == 0)
             {
-                var state = System.Text.Json.JsonSerializer.Deserialize<EngineCheckpointState>(checkpoint);
-                if (state != null)
-                {
-                    RestoreState(state);
-                    return;
-                }
+                throw new ArgumentException("恢复检查点数据字节数组不可为空。", nameof(checkpoint));
             }
 
-            if (checkpoint.Length < 32)
+            EngineCheckpointState state;
+            try
             {
-                throw new ArgumentException($"恢复检查点数据字节长度不足，实际为 {checkpoint.Length} 字节。", nameof(checkpoint));
+                state = System.Text.Json.JsonSerializer.Deserialize<EngineCheckpointState>(checkpoint)
+                    ?? throw new InvalidDataException("反序列化检查点状态对象为空。");
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                throw new InvalidDataException("无效的检查点数据，非合法 JSON 格式。", ex);
             }
 
-            lock (_stateLock)
-            {
-                if (_status != EngineStatus.Idle)
-                {
-                    throw new InvalidOperationException($"仅可在引擎处于 Idle 状态时恢复检查点，当前状态为: {_status}");
-                }
-
-                using var ms = new MemoryStream(checkpoint);
-                using var reader = new BinaryReader(ms);
-                uint magic = reader.ReadUInt32();
-                if (magic != StateMagic)
-                {
-                    throw new InvalidDataException($"无效的检查点数据魔数: 0x{magic:X8}，期望为 0x{StateMagic:X8}。");
-                }
-                int version = reader.ReadInt32();
-                if (version != StateVersion)
-                {
-                    throw new InvalidDataException($"不支持的检查点数据版本: {version}，当前引擎版本为: {StateVersion}。");
-                }
-                _ = reader.ReadInt32();
-                int restoredIndex = reader.ReadInt32();
-                MarketTime restoredTime = MarketTime.FromTicks(reader.ReadInt64());
-                _progress = reader.ReadDouble();
-
-                _context.UpdateStep(restoredIndex, restoredTime);
-                _resumeFromIndex = restoredIndex >= 0 ? restoredIndex + 1 : -1;
-                PrewarmIndicatorsAfterRestore(restoredIndex);
-                _status = EngineStatus.Idle;
-            }
+            RestoreState(state);
         }
 
         #region 二分查找工具 (Binary Search Helpers)

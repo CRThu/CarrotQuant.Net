@@ -20,12 +20,12 @@ public class RoslynStrategyCompilerTests
         public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
         public double GetPositionCost(string symbol) => 0.0;
         public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
-        public string SubmitOrder(OrderRequest request) => "ord-1";
-        public void CancelOrder(string orderId) { }
-        public OrderStatus GetOrderStatus(string orderId) => OrderStatus.Filled;
+        public long SubmitOrder(OrderRequest request) => 1L;
+        public void CancelOrder(long orderId) { }
+        public OrderStatus GetOrderStatus(long orderId) => OrderStatus.Filled;
 
 #pragma warning disable CS0067
-        public event Action<string, OrderStatus>? OnOrderStatusChanged;
+        public event Action<long, OrderStatus>? OnOrderStatusChanged;
         public event Action<ExecutionReport>? OnTrade;
         public event Action<PositionEvent>? OnPositionChanged;
         public event Action<OrderEvent>? OnOrderEvent;

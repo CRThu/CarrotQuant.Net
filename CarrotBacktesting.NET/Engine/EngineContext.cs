@@ -74,30 +74,6 @@ namespace CarrotBacktesting.NET.Engine
         public int GetSymbolIndex(string symbol) => Timeseries.Metadata.GetSymbolIndex(symbol);
 
         /// <inheritdoc />
-        public string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-            => Broker.Buy(symbol, quantity, price, type, clientOrderId, orderTag, timeInForce);
-
-        /// <inheritdoc />
-        public string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-            => Broker.Sell(symbol, quantity, price, type, clientOrderId, orderTag, timeInForce);
-
-        /// <inheritdoc />
-        public string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-            => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag, timeInForce);
-
-        /// <inheritdoc />
-        public string StopLoss(string symbol, double stopPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-            => Broker.StopLoss(symbol, stopPrice, quantity, clientOrderId, orderTag, timeInForce);
-
-        /// <inheritdoc />
-        public string TakeProfit(string symbol, double targetPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-            => Broker.TakeProfit(symbol, targetPrice, quantity, clientOrderId, orderTag, timeInForce);
-
-        /// <inheritdoc />
-        public (string StopOrderId, string TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null)
-            => Broker.Bracket(symbol, quantity, stopPrice, takeProfitPrice, orderTag, timeInForce);
-
-        /// <inheritdoc />
         public ITradingRecorder? Recorder { get; }
 
         /// <inheritdoc />

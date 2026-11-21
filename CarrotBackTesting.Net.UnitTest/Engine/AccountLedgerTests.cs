@@ -79,7 +79,7 @@ public class AccountLedgerTests
         ledger.TryFreeze(buyReq, 10.0, 1.0, 1.0, out var cQty, out var oQty, out var fCash, out var fPos, out _);
 
         // 模拟成交报告
-        var fillBuy = new ExecutionReport("ord-1", "sh.600000", 10.0, 1000m, 10.0, DateTime.UtcNow); // 手续费 10.0
+        var fillBuy = new ExecutionReport(1L, "sh.600000", 10.0, 1000m, 10.0, DateTime.UtcNow); // 手续费 10.0
         ledger.CommitFill(fillBuy, true, cQty, oQty, 1.0, 1.0, 0, fCash, fPos, DateTime.UtcNow, out _);
 
         // 现金 = 100,000 - 10,000 (货款) - 10 (佣金) = 89,990
@@ -91,7 +91,7 @@ public class AccountLedgerTests
         var sellReq = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 15.0, 1000m);
         ledger.TryFreeze(sellReq, 15.0, 1.0, 1.0, out cQty, out oQty, out fCash, out fPos, out _);
 
-        var fillSell = new ExecutionReport("ord-2", "sh.600000", 15.0, 1000m, 15.0, DateTime.UtcNow); // 手续费 15.0
+        var fillSell = new ExecutionReport(2L, "sh.600000", 15.0, 1000m, 15.0, DateTime.UtcNow); // 手续费 15.0
         ledger.CommitFill(fillSell, false, cQty, oQty, 1.0, 1.0, 0, fCash, fPos, DateTime.UtcNow, out _, out var closedTrade);
 
         // 现金 = 89,990 + 15,000 (回款) - 15 (佣金) = 104,975
@@ -120,7 +120,7 @@ public class AccountLedgerTests
         var buyReq = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m);
         ledger.TryFreeze(buyReq, 10.0, 1.0, 1.0, out var cQty, out var oQty, out var fCash, out var fPos, out _);
 
-        var fillBuy = new ExecutionReport("ord-1", "sh.600000", 10.0, 1000m, 0.0, today);
+        var fillBuy = new ExecutionReport(1L, "sh.600000", 10.0, 1000m, 0.0, today);
         ledger.CommitFill(fillBuy, true, cQty, oQty, 1.0, 1.0, 1, fCash, fPos, today, out _);
 
         Assert.AreEqual(1000m, ledger.GetPosition("sh.600000"));
@@ -158,7 +158,7 @@ public class AccountLedgerTests
         Assert.AreEqual(5m, oQty);
         Assert.AreEqual(0m, cQty);
 
-        var fillOpen = new ExecutionReport("o-1", "rb2505", 3500.0, 5m, 0.0, DateTime.UtcNow);
+        var fillOpen = new ExecutionReport(1L, "rb2505", 3500.0, 5m, 0.0, DateTime.UtcNow);
         ledger.CommitFill(fillOpen, false, cQty, oQty, 10.0, 0.1, 0, fCash, fPos, DateTime.UtcNow, out _);
 
         Assert.AreEqual(-5m, ledger.GetPosition("rb2505"));
@@ -174,7 +174,7 @@ public class AccountLedgerTests
         Assert.AreEqual(0m, oQty);
         Assert.AreEqual(0.0, fCash, "纯平空所需预冻结现金必须为 0");
 
-        var fillClose = new ExecutionReport("o-2", "rb2505", 3400.0, 5m, 0.0, DateTime.UtcNow);
+        var fillClose = new ExecutionReport(2L, "rb2505", 3400.0, 5m, 0.0, DateTime.UtcNow);
         ledger.CommitFill(fillClose, true, cQty, oQty, 10.0, 0.1, 0, fCash, fPos, DateTime.UtcNow, out _);
 
         Assert.AreEqual(0m, ledger.GetPosition("rb2505"));
@@ -253,13 +253,13 @@ public class AccountLedgerTests
         // 批次 1: 买入 100 股 @ 10 元
         var req1 = new OrderRequest("s", OrderDirection.Buy, OrderType.Market, 10.0, 100m);
         ledger.TryFreeze(req1, 10.0, 1.0, 1.0, out var c1, out var o1, out var fc1, out var fp1, out _);
-        ledger.CommitFill(new ExecutionReport("1", "s", 10.0, 100m, 0.0, DateTime.UtcNow), true, c1, o1, 1.0, 1.0, 0, fc1, fp1, DateTime.UtcNow, out _);
+        ledger.CommitFill(new ExecutionReport(1L, "s", 10.0, 100m, 0.0, DateTime.UtcNow), true, c1, o1, 1.0, 1.0, 0, fc1, fp1, DateTime.UtcNow, out _);
 
         // 批次 2: 买入 100 股 @ 20 元
         // 加权成本应当变为 (100 * 10 + 100 * 20) / 200 = 15 元
         var req2 = new OrderRequest("s", OrderDirection.Buy, OrderType.Market, 20.0, 100m);
         ledger.TryFreeze(req2, 20.0, 1.0, 1.0, out var c2, out var o2, out var fc2, out var fp2, out _);
-        ledger.CommitFill(new ExecutionReport("2", "s", 20.0, 100m, 0.0, DateTime.UtcNow), true, c2, o2, 1.0, 1.0, 0, fc2, fp2, DateTime.UtcNow, out var posEvent);
+        ledger.CommitFill(new ExecutionReport(2L, "s", 20.0, 100m, 0.0, DateTime.UtcNow), true, c2, o2, 1.0, 1.0, 0, fc2, fp2, DateTime.UtcNow, out var posEvent);
 
         Assert.AreEqual(200m, ledger.GetPosition("s"));
         Assert.AreEqual(15.0, posEvent.AveragePrice, 1e-4);
@@ -307,7 +307,7 @@ public class AccountLedgerTests
         // 1. 开仓买入 100 股 @ 10.0 元
         var buyReq = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m) { OrderTag = "TagBuy" };
         ledger.TryFreeze(buyReq, 10.0, 1.0, 1.0, out var cQty, out var oQty, out var fCash, out var fPos, out _);
-        var fillBuy = new ExecutionReport("ord-1", "sh.600000", 10.0, 100m, 5.0, t1);
+        var fillBuy = new ExecutionReport(1L, "sh.600000", 10.0, 100m, 5.0, t1);
 
         ledger.CommitFill(
             fillBuy, true, cQty, oQty, 1.0, 1.0, 0, fCash, fPos, t1, "TagBuy",
@@ -327,7 +327,7 @@ public class AccountLedgerTests
         // 2. 平仓卖出 100 股 @ 15.0 元
         var sellReq = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 15.0, 100m) { OrderTag = "TagSell" };
         ledger.TryFreeze(sellReq, 15.0, 1.0, 1.0, out cQty, out oQty, out fCash, out fPos, out _);
-        var fillSell = new ExecutionReport("ord-2", "sh.600000", 15.0, 100m, 8.0, t2);
+        var fillSell = new ExecutionReport(2L, "sh.600000", 15.0, 100m, 8.0, t2);
 
         ledger.CommitFill(
             fillSell, false, cQty, oQty, 1.0, 1.0, 0, fCash, fPos, t2, "TagSell",

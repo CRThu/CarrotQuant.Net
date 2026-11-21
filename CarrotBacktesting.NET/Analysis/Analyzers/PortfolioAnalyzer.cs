@@ -181,13 +181,6 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
         );
     }
 
-    private static int ResolveDateIndex(IMarketMetadata metadata, MarketTime time)
-    {
-        int idx = metadata.GetDateIndex(time);
-        if (idx >= 0) return idx;
-        return metadata.GetDateIndex(time.Date);
-    }
-
     private static IReadOnlyList<double>? TryCalculateBenchmarkReturns(
         TradingResult result,
         AnalysisOptions options,
@@ -218,7 +211,7 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
             for (int i = 0; i < snapshots.Count; i++)
             {
                 var time = snapshots[i].Time;
-                int row = ResolveDateIndex(metadata, time);
+                int row = AnalysisHelper.ResolveDateIndex(metadata, time);
                 if (row < 0 || row >= priceMatrix.RowCount)
                 {
                     return null;
@@ -249,7 +242,7 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
             for (int i = 0; i < equityCurve.Count; i++)
             {
                 var time = equityCurve[i].Time;
-                int row = ResolveDateIndex(metadata, time);
+                int row = AnalysisHelper.ResolveDateIndex(metadata, time);
                 if (row < 0 || row >= priceMatrix.RowCount)
                 {
                     return null;

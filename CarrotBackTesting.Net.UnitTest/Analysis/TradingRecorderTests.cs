@@ -29,7 +29,7 @@ public class TradingRecorderTests
         var t2 = new DateTime(2024, 1, 2, 10, 0, 0);
 
         // 1. 买入开仓 1000 股 @ 10.0，手续费 5.0
-        var reportBuy = new ExecutionReport("ord-1", "sh.600000", 10.0, 1000m, 5.0, t1);
+        var reportBuy = new ExecutionReport(1L, "sh.600000", 10.0, 1000m, 5.0, t1);
         ledger.CommitFill(
             reportBuy,
             isBuy: true,
@@ -70,7 +70,7 @@ public class TradingRecorderTests
         Assert.AreEqual(10000.0, posSnap.OccupiedMargin);
 
         // 3. 卖出平仓 1000 股 @ 12.0，手续费 6.0
-        var reportSell = new ExecutionReport("ord-2", "sh.600000", 12.0, 1000m, 6.0, t2);
+        var reportSell = new ExecutionReport(2L, "sh.600000", 12.0, 1000m, 6.0, t2);
         ledger.CommitFill(
             reportSell,
             isBuy: false,
@@ -124,7 +124,7 @@ public class TradingRecorderTests
         var t2 = new DateTime(2024, 1, 2, 10, 0, 0);
 
         // 1. 卖出开空 500 股 @ 20.0，手续费 10.0
-        var reportSell = new ExecutionReport("ord-1", "sz.000001", 20.0, 500m, 10.0, t1);
+        var reportSell = new ExecutionReport(1L, "sz.000001", 20.0, 500m, 10.0, t1);
         ledger.CommitFill(
             reportSell,
             isBuy: false,
@@ -149,7 +149,7 @@ public class TradingRecorderTests
         Assert.AreEqual(1000.0, unrealized, 1e-4);
 
         // 3. 买入平空 500 股 @ 18.0，手续费 9.0
-        var reportBuy = new ExecutionReport("ord-2", "sz.000001", 18.0, 500m, 9.0, t2);
+        var reportBuy = new ExecutionReport(2L, "sz.000001", 18.0, 500m, 9.0, t2);
         ledger.CommitFill(
             reportBuy,
             isBuy: true,
@@ -193,14 +193,14 @@ public class TradingRecorderTests
 
         // 1. 买入 1000 股 @ 10.0，手续费 10.0
         ledger.CommitFill(
-            new ExecutionReport("ord-1", "sh.600000", 10.0, 1000m, 10.0, t0),
+            new ExecutionReport(1L, "sh.600000", 10.0, 1000m, 10.0, t0),
             isBuy: true, closeQty: 0m, openQty: 1000m, multiplier: 1.0, marginRate: 1.0, settleDays: 0,
             unfreezeCash: 0.0, unfreezePosition: 0m, exchangeDate: t0.Date, orderTag: "Open1000",
             out _, out _, out _);
 
         // 2. 平仓 400 股 @ 11.0，手续费 4.4
         ledger.CommitFill(
-            new ExecutionReport("ord-2", "sh.600000", 11.0, 400m, 4.4, t0.AddMinutes(10)),
+            new ExecutionReport(2L, "sh.600000", 11.0, 400m, 4.4, t0.AddMinutes(10)),
             isBuy: false, closeQty: 400m, openQty: 0m, multiplier: 1.0, marginRate: 1.0, settleDays: 0,
             unfreezeCash: 0.0, unfreezePosition: 0m, exchangeDate: t0.Date, orderTag: "Close400",
             out _, out var trade1, out var st1);
@@ -228,7 +228,7 @@ public class TradingRecorderTests
         Assert.AreEqual(0.2, p1.MarginRatio, 1e-4);
 
         // 2. 记录交割单与已平仓单
-        var settlement = new SettlementRecord(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 98995.0, "Alpha");
+        var settlement = new SettlementRecord(t0, "sh.600000", 1L, OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 98995.0, "Alpha");
         recorder.Record(settlement);
 
         var trade = new Trade("sh.600000", TradeSide.Long, t0, 10.0, t0.AddMinutes(5), 12.0, 100m, 1.0, 195.0, 0.195, 5.0, 0.0, 5, "Alpha", "TakeProfit");
@@ -241,7 +241,7 @@ public class TradingRecorderTests
         // 4. 记录策略信号与订单动作事件
         recorder.Record(new SignalRecord(t0, "sh.600000", 0.95, "AlphaGroup", "GoldenCross"));
         var ordEvt = new OrderEvent(
-            t0, "ord-1", "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
+            t0, 1L, "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
             OrderEventType.Fill, OrderStatus.Filled,
             FillQuantity: 100m, CumQuantity: 100m, LeavesQuantity: 0m,
             FillPrice: 10.0, Role: LiquidityRole.Taker, Reason: "", OrderTag: "Alpha");
@@ -256,13 +256,13 @@ public class TradingRecorderTests
         Assert.AreEqual(1, result.DailySnapshots.Count);
         Assert.AreEqual(1, result.Signals.Count);
         Assert.AreEqual(1, result.OrderEvents.Count);
-        Assert.AreEqual("ord-1", result.OrderEvents[0].OrderId);
+        Assert.AreEqual(1L, result.OrderEvents[0].OrderId);
         Assert.AreEqual(LiquidityRole.Taker, result.OrderEvents[0].Role);
         Assert.AreEqual(1, result.OrderEvents.Count);
         Assert.AreEqual(LiquidityRole.Taker, result.OrderEvents[0].Role);
         Assert.AreEqual(1, result.OpenPositions.Count);
         Assert.AreEqual(100.0, result.OpenPositions[0].UnrealizedPnL);
-        Assert.AreEqual("ord-1", result.Settlements[0].OrderId);
+        Assert.AreEqual(1L, result.Settlements[0].OrderId);
         Assert.AreEqual(195.0, result.ClosedTrades[0].RealizedPnL);
 
         // 验证重置
@@ -285,8 +285,8 @@ public class TradingRecorderTests
         recorder.Record(new EquityPoint(t0.AddMinutes(1), 102000.0, 80000.0, 0.0, 20000.0, 22000.0, 2000.0));
 
         // 2. 记录交割单与平仓单
-        recorder.Record(new SettlementRecord(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 98995.0, "Buy1"));
-        recorder.Record(new SettlementRecord(t0.AddMinutes(2), "sh.600000", "ord-2", OrderDirection.Sell, 12.0, 100m, 1200.0, 6.0, 194.0, 100189.0, "Sell1"));
+        recorder.Record(new SettlementRecord(t0, "sh.600000", 1L, OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 98995.0, "Buy1"));
+        recorder.Record(new SettlementRecord(t0.AddMinutes(2), "sh.600000", 2L, OrderDirection.Sell, 12.0, 100m, 1200.0, 6.0, 194.0, 100189.0, "Sell1"));
 
         recorder.Record(new Trade("sh.600000", TradeSide.Long, t0, 10.0, t0.AddMinutes(2), 12.0, 100m, 1.0, 194.0, 0.194, 6.0, 0.0, 2, "Buy1", "Sell1"));
 
@@ -297,7 +297,7 @@ public class TradingRecorderTests
         // 4. 记录信号与订单动作事件
         recorder.Record(new SignalRecord(t0, "sh.600000", 0.99, "Alpha", "StrongBuy"));
         recorder.Record(new OrderEvent(
-            t0, "ord-1", "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
+            t0, 1L, "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
             OrderEventType.Fill, OrderStatus.Filled,
             FillQuantity: 100m, CumQuantity: 100m, LeavesQuantity: 0m,
             FillPrice: 10.0, Role: LiquidityRole.Taker, Reason: "", OrderTag: "Buy1"));
@@ -321,10 +321,10 @@ public class TradingRecorderTests
         Assert.AreEqual(1, result.DailySnapshots.Count);
         Assert.AreEqual(1, result.Signals.Count);
         Assert.AreEqual(1, result.OrderEvents.Count);
-        Assert.AreEqual("ord-1", result.OrderEvents[0].OrderId);
+        Assert.AreEqual(1L, result.OrderEvents[0].OrderId);
         Assert.AreEqual(LiquidityRole.Taker, result.OrderEvents[0].Role);
-        Assert.AreEqual("ord-1", result.Settlements[0].OrderId);
-        Assert.AreEqual("ord-2", result.Settlements[1].OrderId);
+        Assert.AreEqual(1L, result.Settlements[0].OrderId);
+        Assert.AreEqual(2L, result.Settlements[1].OrderId);
 
         // 7. 验证纯内存快照直接恢复（ICheckpointable<TradingRecorderSnapshot>）
         var memoryRestoredRecorder = new TradingRecorder();
@@ -332,7 +332,7 @@ public class TradingRecorderTests
         var memResult = memoryRestoredRecorder.GetResult(new[] { pos });
         Assert.AreEqual(2, memResult.EquityCurve.Count);
         Assert.AreEqual(1, memResult.OrderEvents.Count);
-        Assert.AreEqual("ord-1", memResult.OrderEvents[0].OrderId);
+        Assert.AreEqual(1L, memResult.OrderEvents[0].OrderId);
         Assert.AreEqual(194.0, result.ClosedTrades[0].RealizedPnL);
         Assert.AreEqual(500.0, result.DailySnapshots[0].UnrealizedPnL);
         Assert.AreEqual("StrongBuy", result.Signals[0].Reason);
@@ -345,8 +345,8 @@ public class TradingRecorderTests
         var recorder = new TradingRecorder();
         var t0 = new DateTime(2025, 1, 2, 9, 30, 0, DateTimeKind.Utc);
 
-        recorder.Record(new SettlementRecord(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 99000.0, "Tag1"));
-        recorder.Record(new OrderEvent(t0, "ord-1", "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
+        recorder.Record(new SettlementRecord(t0, "sh.600000", 1L, OrderDirection.Buy, 10.0, 100m, 1000.0, 5.0, 0.0, 99000.0, "Tag1"));
+        recorder.Record(new OrderEvent(t0, 1L, "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
             OrderEventType.Submitted, OrderStatus.Submitted, 0m, 0m, 100m));
 
         var snapshot1 = recorder.SaveState();
@@ -356,8 +356,8 @@ public class TradingRecorderTests
         Assert.AreEqual(1, snapshot1.OrderEvents.Count);
 
         // 产生更多后续事件与交割
-        recorder.Record(new SettlementRecord(t0.AddMinutes(1), "sh.600000", "ord-2", OrderDirection.Sell, 12.0, 100m, 1200.0, 6.0, 195.0, 100195.0, "Tag2"));
-        recorder.Record(new OrderEvent(t0.AddMinutes(1), "ord-1", "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
+        recorder.Record(new SettlementRecord(t0.AddMinutes(1), "sh.600000", 2L, OrderDirection.Sell, 12.0, 100m, 1200.0, 6.0, 195.0, 100195.0, "Tag2"));
+        recorder.Record(new OrderEvent(t0.AddMinutes(1), 1L, "sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m,
             OrderEventType.Fill, OrderStatus.Filled, 100m, 100m, 0m));
 
         // 断言 snapshot1 保持物理不可变隔离

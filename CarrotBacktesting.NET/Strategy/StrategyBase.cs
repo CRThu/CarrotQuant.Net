@@ -31,7 +31,7 @@ public abstract class StrategyBase : IStrategy
     public virtual void OnStop(IEngineContext context) { }
 
     /// <inheritdoc />
-    public virtual void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status) { }
+    public virtual void OnOrderStatusChanged(IEngineContext context, long orderId, OrderStatus status) { }
 
     /// <inheritdoc />
     public virtual void OnTrade(IEngineContext context, ExecutionReport e) { }

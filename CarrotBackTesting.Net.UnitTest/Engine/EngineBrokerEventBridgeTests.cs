@@ -17,16 +17,16 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public decimal GetAvailablePosition(string symbol) => GetPosition(symbol);
             public double GetPositionCost(string symbol) => 0.0;
             public IReadOnlyDictionary<string, decimal> GetPositions() => new Dictionary<string, decimal>();
-            public string SubmitOrder(OrderRequest request) => "ord-1";
-            public void CancelOrder(string orderId) { }
-            public OrderStatus GetOrderStatus(string orderId) => OrderStatus.Filled;
+            public long SubmitOrder(OrderRequest request) => 1L;
+            public void CancelOrder(long orderId) { }
+            public OrderStatus GetOrderStatus(long orderId) => OrderStatus.Filled;
 
-            public event Action<string, OrderStatus>? OnOrderStatusChanged;
+            public event Action<long, OrderStatus>? OnOrderStatusChanged;
             public event Action<ExecutionReport>? OnTrade;
             public event Action<PositionEvent>? OnPositionChanged;
             public event Action<OrderEvent>? OnOrderEvent;
 
-            public void SimulateOrderStatus(string orderId, OrderStatus status)
+            public void SimulateOrderStatus(long orderId, OrderStatus status)
             {
                 OnOrderStatusChanged?.Invoke(orderId, status);
             }
@@ -50,13 +50,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         private class DummyStrategy : IStrategy
         {
             public string Name => "DummyStrategy";
-            public string? LastOrderId { get; private set; }
+            public long? LastOrderId { get; private set; }
             public OrderStatus? LastStatus { get; private set; }
             public ExecutionReport? LastTrade { get; private set; }
 
             public void OnUpdate(IEngineContext context) { }
 
-            public void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status)
+            public void OnOrderStatusChanged(IEngineContext context, long orderId, OrderStatus status)
             {
                 LastOrderId = orderId;
                 LastStatus = status;
@@ -74,7 +74,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var broker = new DummyBroker();
             var strategy = new DummyStrategy();
 
-            string? receivedOrderId = null;
+            long? receivedOrderId = null;
             OrderStatus? receivedStatus = null;
             ExecutionReport? receivedReport = null;
 
@@ -90,12 +90,12 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             };
 
             // 触发状态改变
-            broker.SimulateOrderStatus("ord-100", OrderStatus.Submitted);
-            Assert.AreEqual("ord-100", receivedOrderId);
+            broker.SimulateOrderStatus(100L, OrderStatus.Submitted);
+            Assert.AreEqual(100L, receivedOrderId);
             Assert.AreEqual(OrderStatus.Submitted, receivedStatus);
 
             // 触发成交回报
-            var report = new ExecutionReport("ord-100", "sh.600000", 10.5, 1000m, 5.0, DateTime.UtcNow);
+            var report = new ExecutionReport(100L, "sh.600000", 10.5, 1000m, 5.0, DateTime.UtcNow);
             broker.SimulateTrade(report);
             Assert.IsNotNull(receivedReport);
             Assert.AreEqual(10.5, receivedReport.FillPrice);
@@ -109,8 +109,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(1000m, receivedPosition.NewQuantity);
 
             // 测试策略回调调用
-            strategy.OnOrderStatusChanged(null!, "ord-200", OrderStatus.Filled);
-            Assert.AreEqual("ord-200", strategy.LastOrderId);
+            strategy.OnOrderStatusChanged(null!, 200L, OrderStatus.Filled);
+            Assert.AreEqual(200L, strategy.LastOrderId);
             Assert.AreEqual(OrderStatus.Filled, strategy.LastStatus);
 
             strategy.OnTrade(null!, report);
@@ -120,7 +120,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         [TestMethod]
         public void TradeExecutionDetails_Properties_ShouldBeCorrect()
         {
-            var report = new ExecutionReport("ord-1", "sh.600000", 10.5, 500m, 5.0, DateTime.UtcNow);
+            var report = new ExecutionReport(1L, "sh.600000", 10.5, 500m, 5.0, DateTime.UtcNow);
             var details = new TradeExecutionDetails(report, OrderDirection.Buy, 1.0, "TestTag");
             Assert.AreEqual(500m, details.Report.FillQuantity);
             Assert.AreEqual(10.5, details.Report.FillPrice);

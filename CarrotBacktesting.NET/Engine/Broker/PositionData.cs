@@ -37,6 +37,11 @@ internal sealed class PositionData
     public double OpenCommission { get; set; }
 
     /// <summary>
+    /// 在途累计开仓滑点损耗池（用于平仓时等比分摊计入 Trade 闭环滑点损耗，保障摩擦损耗归因真实生效）。
+    /// </summary>
+    public double OpenSlippageCost { get; set; }
+
+    /// <summary>
     /// 该标的的最新行情基准价（用于资产盯市估值）。
     /// </summary>
     public double LastPrice { get; set; }

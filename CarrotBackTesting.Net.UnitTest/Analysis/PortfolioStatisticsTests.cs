@@ -107,8 +107,8 @@ public class PortfolioStatisticsTests
 
         var settlements = new List<SettlementRecord>
         {
-            new(t0.AddDays(10), "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 10000m, 100000.0, 50.0, 0.0, 0.0, ""),
-            new(t0.AddDays(20), "sh.600000", "ord-2", OrderDirection.Sell, 10.0, 10000m, 100000.0, 50.0, 0.0, 100000.0, "")
+            new(t0.AddDays(10), "sh.600000", 1L, OrderDirection.Buy, 10.0, 10000m, 100000.0, 50.0, 0.0, 0.0, ""),
+            new(t0.AddDays(20), "sh.600000", 2L, OrderDirection.Sell, 10.0, 10000m, 100000.0, 50.0, 0.0, 100000.0, "")
         };
 
         var options = new AnalysisOptions();

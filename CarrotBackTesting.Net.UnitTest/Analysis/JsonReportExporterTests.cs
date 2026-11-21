@@ -41,8 +41,8 @@ public class JsonReportExporterTests
 
         var settlements = new List<SettlementRecord>
         {
-            new(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.5, 1000m, 10500.0, 5.25, 0.0, 89494.75, "TrendAlpha"),
-            new(t1, "sh.600000", "ord-2", OrderDirection.Sell, 11.2, 1000m, 11200.0, 5.60, 700.0, 100689.15, "TrendAlpha")
+            new(t0, "sh.600000", 1L, OrderDirection.Buy, 10.5, 1000m, 10500.0, 5.25, 0.0, 89494.75, "TrendAlpha"),
+            new(t1, "sh.600000", 2L, OrderDirection.Sell, 11.2, 1000m, 11200.0, 5.60, 700.0, 100689.15, "TrendAlpha")
         };
 
         var closedTrades = new List<Trade>

@@ -78,15 +78,18 @@ public interface IBroker
     IReadOnlyDictionary<string, decimal> GetPositions();
 
     // 订单生命周期管理与高频交易动词
-    string SubmitOrder(OrderRequest request);
-    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
-    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
-    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "");
-    void CancelOrder(string orderId);
-    OrderStatus GetOrderStatus(string orderId);
+    long SubmitOrder(OrderRequest request);
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long StopLoss(string symbol, double stopPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
+    long TakeProfit(string symbol, double targetPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
+    (long StopLossOrderId, long TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null);
+    void CancelOrder(long orderId);
+    OrderStatus GetOrderStatus(long orderId);
 
     // 异步执行事件
-    event Action<string, OrderStatus> OnOrderStatusChanged;
+    event Action<long, OrderStatus> OnOrderStatusChanged;
     event Action<ExecutionReport> OnTrade;
     event Action<PositionEvent>? OnPositionChanged;
 }

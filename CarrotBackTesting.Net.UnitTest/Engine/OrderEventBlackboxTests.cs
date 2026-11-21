@@ -20,24 +20,24 @@ public class OrderEventBlackboxTests
         public event Action<ExecutionReport>? OnExecution;
         public event Action<OrderStateReport>? OnOrderStateChanged;
 
-        public void SendOrder(string orderId, OrderRequest request)
+        public void SendOrder(long orderId, OrderRequest request)
         {
             if (request.Price >= 20.0)
             {
                 // 模拟网关涨跌停封板拦截
                 OnOrderStateChanged?.Invoke(new OrderStateReport(
                     orderId, OrderStatus.Rejected, DateTime.UtcNow,
-                    request.Symbol, "Price exceeds upper price limit: 20.0 >= 11.0", request.ClientOrderId, request.Quantity));
+                    request.Symbol, "Price exceeds upper price limit: 20.0 >= 11.0", LeavesQuantity: request.Quantity));
             }
             else
             {
                 OnOrderStateChanged?.Invoke(new OrderStateReport(
                     orderId, OrderStatus.Submitted, DateTime.UtcNow,
-                    request.Symbol, ClientOrderId: request.ClientOrderId, LeavesQuantity: request.Quantity));
+                    request.Symbol, LeavesQuantity: request.Quantity));
             }
         }
 
-        public void CancelOrder(string orderId)
+        public void CancelOrder(long orderId)
         {
             OnOrderStateChanged?.Invoke(new OrderStateReport(orderId, OrderStatus.Canceled, DateTime.UtcNow, Reason: "Canceled by client"));
         }
@@ -58,7 +58,7 @@ public class OrderEventBlackboxTests
         var events = new List<OrderEvent>();
         broker.OnOrderEvent += ev => events.Add(ev);
 
-        string orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 10000m));
+        long orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 10000m));
 
         Assert.AreEqual(1, events.Count);
         var ev = events[0];
@@ -83,7 +83,7 @@ public class OrderEventBlackboxTests
         var events = new List<OrderEvent>();
         broker.OnOrderEvent += ev => events.Add(ev);
 
-        string orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 25.0, 100m));
+        long orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 25.0, 100m));
 
         // 预期收到 1 次 Submitted，1 次 Rejected
         Assert.AreEqual(2, events.Count);
@@ -106,7 +106,7 @@ public class OrderEventBlackboxTests
         var events = new List<OrderEvent>();
         broker.OnOrderEvent += ev => events.Add(ev);
 
-        string orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m, "TestTag"));
+        long orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m, "TestTag"));
 
         // 1. Submitted
         Assert.AreEqual(1, events.Count);
@@ -155,7 +155,7 @@ public class OrderEventBlackboxTests
         var events = new List<OrderEvent>();
         broker.OnOrderEvent += ev => events.Add(ev);
 
-        string orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m));
+        long orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m));
 
         // 第 1 笔：成交 100
         gateway.PushExecution(new ExecutionReport(orderId, "sh.600000", 10.0, 100m, 1.0, time0.AddMinutes(1),
@@ -197,7 +197,7 @@ public class OrderEventBlackboxTests
         var broker = new Broker(gateway, new BrokerConfig { InitialCash = 100000.0 });
         broker.Step(new DateTime(2025, 1, 15, 9, 30, 0, DateTimeKind.Utc));
 
-        string orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m));
+        long orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m));
 
         // 故意传入破坏守恒的报告：CumQty(200) + LeavesQty(400) = 600 != 500
         var invalidReport = new ExecutionReport(
@@ -219,7 +219,7 @@ public class OrderEventBlackboxTests
         var events = new List<OrderEvent>();
         broker.OnOrderEvent += ev => events.Add(ev);
 
-        string orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m, "CustomTag"));
+        long orderId = broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 500m, "CustomTag"));
 
         // 模拟网关在 09:30:15 产生拒单回报（携带精确物理时间戳与剩余挂单量）
         var physicalTime = new DateTime(2025, 1, 15, 9, 30, 15, DateTimeKind.Utc);
@@ -229,7 +229,6 @@ public class OrderEventBlackboxTests
             physicalTime,
             Symbol: "sh.600000",
             Reason: "Exceeded daily price fluctuation band",
-            ClientOrderId: "client-ord-123",
             LeavesQuantity: 500m,
             ErrorCode: 1001);
 

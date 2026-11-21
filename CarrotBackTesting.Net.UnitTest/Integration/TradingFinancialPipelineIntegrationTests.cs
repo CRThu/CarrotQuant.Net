@@ -55,9 +55,9 @@ public class TradingFinancialPipelineIntegrationTests
         public string Name => "DeterministicTradingStrategy";
         public int Lookback => 5;
 
-        public string OrderIdBuy { get; private set; } = "";
-        public string OrderIdDay0Sell { get; private set; } = "";
-        public string OrderIdDay1Sell { get; private set; } = "";
+        public long OrderIdBuy { get; private set; } = 0;
+        public long OrderIdDay0Sell { get; private set; } = 0;
+        public long OrderIdDay1Sell { get; private set; } = 0;
 
         public int StepCount { get; private set; }
 
@@ -248,8 +248,8 @@ public class TradingFinancialPipelineIntegrationTests
         public string Name => "LimitOrderMakerStrategy";
         public int Lookback => 5;
 
-        public string OrderIdTouchFill { get; private set; } = "";
-        public string OrderIdToCancel { get; private set; } = "";
+        public long OrderIdTouchFill { get; private set; } = 0;
+        public long OrderIdToCancel { get; private set; } = 0;
         public int StepCount { get; private set; }
 
         public void OnStart(IEngineContext context) { }
@@ -358,13 +358,13 @@ public class TradingFinancialPipelineIntegrationTests
     {
         public string Name => "ExcessiveVolumeStrategy";
         public int Lookback => 5;
-        public string OrderId { get; private set; } = "";
+        public long OrderId { get; private set; } = 0;
 
         public void OnStart(IEngineContext context) { }
 
         public void OnUpdate(IEngineContext context)
         {
-            if (string.IsNullOrEmpty(OrderId))
+            if (OrderId == 0)
             {
                 // 当日 Bar 成交量设定为 10,000 股，VolumeLimit = 0.05 (最大允许 500 股)
                 // 提交 1,000 股买单，必定触发流动性硬约束拦截
@@ -443,13 +443,13 @@ public class TradingFinancialPipelineIntegrationTests
     {
         public string Name => "PriceLimitStrategy";
         public int Lookback => 5;
-        public string OrderId { get; private set; } = "";
+        public long OrderId { get; private set; } = 0;
 
         public void OnStart(IEngineContext context) { }
 
         public void OnUpdate(IEngineContext context)
         {
-            if (string.IsNullOrEmpty(OrderId))
+            if (OrderId == 0)
             {
                 OrderId = context.Broker.SubmitOrder(new OrderRequest("SH.600000", OrderDirection.Buy, 10.0, 1000m));
             }
@@ -1024,7 +1024,7 @@ public class TradingFinancialPipelineIntegrationTests
         simExchange.OnExecution += r => report = r;
 
         // 提交限价 9.5 买单
-        simExchange.SendOrder("limit-touch-1", new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
+        simExchange.SendOrder(101L, new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
 
         // 推进步进，驱动挂单簿被动撮合
         simExchange.Step(dates[0], tsRegistry, 0);

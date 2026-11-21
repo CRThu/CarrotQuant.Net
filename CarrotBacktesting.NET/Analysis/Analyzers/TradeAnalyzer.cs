@@ -135,7 +135,7 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
 
         // 中位数收益率
         Array.Sort(returnRates);
-        double medianReturn = CalculateMedian(returnRates);
+        double medianReturn = AnalysisHelper.CalculateMedian(returnRates);
 
         // 连续盈亏
         var (maxConsWins, maxConsLosses) = CalculateConsecutiveStats(trades);
@@ -249,24 +249,6 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
         return (maxWins, maxLosses);
     }
 
-    private static double CalculateMedian(double[] sortedArray)
-    {
-        if (sortedArray.Length == 0) return 0.0;
-        int mid = sortedArray.Length / 2;
-        if (sortedArray.Length % 2 != 0)
-        {
-            return sortedArray[mid];
-        }
-        return (sortedArray[mid - 1] + sortedArray[mid]) / 2.0;
-    }
-
-    private static int ResolveDateIndex(IMarketMetadata metadata, MarketTime time)
-    {
-        int idx = metadata.GetDateIndex(time);
-        if (idx >= 0) return idx;
-        return metadata.GetDateIndex(time.Date);
-    }
-
     private static ExitTimingStatistics? CalculateExitTiming(
         IReadOnlyList<Trade> trades,
         ITimeseriesRegistry timeseries,
@@ -293,7 +275,7 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
             int col = metadata.GetSymbolIndex(trade.Symbol);
             if (col < 0) continue;
 
-            int row = ResolveDateIndex(metadata, trade.ExitTime);
+            int row = AnalysisHelper.ResolveDateIndex(metadata, trade.ExitTime);
             if (row < 0 || row + steps >= totalRows) continue;
 
             double p0 = matrix[row, col];
@@ -337,7 +319,7 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
                 }
                 avgReturns[k] = sumRet / listCount;
                 Array.Sort(arr);
-                medianReturns[k] = CalculateMedian(arr);
+                medianReturns[k] = AnalysisHelper.CalculateMedian(arr);
                 winRates[k] = (double)posCount / listCount;
             }
         }
@@ -371,8 +353,8 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
             int col = metadata.GetSymbolIndex(trade.Symbol);
             if (col < 0) continue;
 
-            int entryRow = ResolveDateIndex(metadata, trade.EntryTime);
-            int exitRow = ResolveDateIndex(metadata, trade.ExitTime);
+            int entryRow = AnalysisHelper.ResolveDateIndex(metadata, trade.EntryTime);
+            int exitRow = AnalysisHelper.ResolveDateIndex(metadata, trade.ExitTime);
             if (entryRow < 0 || exitRow < 0 || exitRow < entryRow || exitRow >= totalRows) continue;
 
             double maxPotentialProfit;
@@ -418,7 +400,7 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
         }
         double avg = effSum / effCount;
         Array.Sort(effArr);
-        double med = CalculateMedian(effArr);
+        double med = AnalysisHelper.CalculateMedian(effArr);
 
         return (avg, med);
     }

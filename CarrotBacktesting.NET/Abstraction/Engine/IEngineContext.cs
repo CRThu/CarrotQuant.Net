@@ -66,12 +66,11 @@ public interface IEngineContext
     /// <param name="quantity">买入数量（股数/张数）。</param>
     /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
     /// <param name="type">订单类型（缺省为市价单）。</param>
-    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => Broker.Buy(symbol, quantity, price, type, clientOrderId, orderTag, timeInForce);
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.Buy(symbol, quantity, price, type, orderTag, timeInForce);
 
     /// <summary>
     /// 便捷提交卖出订单（默认以市价单形式发出）。
@@ -80,50 +79,49 @@ public interface IEngineContext
     /// <param name="quantity">卖出数量（股数/张数）。</param>
     /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
     /// <param name="type">订单类型（缺省为市价单）。</param>
-    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => Broker.Sell(symbol, quantity, price, type, clientOrderId, orderTag, timeInForce);
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.Sell(symbol, quantity, price, type, orderTag, timeInForce);
 
     /// <summary>
     /// 便捷全额平仓指定标的持仓。
-    /// 若当前无持仓则返回空字符串，不产生任何订单。
+    /// 若当前无持仓则返回 0，不产生任何订单。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
     /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
     /// <param name="type">订单类型（缺省为市价单）。</param>
-    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
-    /// <returns>分配的唯一订单标识 ID；若无持仓则返回 string.Empty。</returns>
-    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => Broker.ClosePosition(symbol, price, type, clientOrderId, orderTag, timeInForce);
+    /// <returns>分配的唯一订单标识 ID；若无持仓则返回 0。</returns>
+    long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.ClosePosition(symbol, price, type, orderTag, timeInForce);
 
     /// <summary>
     /// 便捷提交止损订单（默认以市价单形式发出，默认 TIF 为 GoodTilCanceled 跨日有效）。
     /// </summary>
-    string StopLoss(string symbol, double stopPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => Broker.StopLoss(symbol, stopPrice, quantity, clientOrderId, orderTag, timeInForce);
+    long StopLoss(string symbol, double stopPrice, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.StopLoss(symbol, stopPrice, quantity, orderTag, timeInForce);
 
     /// <summary>
     /// 便捷提交止盈订单（默认以市价单形式发出，默认 TIF 为 GoodTilCanceled 跨日有效）。
     /// </summary>
-    string TakeProfit(string symbol, double targetPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => Broker.TakeProfit(symbol, targetPrice, quantity, clientOrderId, orderTag, timeInForce);
+    long TakeProfit(string symbol, double targetPrice, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
+        => Broker.TakeProfit(symbol, targetPrice, quantity, orderTag, timeInForce);
 
     /// <summary>
     /// 便捷提交成对互斥括号订单（Bracket / OCO）：同时挂出止损单与止盈单，单边触发后联动注销另一方。
     /// </summary>
-    (string StopOrderId, string TakeProfitOrderId) Bracket(
+    (long StopOrderId, long TakeProfitOrderId) Bracket(
         string symbol,
         decimal quantity,
         double stopPrice,
         double takeProfitPrice,
         string orderTag = "",
-        TimeInForce? timeInForce = null)
-        => Broker.Bracket(symbol, quantity, stopPrice, takeProfitPrice, orderTag, timeInForce);
+        TimeInForce? timeInForce = null,
+        OrderDirection? closeDirection = null)
+        => Broker.Bracket(symbol, quantity, stopPrice, takeProfitPrice, orderTag, timeInForce, closeDirection);
 
     /// <summary>
     /// 获取交易事实记录器接口（可选），用于沉淀策略信号打点或扩展归因。

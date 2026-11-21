@@ -47,9 +47,9 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     }
 
     /// <inheritdoc />
-    public void SendOrder(string orderId, OrderRequest request)
+    public void SendOrder(long orderId, OrderRequest request)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
+        if (orderId <= 0) throw new ArgumentOutOfRangeException(nameof(orderId), orderId, "OrderId 必须为正整数。");
         ArgumentNullException.ThrowIfNull(request);
 
         ExecutionReport? fillReport = null;
@@ -115,7 +115,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                             tradeTime,
                             CumQuantity: matchResult.FillQuantity,
                             LeavesQuantity: 0m,
-                            Role: matchResult.Role);
+                            Role: matchResult.Role,
+                            Slippage: matchResult.Slippage);
                     }
                     else if (matchResult.IsPending)
                     {
@@ -148,7 +149,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch,
                 request.Symbol,
                 stateReason ?? string.Empty,
-                request.ClientOrderId,
                 LeavesQuantity: leaves);
             OnOrderStateChanged?.Invoke(stateReport);
         }
@@ -159,9 +159,9 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     }
 
     /// <inheritdoc />
-    public void CancelOrder(string orderId)
+    public void CancelOrder(long orderId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(orderId);
+        if (orderId <= 0) return;
         bool removed;
         SimulatedOrder? removedOrder;
 
@@ -179,7 +179,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 eventTime,
                 removedOrder.Request.Symbol,
                 "Order canceled by user request.",
-                removedOrder.Request.ClientOrderId,
                 LeavesQuantity: Math.Max(0m, removedOrder.Request.Quantity - removedOrder.FilledQuantity));
             OnOrderStateChanged?.Invoke(cancelReport);
         }
@@ -217,7 +216,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                             currentTime,
                             ord.Request.Symbol,
                             "Day order canceled on daily rollover.",
-                            ord.Request.ClientOrderId,
                             leaves));
                     }
                 }
@@ -271,7 +269,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                                     currentTime,
                                     ord.Request.Symbol,
                                     $"Symbol '{symbol}' is suspended on step {currentIndex} (market data is NaN).",
-                                    ord.Request.ClientOrderId,
                                     leaves));
                             }
                         }
@@ -424,7 +421,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     tradeTime,
                     CumQuantity: order.FilledQuantity,
                     LeavesQuantity: leavesQuantity,
-                    Role: matchResult.Role));
+                    Role: matchResult.Role,
+                    Slippage: matchResult.Slippage));
             }
             else if (matchResult.IsRejected)
             {
@@ -437,7 +435,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     tradeTime,
                     order.Request.Symbol,
                     matchResult.RejectReason ?? "Order rejected by matching engine.",
-                    order.Request.ClientOrderId,
                     leavesQuantity));
             }
         }
@@ -468,7 +465,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                             terminalTime != MarketTime.MinValue ? terminalTime : MarketTime.UnixEpoch,
                             ord.Request.Symbol,
                             "Terminal cancellation on backtest completion.",
-                            ord.Request.ClientOrderId,
                             leaves));
                     }
                 }
@@ -619,6 +615,16 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         double low = _lowMatrix != null && rowIndex < _lowMatrix.RowCount ? _lowMatrix[rowIndex, colIndex] : double.NaN;
         double volume = _volumeMatrix != null && rowIndex < _volumeMatrix.RowCount ? _volumeMatrix[rowIndex, colIndex] : double.NaN;
         double amount = _amountMatrix != null && rowIndex < _amountMatrix.RowCount ? _amountMatrix[rowIndex, colIndex] : double.NaN;
+
+        if (_vwapMatrix != null && rowIndex < _vwapMatrix.RowCount && double.IsNaN(amount))
+        {
+            double v = _vwapMatrix[rowIndex, colIndex];
+            if (v > 0.0 && !double.IsNaN(v) && !double.IsInfinity(v))
+            {
+                volume = 1.0;
+                amount = v;
+            }
+        }
 
         return new BarSnapshot(open, high, low, close, volume, amount);
     }

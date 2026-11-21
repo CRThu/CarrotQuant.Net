@@ -57,13 +57,6 @@ public sealed class SignalAnalyzer : AnalyzerBase<SignalStatistics>
         return CalculateCore(signals, timeseries, options, isRoot: true);
     }
 
-    private static int ResolveDateIndex(IMarketMetadata metadata, MarketTime time)
-    {
-        int idx = metadata.GetDateIndex(time);
-        if (idx >= 0) return idx;
-        return metadata.GetDateIndex(time.Date);
-    }
-
     private static SignalStatistics? CalculateCore(
         IReadOnlyList<SignalRecord> signals,
         ITimeseriesRegistry timeseries,
@@ -83,7 +76,7 @@ public sealed class SignalAnalyzer : AnalyzerBase<SignalStatistics>
             int col = metadata.GetSymbolIndex(sig.Symbol);
             if (col < 0) continue;
 
-            int row = ResolveDateIndex(metadata, sig.Time);
+            int row = AnalysisHelper.ResolveDateIndex(metadata, sig.Time);
             if (row < 0 || row >= rowCount) continue;
 
             double p0 = matrix[row, col];
@@ -257,7 +250,7 @@ public sealed class SignalAnalyzer : AnalyzerBase<SignalStatistics>
             : (winCount > 0 ? 999.0 : 0.0);
 
         returns.Sort();
-        double medianReturn = CalculateMedian(returns);
+        double medianReturn = AnalysisHelper.CalculateMedian(returns);
 
         return new SignalSampleStatistics(
             SignalCount: count,
@@ -328,16 +321,5 @@ public sealed class SignalAnalyzer : AnalyzerBase<SignalStatistics>
             AvgLoss: avgLoss,
             WinLossRatio: winLossRatio
         );
-    }
-
-    private static double CalculateMedian(List<double> sorted)
-    {
-        if (sorted.Count == 0) return 0.0;
-        int mid = sorted.Count / 2;
-        if (sorted.Count % 2 != 0)
-        {
-            return sorted[mid];
-        }
-        return (sorted[mid - 1] + sorted[mid]) / 2.0;
     }
 }

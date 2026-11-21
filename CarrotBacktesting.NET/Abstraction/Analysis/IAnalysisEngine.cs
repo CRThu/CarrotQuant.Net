@@ -60,11 +60,6 @@ public interface IAnalysisEngine
     IAnalysisEngine Add(IAnalyzer analyzer);
 
     /// <summary>
-    /// 注册分析器（Add 的语义别名，兼容历史契约）。
-    /// </summary>
-    IAnalysisEngine RegisterAnalyzer(IAnalyzer analyzer) => Add(analyzer);
-
-    /// <summary>
     /// 从管线中移除指定类型的分析器（例如移除默认的 SignalAnalyzer）。
     /// </summary>
     /// <typeparam name="T">待移除的分析器具体类型。</typeparam>

@@ -83,7 +83,7 @@ public class MultiModalSessionIntegrationTests
                 {
                     var req = new OrderRequest(symbol, OrderDirection.Buy, close, 1000m);
                     var orderId = context.Broker.SubmitOrder(req);
-                    if (!string.IsNullOrEmpty(orderId))
+                    if (orderId > 0)
                     {
                         TotalTradesGenerated++;
                     }
@@ -110,7 +110,7 @@ public class MultiModalSessionIntegrationTests
                 {
                     var req = new OrderRequest(symbol, OrderDirection.Sell, close, position);
                     var orderId = context.Broker.SubmitOrder(req);
-                    if (!string.IsNullOrEmpty(orderId))
+                    if (orderId > 0)
                     {
                         TotalTradesGenerated++;
                     }

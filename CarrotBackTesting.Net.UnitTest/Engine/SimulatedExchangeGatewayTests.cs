@@ -23,10 +23,10 @@ public class SimulatedExchangeGatewayTests
         gateway.OnExecution += r => report = r;
 
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m);
-        gateway.SendOrder("ord-1", req);
+        gateway.SendOrder(1L, req);
 
         Assert.IsNotNull(report);
-        Assert.AreEqual("ord-1", report.OrderId);
+        Assert.AreEqual(1L, report.OrderId);
         Assert.AreEqual("sh.600000", report.Symbol);
         Assert.AreEqual(10.0, report.FillPrice);
         Assert.AreEqual(1000m, report.FillQuantity);
@@ -47,7 +47,7 @@ public class SimulatedExchangeGatewayTests
 
         // 基准市价 100.0，买入 100 股
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 100.0, 100m);
-        gateway.SendOrder("ord-slip-1", req);
+        gateway.SendOrder(1L, req);
 
         Assert.IsNotNull(report);
         // 成交价包含 1% 滑点：100.0 * (1 + 0.01) = 101.0
@@ -66,7 +66,7 @@ public class SimulatedExchangeGatewayTests
         var now = DateTime.UtcNow;
         gateway.OnMarketData("sh.600000", now, new BarSnapshot(close: 10.0));
 
-        string? stateOrderId = null;
+        long stateOrderId = 0;
         OrderStatus? stateStatus = null;
         gateway.OnOrderStateChanged += rep =>
         {
@@ -76,13 +76,13 @@ public class SimulatedExchangeGatewayTests
 
         // 市价 10.0，提交 9.0 买单 -> 未触碰，进入挂单簿
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 500m);
-        gateway.SendOrder("limit-1", req);
+        gateway.SendOrder(101L, req);
 
-        Assert.AreEqual("limit-1", stateOrderId);
+        Assert.AreEqual(101L, stateOrderId);
         Assert.AreEqual(OrderStatus.Submitted, stateStatus);
 
         // 撤单
-        gateway.CancelOrder("limit-1");
+        gateway.CancelOrder(101L);
         Assert.AreEqual(OrderStatus.Canceled, stateStatus);
     }
 
@@ -95,7 +95,7 @@ public class SimulatedExchangeGatewayTests
         gateway.OnMarketData("sh.600000", time1, new BarSnapshot(close: 10.0));
 
         // 提交限价 9.5 买单
-        gateway.SendOrder("limit-1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m));
+        gateway.SendOrder(101L, new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m));
 
         ExecutionReport? report = null;
         gateway.OnExecution += r => report = r;
@@ -105,7 +105,7 @@ public class SimulatedExchangeGatewayTests
         gateway.OnMarketData("sh.600000", time2, new BarSnapshot(close: 9.4));
 
         Assert.IsNotNull(report);
-        Assert.AreEqual("limit-1", report.OrderId);
+        Assert.AreEqual(101L, report.OrderId);
         Assert.AreEqual(9.5, report.FillPrice, "Maker 买单成交在委托限价 9.5");
         Assert.AreEqual(1000m, report.FillQuantity);
         Assert.AreEqual(time2, report.Time, "成交时间戳必须与行情时间戳精确一致");
@@ -123,7 +123,7 @@ public class SimulatedExchangeGatewayTests
         ExecutionReport? report = null;
         gateway.OnExecution += r => report = r;
 
-        gateway.SendOrder("ord-time", new OrderRequest("s", OrderDirection.Buy, OrderType.Market, 10.0, 100m));
+        gateway.SendOrder(1L, new OrderRequest("s", OrderDirection.Buy, OrderType.Market, 10.0, 100m));
 
         Assert.IsNotNull(report);
         Assert.AreEqual(customTime, report.Time);
@@ -138,7 +138,7 @@ public class SimulatedExchangeGatewayTests
         bool fired = false;
         gateway.OnOrderStateChanged += _ => fired = true;
 
-        gateway.CancelOrder("non-existent-order");
+        gateway.CancelOrder(999L);
         Assert.IsFalse(fired);
     }
 
@@ -168,7 +168,7 @@ public class SimulatedExchangeGatewayTests
         gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 2), new BarSnapshot(close: 10.0));
 
         // 挂单 9.5 买入
-        gateway.SendOrder("step-1", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
+        gateway.SendOrder(101L, new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
 
         // 构造 close 矩阵：第 0 行价格为 9.3 元
         using var matrix = new ChunkMatrix2D<double>(1, 1024, 1);
@@ -184,7 +184,7 @@ public class SimulatedExchangeGatewayTests
         gateway.Step(dates[0], registry, 0);
 
         Assert.IsNotNull(report);
-        Assert.AreEqual("step-1", report.OrderId);
+        Assert.AreEqual(101L, report.OrderId);
         Assert.AreEqual(9.5, report.FillPrice);
         Assert.AreEqual(100m, report.FillQuantity);
     }
@@ -203,13 +203,13 @@ public class SimulatedExchangeGatewayTests
         var time1 = new DateTime(2025, 1, 6, 9, 30, 0);
         gateway.OnMarketData("sh.600000", time1, new BarSnapshot(close: 10.0));
 
-        gateway.SendOrder("limit-reject", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
+        gateway.SendOrder(101L, new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
 
         OrderStatus? finalStatus = null;
         string? rejectReason = null;
         gateway.OnOrderStateChanged += rep =>
         {
-            if (rep.OrderId == "limit-reject")
+            if (rep.OrderId == 101L)
             {
                 finalStatus = rep.Status;
                 rejectReason = rep.Reason;
@@ -239,12 +239,12 @@ public class SimulatedExchangeGatewayTests
         gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 6, 9, 30, 0), new BarSnapshot(close: 10.0));
 
         // 委托 200 股
-        gateway.SendOrder("limit-vol-exceeded", new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 200m));
+        gateway.SendOrder(101L, new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 200m));
 
         OrderStatus? finalStatus = null;
         gateway.OnOrderStateChanged += rep =>
         {
-            if (rep.OrderId == "limit-vol-exceeded") finalStatus = rep.Status;
+            if (rep.OrderId == 101L) finalStatus = rep.Status;
         };
 
         // 当前 Bar 成交量 1000 股，10% 上限为 100 股 < 200 股
@@ -388,7 +388,7 @@ public class SimulatedExchangeGatewayTests
 
         // 对停牌标的 sh.600001 提交限价买单
         var req = new OrderRequest("sh.600001", OrderDirection.Buy, OrderType.Limit, 15.0, 100m);
-        string orderId = broker.SubmitOrder(req);
+        long orderId = broker.SubmitOrder(req);
 
         // 网关必须在前置守卫拦截拒单，严禁放入挂单簿排队
         Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
@@ -419,7 +419,7 @@ public class SimulatedExchangeGatewayTests
 
         // 提交限价 9.0 买单（默认 Day 时效，未触碰 -> 排队挂单）
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m);
-        string orderId = broker.SubmitOrder(req);
+        long orderId = broker.SubmitOrder(req);
 
         Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
         Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
@@ -456,7 +456,7 @@ public class SimulatedExchangeGatewayTests
 
         // 提交显式 GTC 时效的限价 9.0 买单
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, 9.0, 1000m, timeInForce: TimeInForce.GoodTilCanceled);
-        string orderId = broker.SubmitOrder(req);
+        long orderId = broker.SubmitOrder(req);
 
         Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
         Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);

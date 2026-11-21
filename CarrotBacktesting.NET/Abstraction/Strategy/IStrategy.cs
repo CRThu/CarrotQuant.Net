@@ -56,7 +56,7 @@ public interface IStrategy
     /// <param name="context">引擎运行上下文。</param>
     /// <param name="orderId">订单 ID。</param>
     /// <param name="status">最新的订单生命周期状态。</param>
-    void OnOrderStatusChanged(IEngineContext context, string orderId, OrderStatus status) { }
+    void OnOrderStatusChanged(IEngineContext context, long orderId, OrderStatus status) { }
 
     /// <summary>
     /// 订单物理成交回报通知。当策略提交的订单发生实际物理成交时由引擎调用。

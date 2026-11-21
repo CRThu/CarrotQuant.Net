@@ -60,7 +60,7 @@ public interface IBroker
     /// </summary>
     /// <param name="request">订单请求参数。</param>
     /// <returns>由经纪商系统内部生成的唯一订单 ID。</returns>
-    string SubmitOrder(OrderRequest request);
+    long SubmitOrder(OrderRequest request);
 
     /// <summary>
     /// 便捷提交买入订单（默认以市价单形式发出）。
@@ -69,12 +69,11 @@ public interface IBroker
     /// <param name="quantity">买入数量（股数/张数）。</param>
     /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
     /// <param name="type">订单类型（缺省为市价单）。</param>
-    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, type, price, quantity, orderTag, timeInForce));
 
     /// <summary>
     /// 便捷提交卖出订单（默认以市价单形式发出）。
@@ -83,30 +82,28 @@ public interface IBroker
     /// <param name="quantity">卖出数量（股数/张数）。</param>
     /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
     /// <param name="type">订单类型（缺省为市价单）。</param>
-    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
-        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
+        => SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, type, price, quantity, orderTag, timeInForce));
 
     /// <summary>
     /// 便捷全额平仓指定标的持仓。
-    /// 若当前无持仓则返回空字符串，不产生任何订单。
+    /// 若当前无持仓则返回 0，不产生任何订单。
     /// </summary>
     /// <param name="symbol">标的代码。</param>
     /// <param name="price">委托价格（市价单缺省为 0.0）。</param>
     /// <param name="type">订单类型（缺省为市价单）。</param>
-    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（可选，缺省由配置 DefaultTimeInForce 确定）。</param>
-    /// <returns>分配的唯一订单标识 ID；若无持仓则返回 string.Empty。</returns>
-    string ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    /// <returns>分配的唯一订单标识 ID；若无持仓则返回 0。</returns>
+    long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
     {
         var pos = GetPosition(symbol);
-        if (pos == 0m) return string.Empty;
+        if (pos == 0m) return 0L;
         var dir = pos > 0m ? OrderDirection.Sell : OrderDirection.Buy;
-        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce) { ClientOrderId = clientOrderId ?? string.Empty });
+        return SubmitOrder(new OrderRequest(symbol, dir, type, price, Math.Abs(pos), orderTag, timeInForce));
     }
 
     /// <summary>
@@ -115,17 +112,15 @@ public interface IBroker
     /// <param name="symbol">标的代码。</param>
     /// <param name="stopPrice">止损触发价。</param>
     /// <param name="quantity">委托数量。</param>
-    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（缺省强制为 GoodTilCanceled）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string StopLoss(string symbol, double stopPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    long StopLoss(string symbol, double stopPrice, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
     {
         var pos = GetPosition(symbol);
         var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
         return SubmitOrder(new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
         {
-            ClientOrderId = clientOrderId ?? string.Empty,
             StopPrice = stopPrice
         });
     }
@@ -136,20 +131,20 @@ public interface IBroker
     /// <param name="symbol">标的代码。</param>
     /// <param name="targetPrice">止盈触发价。</param>
     /// <param name="quantity">委托数量。</param>
-    /// <param name="clientOrderId">自定义客户端订单标识（可选）。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（缺省强制为 GoodTilCanceled）。</param>
     /// <returns>分配的唯一订单标识 ID。</returns>
-    string TakeProfit(string symbol, double targetPrice, decimal quantity, string? clientOrderId = null, string orderTag = "", TimeInForce? timeInForce = null)
+    long TakeProfit(string symbol, double targetPrice, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
     {
         var pos = GetPosition(symbol);
         var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
         return SubmitOrder(new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, timeInForce ?? TimeInForce.GoodTilCanceled)
         {
-            ClientOrderId = clientOrderId ?? string.Empty,
             StopPrice = targetPrice
         });
     }
+
+    private static long s_ocoGroupSequence;
 
     /// <summary>
     /// 便捷提交成对互斥括号订单（Bracket / OCO）：同时挂出止损单与止盈单，单边触发后联动注销另一方。
@@ -160,21 +155,40 @@ public interface IBroker
     /// <param name="takeProfitPrice">止盈触发价。</param>
     /// <param name="orderTag">自定义订单业务标签（可选）。</param>
     /// <param name="timeInForce">订单时效性（缺省强制为 GoodTilCanceled）。</param>
+    /// <param name="closeDirection">平仓方向（可选，缺省自动推断：持空单买入平仓，持多单卖出平仓）。</param>
     /// <returns>分配的止损单 ID 与止盈单 ID 二元组。</returns>
-    (string StopOrderId, string TakeProfitOrderId) Bracket(
+    (long StopOrderId, long TakeProfitOrderId) Bracket(
         string symbol,
         decimal quantity,
         double stopPrice,
         double takeProfitPrice,
         string orderTag = "",
-        TimeInForce? timeInForce = null)
+        TimeInForce? timeInForce = null,
+        OrderDirection? closeDirection = null)
     {
         var tif = timeInForce ?? TimeInForce.GoodTilCanceled;
-        var pos = GetPosition(symbol);
-        var dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+        OrderDirection dir;
+        if (closeDirection.HasValue)
+        {
+            dir = closeDirection.Value;
+        }
+        else
+        {
+            var pos = GetPosition(symbol);
+            dir = pos < 0m ? OrderDirection.Buy : OrderDirection.Sell;
+        }
+        long ocoGroupId = System.Threading.Interlocked.Increment(ref s_ocoGroupSequence);
 
-        var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif) { StopPrice = stopPrice };
-        var tpReq = new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, tif) { StopPrice = takeProfitPrice };
+        var stopReq = new OrderRequest(symbol, dir, OrderType.Stop, 0.0, quantity, orderTag, tif)
+        {
+            StopPrice = stopPrice,
+            OcoGroupId = ocoGroupId
+        };
+        var tpReq = new OrderRequest(symbol, dir, OrderType.TakeProfit, 0.0, quantity, orderTag, tif)
+        {
+            StopPrice = takeProfitPrice,
+            OcoGroupId = ocoGroupId
+        };
         return (SubmitOrder(stopReq), SubmitOrder(tpReq));
     }
 
@@ -182,19 +196,19 @@ public interface IBroker
     /// 撤销指定的订单。
     /// </summary>
     /// <param name="orderId">要撤销的订单 ID。</param>
-    void CancelOrder(string orderId);
+    void CancelOrder(long orderId);
 
     /// <summary>
     /// 获取指定订单的当前状态。
     /// </summary>
     /// <param name="orderId">订单 ID。</param>
     /// <returns>订单当前的 <see cref="OrderStatus"/>。</returns>
-    OrderStatus GetOrderStatus(string orderId);
+    OrderStatus GetOrderStatus(long orderId);
 
     /// <summary>
     /// 当订单的生命周期状态发生变化时触发（例如：提交成功、被拒绝、撤销成功）。
     /// </summary>
-    event Action<string, OrderStatus> OnOrderStatusChanged;
+    event Action<long, OrderStatus> OnOrderStatusChanged;
 
     /// <summary>
     /// 当订单发生实际成交（部分成交或全部成交）时触发。
@@ -224,6 +238,12 @@ public interface IBrokerEngineDriver : IBroker
     /// </summary>
     /// <param name="currentTime">当前全局物理时间戳。</param>
     void Step(MarketTime currentTime);
+
+    /// <summary>
+    /// 触发盘中条件单判定与挂单激活（如 Stop / StopLimit / TakeProfit / Bracket）。
+    /// </summary>
+    /// <param name="currentTime">当前时间戳。</param>
+    void ProcessConditionalOrders(MarketTime currentTime);
 
     /// <summary>
     /// 实盘断线重连或定时对账时，由交易所权威数据原子同步本地账户状态（回测模式无需调用）。

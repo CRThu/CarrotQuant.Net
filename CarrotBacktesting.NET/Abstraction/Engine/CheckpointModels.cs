@@ -19,7 +19,8 @@ public sealed record LedgerPositionSnapshot(
     double LastPrice,
     MarketTime OpenTime,
     string OpenTag,
-    IReadOnlyList<PendingLotSnapshot> PendingLots
+    IReadOnlyList<PendingLotSnapshot> PendingLots,
+    double OpenSlippageCost = 0.0
 );
 
 /// <summary>
@@ -40,7 +41,7 @@ public sealed record AccountLedgerSnapshot(
 /// 经纪商在途活跃订单不可变快照。
 /// </summary>
 public sealed record BrokerOrderSnapshot(
-    string OrderId,
+    long OrderId,
     OrderRequest Request,
     OrderStatus Status,
     string? RejectReason,
@@ -70,7 +71,7 @@ public sealed record BrokerSnapshot(
 /// 仿真挂单不可变快照。
 /// </summary>
 public sealed record SimulatedOrderSnapshot(
-    string OrderId,
+    long OrderId,
     OrderRequest Request,
     MarketTime CreateTime,
     double Multiplier,

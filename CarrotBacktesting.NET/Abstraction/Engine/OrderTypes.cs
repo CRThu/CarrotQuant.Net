@@ -115,9 +115,9 @@ public record OrderRequest(
     public bool IsSell => Direction == OrderDirection.Sell;
 
     /// <summary>
-    /// 本地客户端订单 ID（UUID），用于防重推、去重和实盘柜台唯一映射。若未指定可由系统自动生成。
+    /// 唯一订单标识符（0 表示未分配，由 Broker 自动原子自增生成；>0 为外部显式指定用于幂等去重）。
     /// </summary>
-    public string ClientOrderId { get; init; } = string.Empty;
+    public long OrderId { get; init; } = 0;
 
     /// <summary>
     /// 条件单触发价（止损单/止盈单有效）。
@@ -165,8 +165,9 @@ public enum LiquidityRole : byte
 /// <param name="CumQuantity">该订单累计已成交数量（FIX Tag 14 CumQty）。</param>
 /// <param name="LeavesQuantity">该订单在挂单簿中剩余排队数量（FIX Tag 151 LeavesQty）。</param>
 /// <param name="Role">成交流动性角色标识（FIX Tag 851）。</param>
+/// <param name="Slippage">该笔成交产生的实际滑点损耗金额。</param>
 public record ExecutionReport(
-    string OrderId,
+    long OrderId,
     string Symbol,
     double FillPrice,
     decimal FillQuantity,
@@ -174,7 +175,8 @@ public record ExecutionReport(
     MarketTime Time,
     decimal CumQuantity = 0m,
     decimal LeavesQuantity = 0m,
-    LiquidityRole Role = LiquidityRole.None);
+    LiquidityRole Role = LiquidityRole.None,
+    double Slippage = 0.0);
 
 /// <summary>
 /// 表示网关或交易所订单生命周期状态变更的权威报告。
@@ -185,16 +187,14 @@ public record ExecutionReport(
 /// <param name="Time">状态变更发生的时间戳（对齐 FIX Tag 60 TransactTime）。</param>
 /// <param name="Symbol">交易品种代码（对齐 FIX Tag 55 Symbol）。</param>
 /// <param name="Reason">状态变更原因说明（如废单、拒单或撤单原因，对齐 FIX Tag 58 Text）。</param>
-/// <param name="ClientOrderId">客户端自定义订单标识符（对齐 FIX Tag 11 ClOrdID）。</param>
 /// <param name="LeavesQuantity">订单在挂单簿中剩余排队数量（对齐 FIX Tag 151 LeavesQty）。</param>
 /// <param name="ErrorCode">网关或交易所原始数字错误代码（对齐 FIX Tag 103 OrdRejReason）。</param>
 public record OrderStateReport(
-    string OrderId,
+    long OrderId,
     OrderStatus Status,
     MarketTime Time,
     string Symbol = "",
     string Reason = "",
-    string ClientOrderId = "",
     decimal LeavesQuantity = 0m,
     int ErrorCode = 0);
 
@@ -206,39 +206,6 @@ public record OrderStateReport(
 /// <param name="AveragePrice">当前持仓的平均成本价（可选）。</param>
 /// <param name="Time">变更发生的时间。</param>
 public record PositionEvent(string Symbol, decimal NewQuantity, double AveragePrice, MarketTime Time);
-
-/// <summary>
-/// 表示一个交易品种的实时订单簿（Depth）快照。
-/// </summary>
-public class Orderbook
-{
-    /// <summary>
-    /// 获取或设置品种代码。
-    /// </summary>
-    public string Symbol { get; init; } = string.Empty;
-
-    /// <summary>
-    /// 获取或设置该快照产生的时间戳。
-    /// </summary>
-    public MarketTime Timestamp { get; init; }
-
-    /// <summary>
-    /// 获取或设置买盘档位列表。
-    /// </summary>
-    public IReadOnlyList<PriceLevel> Bids { get; init; } = Array.Empty<PriceLevel>();
-
-    /// <summary>
-    /// 获取或设置卖盘档位列表。
-    /// </summary>
-    public IReadOnlyList<PriceLevel> Asks { get; init; } = Array.Empty<PriceLevel>();
-}
-
-/// <summary>
-/// 表示订单簿中的一个价格档位。
-/// </summary>
-/// <param name="Price">在该档位的挂单价格。</param>
-/// <param name="Quantity">在该档位的挂单总量。</param>
-public record PriceLevel(double Price, decimal Quantity);
 
 /// <summary>
 /// 定义订单的买卖方向。

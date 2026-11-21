@@ -12,13 +12,13 @@ public interface IExchangeGateway
     /// </summary>
     /// <param name="orderId">由系统生成的唯一订单 ID。</param>
     /// <param name="request">订单详细请求参数。</param>
-    void SendOrder(string orderId, OrderRequest request);
+    void SendOrder(long orderId, OrderRequest request);
 
     /// <summary>
     /// 向交易所或柜台发送撤单请求。
     /// </summary>
     /// <param name="orderId">要撤销的订单 ID。</param>
-    void CancelOrder(string orderId);
+    void CancelOrder(long orderId);
     
     /// <summary>
     /// 当订单发生实际成交（部分成交或全部成交）时触发。

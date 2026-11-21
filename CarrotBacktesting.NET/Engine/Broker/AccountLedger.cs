@@ -446,9 +446,18 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
                 : 0.0;
             pos.OpenCommission = Math.Max(0.0, pos.OpenCommission - allocatedOpenFee);
 
+            double allocatedOpenSlippage = currentAbsTotal > 0m
+                ? (double)(closeQty / currentAbsTotal) * pos.OpenSlippageCost
+                : 0.0;
+            pos.OpenSlippageCost = Math.Max(0.0, pos.OpenSlippageCost - allocatedOpenSlippage);
+
             double closeFee = report.FillQuantity > 0m
                 ? (double)(closeQty / report.FillQuantity) * report.Commission
                 : 0.0;
+            double closeSlippage = report.FillQuantity > 0m
+                ? (double)(closeQty / report.FillQuantity) * report.Slippage
+                : 0.0;
+
             closeRealizedPnL = grossPnL - allocatedOpenFee - closeFee;
 
             _cash += (marginReleased + grossPnL);
@@ -456,7 +465,8 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             double initialNotional = (double)closeQty * pos.AverageCost * multiplier;
             double returnRate = initialNotional > 0.0 ? closeRealizedPnL / initialNotional : 0.0;
             MarketTime entryTime = pos.OpenTime != MarketTime.MinValue ? pos.OpenTime : report.Time;
-            int holdingSteps = Math.Max(1, (int)(report.Time - entryTime).TotalMinutes);
+            int holdingDays = (report.Time.Date - entryTime.Date).Days;
+            int holdingSteps = holdingDays > 0 ? holdingDays : Math.Max(1, (int)(report.Time - entryTime).TotalMinutes);
 
             closedTrade = new Trade(
                 report.Symbol,
@@ -470,7 +480,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
                 closeRealizedPnL,
                 returnRate,
                 allocatedOpenFee + closeFee,
-                0.0,
+                allocatedOpenSlippage + closeSlippage,
                 holdingSteps,
                 pos.OpenTag,
                 orderTag ?? string.Empty);
@@ -489,6 +499,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             {
                 pos.AverageCost = 0.0;
                 pos.OpenCommission = 0.0;
+                pos.OpenSlippageCost = 0.0;
                 pos.OpenTime = MarketTime.MinValue;
                 pos.OpenTag = string.Empty;
                 if (openQty == 0m && pos.PendingLots.Count == 0 && pos.FrozenQuantity == 0m)
@@ -505,11 +516,16 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             double marginAdded = openTurnover * marginRate;
             _cash -= marginAdded;
 
-            // 分摊并累加开仓在途手续费池
+            // 分摊并累加开仓在途手续费池与滑点损耗池
             double openFee = report.FillQuantity > 0m
                 ? (double)(openQty / report.FillQuantity) * report.Commission
                 : 0.0;
             pos.OpenCommission += openFee;
+
+            double openSlippage = report.FillQuantity > 0m
+                ? (double)(openQty / report.FillQuantity) * report.Slippage
+                : 0.0;
+            pos.OpenSlippageCost += openSlippage;
 
             if (pos.TotalQuantity == 0m)
             {
@@ -669,7 +685,8 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
                 pos.LastPrice,
                 pos.OpenTime,
                 pos.OpenTag,
-                lots
+                lots,
+                pos.OpenSlippageCost
             ));
         }
 
@@ -698,6 +715,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
                 FrozenQuantity = snap.FrozenQuantity,
                 AverageCost = snap.AverageCost,
                 OpenCommission = snap.OpenCommission,
+                OpenSlippageCost = snap.OpenSlippageCost,
                 LastPrice = snap.LastPrice,
                 OpenTime = snap.OpenTime,
                 OpenTag = snap.OpenTag

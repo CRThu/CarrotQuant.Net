@@ -129,7 +129,7 @@ public sealed record DailySnapshot(
 public sealed record SettlementRecord(
     MarketTime Time,
     string Symbol,
-    string OrderId,
+    long OrderId,
     OrderDirection Direction,
     double Price,
     decimal Quantity,

@@ -41,9 +41,9 @@ public class TimeInForceTests
         var orderBook = new OrderBook();
         var submitTime = (MarketTime)new DateTime(2025, 1, 2);
 
-        var dayOrder1 = new SimulatedOrder("ord_day_1", new OrderRequest("sh.600000", OrderDirection.Buy, 10.0, 100m, timeInForce: TimeInForce.Day), submitTime);
-        var dayOrder2 = new SimulatedOrder("ord_day_2", new OrderRequest("sh.600001", OrderDirection.Buy, 20.0, 200m, timeInForce: TimeInForce.Day), submitTime);
-        var gtcOrder = new SimulatedOrder("ord_gtc_1", new OrderRequest("sh.600000", OrderDirection.Buy, 9.5, 100m, timeInForce: TimeInForce.GoodTilCanceled), submitTime);
+        var dayOrder1 = new SimulatedOrder(101L, new OrderRequest("sh.600000", OrderDirection.Buy, 10.0, 100m, timeInForce: TimeInForce.Day), submitTime);
+        var dayOrder2 = new SimulatedOrder(102L, new OrderRequest("sh.600001", OrderDirection.Buy, 20.0, 200m, timeInForce: TimeInForce.Day), submitTime);
+        var gtcOrder = new SimulatedOrder(103L, new OrderRequest("sh.600000", OrderDirection.Buy, 9.5, 100m, timeInForce: TimeInForce.GoodTilCanceled), submitTime);
 
         orderBook.Add(dayOrder1);
         orderBook.Add(dayOrder2);
@@ -56,9 +56,9 @@ public class TimeInForceTests
         Assert.AreEqual(2, canceled.Count);
         Assert.AreEqual(1, orderBook.Count);
 
-        Assert.IsFalse(orderBook.TryGet("ord_day_1", out _));
-        Assert.IsFalse(orderBook.TryGet("ord_day_2", out _));
-        Assert.IsTrue(orderBook.TryGet("ord_gtc_1", out var remaining));
+        Assert.IsFalse(orderBook.TryGet(101L, out _));
+        Assert.IsFalse(orderBook.TryGet(102L, out _));
+        Assert.IsTrue(orderBook.TryGet(103L, out var remaining));
         Assert.IsNotNull(remaining);
         Assert.AreEqual(TimeInForce.GoodTilCanceled, remaining.TimeInForce);
 
@@ -66,7 +66,7 @@ public class TimeInForceTests
         var pending600000 = orderBook.GetPendingOrders("sh.600000");
         Assert.IsNotNull(pending600000);
         Assert.AreEqual(1, pending600000.Count);
-        Assert.AreEqual("ord_gtc_1", pending600000[0].OrderId);
+        Assert.AreEqual(103L, pending600000[0].OrderId);
 
         var pending600001 = orderBook.GetPendingOrders("sh.600001");
         Assert.IsNull(pending600001);
@@ -125,7 +125,7 @@ public class TimeInForceTests
 
         gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 2), new BarSnapshot(close: 15.0));
 
-        string buyId = broker.Buy("sh.600000", 100m, price: 9.0, type: OrderType.Limit, timeInForce: TimeInForce.GoodTilCanceled);
+        long buyId = broker.Buy("sh.600000", 100m, price: 9.0, type: OrderType.Limit, timeInForce: TimeInForce.GoodTilCanceled);
         var activeOrders = broker.SaveState().ActiveOrders;
         var buyOrder = FindOrderById(activeOrders, buyId);
 
@@ -161,8 +161,8 @@ public class TimeInForceTests
         ((IBrokerEngineDriver)broker).Step(dates[0]);
 
         // 同时挂出两笔限价 9.0 买单：一笔 Day，一笔 GTC
-        string dayOrderId = broker.Buy("sh.600000", 1000m, price: 9.0, type: OrderType.Limit, timeInForce: TimeInForce.Day);
-        string gtcOrderId = broker.Buy("sh.600000", 1000m, price: 9.0, type: OrderType.Limit, timeInForce: TimeInForce.GoodTilCanceled);
+        long dayOrderId = broker.Buy("sh.600000", 1000m, price: 9.0, type: OrderType.Limit, timeInForce: TimeInForce.Day);
+        long gtcOrderId = broker.Buy("sh.600000", 1000m, price: 9.0, type: OrderType.Limit, timeInForce: TimeInForce.GoodTilCanceled);
 
         Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(dayOrderId));
         Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(gtcOrderId));
@@ -213,7 +213,7 @@ public class TimeInForceTests
         return null;
     }
 
-    private static BrokerOrderSnapshot? FindOrderById(IReadOnlyList<BrokerOrderSnapshot> list, string orderId)
+    private static BrokerOrderSnapshot? FindOrderById(IReadOnlyList<BrokerOrderSnapshot> list, long orderId)
     {
         for (int i = 0; i < list.Count; i++)
         {

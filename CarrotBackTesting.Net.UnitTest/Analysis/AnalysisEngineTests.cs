@@ -58,8 +58,8 @@ public class AnalysisEngineTests
         // 2. 构造交割单与平仓单
         var settlements = new List<SettlementRecord>
         {
-            new(dates[0], "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 1000m, 10000.0, 5.0, 0.0, 90000.0, "TrendFollow"),
-            new(dates[4], "sh.600000", "ord-2", OrderDirection.Sell, 13.0, 1000m, 13000.0, 6.5, 3000.0, 102993.5, "TrendFollow")
+            new(dates[0], "sh.600000", 1L, OrderDirection.Buy, 10.0, 1000m, 10000.0, 5.0, 0.0, 90000.0, "TrendFollow"),
+            new(dates[4], "sh.600000", 2L, OrderDirection.Sell, 13.0, 1000m, 13000.0, 6.5, 3000.0, 102993.5, "TrendFollow")
         };
 
         var closedTrades = new List<Trade>
@@ -299,7 +299,7 @@ public class AnalysisEngineTests
 
         var analyzer = new MockOmegaAnalyzer();
         var engine = new AnalysisEngine(Array.Empty<IAnalyzer>());
-        engine.RegisterAnalyzer(analyzer);
+        engine.Add(analyzer);
 
         Assert.AreEqual(1, engine.Analyzers.Count);
         Assert.AreSame(analyzer, engine.Analyzers[0]);
@@ -463,7 +463,7 @@ public class AnalysisEngineTests
         };
         var settlements = new List<SettlementRecord>
         {
-            new(t0, "sh.600000", "ord-1", OrderDirection.Buy, 10.0, 1000m, 10000.0, 5.0, 0.0, 90000.0, "Tag1")
+            new(t0, "sh.600000", 1L, OrderDirection.Buy, 10.0, 1000m, 10000.0, 5.0, 0.0, 90000.0, "Tag1")
         };
         var result = new TradingResult(
             settlements,
@@ -537,8 +537,8 @@ public class AnalysisEngineTests
         };
         var settlements = new List<SettlementRecord>
         {
-            new(time0, "600000.SH", "ord-1", OrderDirection.Buy, 10.0, 1000m, 10000.0, 5.0, 0.0, 90000.0, "TagA"),
-            new(time1, "600000.SH", "ord-2", OrderDirection.Sell, 11.0, 1000m, 11000.0, 5.5, 0.0, 100994.5, "TagB")
+            new(time0, "600000.SH", 1L, OrderDirection.Buy, 10.0, 1000m, 10000.0, 5.0, 0.0, 90000.0, "TagA"),
+            new(time1, "600000.SH", 2L, OrderDirection.Sell, 11.0, 1000m, 11000.0, 5.5, 0.0, 100994.5, "TagB")
         };
 
         // 1. PortfolioAnalyzer.Calculate

@@ -35,7 +35,7 @@ public enum OrderEventType : byte
 /// </summary>
 public sealed record OrderEvent(
     MarketTime Time,
-    string OrderId,
+    long OrderId,
     string Symbol,
     OrderDirection Direction,
     OrderType Type,

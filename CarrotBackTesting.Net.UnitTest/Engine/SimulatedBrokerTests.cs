@@ -84,7 +84,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 1. 买入 10,000 股 @ 10.0 元 (基准价 10.0，买入滑点千一 -> 10.01)
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 10000m);
-            string buyId = broker.SubmitOrder(buyOrder);
+            long buyId = broker.SubmitOrder(buyOrder);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyId));
             Assert.AreEqual(10000m, broker.GetPosition("sh.600000"));
@@ -102,7 +102,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 3. 卖出 10,000 股 @ 12.0 元 (基准价 12.0，卖出滑点千一 -> 11.988)
             var sellOrder = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 12.0, 10000m);
-            string sellId = broker.SubmitOrder(sellOrder);
+            long sellId = broker.SubmitOrder(sellOrder);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(sellId));
             Assert.AreEqual(0m, broker.GetPosition("sh.600000"));
@@ -131,7 +131,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 当天立即尝试卖出，应被 T+1 可用量限制拦截拒绝
             var sellOrder = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 10.5, 1000m);
-            string sellId = broker.SubmitOrder(sellOrder);
+            long sellId = broker.SubmitOrder(sellOrder);
 
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(sellId));
             Assert.AreEqual(1000m, broker.GetPosition("sh.600000")); // 持仓不变
@@ -150,7 +150,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 无持仓直接卖空，直接被拒绝
             var sellOrder = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 10.0, 500m);
-            string sellId = broker.SubmitOrder(sellOrder);
+            long sellId = broker.SubmitOrder(sellOrder);
 
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(sellId));
             Assert.AreEqual(0m, broker.GetPosition("sh.600000"));
@@ -168,7 +168,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 尝试买入价值 10,000 元的股票
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m);
-            string buyId = broker.SubmitOrder(buyOrder);
+            long buyId = broker.SubmitOrder(buyOrder);
 
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(buyId));
             Assert.AreEqual(1_000.0, broker.GetCash());
@@ -189,18 +189,18 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 1. 停牌场景 (Volume = 0)
             var suspendedBar = CreateBar(10.0, 10.0, 10.0, 10.0, volume: 0.0);
             var order1 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m);
-            string id1 = broker.ExecuteOrder(order1, 10.0, suspendedBar);
+            long id1 = broker.ExecuteOrder(order1, 10.0, suspendedBar);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id1));
 
             // 2. 流动性不足场景 (当前 Bar 成交量 5,000 股，允许最大 500 股；委托 1,000 股超标)
             var lowVolBar = CreateBar(10.0, 10.5, 9.8, 10.2, volume: 5000.0);
             var order2 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.2, 1000m);
-            string id2 = broker.ExecuteOrder(order2, 10.2, lowVolBar);
+            long id2 = broker.ExecuteOrder(order2, 10.2, lowVolBar);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id2));
 
             // 3. 流动性充足场景 (委托 500 股，恰好等于 5000 * 0.1)
             var order3 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.2, 500m);
-            string id3 = broker.ExecuteOrder(order3, 10.2, lowVolBar);
+            long id3 = broker.ExecuteOrder(order3, 10.2, lowVolBar);
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(id3));
             Assert.AreEqual(500m, broker.GetPosition("sh.600000"));
         }
@@ -228,7 +228,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var limitUpBar = CreateBar(10.0, 11.0, 10.0, 11.0, volume: 100000.0, limitUp: 11.0);
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 11.0, 1000m);
 
-            string orderId = broker.ExecuteOrder(buyOrder, 11.0, limitUpBar);
+            long orderId = broker.ExecuteOrder(buyOrder, 11.0, limitUpBar);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
             Assert.AreEqual(0m, broker.GetPosition("sh.600000"));
         }
@@ -256,7 +256,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 占用保证金 = 350,000 * 0.1 = 35,000 元
             // 手续费 = 350,000 * 0.0001 = 35 元
             var openLong = new OrderRequest("rb2410", OrderDirection.Buy, OrderType.Market, 3500.0, 10m);
-            string longId = broker.SubmitOrder(openLong);
+            long longId = broker.SubmitOrder(openLong);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(longId));
             Assert.AreEqual(10m, broker.GetPosition("rb2410"));
@@ -273,7 +273,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 释放保证金 = 35,000 元
             // 平仓手续费 = 10 * 3600 * 10 * 0.0001 = 36 元
             var closeLong = new OrderRequest("rb2410", OrderDirection.Sell, OrderType.Market, 3600.0, 10m);
-            string closeId = broker.SubmitOrder(closeLong);
+            long closeId = broker.SubmitOrder(closeLong);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(closeId));
             Assert.AreEqual(0m, broker.GetPosition("rb2410"));
@@ -287,7 +287,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 占用保证金 = 18,000 元
             // 手续费 = 18 元
             var openShort = new OrderRequest("rb2410", OrderDirection.Sell, OrderType.Market, 3600.0, 5m);
-            string shortId = broker.SubmitOrder(openShort);
+            long shortId = broker.SubmitOrder(openShort);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(shortId));
             Assert.AreEqual(-5m, broker.GetPosition("rb2410"));
@@ -297,7 +297,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 释放保证金 18,000 元
             // 平仓手续费 = 5 * 3500 * 10 * 0.0001 = 17.5 元
             var closeShort = new OrderRequest("rb2410", OrderDirection.Buy, OrderType.Market, 3500.0, 5m);
-            string closeShortId = broker.SubmitOrder(closeShort);
+            long closeShortId = broker.SubmitOrder(closeShort);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(closeShortId));
             Assert.AreEqual(0m, broker.GetPosition("rb2410"));
@@ -379,11 +379,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 1. 测试非法参数保护
             var invalidOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 0.0, 0m);
-            string id = broker.SubmitOrder(invalidOrder);
+            long id = broker.SubmitOrder(invalidOrder);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id));
 
             // 2. 测试查询不存在的订单
-            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus("non-existent-order"));
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(999999L));
 
             // 3. 测试撤单生命周期
             broker.CancelOrder(id); // 针对已被 Rejected 的订单取消无副作用
@@ -445,10 +445,10 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var volBroker = CreateBroker(volHookConfig);
             var bar = CreateBar(10.0, 10.5, 9.8, 10.0, 10000.0);
 
-            string rejectId = volBroker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 600m), 10.0, bar);
+            long rejectId = volBroker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 600m), 10.0, bar);
             Assert.AreEqual(OrderStatus.Rejected, volBroker.GetOrderStatus(rejectId));
 
-            string fillId = volBroker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 400m), 10.0, bar);
+            long fillId = volBroker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 400m), 10.0, bar);
             Assert.AreEqual(OrderStatus.Filled, volBroker.GetOrderStatus(fillId));
 
             // 4. OnGetMultiplier、OnGetMarginRate 与 OnGetSettleDays Hook 在执行中的实际调用 (传入 dummy 上下文触发分支)
@@ -469,7 +469,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var dummyFields = new CarrotBacktesting.NET.Data.FieldRegistry();
             var dynBroker = CreateBroker(dynamicConfig, dummyFields);
             var passBar = CreateBar(100.0, 105.0, 98.0, 100.0, 100000.0);
-            string dynOrderId = dynBroker.ExecuteOrder(new OrderRequest("custom_item", OrderDirection.Buy, OrderType.Market, 100.0, 10m), 100.0, passBar);
+            long dynOrderId = dynBroker.ExecuteOrder(new OrderRequest("custom_item", OrderDirection.Buy, OrderType.Market, 100.0, 10m), 100.0, passBar);
             Assert.AreEqual(OrderStatus.Filled, dynBroker.GetOrderStatus(dynOrderId));
             // 校验 T+0 立即释放可用持仓
             Assert.AreEqual(10m, dynBroker.GetAvailablePosition("custom_item"));
@@ -668,19 +668,19 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 1. 测试 NaN 价格
             var nanOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, double.NaN, 100m);
-            string id1 = broker.ExecuteOrder(nanOrder, double.NaN, null);
+            long id1 = broker.ExecuteOrder(nanOrder, double.NaN, null);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id1));
             Assert.IsFalse(double.IsNaN(broker.GetCash()), "账户资金绝不能被 NaN 污染");
             Assert.AreEqual(1_000_000.0, broker.GetCash(), 1e-4);
 
             // 2. 测试 Infinity 价格
             var infOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, double.PositiveInfinity, 100m);
-            string id2 = broker.ExecuteOrder(infOrder, double.PositiveInfinity, null);
+            long id2 = broker.ExecuteOrder(infOrder, double.PositiveInfinity, null);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id2));
             Assert.AreEqual(1_000_000.0, broker.GetCash(), 1e-4);
 
             // 3. 测试 -Infinity 价格
-            string id3 = broker.ExecuteOrder(infOrder, double.NegativeInfinity, null);
+            long id3 = broker.ExecuteOrder(infOrder, double.NegativeInfinity, null);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id3));
             Assert.AreEqual(1_000_000.0, broker.GetCash(), 1e-4);
         }
@@ -699,7 +699,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 买入 100 股 @ 2.0 元，成交额 200 元；万三佣金仅 0.06 元，必须触发 5.0 元最低手续费
             var order = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 2.0, 100m);
-            string id = broker.SubmitOrder(order);
+            long id = broker.SubmitOrder(order);
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(id));
 
             // 扣减现金 = 200.0 (turnover) + 5.0 (minFee) = 205.0
@@ -793,7 +793,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 意图卖出 8 手 (平多 5 手，反手开空 3 手)
             // 反手开空 3 手需要保证金 3 * 100 * 0.1 = 30 元，而可用现金仅 10 元，必须被拒单拦截
-            string id = broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 100.0, 8m), 100.0, null);
+            long id = broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 100.0, 8m), 100.0, null);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id));
             Assert.AreEqual(5m, broker.GetPosition("rb2505"), "拒单后持仓不变");
             Assert.AreEqual(10.0, broker.GetCash(), "拒单后资金不变");
@@ -810,7 +810,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 市价单便捷构造函数（Price 默认为 0.0）
             var marketOrder = new OrderRequest("sh.600000", OrderDirection.Buy, 100m);
-            string id = broker.SubmitOrder(marketOrder);
+            long id = broker.SubmitOrder(marketOrder);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(id));
             Assert.AreEqual(100m, broker.GetPosition("sh.600000"));
@@ -901,7 +901,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
 
             // 2. 当日试图卖出 1,000 股：由于尚有未解冻在途交收份额（PendingLots），必须被严厉拒单拦截！
-            string sellOrderId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 1000m), 10.0, null);
+            long sellOrderId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 1000m), 10.0, null);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(sellOrderId));
             Assert.AreEqual(1000m, broker.GetPosition("sh.600000"), "拒单后持仓不可变");
             Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "拒单后可用持仓不可变");
@@ -911,7 +911,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"), "次日成功解锁为 1000");
 
             // 4. 次日卖出正常成交
-            string day2SellId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 1000m), 10.0, null);
+            long day2SellId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 1000m), 10.0, null);
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(day2SellId));
             Assert.AreEqual(0m, broker.GetPosition("sh.600000"));
         }
@@ -933,7 +933,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 1. 提交买入限价单 9.0 元 (低于市价 10.0，进入未成交挂单队列)
             // 买入 10,000 股 @ 9.0 元 -> turnover = 90,000 元, fee = 27 元 -> 需冻结 90,027 元
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 10_000m);
-            string orderId = broker.ExecuteOrder(buyOrder, 10.0, null);
+            long orderId = broker.ExecuteOrder(buyOrder, 10.0, null);
 
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
             Assert.AreEqual(0m, broker.GetPosition("sh.600000"), "未成交前持仓为 0");
@@ -942,7 +942,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 2. 防双花测试：剩余可用资金仅 9,973 元，试图再次挂单买入需 18,000 元的订单 -> 必须被拒单拦截！
             var doubleSpendOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 2_000m);
-            string rejId = broker.ExecuteOrder(doubleSpendOrder, 10.0, null);
+            long rejId = broker.ExecuteOrder(doubleSpendOrder, 10.0, null);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(rejId), "资金已大部分被冻结，超额订单必须被精准拦截");
             Assert.AreEqual(100_000.0 - 90_027.0, broker.GetCash(), 1e-4, "拒单后可用资金不变");
 
@@ -973,7 +973,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 1. 挂单 11.0 元卖出 800 股 (高于市价 10.0，进入未成交挂单队列)
             var sellOrder = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 11.0, 800m);
-            string orderId = broker.ExecuteOrder(sellOrder, 10.0, null);
+            long orderId = broker.ExecuteOrder(sellOrder, 10.0, null);
 
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
             Assert.AreEqual(1000m, broker.GetPosition("sh.600000"), "总持仓仍归属于账户");
@@ -981,7 +981,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 2. 防超卖测试：剩余可用仅 200 股，试图再次卖出 500 股 -> 必须被拒单拦截！
             var overSellOrder = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 11.0, 500m);
-            string rejId = broker.ExecuteOrder(overSellOrder, 10.0, null);
+            long rejId = broker.ExecuteOrder(overSellOrder, 10.0, null);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(rejId), "已挂单的持仓严禁被重复卖出，超卖必须被拒绝");
             Assert.AreEqual(200m, broker.GetAvailablePosition("sh.600000"));
 
@@ -1010,7 +1010,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 1. 提交买入限价单 9.5 元买入 1,000 股 (冻结 9500 + 2.85 元)
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 1000m);
-            string orderId = broker.ExecuteOrder(buyOrder, 10.0, null);
+            long orderId = broker.ExecuteOrder(buyOrder, 10.0, null);
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
             Assert.IsFalse(tradeEventFired);
 
@@ -1047,7 +1047,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 1. 挂单 4,000 点做空 1 手 (高于当前市价 3900，未成交)
             // 名义金额 = 4000 * 300 = 1,200,000. 10% 保证金 = 120,000 元
             var sellOrder = new OrderRequest("IF2501", OrderDirection.Sell, OrderType.Limit, 4000.0, 1m);
-            string orderId = broker.ExecuteOrder(sellOrder, 3900.0, null);
+            long orderId = broker.ExecuteOrder(sellOrder, 3900.0, null);
 
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
             Assert.AreEqual(0m, broker.GetPosition("IF2501"));
@@ -1076,7 +1076,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 1. 挂单 10.5 元卖出 1,000 股 (高于市价 10.0，未成交)
             var sellOrder = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.5, 1000m);
-            string orderId = broker.ExecuteOrder(sellOrder, 10.0, null);
+            long orderId = broker.ExecuteOrder(sellOrder, 10.0, null);
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
             Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "可用持仓已被 1000 股挂单全部冻结");
 
@@ -1118,7 +1118,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 1. 持仓冻结：多头 5 手可用持仓全部冻结 -> AvailableQty 从 5 降为 0
             // 2. 资金冻结：反手新开 3 手所需保证金 = 3 * 110.0 * 0.1 = 33.0 元 -> Cash 从 (500000-50) 降为 (500000-50-33)
             var flipOrder = new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 110.0, 8m);
-            string orderId = broker.ExecuteOrder(flipOrder, 100.0, null);
+            long orderId = broker.ExecuteOrder(flipOrder, 100.0, null);
 
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
             Assert.AreEqual(5m, broker.GetPosition("rb2505"), "总持仓仍归属于账户");
@@ -1148,8 +1148,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 阶梯挂两笔买单：
             // Order 1: 9.6 元买 1,000 股 (冻结 9600)
             // Order 2: 9.2 元买 1,000 股 (冻结 9200)
-            string id1 = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.6, 1000m), 10.0, null);
-            string id2 = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.2, 1000m), 10.0, null);
+            long id1 = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.6, 1000m), 10.0, null);
+            long id2 = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.2, 1000m), 10.0, null);
 
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id1));
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id2));
@@ -1183,7 +1183,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // Bar 成交量仅 100 股
             var barSmall = CreateBar(10.0, 10.5, 9.8, 10.0, 100.0);
             var hugeOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 10_000m);
-            string id1 = brokerNoLimit.ExecuteOrder(hugeOrder, 10.0, barSmall);
+            long id1 = brokerNoLimit.ExecuteOrder(hugeOrder, 10.0, barSmall);
             Assert.AreEqual(OrderStatus.Filled, brokerNoLimit.GetOrderStatus(id1), "VolumeLimit=0 时应无视 Bar Volume 限制正常成交");
 
             var limitedConfig = new BrokerConfig
@@ -1194,7 +1194,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Slippage = 0.0
             };
             var brokerLimited = CreateBroker(limitedConfig);
-            string id2 = brokerLimited.ExecuteOrder(hugeOrder, 10.0, barSmall);
+            long id2 = brokerLimited.ExecuteOrder(hugeOrder, 10.0, barSmall);
             Assert.AreEqual(OrderStatus.Rejected, brokerLimited.GetOrderStatus(id2), "超过 10% Bar Volume 的订单必须被 Reject");
         }
 
@@ -1227,7 +1227,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             DateTime utcBuy = TimeZoneInfo.ConvertTimeToUtc(nyTimeBuy, nyZone);
             broker.Step(utcBuy);
 
-            string buyId = broker.SubmitOrder(new OrderRequest("AAPL", OrderDirection.Buy, OrderType.Market, 150.0, 100m));
+            long buyId = broker.SubmitOrder(new OrderRequest("AAPL", OrderDirection.Buy, OrderType.Market, 150.0, 100m));
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyId));
             Assert.AreEqual(100m, broker.GetPosition("AAPL"));
             Assert.AreEqual(0m, broker.GetAvailablePosition("AAPL"), "T+1 刚买入不可用");
@@ -1265,7 +1265,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             broker.OnTrade += r => buyReport = r;
 
             var buyLimit = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 100.0, 100m);
-            string buyId = broker.ExecuteOrder(buyLimit, 99.0, null);
+            long buyId = broker.ExecuteOrder(buyLimit, 99.0, null);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyId));
             Assert.IsNotNull(buyReport);
@@ -1278,7 +1278,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             broker.OnTrade += r => sellReport = r;
 
             var sellLimit = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 100.0, 100m);
-            string sellId = broker.ExecuteOrder(sellLimit, 101.0, null);
+            long sellId = broker.ExecuteOrder(sellLimit, 101.0, null);
 
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(sellId));
             Assert.IsNotNull(sellReport);
@@ -1298,7 +1298,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var broker = CreateBroker(config);
             broker.UpdateMarketPrice("sh.600000", 10.0);
 
-            var tradeOrderIds = new List<string>();
+            var tradeOrderIds = new List<long>();
             broker.OnTrade += r =>
             {
                 tradeOrderIds.Add(r.OrderId);
@@ -1313,8 +1313,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var o1 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m);
             var o2 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.6, 100m);
 
-            string id1 = broker.ExecuteOrder(o1, 10.0, null);
-            string id2 = broker.ExecuteOrder(o2, 10.0, null);
+            long id1 = broker.ExecuteOrder(o1, 10.0, null);
+            long id2 = broker.ExecuteOrder(o2, 10.0, null);
 
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id1));
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id2));
@@ -1343,11 +1343,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 挂单 9.0 元买 1000 股（冻结 9000 元）
             var buyOrder = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m);
-            string orderId = broker.ExecuteOrder(buyOrder, 10.0, null);
+            long orderId = broker.ExecuteOrder(buyOrder, 10.0, null);
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
             Assert.AreEqual(100_000.0 - 9000.0, broker.GetCash());
 
-            var canceledIds = new List<string>();
+            var canceledIds = new List<long>();
             broker.OnOrderStatusChanged += (id, status) =>
             {
                 if (status == OrderStatus.Canceled)
@@ -1385,7 +1385,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 策略调用通用公开接口 SubmitOrder：限价 9.0 元买入 1000 股
             var limitBuy = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m);
-            string orderId = broker.SubmitOrder(limitBuy);
+            long orderId = broker.SubmitOrder(limitBuy);
 
             // 核心断言：必须进入挂单 Submitted，绝不能当场自成交！
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId), "低于市价的限价买单绝不能立即自成交");
@@ -1423,7 +1423,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 2. 挂单 1：在 90.0 元买入 5 手平空（低于市价 100.0，排队挂单）
             // 预期：此单正好占满 5 手空头平仓额度，平仓免开仓保证金
             var order1 = new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m);
-            string id1 = broker.SubmitOrder(order1);
+            long id1 = broker.SubmitOrder(order1);
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id1));
             Assert.AreEqual(-5m, broker.GetPosition("rb2505"), "总持仓仍为 -5");
             Assert.AreEqual(0m, broker.GetAvailablePosition("rb2505"), "空头平仓额度已被 100% 冻结完毕");
@@ -1432,7 +1432,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 预期：由于 5 手空头平仓额度已全被挂单 1 冻结，此单必须被识别为反手新开 5 手多头！
             // 所需保证金 = 5 * 90.0 * 0.1 = 45.0 元。因为账户还有足够可用现金，可以提交挂单，但必须被扣除保证金！
             var order2 = new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m);
-            string id2 = broker.SubmitOrder(order2);
+            long id2 = broker.SubmitOrder(order2);
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id2));
             // 账户必须额外被冻结 45.0 元反手保证金，绝不能作为平仓免保证金双花放行！
             Assert.AreEqual(50_000.0 - 50.0 - 45.0, broker.GetCash(), 1e-4, "挂单 2 必须按反手开多收取 45 元保证金冻结");
@@ -1454,7 +1454,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 挂单 1：5 手买平（免保证金，剩余 10 元）
             brokerPoor.SubmitOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m));
             // 挂单 2：试图再次双花平仓 5 手。因为额度用完必须开多，开多需 45 元保证金，但可用资金仅 10 元，必须被拒！
-            string idReject = brokerPoor.SubmitOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m));
+            long idReject = brokerPoor.SubmitOrder(new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 5m));
             Assert.AreEqual(OrderStatus.Rejected, brokerPoor.GetOrderStatus(idReject), "无平仓额度且资金不足以开多时，必须严格拒单");
         }
 
@@ -1503,7 +1503,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
-        public void SubmitOrder_WithDuplicateClientOrderId_ShouldBeRejectedAndNotOverwriteExistingOrder()
+        public void SubmitOrder_WithDuplicateOrderId_ShouldBeRejectedAndNotOverwriteExistingOrder()
         {
             var config = new BrokerConfig
             {
@@ -1518,34 +1518,34 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 预设市场公允价为 10.0
             broker.UpdateMarketPrice("SH.600000", 10.0);
 
-            // 1. 提交首笔带有 ClientOrderId 的限价买单（限价 9.0 低于市价 10.0，进入挂单簿排队）
-            string clientOrderId = "cli_ord_unique_001";
+            // 1. 提交首笔带有指定 OrderId 的限价买单（限价 9.0 低于市价 10.0，进入挂单簿排队）
+            long specifiedOrderId = 99999L;
             var req1 = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 1000m)
             {
-                ClientOrderId = clientOrderId
+                OrderId = specifiedOrderId
             };
 
-            string id1 = broker.SubmitOrder(req1);
-            Assert.AreEqual(clientOrderId, id1);
+            long id1 = broker.SubmitOrder(req1);
+            Assert.AreEqual(specifiedOrderId, id1);
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id1));
 
             // 首笔订单冻结资金：9.0 * 1000 = 9,000 元，现金剩余 91,000 元
             Assert.AreEqual(91_000.0, broker.GetCash(), 1e-4);
 
-            // 2. 提交第二笔相同 ClientOrderId 的订单（试图覆盖），监听拒绝通知
+            // 2. 提交第二笔相同 OrderId 的订单（试图覆盖），监听拒绝通知
             OrderStatus? notifiedStatus = null;
             broker.OnOrderStatusChanged += (oid, st) =>
             {
-                if (oid == clientOrderId) notifiedStatus = st;
+                if (oid == specifiedOrderId) notifiedStatus = st;
             };
 
             var req2 = new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.0, 500m)
             {
-                ClientOrderId = clientOrderId
+                OrderId = specifiedOrderId
             };
 
-            string id2 = broker.SubmitOrder(req2);
-            Assert.AreEqual(clientOrderId, id2);
+            long id2 = broker.SubmitOrder(req2);
+            Assert.AreEqual(specifiedOrderId, id2);
             // 必须派发 Rejected 事件通知！
             Assert.AreEqual(OrderStatus.Rejected, notifiedStatus);
             // 原订单在字典中必须完好无损，依然保持 Submitted，严禁被覆盖篡改！
@@ -1577,22 +1577,22 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var broker = CreateBroker(config);
 
             // 1. 便捷 Buy 动词下单并以市价成交
-            string buyId = broker.Buy("SH.600000", 1000m, 10.0, OrderType.Market, "buy_001");
-            Assert.AreEqual("buy_001", buyId);
+            long buyId = broker.Buy("SH.600000", 1000m, 10.0, OrderType.Market, orderTag: "buy_001");
+            Assert.IsTrue(buyId > 0);
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyId));
             Assert.AreEqual(1000m, broker.GetPosition("SH.600000"));
             Assert.AreEqual(90_000.0, broker.GetCash(), 1e-4);
 
             // 2. 便捷 ClosePosition 动词全额平仓多头
-            string closeId = broker.ClosePosition("SH.600000", 10.5, OrderType.Market, "close_001");
-            Assert.AreEqual("close_001", closeId);
+            long closeId = broker.ClosePosition("SH.600000", 10.5, OrderType.Market, orderTag: "close_001");
+            Assert.IsTrue(closeId > 0);
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(closeId));
             Assert.AreEqual(0m, broker.GetPosition("SH.600000"));
             Assert.AreEqual(100_500.0, broker.GetCash(), 1e-4);
 
-            // 3. 无持仓时 ClosePosition 应返回空字符串且不产生任何订单
-            string noOpId = broker.ClosePosition("SH.600000", 10.5);
-            Assert.AreEqual(string.Empty, noOpId);
+            // 3. 无持仓时 ClosePosition 应返回 0L 且不产生任何订单
+            long noOpId = broker.ClosePosition("SH.600000", 10.5);
+            Assert.AreEqual(0L, noOpId);
         }
 
         #region 契约隔离与市价单资金预估 (IBrokerEngineDriver & Market Order Pricing)
@@ -1668,7 +1668,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 提交市价买单 500 股，Price 为 0.0
             var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 0.0, 500m);
-            string orderId = broker.SubmitOrder(req);
+            long orderId = broker.SubmitOrder(req);
 
             // 成交价为 10.0 * (1 + 0.01) = 10.10，耗资 500 * 10.10 = 5,050.0
             Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(orderId));
@@ -1695,7 +1695,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 尝试市价买入 200 股（需 2000 元 > 可用 1000 元）
             var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 0.0, 200m);
-            string orderId = broker.SubmitOrder(req);
+            long orderId = broker.SubmitOrder(req);
 
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
             Assert.AreEqual(1_000.0, broker.GetCash(), 1e-4);
@@ -1715,7 +1715,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             // 标的无历史行情与当期价格记录
             var req = new OrderRequest("sh.999999", OrderDirection.Buy, OrderType.Market, 0.0, 100m);
-            string orderId = broker.SubmitOrder(req);
+            long orderId = broker.SubmitOrder(req);
 
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
             Assert.AreEqual(100_000.0, broker.GetCash(), 1e-4);
@@ -1746,7 +1746,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             }
         }
 
-        public static string ExecuteOrder(this Broker broker, OrderRequest request, double basePrice, IDataRow? bar = null)
+        public static long ExecuteOrder(this Broker broker, OrderRequest request, double basePrice, IDataRow? bar = null)
         {
             if (((IExchangeGatewayProvider)broker).Gateway is ISimulatedExchange sim)
             {

@@ -51,9 +51,6 @@ public sealed class AnalysisEngine : IAnalysisEngine
     }
 
     /// <inheritdoc />
-    public IAnalysisEngine RegisterAnalyzer(IAnalyzer analyzer) => Add(analyzer);
-
-    /// <inheritdoc />
     public IAnalysisEngine Remove<T>() where T : IAnalyzer
     {
         _analyzers.RemoveAll(a => a is T);
