@@ -196,7 +196,7 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
 
                 for (int k = 0; k < fCount; k++)
                 {
-                    ReadOnlySpan<double> row = context.GetFieldRow(_fields[k], 0, Mode);
+                    ReadOnlySpan<double> row = context.MarketData.GetRow(_fields[k], context.CurrentIndex, Mode);
                     if (row.IsEmpty) return;
                     if (row.Length < safeCount) safeCount = row.Length;
                     ptrs[k] = (double*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(row));

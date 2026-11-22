@@ -286,13 +286,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             var ts = new FullMockTimeseriesRegistry(meta, matrices);
             var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
-            var ctx = new EngineContext(ts, broker, priceFields: new[] { "vwap" });
 
             // 注入复权因子矩阵：Row 0 因子为 1.0，Row 1 因子为 2.0 (sh) 和 1.5 (sz)
             var factorMat = new ChunkMatrix2D<double>(2, 4096, 2);
             factorMat[0, 0] = 1.0; factorMat[0, 1] = 1.0;
             factorMat[1, 0] = 2.0; factorMat[1, 1] = 1.5;
-            ctx.SetAdjustmentData(factorMat, null);
+
+            var ctx = new EngineContext(ts, broker, priceFields: new[] { "vwap" }, factorMatrix: factorMat, stepToDateIndex: null);
 
             return (ctx, meta);
         }
@@ -309,13 +309,10 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.IsTrue(double.IsNaN(ctx.GetLow(0)));
             Assert.IsTrue(double.IsNaN(ctx.GetVolume(0)));
             Assert.IsTrue(double.IsNaN(ctx.GetField(0, "vwap")));
-            Assert.IsTrue(ctx.DailyFactors.IsEmpty);
-
             // 2. 推进到 Step 1
             ctx.UpdateStep(1, meta.TradeDates[1]);
-            Assert.IsFalse(ctx.DailyFactors.IsEmpty);
-            Assert.AreEqual(2.0, ctx.DailyFactors[0]);
-            Assert.AreEqual(1.5, ctx.DailyFactors[1]);
+            Assert.AreEqual(2.0, ctx.MarketData.ToPostPrice(0, 1.0, 1));
+            Assert.AreEqual(1.5, ctx.MarketData.ToPostPrice(1, 1.0, 1));
 
             // 3. Raw 模式验证 (返回原始物理价格与物理量)
             Assert.AreEqual(11.0, ctx.GetOpen(0, 0, PriceMode.Raw));

@@ -42,7 +42,6 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             ts.RegisterMatrix("volume", volData);
 
             var broker = new FakeBroker();
-            using var context = new EngineContext(ts, broker);
 
             // 构造因子矩阵 (2 行 2 列)
             // row 0: sh.600000 = 2.0, sz.000001 = 1.5
@@ -54,7 +53,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             factorMatrix[1, 1] = 1.5;
 
             var stepToDateIndex = new int[] { 0, 1 };
-            context.SetAdjustmentData(factorMatrix, stepToDateIndex);
+            using var context = new EngineContext(ts, broker, factorMatrix: factorMatrix, stepToDateIndex: stepToDateIndex);
 
             // 步进至第 0 步
             context.UpdateStep(0, meta.TradeDates[0]);
@@ -193,9 +192,9 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // sz.000001 沉淀为 1.2
             // sh.600000 沉淀为 1.0 (缺失兜底)
             var context = (EngineContext)engine.Context;
-            Assert.AreEqual(3.0, context.DailyFactors[0], 1e-12);
-            Assert.AreEqual(1.2, context.DailyFactors[1], 1e-12);
-            Assert.AreEqual(1.0, context.DailyFactors[2], 1e-12);
+            Assert.AreEqual(3.0, context.MarketData.ToPostPrice(0, 1.0, 0), 1e-12);
+            Assert.AreEqual(1.2, context.MarketData.ToPostPrice(1, 1.0, 0), 1e-12);
+            Assert.AreEqual(1.0, context.MarketData.ToPostPrice(2, 1.0, 0), 1e-12);
 
             // 2. 验证跨模态覆盖校验: 必须触发关于 sh.600000 的 Warning 告警！
             bool hasWarning = logs.Exists(l => l.Contains("[Warning]") && l.Contains("sh.600000"));
@@ -293,10 +292,12 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 }
             };
 
-            var engine = BacktestingEngine.Create(sessionConfig, ts, StrategyPipeline.Sequential(), events);
-
-            // 启用了 post 模式但除权表不存在，必须抛出强类型 InvalidOperationException
-            Assert.ThrowsException<InvalidOperationException>(() => engine.Run());
+            // 启用了 post 模式但除权表不存在，构造或运行期必须及早抛出强类型 InvalidOperationException
+            Assert.ThrowsException<InvalidOperationException>(() =>
+            {
+                var engine = BacktestingEngine.Create(sessionConfig, ts, StrategyPipeline.Sequential(), events);
+                engine.Run();
+            });
         }
 
         [TestMethod]
@@ -622,10 +623,9 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             ts.RegisterMatrix("close", new double[,] { { 10.0 } });
             ts.RegisterMatrix("pe", new double[,] { { 15.0 } });
 
-            using var context = new EngineContext(ts, new FakeBroker(), priceFields: new[] { "close" });
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
             factorMatrix[0, 0] = 2.0; // 因子 2.0
-            context.SetAdjustmentData(factorMatrix, new[] { 0 });
+            using var context = new EngineContext(ts, new FakeBroker(), priceFields: new[] { "close" }, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0 });
             context.UpdateStep(0, DateTime.UtcNow);
 
             // 价格类字段在 Post 模式下乘以因子
@@ -644,10 +644,9 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var ts = new MockTimeseriesRegistry(meta);
             ts.RegisterMatrix("volume", new double[,] { { 50000.0 } });
 
-            using var context = new EngineContext(ts, new FakeBroker());
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
             factorMatrix[0, 0] = 2.5;
-            context.SetAdjustmentData(factorMatrix, new[] { 0 });
+            using var context = new EngineContext(ts, new FakeBroker(), factorMatrix: factorMatrix, stepToDateIndex: new[] { 0 });
             context.UpdateStep(0, DateTime.UtcNow);
 
             // 成交量严格保持物理原始量（Raw 股数），防止产生虚构成交量
@@ -844,7 +843,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 {
                     engine1.Run();
                     var ctx1 = (EngineContext)engine1.Context;
-                    Assert.AreEqual(2.5, ctx1.DailyFactors[0], 1e-12);
+                    Assert.AreEqual(2.5, ctx1.MarketData.ToPostPrice(0, 1.0, 0), 1e-12);
                 }
 
                 // 验证磁盘上生成了 LZ4 缓存文件
@@ -859,7 +858,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 {
                     engine2.Run();
                     var ctx2 = (EngineContext)engine2.Context;
-                    Assert.AreEqual(2.5, ctx2.DailyFactors[0], 1e-12);
+                    Assert.AreEqual(2.5, ctx2.MarketData.ToPostPrice(0, 1.0, 0), 1e-12);
                     Assert.AreEqual(27.5, ctx2.GetClose("sh.600000", offset: 0, mode: PriceMode.Post), 1e-12); // 11.0 * 2.5
                     Assert.AreEqual(25.0, ctx2.GetClose("sh.600000", offset: -1, mode: PriceMode.Post), 1e-12); // 10.0 * 2.5
                 }
@@ -877,20 +876,18 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var ts = new MockTimeseriesRegistry(meta);
             ts.RegisterMatrix("close", new double[,] { { 10.0 } });
 
-            var context = new EngineContext(ts, new FakeBroker());
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
             factorMatrix[0, 0] = 2.0;
-            context.SetAdjustmentData(factorMatrix, new[] { 0 });
+            var context = new EngineContext(ts, new FakeBroker(), factorMatrix: factorMatrix, stepToDateIndex: new[] { 0 });
             context.UpdateStep(0, DateTime.UtcNow);
 
-            Assert.AreEqual(2.0, context.DailyFactors[0], 1e-12);
+            Assert.AreEqual(2.0, context.MarketData.ToPostPrice(0, 1.0, 0), 1e-12);
             Assert.AreEqual(20.0, context.GetClose(0, mode: PriceMode.Post), 1e-12);
 
             // 显式释放非托管资源
             context.Dispose();
 
-            // 释放后验证：DailyFactors 返回空 Span，复权降级为物理价，零崩溃或悬挂指针异常
-            Assert.IsTrue(context.DailyFactors.IsEmpty);
+            // 释放后验证：复权降级为物理价，零崩溃或悬挂指针异常
             Assert.AreEqual(10.0, context.GetClose(0, mode: PriceMode.Post), 1e-12);
         }
 

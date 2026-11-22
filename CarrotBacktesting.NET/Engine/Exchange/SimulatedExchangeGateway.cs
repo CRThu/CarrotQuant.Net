@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
@@ -25,16 +26,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     private MarketTime _currentTime = MarketTime.MinValue;
     private int _currentIndex = -1;
 
-    // 热路径物理矩阵引用绑定（在 timeseries 引用不变时实现零字典寻址、零字符串哈希）
-    private ITimeseriesRegistry? _boundTimeseries;
-    private IMarketMetadata? _boundMetadata;
-    private IReadOnlyMatrix2D<double>? _closeMatrix;
-    private IReadOnlyMatrix2D<double>? _openMatrix;
-    private IReadOnlyMatrix2D<double>? _highMatrix;
-    private IReadOnlyMatrix2D<double>? _lowMatrix;
-    private IReadOnlyMatrix2D<double>? _volumeMatrix;
-    private IReadOnlyMatrix2D<double>? _amountMatrix;
-    private IReadOnlyMatrix2D<double>? _vwapMatrix;
+    private IMarketDataProvider? _marketData;
 
     public event Action<ExecutionReport>? OnExecution;
     public event Action<OrderStateReport>? OnOrderStateChanged;
@@ -59,13 +51,10 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         lock (_syncLock)
         {
             // 停牌 / 未上市标的守卫拦截：
-            // 若处于时序推进中（矩阵已绑定且时步有效），但标的在当前时间步无合法公允行情（NaN、<= 0 或 Infinity）
-            // 且外部未提供当期显式快照，说明标的处于停牌、未上市或退市状态，立即拒单，严禁入簿挂单
-            if (_closeMatrix != null && _boundMetadata != null && _currentIndex >= 0 && !_snapshots.ContainsKey(request.Symbol))
+            if (_marketData != null && _marketData.Timeseries.HasField(StandardFields.Close) && _currentIndex >= 0 && !_snapshots.ContainsKey(request.Symbol))
             {
-                int col = _boundMetadata.GetSymbolIndex(request.Symbol);
-                double rawClose = (col >= 0 && _currentIndex < _closeMatrix.RowCount) ? _closeMatrix[_currentIndex, col] : double.NaN;
-                if (double.IsNaN(rawClose) || rawClose <= 0.0 || double.IsInfinity(rawClose))
+                var bar = _marketData.GetBar(request.Symbol, _currentIndex);
+                if (!bar.IsValid)
                 {
                     stateChanged = OrderStatus.Rejected;
                     stateReason = $"Symbol '{request.Symbol}' is suspended, unlisted, or lacks valid market data.";
@@ -78,7 +67,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 MarketTime tradeTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
                 // 市价单处理：若处于回测时钟推进中且非 Close 即时成交模式，统一压入 OrderBook 挂单簿，留待对应相位撮合
-                bool isPendingMarketOrder = request.Type == OrderType.Market && _boundTimeseries != null && _currentIndex >= 0 && _config.DefaultExecutionPrice != ExecutionPriceType.Close;
+                bool isPendingMarketOrder = request.Type == OrderType.Market && _marketData != null && _currentIndex >= 0 && _config.DefaultExecutionPrice != ExecutionPriceType.Close;
                 if (isPendingMarketOrder)
                 {
                     var simOrder = new SimulatedOrder(orderId, request, tradeTime)
@@ -185,9 +174,10 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     }
 
     /// <inheritdoc />
-    public void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex)
+    public void Step(MarketTime currentTime, IMarketDataProvider marketData, int currentIndex)
     {
-        ArgumentNullException.ThrowIfNull(timeseries);
+        ArgumentNullException.ThrowIfNull(marketData);
+        EnsureMarketDataBound(marketData);
 
         List<ExecutionReport>? fillReports = null;
         List<OrderStateReport>? stateReports = null;
@@ -197,7 +187,6 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
             bool isNewDay = _currentTime != MarketTime.MinValue && currentTime.Date != _currentTime.Date;
             _currentTime = currentTime;
             _currentIndex = currentIndex;
-            EnsureTimeseriesBound(timeseries);
 
             // 跨日时自动撤销所有当日有效（Day）的挂单，保留 GTC 挂单
             if (isNewDay && _orderBook.Count > 0)
@@ -223,33 +212,18 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
             if (_orderBook.Count > 0)
             {
-                if (_closeMatrix == null)
-                {
-                    throw new InvalidOperationException("时序注册表中缺少必选矩阵 'close'，无法获取基准行情与执行仿真撮合。");
-                }
-
                 var activeSymbols = new List<string>(_orderBook.ActiveSymbols);
                 for (int i = 0; i < activeSymbols.Count; i++)
                 {
                     string symbol = activeSymbols[i];
-                    double marketPrice = 0.0;
-                    int colIndex = _boundMetadata != null ? _boundMetadata.GetSymbolIndex(symbol) : -1;
+                    BarSnapshot bar = _marketData!.GetBar(symbol, currentIndex);
 
-                    double close = (colIndex >= 0 && currentIndex < _closeMatrix.RowCount) ? _closeMatrix[currentIndex, colIndex] : double.NaN;
-                    if (close > 0.0 && !double.IsNaN(close) && !double.IsInfinity(close))
-                    {
-                        marketPrice = close;
-                    }
-
-                    double open = (colIndex >= 0 && _openMatrix != null && currentIndex < _openMatrix.RowCount) ? _openMatrix[currentIndex, colIndex] : double.NaN;
-                    double high = (colIndex >= 0 && _highMatrix != null && currentIndex < _highMatrix.RowCount) ? _highMatrix[currentIndex, colIndex] : double.NaN;
-                    double low = (colIndex >= 0 && _lowMatrix != null && currentIndex < _lowMatrix.RowCount) ? _lowMatrix[currentIndex, colIndex] : double.NaN;
-                    double volume = (colIndex >= 0 && _volumeMatrix != null && currentIndex < _volumeMatrix.RowCount) ? _volumeMatrix[currentIndex, colIndex] : double.NaN;
-                    double amount = (colIndex >= 0 && _amountMatrix != null && currentIndex < _amountMatrix.RowCount) ? _amountMatrix[currentIndex, colIndex] : double.NaN;
+                    double close = bar.Close;
+                    double open = bar.Open;
+                    double marketPrice = (close > 0.0 && !double.IsNaN(close) && !double.IsInfinity(close)) ? close : 0.0;
 
                     // 1. 标的突发停牌熔断检查：
-                    // 若标的在当前时间步没有合法行情（open 与 close 均为 NaN 或 <= 0），判定为停牌！
-                    // 挂单簿中该标的订单必须全部立即熔断剔除，派发 Rejected 报告，解冻资金！
+                    // 若标的在当前时间步没有合法行情（open 与 close 均为 NaN 或 <= 0），判定为停牌
                     bool isSuspended = (double.IsNaN(open) || open <= 0.0) && (double.IsNaN(close) || close <= 0.0);
                     if (isSuspended)
                     {
@@ -280,7 +254,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                         continue;
                     }
 
-                    BarSnapshot bar = new(open, high, low, marketPrice, volume, amount);
+                    int colIndex = _marketData.Metadata.GetSymbolIndex(symbol);
                     MatchSymbolOrders(symbol, marketPrice, in bar, currentTime, ref fillReports, ref stateReports, colIndex, currentIndex);
                 }
             }
@@ -288,6 +262,17 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
         // 锁外派发成交回报、拒绝及跨日自动撤单事件
         DispatchReports(fillReports, stateReports);
+    }
+
+    /// <inheritdoc />
+    public void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex)
+    {
+        ArgumentNullException.ThrowIfNull(timeseries);
+        if (_marketData == null || !ReferenceEquals(_marketData.Timeseries, timeseries))
+        {
+            _marketData = new CarrotBacktesting.NET.Data.MarketDataProvider(timeseries);
+        }
+        Step(currentTime, _marketData, currentIndex);
     }
 
     /// <inheritdoc />
@@ -363,9 +348,9 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                         execPrice = bar.HasOpen && bar.Open > 0.0 ? bar.Open : marketPrice;
                         break;
                     case ExecutionPriceType.Vwap:
-                        if (_vwapMatrix != null && colIndex >= 0 && currentIndex >= 0 && currentIndex < _vwapMatrix.RowCount)
+                        if (_marketData != null && currentIndex >= 0)
                         {
-                            double v = _vwapMatrix[currentIndex, colIndex];
+                            double v = colIndex >= 0 ? _marketData.GetField(colIndex, "vwap", currentIndex) : _marketData.GetField(symbol, "vwap", currentIndex);
                             if (v > 0.0 && !double.IsNaN(v) && !double.IsInfinity(v))
                             {
                                 execPrice = v;
@@ -548,85 +533,18 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         return _config.SettleDays;
     }
 
-    private void EnsureTimeseriesBound(ITimeseriesRegistry timeseries)
-    {
-        if (ReferenceEquals(_boundTimeseries, timeseries))
-        {
-            return;
-        }
-
-        _boundTimeseries = timeseries;
-        _boundMetadata = timeseries.Metadata;
-
-        IReadOnlyMatrix2D<double>? closeMatrix = null;
-        try
-        {
-            closeMatrix = timeseries.GetMatrix<double>(StandardFields.Close);
-        }
-        catch
-        {
-            // 矩阵未注册
-        }
-
-        if (_config.OnCheckVolume != null && !timeseries.HasField(StandardFields.Volume))
-        {
-            throw new InvalidOperationException(
-                "BrokerConfig 已挂载自定义 OnCheckVolume 成交量委托，但时序注册表中未找到 'volume' 矩阵。");
-        }
-
-        _closeMatrix = closeMatrix;
-        _openMatrix = timeseries.HasField(StandardFields.Open) ? timeseries.GetMatrix<double>(StandardFields.Open) : null;
-        _highMatrix = timeseries.HasField(StandardFields.High) ? timeseries.GetMatrix<double>(StandardFields.High) : null;
-        _lowMatrix = timeseries.HasField(StandardFields.Low) ? timeseries.GetMatrix<double>(StandardFields.Low) : null;
-        _volumeMatrix = timeseries.HasField(StandardFields.Volume) ? timeseries.GetMatrix<double>(StandardFields.Volume) : null;
-        _amountMatrix = timeseries.HasField(StandardFields.Amount) ? timeseries.GetMatrix<double>(StandardFields.Amount) : null;
-        _vwapMatrix = timeseries.HasField("vwap") ? timeseries.GetMatrix<double>("vwap") : null;
-    }
-
     /// <inheritdoc />
     public BarSnapshot GetBar(string symbol)
     {
         lock (_syncLock)
         {
-            if (_closeMatrix != null && _boundMetadata != null && _currentIndex >= 0)
+            if (_marketData != null && _currentIndex >= 0)
             {
-                return GetBarSnapshot(symbol, _currentIndex);
+                return _marketData.GetBar(symbol, _currentIndex);
             }
 
             return _snapshots.TryGetValue(symbol, out var snapshot) ? snapshot : BarSnapshot.Empty;
         }
-    }
-
-    private BarSnapshot GetBarSnapshot(string symbol, int rowIndex)
-    {
-        if (_closeMatrix == null || _boundMetadata == null || rowIndex < 0 || rowIndex >= _closeMatrix.RowCount)
-        {
-            return BarSnapshot.Empty;
-        }
-
-        int colIndex = _boundMetadata.GetSymbolIndex(symbol);
-        if (colIndex < 0) return BarSnapshot.Empty;
-
-        double close = _closeMatrix[rowIndex, colIndex];
-        if (close <= 0.0 || double.IsNaN(close) || double.IsInfinity(close)) return BarSnapshot.Empty;
-
-        double open = _openMatrix != null && rowIndex < _openMatrix.RowCount ? _openMatrix[rowIndex, colIndex] : double.NaN;
-        double high = _highMatrix != null && rowIndex < _highMatrix.RowCount ? _highMatrix[rowIndex, colIndex] : double.NaN;
-        double low = _lowMatrix != null && rowIndex < _lowMatrix.RowCount ? _lowMatrix[rowIndex, colIndex] : double.NaN;
-        double volume = _volumeMatrix != null && rowIndex < _volumeMatrix.RowCount ? _volumeMatrix[rowIndex, colIndex] : double.NaN;
-        double amount = _amountMatrix != null && rowIndex < _amountMatrix.RowCount ? _amountMatrix[rowIndex, colIndex] : double.NaN;
-
-        if (_vwapMatrix != null && rowIndex < _vwapMatrix.RowCount && double.IsNaN(amount))
-        {
-            double v = _vwapMatrix[rowIndex, colIndex];
-            if (v > 0.0 && !double.IsNaN(v) && !double.IsInfinity(v))
-            {
-                volume = 1.0;
-                amount = v;
-            }
-        }
-
-        return new BarSnapshot(open, high, low, close, volume, amount);
     }
 
     /// <summary>
@@ -689,6 +607,21 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 };
                 _orderBook.Add(ord);
             }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureMarketDataBound(IMarketDataProvider marketData)
+    {
+        if (ReferenceEquals(_marketData, marketData)) return;
+
+        _marketData = marketData;
+
+        // 强类型前置校验：若配置了自定义流动性 Hook，但行情源无 volume 矩阵，及早 Fail-Fast 阻断
+        if (_config.OnCheckVolume != null && !marketData.Timeseries.HasField(StandardFields.Volume))
+        {
+            throw new InvalidOperationException(
+                "BrokerConfig 已挂载自定义 OnCheckVolume 成交量委托，但时序注册表中未找到 'volume' 矩阵。");
         }
     }
 }

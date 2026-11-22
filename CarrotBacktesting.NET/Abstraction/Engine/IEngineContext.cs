@@ -27,6 +27,11 @@ public interface IEngineContext
     ITimeseriesRegistry Timeseries { get; }
 
     /// <summary>
+    /// 获取行情与复权数据提供器。
+    /// </summary>
+    IMarketDataProvider MarketData { get; }
+
+    /// <summary>
     /// 获取事件注册表，用于访问外部异构事件流表（如复权因子、公告、龙虎榜等）。
     /// </summary>
     IEventRegistry Events { get; }
@@ -313,28 +318,7 @@ public interface IEngineContext
     /// <param name="mode">价格模式（默认 Post 后复权）。</param>
     double GetField(int symbolIndex, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post);
 
-    /// <summary>
-    /// 获取全市场当前时间步有效复权因子切片引用（纯连续内存，零堆分配）。
-    /// </summary>
-    ReadOnlySpan<double> DailyFactors => ReadOnlySpan<double>.Empty;
 
-    /// <summary>
-    /// 判断指定字段是否为价格类字段（如 open, high, low, close 等），以决定在 Post 模式下是否需要乘复权因子。
-    /// 由权威上下文依据 PriceFields 配置判定，严禁在此假实现中硬编码。
-    /// </summary>
-    /// <param name="fieldName">字段名称。</param>
-    /// <returns>若为价格类字段则返回 true，否则返回 false。</returns>
-    bool IsPriceField(string fieldName) => false;
-
-    /// <summary>
-    /// 获取指定时序字段在当前时间步（含可选历史偏移）的全市场标的只读行切片（纯连续内存，零堆分配）。
-    /// 供指标批量计算与截面因子提取等热路径直接流式消费，消灭标的循环体内的字符串比对与二维寻址开销。
-    /// </summary>
-    /// <param name="fieldName">字段名称（如 "close", "open", "volume", "turnover"）。</param>
-    /// <param name="offset">时序偏移量（0 为当期，负数表示历史回溯步长）。</param>
-    /// <param name="mode">价格复权模式（默认 Post 后复权；若非价格字段或指定 Raw 则直接返回物理真实值切片）。</param>
-    /// <returns>全市场标的数据的只读切片；若字段不存在或处于无效时间步则返回空切片。</returns>
-    ReadOnlySpan<double> GetFieldRow(string fieldName, int offset = 0, PriceMode mode = PriceMode.Post) => ReadOnlySpan<double>.Empty;
 
     #endregion
 

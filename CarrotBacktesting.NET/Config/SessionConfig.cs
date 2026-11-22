@@ -255,9 +255,20 @@ namespace CarrotBacktesting.NET.Config
         public string FactorField { get; set; } = "back_adj_factor";
 
         /// <summary>
+        /// 默认需同步复权的价格类字段白名单（open, high, low, close）。
+        /// </summary>
+        public static readonly string[] DefaultPriceFields =
+        [
+            StandardFields.Open,
+            StandardFields.High,
+            StandardFields.Low,
+            StandardFields.Close
+        ];
+
+        /// <summary>
         /// 需同步复权的价格类字段白名单，默认 ["open", "high", "low", "close"]。
         /// </summary>
-        public List<string> PriceFields { get; set; } = new() { "open", "high", "low", "close" };
+        public List<string> PriceFields { get; set; } = new(DefaultPriceFields);
 
         /// <summary>
         /// 是否启用因子矩阵的二进制缓存（基于列式紧凑压缩存储），默认 true。

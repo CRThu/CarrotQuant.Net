@@ -41,9 +41,9 @@ namespace CarrotBacktesting.NET.Engine
         private readonly ITradingRecorder _recorder;
         private readonly IProgress<EngineProgress>? _progressReporter;
         private readonly AdjustmentConfig _adjustConfig;
+        private readonly IMarketDataProvider _marketData;
         private readonly IndicatorRegistry _indicators;
 
-        private bool _hasAdjustments = false;
         private readonly IStorageResolver? _resolver;
         private MarketTime _lastDate = MarketTime.MinValue;
 
@@ -77,7 +77,7 @@ namespace CarrotBacktesting.NET.Engine
         /// <summary>
         /// 是否成功加载并启用了复权因子。
         /// </summary>
-        public bool HasAdjustments => _hasAdjustments;
+        public bool HasAdjustments => _marketData.HasAdjustments;
 
         /// <summary>
         /// 获取当前引擎挂载的交易事实记录器。
@@ -173,7 +173,8 @@ namespace CarrotBacktesting.NET.Engine
             _progressReporter = progress ?? (monitor as IProgress<EngineProgress>);
             _resolver = resolver ?? (!string.IsNullOrWhiteSpace(_adjustConfig.StorageRoot) ? new StorageResolver(_adjustConfig.StorageRoot) : null);
 
-            _context = new EngineContext(timeseries, broker, market, events, fields, priceFields: _adjustConfig.PriceFields, recorder: _recorder);
+            _marketData = new MarketDataProvider(timeseries, _adjustConfig, _resolver, events, _monitor);
+            _context = new EngineContext(timeseries, broker, market, events, fields, priceFields: _adjustConfig.PriceFields, recorder: _recorder, marketData: _marketData);
             _events = _context.Events;
             _fields = _context.Fields;
             _market = _context.Market;
@@ -361,9 +362,6 @@ namespace CarrotBacktesting.NET.Engine
                     }
                 }
 
-                // 3.1 预热复权因子（由专职 AdjustmentProvider 统筹全生命周期解析与缓存加载）
-                PrewarmAdjustments();
-
                 // 4. 触发策略启动生命周期
                 _pipeline.OnStart(_context);
 
@@ -380,26 +378,10 @@ namespace CarrotBacktesting.NET.Engine
                 }
                 long runStartTimestamp = Stopwatch.GetTimestamp();
 
-                // 尝试获取必选 close 时序矩阵用于持仓盯市
-                IReadOnlyMatrix2D<double>? closeMatrix = null;
-                try
-                {
-                    closeMatrix = _timeseries.GetMatrix<double>("close");
-                }
-                catch { }
-
-                var metadata = _timeseries.Metadata;
-
                 double ResolveStepPrice(string symbol, int step)
                 {
-                    if (closeMatrix == null) return 0.0;
-                    int col = metadata.GetSymbolIndex(symbol);
-                    if (col >= 0 && col < closeMatrix.Width && step >= 0 && step < closeMatrix.RowCount)
-                    {
-                        double p = closeMatrix[step, col];
-                        if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
-                    }
-                    return 0.0;
+                    double p = _marketData.GetField(symbol, StandardFields.Close, step);
+                    return (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) ? p : 0.0;
                 }
 
                 // 5. 核心时间步驱动循环（热路径零分配）
@@ -442,7 +424,7 @@ namespace CarrotBacktesting.NET.Engine
 
                     // ==================== Phase 1: Open 相位 (开盘时刻) ====================
                     // 1.1 驱动仿真交易所批量撮合在途限价单与前一日收盘跨步市价单
-                    _simExchange?.Step(currentTime, _timeseries, i);
+                    _simExchange?.Step(currentTime, _marketData, i);
 
                     // 1.2 推进经纪商时钟与交易所本地跨日结算（T+N 在途持仓解锁，先结算后可用）
                     _brokerDriver?.Step(currentTime);
@@ -461,7 +443,7 @@ namespace CarrotBacktesting.NET.Engine
                         }
 
                         // 若策略在开盘发出了开盘价撮合订单，在此即刻完成开盘撮合
-                        _simExchange?.Step(currentTime, _timeseries, i);
+                        _simExchange?.Step(currentTime, _marketData, i);
                     }
 
                     // ==================== Phase 2: Intraday 相位 (盘中时刻) ====================
@@ -479,7 +461,7 @@ namespace CarrotBacktesting.NET.Engine
                     _indicators.Step(_context);
 
                     // 3.2 驱动仿真交易所执行收盘撮合（针对开盘挂起至收盘成交的 VWAP / Close 订单）
-                    _simExchange?.Step(currentTime, _timeseries, i);
+                    _simExchange?.Step(currentTime, _marketData, i);
 
                     // 3.3 若 StrategyUpdateTiming == OnClose：执行收盘策略决策
                     if (_config.UpdateTiming == StrategyUpdateTiming.OnClose)
@@ -591,31 +573,6 @@ namespace CarrotBacktesting.NET.Engine
                 {
                     _pipeline.OnEvent(_context, tableName, _eventBuffer);
                 }
-            }
-        }
-
-        /// <summary>
-        /// 预热除权因子矩阵，委托专职服务 AdjustmentProvider 执行解析与生命周期供给。
-        /// </summary>
-        private void PrewarmAdjustments()
-        {
-            if (_adjustConfig.Mode != AdjustmentMode.Post)
-            {
-                return;
-            }
-
-            var (factorMatrix, stepToDateIndex) = AdjustmentProvider.Resolve(
-                _adjustConfig,
-                _timeseries.Metadata,
-                resolver: _resolver,
-                events: _events,
-                timeseries: _timeseries,
-                monitor: _monitor);
-
-            if (factorMatrix != null)
-            {
-                _hasAdjustments = true;
-                _context.SetAdjustmentData(factorMatrix, stepToDateIndex);
             }
         }
 

@@ -39,6 +39,7 @@ public class StrategyPipelineTests
         public MarketTime CurrentTime { get; set; } = MarketTime.MinValue;
         public int CurrentIndex { get; set; } = 0;
         public ITimeseriesRegistry Timeseries => throw new NotImplementedException();
+        public IMarketDataProvider MarketData => throw new NotImplementedException();
         public IEventRegistry Events => throw new NotImplementedException();
         public IFieldRegistry Fields => throw new NotImplementedException();
         public IBroker Broker { get; }

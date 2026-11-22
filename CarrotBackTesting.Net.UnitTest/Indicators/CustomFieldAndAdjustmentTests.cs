@@ -158,11 +158,10 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var simExchange = new SimulatedExchangeGateway(brokerConfig);
             var broker = new Broker(simExchange, brokerConfig);
 
-            var context = new EngineContext(tsRegistry, broker);
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 2);
             factorMatrix[0, 0] = 2.0;
             factorMatrix[1, 0] = 2.0;
-            context.SetAdjustmentData(factorMatrix, new[] { 0, 1 });
+            var context = new EngineContext(tsRegistry, broker, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
 
             // 步进至第 0 步
             context.UpdateStep(0, dates[0]);
@@ -218,11 +217,10 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var broker = new Broker(simExchange, brokerConfig);
             var brokerDriver = (IBrokerEngineDriver)broker;
 
-            var context = new EngineContext(tsRegistry, broker);
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 2);
             factorMatrix[0, 0] = 2.0;
             factorMatrix[1, 0] = 2.0;
-            context.SetAdjustmentData(factorMatrix, new[] { 0, 1 });
+            var context = new EngineContext(tsRegistry, broker, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
 
             context.UpdateStep(0, dates[0]);
             simExchange.Step(dates[0], tsRegistry, 0);
@@ -273,42 +271,32 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
             var context = new EngineContext(tsRegistry, broker);
 
-            // 未步进时 (CurrentIndex = -1)，返回空切片
-            Assert.IsTrue(context.GetFieldRow("close").IsEmpty);
+            // 未步进时 (stepIndex = -1)，返回空切片
+            Assert.IsTrue(context.MarketData.GetRow("close", -1).IsEmpty);
 
             // 步进至第 0 步
             context.UpdateStep(0, dates[0]);
 
-            // 1. 验证正向偏移（未来函数）防御性抛错
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetFieldRow("close", offset: 1));
+            // 1. 验证未知字段返回空切片
+            Assert.IsTrue(context.MarketData.GetRow("unknown_col", 0).IsEmpty);
+            Assert.IsTrue(context.MarketData.GetRow("", 0).IsEmpty);
 
-            // 2. 验证未知字段返回空切片
-            Assert.IsTrue(context.GetFieldRow("unknown_col").IsEmpty);
-            Assert.IsTrue(context.GetFieldRow("").IsEmpty);
-
-            // 3. 验证正常提取行切片
-            var closeRow = context.GetFieldRow("close");
+            // 2. 验证正常提取行切片
+            var closeRow = context.MarketData.GetRow("close", 0);
             Assert.AreEqual(2, closeRow.Length);
             Assert.AreEqual(10.0, closeRow[0], 1e-9);
             Assert.AreEqual(20.0, closeRow[1], 1e-9);
 
+            // 3. 验证正向偏移（未来函数）防御性抛错
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetClose(0, offset: 1));
+
             // 4. 验证开盘决策模式（IsInOpenPhase）防前瞻偏差
             context.IsInOpenPhase = true;
             // 开盘时允许读取 open
-            var openRow = context.GetFieldRow("open");
-            Assert.AreEqual(2, openRow.Length);
-            Assert.AreEqual(9.0, openRow[0], 1e-9);
+            Assert.AreEqual(9.0, context.GetOpen(0, offset: 0), 1e-9);
             // 开盘时严禁读取当期 close
-            Assert.ThrowsException<InvalidOperationException>(() => context.GetFieldRow("close", offset: 0));
+            Assert.ThrowsException<InvalidOperationException>(() => context.GetClose(0, offset: 0));
             context.IsInOpenPhase = false;
-
-            // 5. 验证价格字段判定
-            Assert.IsTrue(context.IsPriceField("close"));
-            Assert.IsTrue(context.IsPriceField("open"));
-            Assert.IsTrue(context.IsPriceField("high"));
-            Assert.IsTrue(context.IsPriceField("low"));
-            Assert.IsFalse(context.IsPriceField("volume"));
-            Assert.IsFalse(context.IsPriceField("turnover"));
         }
 
         [TestMethod]
@@ -329,13 +317,11 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 
             var indicatorRegistry = new IndicatorRegistry(meta);
             var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
-            var context = new EngineContext(tsRegistry, broker, indicators: indicatorRegistry);
-
             // 注入复权因子: SH 因子为 2.0，SZ 因子为 1.5
             var factorMatrix = new ChunkMatrix2D<double>(width: 2, pageSize: 4096, initialRowCount: 2);
             factorMatrix[0, 0] = 2.0; factorMatrix[0, 1] = 1.5;
             factorMatrix[1, 0] = 2.0; factorMatrix[1, 1] = 1.5;
-            context.SetAdjustmentData(factorMatrix, new[] { 0, 1 });
+            var context = new EngineContext(tsRegistry, broker, indicators: indicatorRegistry, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
 
             // 注册收盘价后复权均线（SMA2）
             var closeSmaPost = indicatorRegistry.GetOrAdd("close_sma_post", () => new Sma(2), field: "close", mode: PriceMode.Post);
@@ -396,12 +382,10 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 
             var indicatorRegistry = new IndicatorRegistry(meta);
             var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
-            var context = new EngineContext(tsRegistry, broker, indicators: indicatorRegistry);
-
             // 复权因子为 2.0 (10 送 10)
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 2);
             factorMatrix[0, 0] = 2.0; factorMatrix[1, 0] = 2.0;
-            context.SetAdjustmentData(factorMatrix, new[] { 0, 1 });
+            var context = new EngineContext(tsRegistry, broker, indicators: indicatorRegistry, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
 
             // 注册 4 字段 VWAP（全周期累计模式：典型点价 * 物理成交量 / 物理累计成交量）
             // 字段顺序: high, low, close, volume
