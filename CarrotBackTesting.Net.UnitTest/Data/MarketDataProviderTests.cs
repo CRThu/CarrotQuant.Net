@@ -416,4 +416,44 @@ public class MarketDataProviderTests
         StringAssert.Contains(ex.Message, "OnCheckVolume");
         StringAssert.Contains(ex.Message, "volume");
     }
+
+    [TestMethod]
+    public void GetLatestClose_WhenNormalOrSuspended_ForwardFillsCorrectly()
+    {
+        // 构造三步时序：step 0: 10.0, step 1: NaN (停牌), step 2: NaN (连续停牌)
+        var dates = new[] { new MarketTime(2025, 1, 2), new MarketTime(2025, 1, 3), new MarketTime(2025, 1, 4) };
+        var meta = new MockMetadata(new[] { "sh.600000" }, dates);
+        var ts = new MockTimeseriesRegistry(meta);
+        ts.SetMatrix("close", new MockMatrix(new double[,]
+        {
+            { 10.0 },
+            { double.NaN },
+            { double.NaN }
+        }));
+
+        var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 3);
+        factorMatrix[0, 0] = 2.0;
+        factorMatrix[1, 0] = 2.0;
+        factorMatrix[2, 0] = 2.0;
+
+        using var provider = new MarketDataProvider(ts, factorMatrix);
+
+        // Step 0: 正常日，返回当期价格
+        Assert.AreEqual(10.0, provider.GetLatestClose(0, 0, PriceMode.Raw), 1e-12);
+        Assert.AreEqual(20.0, provider.GetLatestClose("sh.600000", 0, PriceMode.Post), 1e-12);
+
+        // Step 1: 停牌日，自动向前回溯使用 Step 0 的价格 (ffill)
+        Assert.AreEqual(10.0, provider.GetLatestClose(0, 1, PriceMode.Raw), 1e-12);
+        Assert.AreEqual(20.0, provider.GetLatestClose("sh.600000", 1, PriceMode.Post), 1e-12);
+
+        // Step 2: 连续停牌日，继续向前回溯使用 Step 0 的价格 (ffill)
+        Assert.AreEqual(10.0, provider.GetLatestClose(0, 2, PriceMode.Raw), 1e-12);
+        Assert.AreEqual(20.0, provider.GetLatestClose("sh.600000", 2, PriceMode.Post), 1e-12);
+
+        // 越界或不存在历史有效价格的标的返回 NaN (包含负数越界与 stepIndex >= RowCount 严格越界)
+        Assert.IsTrue(double.IsNaN(provider.GetLatestClose(-1, 0)));
+        Assert.IsTrue(double.IsNaN(provider.GetLatestClose(0, -1)));
+        Assert.IsTrue(double.IsNaN(provider.GetLatestClose(0, 999)));
+        Assert.IsTrue(double.IsNaN(provider.GetLatestClose("unknown.symbol", 0)));
+    }
 }

@@ -63,6 +63,17 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
     }
 
     /// <summary>
+    /// 获取指定标的的最新盯市基准价（若无持仓或未记录有效价格则返回 double.NaN）。
+    /// </summary>
+    public double GetLastPrice(string symbol)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        return _positions.TryGetValue(symbol, out var pos) && pos.LastPrice > 0.0 && !double.IsNaN(pos.LastPrice) && !double.IsInfinity(pos.LastPrice)
+            ? pos.LastPrice
+            : double.NaN;
+    }
+
+    /// <summary>
     /// 获取所有活跃非零持仓的只读快照字典。
     /// </summary>
     public IReadOnlyDictionary<string, decimal> GetPositions()
@@ -85,6 +96,31 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
     }
 
     /// <summary>
+    /// 解析持仓在当前时间步的有效公允估值价格（单一事实来源 SSOT）。
+    /// 遵循最新有效公允价值连续性原则：
+    /// 1. 外部 priceResolver 解析出有效市价（> 0 且非 NaN/Infinity）：使用该价格并同步更新 pos.LastPrice；
+    /// 2. 外部行情缺失：平滑回退至上一有效收盘价/成交价（pos.LastPrice），保持市值平稳守恒；
+    /// 3. 若外部行情缺失且历史上从未产生过有效 LastPrice：坚决杜绝假兜底，返回 double.NaN。
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static double ResolvePositionPrice(PositionData pos, Func<string, double>? priceResolver)
+    {
+        double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? double.NaN;
+        if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
+        {
+            pos.LastPrice = resolvedPrice;
+            return resolvedPrice;
+        }
+
+        if (pos.LastPrice > 0.0 && !double.IsNaN(pos.LastPrice) && !double.IsInfinity(pos.LastPrice))
+        {
+            return pos.LastPrice;
+        }
+
+        return double.NaN;
+    }
+
+    /// <summary>
     /// 获取当前账户的总动态资产权益（现金 + 占用保证金 + 浮动盈亏）。
     /// </summary>
     public double GetTotalEquity(Func<string, double>? priceResolver = null)
@@ -96,12 +132,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 
             double mult = GetMultiplier(pos.Symbol);
             double marginRate = GetMarginRate(pos.Symbol);
-            double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
-            if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
-            {
-                pos.LastPrice = resolvedPrice;
-            }
-            double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
+            double price = ResolvePositionPrice(pos, priceResolver);
 
             double marginOccupied = Math.Abs((double)pos.TotalQuantity) * pos.AverageCost * mult * marginRate;
             double unrealizedPnL = (price - pos.AverageCost) * (double)pos.TotalQuantity * mult;
@@ -136,12 +167,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
         {
             if (pos.TotalQuantity == 0m) continue;
             double mult = GetMultiplier(pos.Symbol);
-            double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
-            if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
-            {
-                pos.LastPrice = resolvedPrice;
-            }
-            double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
+            double price = ResolvePositionPrice(pos, priceResolver);
             double pnl = (price - pos.AverageCost) * (double)pos.TotalQuantity * mult;
             total += pnl;
         }
@@ -163,12 +189,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 
             double mult = GetMultiplier(pos.Symbol);
             double marginRate = GetMarginRate(pos.Symbol);
-            double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
-            if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
-            {
-                pos.LastPrice = resolvedPrice;
-            }
-            double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
+            double price = ResolvePositionPrice(pos, priceResolver);
 
             TradeSide side = pos.TotalQuantity >= 0m ? TradeSide.Long : TradeSide.Short;
             decimal qty = Math.Abs(pos.TotalQuantity);
@@ -210,12 +231,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
         {
             if (pos.TotalQuantity == 0m) continue;
             double mult = GetMultiplier(pos.Symbol);
-            double resolvedPrice = priceResolver?.Invoke(pos.Symbol) ?? 0.0;
-            if (resolvedPrice > 0.0 && !double.IsNaN(resolvedPrice) && !double.IsInfinity(resolvedPrice))
-            {
-                pos.LastPrice = resolvedPrice;
-            }
-            double price = resolvedPrice > 0.0 ? resolvedPrice : (pos.LastPrice > 0.0 ? pos.LastPrice : pos.AverageCost);
+            double price = ResolvePositionPrice(pos, priceResolver);
             total += Math.Abs((double)pos.TotalQuantity) * price * mult;
         }
         return total;

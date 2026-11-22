@@ -965,6 +965,27 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
+        public void Broker_PositionValuation_WhenBothMarketAndLastPriceMissing_ReturnsNaNAndLogsWarning()
+        {
+            var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 };
+            var logs = new List<string>();
+            var monitor = new TestLogMonitor(msg => logs.Add(msg));
+            var gateway = new SimulatedExchangeGateway(config);
+            var broker = new Broker(gateway, config, monitor: monitor);
+
+            // 1. 同步初始持仓：有持仓量，但从无历史成交与市价（LastPrice 缺失）
+            broker.SyncState(50_000.0, new Dictionary<string, decimal> { ["UNKNOWN_SYM"] = 1000m });
+
+            // 2. 外部行情解析器返回 NaN
+            double equity = broker.GetTotalEquity(sym => double.NaN);
+
+            // 3. 验证严禁假兜底：必须返回 NaN，且 Broker 记录了警告日志
+            Assert.IsTrue(double.IsNaN(equity), "在无任何有效市价与 LastPrice 时，总资产必须决议为 NaN 坚决杜绝假兜底");
+            Assert.IsTrue(logs.Any(log => log.Contains("[Broker 警告]") && log.Contains("UNKNOWN_SYM")),
+                "Broker 必须发出明确的强类型警告日志提示价格缺失");
+        }
+
+        [TestMethod]
         public void Broker_LimitBuyFilledAtBetterPrice_ShouldReleaseExcessFrozenCash()
         {
             var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 };
@@ -2542,5 +2563,14 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             }
             return broker.SubmitOrder(request);
         }
+    }
+
+    internal sealed class TestLogMonitor : IMonitor
+    {
+        private readonly Action<string> _onLog;
+        public TestLogMonitor(Action<string> onLog) => _onLog = onLog;
+        public void Log(string message, LogLevel level) => _onLog(message);
+        public void ReportMetric(string metricName, double value) { }
+        public void Alert(string message) { }
     }
 }

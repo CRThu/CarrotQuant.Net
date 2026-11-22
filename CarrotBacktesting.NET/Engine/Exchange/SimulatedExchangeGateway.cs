@@ -50,14 +50,14 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
         lock (_syncLock)
         {
-            // 停牌 / 未上市标的守卫拦截：
+            // 无行情/未上市标的守卫拦截（第一性原理：当前时间步无合法价格数据，不接受新申报）：
             if (_marketData != null && _marketData.Timeseries.HasField(StandardFields.Close) && _currentIndex >= 0 && !_snapshots.ContainsKey(request.Symbol))
             {
                 var bar = _marketData.GetBar(request.Symbol, _currentIndex);
                 if (!bar.IsValid)
                 {
                     stateChanged = OrderStatus.Rejected;
-                    stateReason = $"Symbol '{request.Symbol}' is suspended, unlisted, or lacks valid market data.";
+                    stateReason = $"Symbol '{request.Symbol}' has no valid market data on current step {_currentIndex}.";
                 }
             }
 
@@ -218,14 +218,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     string symbol = activeSymbols[i];
                     BarSnapshot bar = _marketData!.GetBar(symbol, currentIndex);
 
-                    double close = bar.Close;
-                    double open = bar.Open;
-                    double marketPrice = (close > 0.0 && !double.IsNaN(close) && !double.IsInfinity(close)) ? close : 0.0;
-
-                    // 1. 标的突发停牌熔断检查：
-                    // 若标的在当前时间步没有合法行情（open 与 close 均为 NaN 或 <= 0），判定为停牌
-                    bool isSuspended = (double.IsNaN(open) || open <= 0.0) && (double.IsNaN(close) || close <= 0.0);
-                    if (isSuspended)
+                    // 1. 单一事实来源：当前 Bar 无任何合法行情数据（物理缺失 NaN），触发挂单清理与资金解冻
+                    if (!bar.IsValid)
                     {
                         var pending = _orderBook.GetPendingOrders(symbol);
                         if (pending != null && pending.Count > 0)
@@ -242,20 +236,28 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                                     OrderStatus.Rejected,
                                     currentTime,
                                     ord.Request.Symbol,
-                                    $"Symbol '{symbol}' is suspended on step {currentIndex} (market data is NaN).",
+                                    $"Symbol '{symbol}' lacks valid market data on step {currentIndex}.",
                                     leaves));
                             }
                         }
                         continue;
                     }
 
-                    if (marketPrice <= 0.0)
+                    // 2. 撮合基准价根据当前执行模式与 Bar 状态自洽供给，绝不偷看未来 Close，也绝不隐式兜底 0.0：
+                    double benchmarkPrice = _config.DefaultExecutionPrice switch
+                    {
+                        ExecutionPriceType.Open => bar.OpenOr(bar.CloseOr(double.NaN)),
+                        ExecutionPriceType.Close => bar.CloseOr(bar.OpenOr(double.NaN)),
+                        _ => bar.CloseOr(bar.OpenOr(double.NaN))
+                    };
+
+                    if (double.IsNaN(benchmarkPrice) || benchmarkPrice <= 0.0 || double.IsInfinity(benchmarkPrice))
                     {
                         continue;
                     }
 
                     int colIndex = _marketData.Metadata.GetSymbolIndex(symbol);
-                    MatchSymbolOrders(symbol, marketPrice, in bar, currentTime, ref fillReports, ref stateReports, colIndex, currentIndex);
+                    MatchSymbolOrders(symbol, benchmarkPrice, in bar, currentTime, ref fillReports, ref stateReports, colIndex, currentIndex);
                 }
             }
         }

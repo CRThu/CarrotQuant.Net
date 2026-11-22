@@ -175,7 +175,7 @@ internal sealed class MatchingEngine
                 return false;
             }
         }
-        else if (_config.VolumeLimit > 0.0 && bar.HasVolume && bar.Volume >= 0.0)
+        else if (_config.VolumeLimit > 0.0 && bar.HasVolume)
         {
             double maxAllowed = bar.Volume * _config.VolumeLimit;
             if ((double)request.Quantity > maxAllowed)

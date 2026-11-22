@@ -226,7 +226,7 @@ namespace CarrotBacktesting.NET.Engine
             }
 
             var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker, activeFields);
-            var broker = new Broker.Broker(simGateway, sessionConfig.Broker, activeFields);
+            var broker = new Broker.Broker(simGateway, sessionConfig.Broker, activeFields, monitor);
 
             IStrategyPipeline activePipeline;
             if (pipeline != null)
@@ -378,11 +378,7 @@ namespace CarrotBacktesting.NET.Engine
                 }
                 long runStartTimestamp = Stopwatch.GetTimestamp();
 
-                double ResolveStepPrice(string symbol, int step)
-                {
-                    double p = _marketData.GetField(symbol, StandardFields.Close, step);
-                    return (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) ? p : 0.0;
-                }
+                double ResolveStepPrice(string symbol, int step) => _marketData.GetLatestClose(symbol, step);
 
                 // 5. 核心时间步驱动循环（热路径零分配）
                 for (int i = startIndex; i <= endIndex; i++)

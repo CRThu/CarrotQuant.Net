@@ -106,4 +106,24 @@ public interface IMarketDataProvider
     /// 是否已加载并启用了复权数据。
     /// </summary>
     bool HasAdjustments { get; }
+
+    /// <summary>
+    /// 获取指定标的列索引截至指定时步的最新有效公允收盘价（公允估值供给，单向向前回溯 Forward-Fill）。
+    /// 若当期收盘价有效（非 NaN 且 > 0）直接返回；若当期停牌或缺失，自动向前回溯最近一个有效收盘价；若历史均无有效价格返回 double.NaN。
+    /// </summary>
+    /// <param name="symbolIndex">标的列索引。</param>
+    /// <param name="stepIndex">当前时步索引。</param>
+    /// <param name="mode">价格复权模式（默认为 Raw 未复权）。</param>
+    /// <returns>最新有效公允收盘价。</returns>
+    double GetLatestClose(int symbolIndex, int stepIndex, PriceMode mode = PriceMode.Raw);
+
+    /// <summary>
+    /// 通过标的代码获取截至指定时步的最新有效公允收盘价（公允估值供给，单向向前回溯 Forward-Fill）。
+    /// 若当期收盘价有效（非 NaN 且 > 0）直接返回；若当期停牌或缺失，自动向前回溯最近一个有效收盘价；若历史均无有效价格返回 double.NaN。
+    /// </summary>
+    /// <param name="symbol">标的代码。</param>
+    /// <param name="stepIndex">当前时步索引。</param>
+    /// <param name="mode">价格复权模式（默认为 Raw 未复权）。</param>
+    /// <returns>最新有效公允收盘价。</returns>
+    double GetLatestClose(string symbol, int stepIndex, PriceMode mode = PriceMode.Raw);
 }

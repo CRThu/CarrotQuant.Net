@@ -328,6 +328,43 @@ public sealed class MarketDataProvider : IMarketDataProvider, IDisposable
         return idx >= 0 ? ToPostPrice(idx, rawPrice, stepIndex) : double.NaN;
     }
 
+    /// <inheritdoc />
+    public double GetLatestClose(int symbolIndex, int stepIndex, PriceMode mode = PriceMode.Raw)
+    {
+        if (symbolIndex < 0 || stepIndex < 0) return double.NaN;
+
+        var matrix = GetMatrix(StandardFields.Close);
+        if (matrix == null || (uint)symbolIndex >= (uint)matrix.Width || (uint)stepIndex >= (uint)matrix.RowCount)
+        {
+            return double.NaN;
+        }
+
+        for (int s = stepIndex; s >= 0; s--)
+        {
+            double raw = matrix[s, symbolIndex];
+            if (raw > 0.0 && !double.IsNaN(raw) && !double.IsInfinity(raw))
+            {
+                if (mode != PriceMode.Post || _factorMatrix == null || !_priceFields.Contains(StandardFields.Close))
+                {
+                    return raw;
+                }
+
+                double factor = GetFactor(symbolIndex, s);
+                return (double.IsNaN(factor) || factor <= 0.0) ? double.NaN : raw * factor;
+            }
+        }
+
+        return double.NaN;
+    }
+
+    /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public double GetLatestClose(string symbol, int stepIndex, PriceMode mode = PriceMode.Raw)
+    {
+        int col = Metadata.GetSymbolIndex(symbol);
+        return col >= 0 ? GetLatestClose(col, stepIndex, mode) : double.NaN;
+    }
+
     /// <summary>
     /// 释放持有的非托管复权资源。
     /// </summary>

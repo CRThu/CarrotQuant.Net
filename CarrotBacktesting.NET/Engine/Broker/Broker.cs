@@ -19,6 +19,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     private readonly IExchangeGateway _gateway;
     private readonly BrokerConfig _config;
     private readonly IFieldRegistry? _fields;
+    private readonly IMonitor? _monitor;
     private readonly TimeZoneInfo _timeZone;
     private readonly AccountLedger _ledger;
     private readonly object _syncLock = new();
@@ -56,11 +57,12 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     /// </summary>
     public MarketTime CurrentTime => _currentTime;
 
-    public Broker(IExchangeGateway gateway, BrokerConfig config, IFieldRegistry? fields = null)
+    public Broker(IExchangeGateway gateway, BrokerConfig config, IFieldRegistry? fields = null, IMonitor? monitor = null)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _fields = fields;
+        _monitor = monitor;
         _timeZone = config.TimeZone ?? TimeZoneInfo.Utc;
         _ledger = new AccountLedger(config, fields);
 
@@ -173,14 +175,32 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
 
     private double ResolvePrice(string symbol, Func<string, double>? customResolver)
     {
-        double p = customResolver?.Invoke(symbol) ?? 0.0;
+        // 1. 优先使用外部注入的自定义行情解析（如引擎集中注入的当期 Close）
+        double p = customResolver?.Invoke(symbol) ?? double.NaN;
         if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
+
+        // 2. 尝试从绑定的仿真交易所网关获取当前最新有效 Bar 价格（实盘或离线网关快照）
         if (_gateway is ISimulatedExchange sim)
         {
-            p = sim.GetBar(symbol).CloseOr(0.0);
+            p = sim.GetBar(symbol).CloseOr(double.NaN);
             if (p > 0.0 && !double.IsNaN(p) && !double.IsInfinity(p)) return p;
         }
-        return 0.0;
+
+        // 3. 行情缺失（如停牌无报价）时平滑回退至持仓记录的最新有效公允市价（LastPrice），保持市值守恒
+        double lastPrice = _ledger.GetLastPrice(symbol);
+        if (lastPrice > 0.0 && !double.IsNaN(lastPrice) && !double.IsInfinity(lastPrice))
+        {
+            return lastPrice;
+        }
+
+        // 4. 若无外部有效市价且持仓历史上从未产生过有效价格，坚决杜绝假兜底，记录警告日志并返回 NaN
+        _monitor?.Log(
+            $"[Broker 警告] 标的 '{symbol}' 当前解析行情价格缺失且持仓历史 LastPrice 无效，无法获取公允估值价格，回退为 NaN。",
+            LogLevel.Warning);
+        System.Diagnostics.Trace.TraceWarning(
+            $"[Broker 警告] 标的 '{symbol}' 当前解析行情价格缺失且持仓历史 LastPrice 无效，无法获取公允估值价格，回退为 NaN。");
+
+        return double.NaN;
     }
 
     /// <inheritdoc />
@@ -1127,20 +1147,20 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         }
 
         // 市价单（Price <= 0.0）：尝试从绑定的网关中查询当前标的公允参考市价（时态自适应）
-        double marketPrice = 0.0;
+        double marketPrice = double.NaN;
         if (_gateway is ISimulatedExchange sim)
         {
             var bar = sim.GetBar(request.Symbol);
             marketPrice = _config.DefaultExecutionPrice switch
             {
-                ExecutionPriceType.Open => bar.OpenOr(bar.CloseOr(0.0)),
+                ExecutionPriceType.Open => bar.OpenOr(bar.CloseOr(double.NaN)),
                 ExecutionPriceType.Vwap => (bar.Vwap.HasValue && bar.Vwap.Value > 0.0)
                     ? bar.Vwap.Value
-                    : bar.CloseOr(bar.OpenOr(0.0)),
+                    : bar.CloseOr(bar.OpenOr(double.NaN)),
                 ExecutionPriceType.Average => (bar.HasOpen && bar.HasHigh && bar.HasLow && bar.HasClose)
                     ? (bar.Open + bar.High + bar.Low + bar.Close) / 4.0
-                    : bar.CloseOr(bar.OpenOr(0.0)),
-                _ => bar.CloseOr(0.0)
+                    : bar.CloseOr(bar.OpenOr(double.NaN)),
+                _ => bar.CloseOr(bar.OpenOr(double.NaN))
             };
         }
 
