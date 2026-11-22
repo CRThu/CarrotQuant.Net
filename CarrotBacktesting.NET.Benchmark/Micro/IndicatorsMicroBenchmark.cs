@@ -61,7 +61,7 @@ public class IndicatorsMicroBenchmark
     {
         for (int i = 0; i < N; i++)
         {
-            _sma.Update(_opens[i], _highs[i], _lows[i], _closes[i], _volumes[i]);
+            _sma.Update(_closes[i]);
         }
         return _sma.Current;
     }
@@ -71,7 +71,7 @@ public class IndicatorsMicroBenchmark
     {
         for (int i = 0; i < N; i++)
         {
-            _ema.Update(_opens[i], _highs[i], _lows[i], _closes[i], _volumes[i]);
+            _ema.Update(_closes[i]);
         }
         return _ema.Current;
     }
@@ -81,7 +81,7 @@ public class IndicatorsMicroBenchmark
     {
         for (int i = 0; i < N; i++)
         {
-            _atr.Update(_opens[i], _highs[i], _lows[i], _closes[i], _volumes[i]);
+            _atr.Update(_highs[i], _lows[i], _closes[i]);
         }
         return _atr.Current;
     }
@@ -91,7 +91,7 @@ public class IndicatorsMicroBenchmark
     {
         for (int i = 0; i < N; i++)
         {
-            _rsi.Update(_opens[i], _highs[i], _lows[i], _closes[i], _volumes[i]);
+            _rsi.Update(_closes[i]);
         }
         return _rsi.Current;
     }
@@ -101,7 +101,7 @@ public class IndicatorsMicroBenchmark
     {
         for (int i = 0; i < N; i++)
         {
-            _macd.Update(_opens[i], _highs[i], _lows[i], _closes[i], _volumes[i]);
+            _macd.Update(_closes[i]);
         }
         return _macd.Current;
     }
@@ -111,7 +111,7 @@ public class IndicatorsMicroBenchmark
     {
         for (int i = 0; i < N; i++)
         {
-            _bollinger.Update(_opens[i], _highs[i], _lows[i], _closes[i], _volumes[i]);
+            _bollinger.Update(_closes[i]);
         }
         return _bollinger.Current;
     }
@@ -121,7 +121,7 @@ public class IndicatorsMicroBenchmark
     {
         for (int i = 0; i < N; i++)
         {
-            _kdj.Update(_opens[i], _highs[i], _lows[i], _closes[i], _volumes[i]);
+            _kdj.Update(_highs[i], _lows[i], _closes[i]);
         }
         return _kdj.Current;
     }

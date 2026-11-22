@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 
@@ -26,12 +28,29 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
         /// </summary>
         public PriceMode Mode { get; }
 
-        protected IndicatorPool(string name, int count, PriceMode mode)
+        /// <summary>
+        /// 绑定的单字段名（如 "close", "volume", "turnover", "pe"；若为多字段模式则为 null）。
+        /// </summary>
+        public virtual string? Field { get; protected set; }
+
+        /// <summary>
+        /// 绑定的多字段名列表（若为单字段模式则为 null）。
+        /// </summary>
+        public virtual IReadOnlyList<string>? Fields { get; protected set; }
+
+        protected IndicatorPool(
+            string name,
+            int count,
+            PriceMode mode,
+            string? field = null,
+            IReadOnlyList<string>? fields = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             Name = name;
             Count = count;
             Mode = mode;
+            Field = field;
+            Fields = fields;
         }
 
         /// <summary>
@@ -56,25 +75,67 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
     {
         private readonly IMarketMetadata _metadata;
         private readonly T[] _instances;
+        private readonly string[] _fields;
+
+        /// <inheritdoc />
+        public override string? Field => _fields.Length == 1 ? _fields[0] : null;
+
+        /// <inheritdoc />
+        public override IReadOnlyList<string>? Fields => _fields;
 
         /// <summary>
-        /// 构建标的池实例。
+        /// 构建单字段绑定的标的池实例。
         /// </summary>
         /// <param name="name">指标池标识名。</param>
         /// <param name="factory">单标的指标工厂委托。</param>
         /// <param name="metadata">市场元数据（提供代码与全局列索引映射）。</param>
+        /// <param name="field">绑定的时序字段名（如 "close", "volume", "turnover"；缺省默认为 "close"）。</param>
         /// <param name="mode">价格复权模式（默认为 PriceMode.Post）。</param>
         public IndicatorPool(
             string name,
             Func<T> factory,
             IMarketMetadata metadata,
+            string field = "close",
             PriceMode mode = PriceMode.Post)
-            : base(name, metadata?.Symbols.Count ?? 0, mode)
+            : base(name, metadata?.Symbols.Count ?? 0, mode, field, null)
         {
             ArgumentNullException.ThrowIfNull(factory);
             ArgumentNullException.ThrowIfNull(metadata);
+            ArgumentException.ThrowIfNullOrWhiteSpace(field);
 
             _metadata = metadata;
+            _fields = [field];
+            int symbolCount = metadata.Symbols.Count;
+            _instances = new T[symbolCount];
+            for (int i = 0; i < symbolCount; i++)
+            {
+                _instances[i] = factory();
+            }
+        }
+
+        /// <summary>
+        /// 构建多字段绑定的标的池实例。
+        /// </summary>
+        /// <param name="name">指标池标识名。</param>
+        /// <param name="factory">单标的指标工厂委托。</param>
+        /// <param name="metadata">市场元数据。</param>
+        /// <param name="fields">绑定的时序字段名列表（如 ["high", "low", "close"]）。</param>
+        /// <param name="mode">价格复权模式（默认为 PriceMode.Post）。</param>
+        public IndicatorPool(
+            string name,
+            Func<T> factory,
+            IMarketMetadata metadata,
+            IReadOnlyList<string> fields,
+            PriceMode mode = PriceMode.Post)
+            : base(name, metadata?.Symbols.Count ?? 0, mode, null, fields)
+        {
+            ArgumentNullException.ThrowIfNull(factory);
+            ArgumentNullException.ThrowIfNull(metadata);
+            ArgumentNullException.ThrowIfNull(fields);
+            if (fields.Count == 0) throw new ArgumentException("字段列表不能为空。", nameof(fields));
+
+            _metadata = metadata;
+            _fields = fields.ToArray();
             int symbolCount = metadata.Symbols.Count;
             _instances = new T[symbolCount];
             for (int i = 0; i < symbolCount; i++)
@@ -123,14 +184,33 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
         internal override void Step(IEngineContext context)
         {
             int count = _instances.Length;
-            for (int i = 0; i < count; i++)
+            if (count == 0 || context.CurrentIndex < 0) return;
+
+            int fCount = _fields.Length;
+            if (fCount == 0) return;
+
+            unsafe
             {
-                double o = context.GetOpen(i, 0, Mode);
-                double h = context.GetHigh(i, 0, Mode);
-                double l = context.GetLow(i, 0, Mode);
-                double c = context.GetClose(i, 0, Mode);
-                double v = context.GetVolume(i, 0);
-                _instances[i].Update(o, h, l, c, v);
+                double** ptrs = stackalloc double*[fCount];
+                int safeCount = count;
+
+                for (int k = 0; k < fCount; k++)
+                {
+                    ReadOnlySpan<double> row = context.GetFieldRow(_fields[k], 0, Mode);
+                    if (row.IsEmpty) return;
+                    if (row.Length < safeCount) safeCount = row.Length;
+                    ptrs[k] = (double*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(row));
+                }
+
+                Span<double> vals = stackalloc double[fCount];
+                for (int i = 0; i < safeCount; i++)
+                {
+                    for (int k = 0; k < fCount; k++)
+                    {
+                        vals[k] = ptrs[k][i];
+                    }
+                    _instances[i].Update(vals);
+                }
             }
         }
 

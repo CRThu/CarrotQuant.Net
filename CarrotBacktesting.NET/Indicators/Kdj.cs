@@ -81,9 +81,20 @@ namespace CarrotBacktesting.NET.Indicators
             _jSub = new SubStreamIndicator(historyCapacity);
         }
 
+        /// <summary>
+        /// 默认所需的时序字段名集合（严格对应 values[0..2]：high, low, close）。
+        /// </summary>
+        public static readonly string[] DefaultFields = ["high", "low", "close"];
+
         /// <inheritdoc />
-        public override void Update(double open, double high, double low, double close, double volume)
+        public override void Update(params ReadOnlySpan<double> values)
         {
+            if (values.Length < 3) return;
+
+            double high = values[0];
+            double low = values[1];
+            double close = values[2];
+
             if (double.IsNaN(high) || double.IsNaN(low) || double.IsNaN(close) ||
                 double.IsInfinity(high) || double.IsInfinity(low) || double.IsInfinity(close))
             {

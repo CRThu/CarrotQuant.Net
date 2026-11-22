@@ -47,9 +47,21 @@ namespace CarrotBacktesting.NET.Indicators
             _windowIndex = 0;
         }
 
+        /// <summary>
+        /// 默认所需的时序字段名集合（严格对应 values[0..3]：high, low, close, volume）。
+        /// </summary>
+        public static readonly string[] DefaultFields = ["high", "low", "close", "volume"];
+
         /// <inheritdoc />
-        public override void Update(double open, double high, double low, double close, double volume)
+        public override void Update(params ReadOnlySpan<double> values)
         {
+            if (values.Length < 4) return;
+
+            double high = values[0];
+            double low = values[1];
+            double close = values[2];
+            double volume = values[3];
+
             if (double.IsNaN(high) || double.IsNaN(low) || double.IsNaN(close) ||
                 double.IsInfinity(high) || double.IsInfinity(low) || double.IsInfinity(close))
             {

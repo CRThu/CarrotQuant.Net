@@ -14,7 +14,10 @@ public sealed class MockMatrix : IReadOnlyMatrix2D<double>
 
     public ref readonly double this[int r, int c] => ref _data[r, c];
 
-    public ReadOnlyRowView<double> GetRowView(int row, int col, int len) => throw new NotImplementedException();
+    public ReadOnlyRowView<double> GetRowView(int row, int col, int len)
+    {
+        return new ReadOnlyRowView<double>(System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref _data[row, col], len));
+    }
     public ReadOnlyColumnView<double> GetColumnView(int row, int col, int len) => throw new NotImplementedException();
 }
 

@@ -82,8 +82,11 @@ namespace CarrotBacktesting.NET.Indicators
         }
 
         /// <inheritdoc />
-        public override void Update(double open, double high, double low, double close, double volume)
+        public override void Update(params ReadOnlySpan<double> values)
         {
+            if (values.IsEmpty) return;
+            double close = values[0];
+
             // 停牌与脏数据防御（行业标准：冻结跳过 Skip & Freeze；支持差离值、收益率与价差实数序列）
             if (double.IsNaN(close) || double.IsInfinity(close))
             {
@@ -110,7 +113,6 @@ namespace CarrotBacktesting.NET.Indicators
                 _sumSq = _sumSq - (oldest * oldest) + (close * close);
                 _window[_windowIndex] = close;
                 _windowIndex = (_windowIndex + 1) % _period;
-                _samples++;
 
                 CalculateBands();
             }

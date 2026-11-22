@@ -22,6 +22,13 @@ namespace CarrotBacktesting.NET.Engine
         private ChunkMatrix2D<double>? _factorMatrix;
         private int[]? _stepToDateIndex;
 
+        private sealed class AdjustedBufferEntry
+        {
+            public int TargetIndex = -1;
+            public double[] Buffer = Array.Empty<double>();
+        }
+        private readonly Dictionary<string, AdjustedBufferEntry> _adjustedBuffers = new(StringComparer.OrdinalIgnoreCase);
+
         // 惰性快速引用缓存：首次访问时解析，避免重复的字典查找与类型检查
         private IReadOnlyMatrix2D<double>? _closeMatrix;
         private bool _resolvedClose;
@@ -242,6 +249,17 @@ namespace CarrotBacktesting.NET.Engine
                 _resolvedVolume = true;
             }
             return _volumeMatrix;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private IReadOnlyMatrix2D<double>? GetFieldMatrix(string fieldName)
+        {
+            if (fieldName.Equals("close", StringComparison.OrdinalIgnoreCase)) return GetCloseMatrix();
+            if (fieldName.Equals("open", StringComparison.OrdinalIgnoreCase)) return GetOpenMatrix();
+            if (fieldName.Equals("high", StringComparison.OrdinalIgnoreCase)) return GetHighMatrix();
+            if (fieldName.Equals("low", StringComparison.OrdinalIgnoreCase)) return GetLowMatrix();
+            if (fieldName.Equals("volume", StringComparison.OrdinalIgnoreCase)) return GetVolumeMatrix();
+            return Timeseries.HasField(fieldName) ? Timeseries.GetMatrix<double>(fieldName) : null;
         }
 
         /// <summary>
@@ -466,6 +484,193 @@ namespace CarrotBacktesting.NET.Engine
         {
             int idx = Timeseries.Metadata.GetSymbolIndex(symbol);
             return idx >= 0 ? GetField(idx, fieldName, offset, mode) : double.NaN;
+        }
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsPriceField(string fieldName) => _priceFields.Contains(fieldName);
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlySpan<double> GetFieldRow(string fieldName, int offset = 0, PriceMode mode = PriceMode.Post)
+        {
+            if (offset > 0) ThrowFutureOffsetException(offset);
+            if (string.IsNullOrWhiteSpace(fieldName)) return ReadOnlySpan<double>.Empty;
+            if (offset == 0 && IsInOpenPhase && !fieldName.Equals("open", StringComparison.OrdinalIgnoreCase))
+            {
+                ThrowLookAheadBiasException(fieldName);
+            }
+            if (CurrentIndex < 0) return ReadOnlySpan<double>.Empty;
+
+            int targetIndex = CurrentIndex + offset;
+            if (targetIndex < 0) return ReadOnlySpan<double>.Empty;
+
+            var m = GetFieldMatrix(fieldName);
+            if (m == null || targetIndex >= m.RowCount) return ReadOnlySpan<double>.Empty;
+
+            ReadOnlySpan<double> rawRow = m is ChunkMatrix2D<double> chunkM
+                ? chunkM.GetRowSpan(targetIndex)
+                : m.GetRowView(targetIndex, 0, m.Width).AsSpan();
+
+            if (rawRow.IsEmpty) return ReadOnlySpan<double>.Empty;
+
+            // 若非后复权模式、或无除权矩阵、或非价格类字段，直接返回未复权物理行切片（0 拷贝，0 堆分配）
+            if (mode != PriceMode.Post || _factorMatrix == null || !IsPriceField(fieldName))
+            {
+                return rawRow;
+            }
+
+            int dateRow = (_stepToDateIndex != null && (uint)targetIndex < (uint)_stepToDateIndex.Length)
+                ? _stepToDateIndex[targetIndex]
+                : targetIndex;
+            if ((uint)dateRow >= (uint)_factorMatrix.RowCount) return rawRow;
+
+            ReadOnlySpan<double> factorRow = _factorMatrix.GetRowSpan(dateRow);
+            if (factorRow.IsEmpty) return rawRow;
+
+            // 检查轻量行缓冲区（单时间步内多次读取直接共享，0 堆分配）
+            if (!_adjustedBuffers.TryGetValue(fieldName, out var entry))
+            {
+                entry = new AdjustedBufferEntry();
+                _adjustedBuffers[fieldName] = entry;
+            }
+
+            int width = rawRow.Length;
+            if (entry.Buffer.Length < width)
+            {
+                entry.Buffer = new double[width];
+                entry.TargetIndex = -1;
+            }
+
+            if (entry.TargetIndex == targetIndex)
+            {
+                return new ReadOnlySpan<double>(entry.Buffer, 0, width);
+            }
+
+            // 流式折算后复权行切片
+            double[] buf = entry.Buffer;
+            int limit = Math.Min(width, factorRow.Length);
+            for (int i = 0; i < limit; i++)
+            {
+                double factor = factorRow[i];
+                buf[i] = (factor <= 0.0 || double.IsNaN(factor)) ? rawRow[i] : rawRow[i] * factor;
+            }
+            for (int i = limit; i < width; i++)
+            {
+                buf[i] = rawRow[i];
+            }
+            entry.TargetIndex = targetIndex;
+
+            return new ReadOnlySpan<double>(buf, 0, width);
+        }
+
+        /// <summary>
+        /// 将指定标的在策略层视角的后复权价格（Post）折算为底层执行与撮合的物理真实价格（Raw）。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal double ToRawPrice(int symbolIndex, double postPrice)
+        {
+            if (postPrice <= 0.0 || double.IsNaN(postPrice) || double.IsInfinity(postPrice)) return postPrice;
+            if (_factorMatrix == null || CurrentIndex < 0 || symbolIndex < 0) return postPrice;
+
+            int dateRow = (_stepToDateIndex != null && (uint)CurrentIndex < (uint)_stepToDateIndex.Length)
+                ? _stepToDateIndex[CurrentIndex]
+                : CurrentIndex;
+            if ((uint)dateRow >= (uint)_factorMatrix.RowCount || (uint)symbolIndex >= (uint)_factorMatrix.Width) return postPrice;
+
+            double factor = _factorMatrix[dateRow, symbolIndex];
+            return (double.IsNaN(factor) || factor <= 0.0) ? postPrice : postPrice / factor;
+        }
+
+        /// <summary>
+        /// 将指定标的在策略层视角的后复权价格（Post）折算为底层执行与撮合的物理真实价格（Raw）。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal double ToRawPrice(string symbol, double postPrice)
+        {
+            int idx = Timeseries.Metadata.GetSymbolIndex(symbol);
+            return idx >= 0 ? ToRawPrice(idx, postPrice) : postPrice;
+        }
+
+        /// <summary>
+        /// 将指定标的的底层物理真实价格（Raw）换算为后复权价格（Post）。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal double ToPostPrice(int symbolIndex, double rawPrice)
+        {
+            if (rawPrice <= 0.0 || double.IsNaN(rawPrice) || double.IsInfinity(rawPrice)) return rawPrice;
+            if (_factorMatrix == null || CurrentIndex < 0 || symbolIndex < 0) return rawPrice;
+
+            int dateRow = (_stepToDateIndex != null && (uint)CurrentIndex < (uint)_stepToDateIndex.Length)
+                ? _stepToDateIndex[CurrentIndex]
+                : CurrentIndex;
+            if ((uint)dateRow >= (uint)_factorMatrix.RowCount || (uint)symbolIndex >= (uint)_factorMatrix.Width) return rawPrice;
+
+            double factor = _factorMatrix[dateRow, symbolIndex];
+            return (double.IsNaN(factor) || factor <= 0.0) ? rawPrice : rawPrice * factor;
+        }
+
+        /// <summary>
+        /// 将指定标的的底层物理真实价格（Raw）换算为后复权价格（Post）。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal double ToPostPrice(string symbol, double rawPrice)
+        {
+            int idx = Timeseries.Metadata.GetSymbolIndex(symbol);
+            return idx >= 0 ? ToPostPrice(idx, rawPrice) : rawPrice;
+        }
+
+        #endregion
+
+        #region Trading Facade (Class-level Direct Access)
+
+        /// <inheritdoc cref="IEngineContext.Buy" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false)
+        {
+            double execPrice = (price > 0.0 && type != OrderType.Market) ? ToRawPrice(symbol, price) : price;
+            return Broker.Buy(symbol, quantity, execPrice, type, orderTag, timeInForce, reduceOnly);
+        }
+
+        /// <inheritdoc cref="IEngineContext.Sell" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false)
+        {
+            double execPrice = (price > 0.0 && type != OrderType.Market) ? ToRawPrice(symbol, price) : price;
+            return Broker.Sell(symbol, quantity, execPrice, type, orderTag, timeInForce, reduceOnly);
+        }
+
+        /// <inheritdoc cref="IEngineContext.ClosePosition" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null)
+        {
+            double execPrice = (price > 0.0 && type != OrderType.Market) ? ToRawPrice(symbol, price) : price;
+            return Broker.ClosePosition(symbol, execPrice, type, orderTag, timeInForce);
+        }
+
+        /// <inheritdoc cref="IEngineContext.StopLoss" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long StopLoss(string symbol, double stopPrice, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
+        {
+            double execStop = stopPrice > 0.0 ? ToRawPrice(symbol, stopPrice) : stopPrice;
+            return Broker.StopLoss(symbol, execStop, quantity, orderTag, timeInForce);
+        }
+
+        /// <inheritdoc cref="IEngineContext.TakeProfit" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long TakeProfit(string symbol, double targetPrice, decimal quantity, string orderTag = "", TimeInForce? timeInForce = null)
+        {
+            double execTarget = targetPrice > 0.0 ? ToRawPrice(symbol, targetPrice) : targetPrice;
+            return Broker.TakeProfit(symbol, execTarget, quantity, orderTag, timeInForce);
+        }
+
+        /// <inheritdoc cref="IEngineContext.Bracket" />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public (long StopOrderId, long TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null, OrderDirection? closeDirection = null)
+        {
+            double execStop = stopPrice > 0.0 ? ToRawPrice(symbol, stopPrice) : stopPrice;
+            double execTake = takeProfitPrice > 0.0 ? ToRawPrice(symbol, takeProfitPrice) : takeProfitPrice;
+            return Broker.Bracket(symbol, quantity, execStop, execTake, orderTag, timeInForce, closeDirection);
         }
 
         #endregion

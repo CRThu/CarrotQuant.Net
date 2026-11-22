@@ -5,14 +5,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CarrotBackTesting.Net.UnitTest.Indicators
 {
-    internal static class TestIndicatorExtensions
-    {
-        public static void Update(this IIndicator indicator, double close)
-        {
-            indicator.Update(close, close, close, close, 1000.0);
-        }
-    }
-
     [TestClass]
     public class StreamIndicatorsTests
     {
@@ -249,15 +241,15 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var atr = new Atr(3);
 
             // Bar 1: H=12, L=8, C=10 (TR = 4)
-            atr.Update(10, 12, 8, 10, 100);
+            atr.Update(12, 8, 10);
             Assert.IsFalse(atr.IsReady);
 
             // Bar 2: H=16, L=14, C=15 (跳空高开，TR = max(16-14, |16-10|, |14-10|) = 6)
-            atr.Update(14, 16, 14, 15, 100);
+            atr.Update(16, 14, 15);
             Assert.IsFalse(atr.IsReady);
 
             // Bar 3: H=17, L=12, C=13 (TR = max(17-12, |17-15|, |12-15|) = 5)
-            atr.Update(15, 17, 12, 13, 100);
+            atr.Update(17, 12, 13);
             Assert.IsTrue(atr.IsReady);
 
             // 预热均值: (4 + 6 + 5) / 3 = 5.0
@@ -268,12 +260,12 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
         public void Atr_SuspendedNan_ShouldFreeze()
         {
             var atr = new Atr(3);
-            atr.Update(10, 12, 8, 10, 100);
-            atr.Update(14, 16, 14, 15, 100);
-            atr.Update(15, 17, 12, 13, 100);
+            atr.Update(12, 8, 10);
+            atr.Update(16, 14, 15);
+            atr.Update(17, 12, 13);
             Assert.AreEqual(5.0, atr.Current, 1e-12);
 
-            atr.Update(double.NaN, double.NaN, double.NaN, double.NaN, 0);
+            atr.Update(double.NaN, double.NaN, double.NaN);
             Assert.AreEqual(5.0, atr.Current, 1e-12);
         }
 
@@ -522,9 +514,9 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
         public void Atr_Reset_ShouldClearAllStates()
         {
             var atr = new Atr(3);
-            atr.Update(10, 12, 8, 10, 100);
-            atr.Update(14, 16, 14, 15, 100);
-            atr.Update(15, 17, 12, 13, 100);
+            atr.Update(12, 8, 10);
+            atr.Update(16, 14, 15);
+            atr.Update(17, 12, 13);
             Assert.IsTrue(atr.IsReady);
 
             atr.Reset();
@@ -588,22 +580,22 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.IsTrue(double.IsNaN(wma.Current));
 
             // Feed bar 1: close = 10
-            wma.Update(10, 10, 10, 10, 100);
+            wma.Update(10);
             Assert.IsFalse(wma.IsReady);
 
             // Feed bar 2: close = 20
-            wma.Update(20, 20, 20, 20, 100);
+            wma.Update(20);
             Assert.IsFalse(wma.IsReady);
 
             // Feed bar 3: close = 30
             // WMA3 = (10*1 + 20*2 + 30*3) / (1+2+3) = (10 + 40 + 90) / 6 = 140 / 6 = 23.333333
-            wma.Update(30, 30, 30, 30, 100);
+            wma.Update(30);
             Assert.IsTrue(wma.IsReady);
             Assert.AreEqual(140.0 / 6.0, wma.Current, 1e-10);
 
             // Feed bar 4: close = 40
             // WMA3 = (20*1 + 30*2 + 40*3) / 6 = (20 + 60 + 120) / 6 = 200 / 6 = 33.333333
-            wma.Update(40, 40, 40, 40, 100);
+            wma.Update(40);
             Assert.AreEqual(200.0 / 6.0, wma.Current, 1e-10);
             Assert.AreEqual(140.0 / 6.0, wma[-1], 1e-10);
 
@@ -626,17 +618,17 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             // 1. 累计模式
             var vwapCum = new Vwap(0);
             // TP1 = (10+10+10)/3 = 10, Vol = 100 -> PV = 1000
-            vwapCum.Update(10, 10, 10, 10, 100);
+            vwapCum.Update(10, 10, 10, 100);
             Assert.IsTrue(vwapCum.IsReady);
             Assert.AreEqual(10.0, vwapCum.Current, 1e-10);
 
             // TP2 = (20+20+20)/3 = 20, Vol = 300 -> PV = 6000
             // CumPV = 7000, CumVol = 400 => VWAP = 7000 / 400 = 17.5
-            vwapCum.Update(20, 20, 20, 20, 300);
+            vwapCum.Update(20, 20, 20, 300);
             Assert.AreEqual(17.5, vwapCum.Current, 1e-10);
 
             // 零成交量时，VWAP 保持当前有效值
-            vwapCum.Update(30, 30, 30, 30, 0);
+            vwapCum.Update(30, 30, 30, 0);
             Assert.AreEqual(17.5, vwapCum.Current, 1e-10);
 
             // Reset
@@ -645,14 +637,14 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 
             // 2. 滚动 2 周期模式
             var vwap2 = new Vwap(2);
-            vwap2.Update(10, 10, 10, 10, 100);
+            vwap2.Update(10, 10, 10, 100);
             Assert.IsFalse(vwap2.IsReady);
-            vwap2.Update(20, 20, 20, 20, 100);
+            vwap2.Update(20, 20, 20, 100);
             Assert.IsTrue(vwap2.IsReady);
             Assert.AreEqual(15.0, vwap2.Current, 1e-10);
 
             // Feed bar 3: TP = 30, Vol = 100 -> 滑出 bar 1 (10*100), 剩余 (20*100 + 30*100)/200 = 25.0
-            vwap2.Update(30, 30, 30, 30, 100);
+            vwap2.Update(30, 30, 30, 100);
             Assert.AreEqual(25.0, vwap2.Current, 1e-10);
         }
 
@@ -670,7 +662,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             // 极端平盘无波动测试（H = L = C），验证除以零防御
             for (int i = 0; i < 5; i++)
             {
-                kdj.Update(10, 10, 10, 10, 100);
+                kdj.Update(10, 10, 10);
             }
 
             Assert.IsTrue(kdj.IsReady);
@@ -702,22 +694,22 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
         public void Kdj_AnomalyInputs_NaNAndInfinity_ShouldBeIgnoredSafely()
         {
             var kdj = new Kdj(3, 3, 3);
-            kdj.Update(10, 12, 8, 11, 100);
-            kdj.Update(11, 13, 9, 12, 100);
+            kdj.Update(12, 8, 11);
+            kdj.Update(13, 9, 12);
 
             // 注入包含 NaN 或 Infinity 的脏数据，应安全忽略并不改变样本数
-            kdj.Update(10, double.NaN, 8, 10, 100);
-            kdj.Update(10, 12, double.NaN, 10, 100);
-            kdj.Update(10, 12, 8, double.NaN, 100);
-            kdj.Update(10, double.PositiveInfinity, 8, 10, 100);
-            kdj.Update(10, 12, double.NegativeInfinity, 10, 100);
-            kdj.Update(10, 12, 8, double.PositiveInfinity, 100);
+            kdj.Update(double.NaN, 8, 10);
+            kdj.Update(12, double.NaN, 10);
+            kdj.Update(12, 8, double.NaN);
+            kdj.Update(double.PositiveInfinity, 8, 10);
+            kdj.Update(12, double.NegativeInfinity, 10);
+            kdj.Update(12, 8, double.PositiveInfinity);
 
             // 尚未达到 3 根有效 Bar，仍然未就绪
             Assert.IsFalse(kdj.IsReady);
 
             // 输入第 3 根有效 Bar
-            kdj.Update(12, 14, 10, 13, 100);
+            kdj.Update(14, 10, 13);
             Assert.IsTrue(kdj.IsReady);
             Assert.IsFalse(double.IsNaN(kdj.K.Current));
         }
@@ -728,7 +720,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var kdj = new Kdj(3, 3, 3);
             for (int i = 0; i < 5; i++)
             {
-                kdj.Update(10 + i, 12 + i, 8 + i, 11 + i, 100);
+                kdj.Update(12 + i, 8 + i, 11 + i);
             }
             Assert.IsTrue(kdj.IsReady);
             Assert.IsFalse(double.IsNaN(kdj.Current));
@@ -742,12 +734,12 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.IsTrue(double.IsNaN(kdj.J.Current));
 
             // 重新输入 2 根，依然未就绪
-            kdj.Update(10, 12, 8, 11, 100);
-            kdj.Update(11, 13, 9, 12, 100);
+            kdj.Update(12, 8, 11);
+            kdj.Update(13, 9, 12);
             Assert.IsFalse(kdj.IsReady);
 
             // 输入第 3 根，恢复 Ready
-            kdj.Update(12, 14, 10, 13, 100);
+            kdj.Update(14, 10, 13);
             Assert.IsTrue(kdj.IsReady);
         }
 
@@ -761,18 +753,18 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var sar = new Sar(0.02, 0.2);
             Assert.IsFalse(sar.IsReady);
 
-            // Bar 0
-            sar.Update(10, 11, 9, 10, 100);
+            // Bar 0: H=11, L=9
+            sar.Update(11, 9);
             Assert.IsFalse(sar.IsReady);
 
-            // Bar 1: 走高进入多头
-            sar.Update(10.5, 12, 10, 11.5, 100);
+            // Bar 1: 走高进入多头 H=12, L=10
+            sar.Update(12, 10);
             Assert.IsTrue(sar.IsReady);
             Assert.IsTrue(sar.IsLong);
             Assert.AreEqual(9.0, sar.Current, 1e-10);
 
-            // 连续暴跌击穿 SAR 触发反转
-            sar.Update(8, 8.5, 6.0, 7.0, 100);
+            // 连续暴跌击穿 SAR 触发反转 H=8.5, L=6.0
+            sar.Update(8.5, 6.0);
             Assert.IsFalse(sar.IsLong);
             Assert.IsTrue(sar.Current >= 10.0);
 
@@ -837,9 +829,9 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             for (int i = 0; i < 10; i++)
             {
                 ema.Update(10 + i);
-                wma.Update(10 + i, 10 + i, 10 + i, 10 + i, 100);
+                wma.Update(10 + i);
                 rsi.Update(10 + i);
-                atr.Update(10 + i, 12 + i, 8 + i, 10 + i, 100);
+                atr.Update(12 + i, 8 + i, 10 + i);
                 macd.Update(10 + i);
             }
 
@@ -904,7 +896,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             rsi.Update(double.NegativeInfinity);
             Assert.IsFalse(rsi.IsReady);
 
-            atr.Update(double.PositiveInfinity, double.PositiveInfinity, double.NegativeInfinity, double.NegativeInfinity, 100);
+            atr.Update(double.PositiveInfinity, double.NegativeInfinity, double.NegativeInfinity);
             Assert.IsFalse(atr.IsReady);
 
             // 2. 支持跨期套利/负油价等负数价差序列输入并正确计算

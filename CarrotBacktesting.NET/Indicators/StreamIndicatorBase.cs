@@ -89,6 +89,6 @@ namespace CarrotBacktesting.NET.Indicators
         }
 
         /// <inheritdoc />
-        public abstract void Update(double open, double high, double low, double close, double volume);
+        public abstract void Update(params ReadOnlySpan<double> values);
     }
 }

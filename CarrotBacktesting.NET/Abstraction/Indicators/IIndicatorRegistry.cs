@@ -18,25 +18,53 @@ namespace CarrotBacktesting.NET.Abstraction.Indicators
 
         /// <summary>
         /// 获取或声明注册一个全市场流式指标标的池（IndicatorPool）。
+        /// 支持单字段绑定（如 "close", "volume", "turnover"；若传 null 则按全量 OHLCV 供给）。
         /// 遵循约定优于配置：缺省复权模式为 PriceMode.Post。
         /// 若已存在同名指标则直接返回已有实例，保证多策略间全局单步只算一次。
         /// </summary>
         /// <typeparam name="T">指标类型约束。</typeparam>
         /// <param name="name">全局唯一指标标识名（如 "sma20", "macd"）。</param>
         /// <param name="factory">单个标的指标实例构建工厂委托。</param>
+        /// <summary>
+        /// 声明并获取一个全市场单字段流式指标池（如 "close", "volume", "turnover"；缺省默认绑定 "close"）。
+        /// </summary>
+        /// <typeparam name="T">指标类型约束。</typeparam>
+        /// <param name="name">全局唯一指标标识名（如 "sma20", "macd"）。</param>
+        /// <param name="factory">单个标的指标实例构建工厂委托。</param>
+        /// <param name="field">绑定的时序数据字段，默认为 "close"。</param>
         /// <param name="mode">价格复权模式，默认为 PriceMode.Post。</param>
         /// <returns>标的池强类型具象实例。</returns>
         IndicatorPool<T> GetOrAdd<T>(
             string name,
             Func<T> factory,
+            string field = "close",
             PriceMode mode = PriceMode.Post) where T : class, IIndicator;
 
         /// <summary>
-        /// 声明并注册一个全市场流式指标（无需持有 Pool 实例时的声明式重载）。
+        /// 声明注册一个多字段绑定的全市场流式指标池（如 ["high", "low", "close"] 或自定义多因子）。
+        /// </summary>
+        IndicatorPool<T> GetOrAdd<T>(
+            string name,
+            Func<T> factory,
+            IReadOnlyList<string> fields,
+            PriceMode mode = PriceMode.Post) where T : class, IIndicator;
+
+        /// <summary>
+        /// 声明并注册一个全市场单字段流式指标（缺省默认绑定 "close"）。
         /// </summary>
         void Add<T>(
             string name,
             Func<T> factory,
+            string field = "close",
+            PriceMode mode = PriceMode.Post) where T : class, IIndicator;
+
+        /// <summary>
+        /// 声明并注册一个多字段全市场流式指标。
+        /// </summary>
+        void Add<T>(
+            string name,
+            Func<T> factory,
+            IReadOnlyList<string> fields,
             PriceMode mode = PriceMode.Post) where T : class, IIndicator;
 
         /// <summary>

@@ -37,10 +37,12 @@ namespace CarrotBacktesting.NET.Indicators
         public IndicatorPool<T> GetOrAdd<T>(
             string name,
             Func<T> factory,
+            string field = "close",
             PriceMode mode = PriceMode.Post) where T : class, IIndicator
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             ArgumentNullException.ThrowIfNull(factory);
+            ArgumentException.ThrowIfNullOrWhiteSpace(field);
 
             // 显式双重检查锁定 (DCL)：彻底规避并发多次执行工厂委托导致的幽灵指标池泄漏
             if (!_pools.TryGetValue(name, out var pool))
@@ -49,7 +51,7 @@ namespace CarrotBacktesting.NET.Indicators
                 {
                     if (!_pools.TryGetValue(name, out pool))
                     {
-                        var created = new IndicatorPool<T>(name, factory, _metadata, mode);
+                        var created = new IndicatorPool<T>(name, factory, _metadata, field, mode);
                         _pools[name] = created;
                         var list = new List<IndicatorPool>(_activePools) { created };
                         _activePools = list.ToArray();
@@ -60,10 +62,51 @@ namespace CarrotBacktesting.NET.Indicators
 
             if (pool is IndicatorPool<T> typedPool)
             {
-                if (typedPool.Mode != mode)
+                if (typedPool.Mode != mode || !string.Equals(typedPool.Field, field, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException(
-                        $"指标 '{name}' 已存在，但复权模式不匹配（现有模式: {typedPool.Mode}，请求模式: {mode}）。请使用不同名称或保持一致的复权模式。");
+                        $"指标 '{name}' 已存在，但参数不匹配（现有字段: '{typedPool.Field}'，模式: {typedPool.Mode}；请求字段: '{field}'，模式: {mode}）。请使用不同名称或保持一致参数。");
+                }
+                return typedPool;
+            }
+
+            throw new InvalidOperationException(
+                $"指标 '{name}' 已存在，但类型不匹配（现有类型: {pool.GetType().FullName}，请求类型: {typeof(IndicatorPool<T>).FullName}）。");
+        }
+
+        /// <inheritdoc />
+        public IndicatorPool<T> GetOrAdd<T>(
+            string name,
+            Func<T> factory,
+            IReadOnlyList<string> fields,
+            PriceMode mode = PriceMode.Post) where T : class, IIndicator
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            ArgumentNullException.ThrowIfNull(factory);
+            ArgumentNullException.ThrowIfNull(fields);
+
+            if (!_pools.TryGetValue(name, out var pool))
+            {
+                lock (_lock)
+                {
+                    if (!_pools.TryGetValue(name, out pool))
+                    {
+                        var created = new IndicatorPool<T>(name, factory, _metadata, fields, mode);
+                        _pools[name] = created;
+                        var list = new List<IndicatorPool>(_activePools) { created };
+                        _activePools = list.ToArray();
+                        return created;
+                    }
+                }
+            }
+
+            if (pool is IndicatorPool<T> typedPool)
+            {
+                bool fieldsMatch = typedPool.Fields != null && typedPool.Fields.SequenceEqual(fields, StringComparer.OrdinalIgnoreCase);
+                if (typedPool.Mode != mode || !fieldsMatch)
+                {
+                    throw new InvalidOperationException(
+                        $"指标 '{name}' 已存在，但参数不匹配（现有字段: [{string.Join(", ", typedPool.Fields ?? Array.Empty<string>())}]，模式: {typedPool.Mode}；请求字段: [{string.Join(", ", fields)}]，模式: {mode}）。请使用不同名称或保持一致参数。");
                 }
                 return typedPool;
             }
@@ -76,9 +119,20 @@ namespace CarrotBacktesting.NET.Indicators
         public void Add<T>(
             string name,
             Func<T> factory,
+            string field = "close",
             PriceMode mode = PriceMode.Post) where T : class, IIndicator
         {
-            GetOrAdd(name, factory, mode);
+            GetOrAdd(name, factory, field, mode);
+        }
+
+        /// <inheritdoc />
+        public void Add<T>(
+            string name,
+            Func<T> factory,
+            IReadOnlyList<string> fields,
+            PriceMode mode = PriceMode.Post) where T : class, IIndicator
+        {
+            GetOrAdd(name, factory, fields, mode);
         }
 
         /// <inheritdoc />

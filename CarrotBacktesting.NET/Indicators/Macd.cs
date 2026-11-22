@@ -63,23 +63,26 @@ namespace CarrotBacktesting.NET.Indicators
         }
 
         /// <inheritdoc />
-        public override void Update(double open, double high, double low, double close, double volume)
+        public override void Update(params ReadOnlySpan<double> values)
         {
+            if (values.IsEmpty) return;
+            double close = values[0];
+
             // 停牌与脏数据防御（行业标准：冻结跳过 Skip & Freeze；支持差离值、收益率与价差实数序列）
             if (double.IsNaN(close) || double.IsInfinity(close))
             {
                 return;
             }
 
-            _fastEma.Update(open, high, low, close, volume);
-            _slowEma.Update(open, high, low, close, volume);
+            _fastEma.Update(close);
+            _slowEma.Update(close);
 
             if (_slowEma.IsReady)
             {
                 double dif = _fastEma.Current - _slowEma.Current;
                 _difStream.Push(dif);
 
-                _signalEma.Update(dif, dif, dif, dif, 0.0);
+                _signalEma.Update(dif);
                 if (_signalEma.IsReady)
                 {
                     double dea = _signalEma.Current;

@@ -365,9 +365,13 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             public int RowCount => 10;
             public int Width => 3;
             private static readonly double _fixedPrice = 100.0;
+            private static readonly double[] _fixedRow = new double[] { 100.0, 100.0, 100.0 };
             public ref readonly double this[int r, int c] => ref _fixedPrice;
 
-            public CarrotBacktesting.NET.Abstraction.Data.ReadOnlyRowView<double> GetRowView(int row, int col, int len) => throw new NotImplementedException();
+            public CarrotBacktesting.NET.Abstraction.Data.ReadOnlyRowView<double> GetRowView(int row, int col, int len)
+            {
+                return new CarrotBacktesting.NET.Abstraction.Data.ReadOnlyRowView<double>(new ReadOnlySpan<double>(_fixedRow, col, len));
+            }
             public CarrotBacktesting.NET.Abstraction.Data.ReadOnlyColumnView<double> GetColumnView(int row, int col, int len) => throw new NotImplementedException();
         }
 

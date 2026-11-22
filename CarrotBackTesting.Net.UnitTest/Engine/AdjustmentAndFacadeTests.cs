@@ -1203,7 +1203,10 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             public ref readonly double this[int r, int c] => ref _data[r, c];
 
-            public CarrotBacktesting.NET.Abstraction.Data.ReadOnlyRowView<double> GetRowView(int row, int col, int len) => throw new NotImplementedException();
+            public CarrotBacktesting.NET.Abstraction.Data.ReadOnlyRowView<double> GetRowView(int row, int col, int len)
+            {
+                return new CarrotBacktesting.NET.Abstraction.Data.ReadOnlyRowView<double>(System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref _data[row, col], len));
+            }
             public CarrotBacktesting.NET.Abstraction.Data.ReadOnlyColumnView<double> GetColumnView(int row, int col, int len) => throw new NotImplementedException();
         }
 

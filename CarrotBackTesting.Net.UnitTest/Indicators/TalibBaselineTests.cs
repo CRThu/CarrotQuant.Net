@@ -70,33 +70,33 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             for (int i = 0; i < bars.Count; i++)
             {
                 var b = bars[i];
-                sma5.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sma20.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sma60.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sma120.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sma250.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
+                sma5.Update(b.Close);
+                sma20.Update(b.Close);
+                sma60.Update(b.Close);
+                sma120.Update(b.Close);
+                sma250.Update(b.Close);
 
-                ema5.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema10.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema20.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema60.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema120.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema250.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
+                ema5.Update(b.Close);
+                ema10.Update(b.Close);
+                ema20.Update(b.Close);
+                ema60.Update(b.Close);
+                ema120.Update(b.Close);
+                ema250.Update(b.Close);
 
-                wma5.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                wma20.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                wma60.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                wma120.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
+                wma5.Update(b.Close);
+                wma20.Update(b.Close);
+                wma60.Update(b.Close);
+                wma120.Update(b.Close);
 
-                boll.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                macd.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                rsi6.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                rsi14.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                atr.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sar.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                vwap.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                vwap20.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                kdj.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
+                boll.Update(b.Close);
+                macd.Update(b.Close);
+                rsi6.Update(b.Close);
+                rsi14.Update(b.Close);
+                atr.Update(b.High, b.Low, b.Close);
+                sar.Update(b.High, b.Low);
+                vwap.Update(b.High, b.Low, b.Close, b.Volume);
+                vwap20.Update(b.High, b.Low, b.Close, b.Volume);
+                kdj.Update(b.High, b.Low, b.Close);
 
                 // --- SMA 断言 (超短 5 -> 短 20 -> 中 60 -> 长 120 -> 年线 250) ---
                 if (b.Sma5.HasValue) Assert.AreEqual(b.Sma5.Value, sma5.Current, 1e-11, $"Bar {i} SMA5");
@@ -206,31 +206,31 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             for (int i = 0; i < bars.Count; i++)
             {
                 var b = bars[i];
-                sma5.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sma20.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sma60.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sma120.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
+                sma5.Update(b.Close);
+                sma20.Update(b.Close);
+                sma60.Update(b.Close);
+                sma120.Update(b.Close);
 
-                ema5.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema10.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema20.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema60.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                ema120.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
+                ema5.Update(b.Close);
+                ema10.Update(b.Close);
+                ema20.Update(b.Close);
+                ema60.Update(b.Close);
+                ema120.Update(b.Close);
 
-                wma5.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                wma20.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                wma60.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                wma120.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
+                wma5.Update(b.Close);
+                wma20.Update(b.Close);
+                wma60.Update(b.Close);
+                wma120.Update(b.Close);
 
-                boll.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                macd.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                rsi6.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                rsi14.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                atr.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                sar.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                vwap.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                vwap20.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
-                kdj.Update(b.Open, b.High, b.Low, b.Close, b.Volume);
+                boll.Update(b.Close);
+                macd.Update(b.Close);
+                rsi6.Update(b.Close);
+                rsi14.Update(b.Close);
+                atr.Update(b.High, b.Low, b.Close);
+                sar.Update(b.High, b.Low);
+                vwap.Update(b.High, b.Low, b.Close, b.Volume);
+                vwap20.Update(b.High, b.Low, b.Close, b.Volume);
+                kdj.Update(b.High, b.Low, b.Close);
 
                 if (b.Sma5.HasValue) Assert.AreEqual(b.Sma5.Value, sma5.Current, 1e-11, $"Synthetic Bar {i} SMA5");
                 if (b.Sma20.HasValue) Assert.AreEqual(b.Sma20.Value, sma20.Current, 1e-11, $"Synthetic Bar {i} SMA20");

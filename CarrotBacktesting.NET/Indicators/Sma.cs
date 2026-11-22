@@ -42,8 +42,11 @@ namespace CarrotBacktesting.NET.Indicators
         }
 
         /// <inheritdoc />
-        public override void Update(double open, double high, double low, double close, double volume)
+        public override void Update(params ReadOnlySpan<double> values)
         {
+            if (values.IsEmpty) return;
+            double close = values[0];
+
             // 停牌与脏数据防御（行业标准：冻结跳过 Skip & Freeze；支持价差、收益率等实数序列输入）
             if (double.IsNaN(close) || double.IsInfinity(close))
             {

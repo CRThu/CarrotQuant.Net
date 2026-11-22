@@ -44,8 +44,11 @@ namespace CarrotBacktesting.NET.Indicators
         }
 
         /// <inheritdoc />
-        public override void Update(double open, double high, double low, double close, double volume)
+        public override void Update(params ReadOnlySpan<double> values)
         {
+            if (values.IsEmpty) return;
+            double close = values[0];
+
             if (double.IsNaN(close) || double.IsInfinity(close))
             {
                 return;
