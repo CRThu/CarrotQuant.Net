@@ -1110,6 +1110,269 @@ public class TradingFinancialPipelineIntegrationTests
 
     #endregion
 
+    #region 7. 次日开盘做空翻仓、早盘 T+1 生命周期与 ReduceOnly 安全减仓（核心时态与多空矩阵）
+
+    [TestMethod]
+    public void FuturesTrading_NextOpen_OvernightPendingShortAndPositionFlip_EndToEnd()
+    {
+        // 场景：OnClose 决策 + NextOpen 撮合基准。
+        // Day 0 收盘决策做空 10 手 -> 跨夜挂起 -> Day 1 开盘跳空低开以 Open=3850 撮合成交
+        // Day 1 收盘决策多空反手（买入 15 手） -> 跨夜挂起 -> Day 2 开盘以 Open=3800 撮合成交（平空 10 手盈利 + 转开多 5 手）
+        // Day 2 收盘决策平多 5 手 -> 跨夜挂起 -> Day 3 开盘以 Open=3850 撮合成交（平多 5 手盈利）
+        // 终局持仓归零，保证金全额解冻，终局资金严格守恒无漂移
+        var symbols = new[] { "IF2401" };
+        var dates = new[]
+        {
+            new DateTime(2024, 1, 2), // Day 0: Open=3900.0, Close=3910.0
+            new DateTime(2024, 1, 3), // Day 1: Open=3850.0, Close=3840.0
+            new DateTime(2024, 1, 4), // Day 2: Open=3800.0, Close=3810.0
+            new DateTime(2024, 1, 5)  // Day 3: Open=3850.0, Close=3860.0
+        };
+
+        var metadata = new MockMetadata(symbols, dates);
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+
+        var openData = new double[,] { { 3900.0 }, { 3850.0 }, { 3800.0 }, { 3850.0 } };
+        var closeData = new double[,] { { 3910.0 }, { 3840.0 }, { 3810.0 }, { 3860.0 } };
+        tsRegistry.SetMatrix("open", new MockMatrix(openData));
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+
+        const double initialCash = 1000000.0;
+        const double marginRate = 0.1; // 10% 保证金杠杆
+
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = initialCash,
+            AllowShort = true,
+            MarginRate = marginRate,
+            SettleDays = 0,
+            FeeRate = 0.0,
+            Slippage = 0.0,
+            DefaultExecutionPrice = ExecutionPriceType.Open // 关键：次日开盘价成交！
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+        var broker = new Broker(simExchange, brokerConfig);
+
+        var strategy = new NextOpenPositionFlipStrategy();
+        var pipeline = StrategyPipeline.Sequential().Add(strategy);
+
+        var engineConfig = new EngineConfig
+        {
+            Mode = "backtest",
+            StartDate = dates[0],
+            EndDate = dates[^1],
+            UpdateTiming = StrategyUpdateTiming.OnClose
+        };
+
+        using var engine = new BacktestingEngine(
+            tsRegistry,
+            broker,
+            pipeline,
+            config: engineConfig,
+            simExchange: simExchange);
+
+        engine.Run();
+
+        Assert.AreEqual(EngineStatus.Completed, engine.Status);
+        var result = engine.GetResult();
+        Assert.IsNotNull(result);
+
+        // 验证成交记录：
+        // 1. Day 0 收盘挂单在 Day 1 开盘按 3850.0 成交 10 手开空
+        // 2. Day 1 收盘挂单在 Day 2 开盘按 3800.0 成交 15 手（平空 10 手 + 开多 5 手）
+        //    平空盈利 = (3850.0 - 3800.0) * 10 = +500.0
+        // 3. Day 2 收盘挂单在 Day 3 开盘按 3850.0 成交 5 手平多
+        //    平多盈利 = (3850.0 - 3800.0) * 5 = +250.0
+        // 累计净盈利 = +500.0 + 250.0 = +750.0
+        const double expectedNetPnL = 750.0;
+        const double expectedFinalEquity = initialCash + expectedNetPnL;
+
+        Assert.AreEqual(0m, broker.GetPosition("IF2401"), "平仓后持仓数量必须准确归零");
+        Assert.AreEqual(expectedFinalEquity, broker.GetCash(), 1e-4, "跨步杠杆平仓后保证金全额释放，可用资金与净利润完全吻合");
+        Assert.AreEqual(expectedFinalEquity, broker.GetTotalEquity(), 1e-4, "终局总资产严格守恒");
+
+        // 验证成交详情
+        Assert.AreEqual(3, result.Settlements.Count, "应产生 3 笔成交清算记录");
+        Assert.AreEqual(3850.0, result.Settlements[0].Price, 1e-4, "第 1 笔开空应在 Day 1 开盘以 Open=3850.0 撮合");
+        Assert.AreEqual(3800.0, result.Settlements[1].Price, 1e-4, "第 2 笔多空反手应在 Day 2 开盘以 Open=3800.0 撮合");
+        Assert.AreEqual(3850.0, result.Settlements[2].Price, 1e-4, "第 3 笔平多应在 Day 3 开盘以 Open=3850.0 撮合");
+    }
+
+    [TestMethod]
+    public void SpotTrading_OnOpen_T1RolloverAndSameDayRejection_EndToEnd()
+    {
+        // 场景：OnOpen 决策 + CurrentOpen 撮合基准 + A 股 T+1 现货交割。
+        // Day 0 开盘决策买入 1000 股，同一步尝试卖出 1000 股，必须被 T+1 拒单；
+        // Day 1 开盘时，持仓已被 Phase 1.2 步的日切结算解锁为 Available，策略此时卖出平仓顺利成交。
+        var symbols = new[] { "SH.600000" };
+        var dates = new[]
+        {
+            new DateTime(2024, 1, 2), // Day 0: Open=10.0, Close=10.5
+            new DateTime(2024, 1, 3)  // Day 1: Open=11.0, Close=11.5
+        };
+
+        var metadata = new MockMetadata(symbols, dates);
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+
+        var openData = new double[,] { { 10.0 }, { 11.0 } };
+        var closeData = new double[,] { { 10.5 }, { 11.5 } };
+        tsRegistry.SetMatrix("open", new MockMatrix(openData));
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+
+        const double initialCash = 100000.0;
+
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = initialCash,
+            AllowShort = false, // 现货模式，禁止做空
+            SettleDays = 1,     // A 股 T+1 制度
+            FeeRate = 0.0,
+            Slippage = 0.0,
+            DefaultExecutionPrice = ExecutionPriceType.Open
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+        var broker = new Broker(simExchange, brokerConfig);
+
+        var strategy = new SpotOnOpenT1Strategy();
+        var pipeline = StrategyPipeline.Sequential().Add(strategy);
+
+        var engineConfig = new EngineConfig
+        {
+            Mode = "backtest",
+            StartDate = dates[0],
+            EndDate = dates[1],
+            UpdateTiming = StrategyUpdateTiming.OnOpen // 关键：开盘决策！
+        };
+
+        using var engine = new BacktestingEngine(
+            tsRegistry,
+            broker,
+            pipeline,
+            config: engineConfig,
+            simExchange: simExchange);
+
+        engine.Run();
+
+        Assert.AreEqual(EngineStatus.Completed, engine.Status);
+
+        // 1. Day 0 开盘买单：应以 Day 0 的 Open=10.0 撮合成交
+        Assert.IsTrue(strategy.Day0BuyOrderId > 0);
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(strategy.Day0BuyOrderId), "Day 0 开盘买单应成功成交");
+
+        // 2. Day 0 同一步卖单：必须被 T+1 拒单
+        Assert.IsTrue(strategy.Day0SellOrderId > 0);
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(strategy.Day0SellOrderId), "Day 0 开盘同一步卖单必须被 T+1 拒单拦截");
+
+        // 3. Day 1 开盘卖单：由于跨日持仓已由 _brokerDriver.Step 解锁，应以 Day 1 的 Open=11.0 撮合成交
+        Assert.IsTrue(strategy.Day1SellOrderId > 0);
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(strategy.Day1SellOrderId), "Day 1 开盘卖单在持仓解锁后应成功平仓成交");
+
+        // 4. 终局财务与持仓核验
+        Assert.AreEqual(0m, broker.GetPosition("SH.600000"), "平仓后持仓数量必须归零");
+        // 净收益 = (11.0 - 10.0) * 1000 = +1000.0
+        const double expectedFinalEquity = initialCash + 1000.0;
+        Assert.AreEqual(expectedFinalEquity, broker.GetCash(), 1e-4, "开盘买卖平仓后资金回款完全正确");
+        Assert.AreEqual(expectedFinalEquity, broker.GetTotalEquity(), 1e-4, "总资产严格守恒");
+    }
+
+    [TestMethod]
+    public void ContractTrading_ReduceOnly_DefensiveGatesAndPositionUnwind_EndToEnd()
+    {
+        // 场景：期货杠杆交易下 ReduceOnly 严格防事故减仓防线。
+        // 1. 空仓时提交 ReduceOnly 订单 -> 坚决拒单拦截；
+        // 2. 建立多头持仓后，同向买入 ReduceOnly 订单 -> 坚决拒单拦截；
+        // 3. 提交超额卖出 ReduceOnly 订单（试图把多头倒欠开成空头） -> 坚决拒单拦截；
+        // 4. 提交合法数量的卖出 ReduceOnly 订单 -> 成功平仓归零；
+        // 5. 对称空头防线：建立空头后，同向卖出被拒，超额买入被拒，合法买入成功平空归零。
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = 1000000.0,
+            AllowShort = true,
+            MarginRate = 0.1,
+            FeeRate = 0.0,
+            Slippage = 0.0
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+        var broker = new Broker(simExchange, brokerConfig);
+
+        string symbol = "IF2401";
+        double price = 4000.0;
+        var dates = new[] { new DateTime(2024, 1, 2) };
+        var metadata = new MockMetadata(new[] { symbol }, dates);
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+        var closeData = new double[,] { { price } };
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+
+        // 门线 1：空仓时提交 ReduceOnly 卖单与买单 -> 坚决拒单
+        var emptySellOrder = new OrderRequest(symbol, OrderDirection.Sell, OrderType.Limit, price, 10m, ReduceOnly: true);
+        long emptySellId = broker.SubmitOrder(emptySellOrder);
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(emptySellId), "空仓时提交 ReduceOnly 卖单必须被拒单");
+
+        var emptyBuyOrder = new OrderRequest(symbol, OrderDirection.Buy, OrderType.Limit, price, 10m, ReduceOnly: true);
+        long emptyBuyId = broker.SubmitOrder(emptyBuyOrder);
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(emptyBuyId), "空仓时提交 ReduceOnly 买单必须被拒单");
+
+        // 门线 2：建立 10 手多头持仓
+        var buyOpenOrder = new OrderRequest(symbol, OrderDirection.Buy, OrderType.Limit, price, 10m);
+        long buyOpenId = broker.SubmitOrder(buyOpenOrder);
+        simExchange.Step(dates[0], tsRegistry, 0); // 即刻撮合（限价单穿透市价）
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyOpenId));
+        Assert.AreEqual(10m, broker.GetPosition(symbol), "当前持仓应为多头 10 手");
+
+        // 2.1 多头持仓下，同向提交买入 ReduceOnly -> 坚决拒单
+        var buySameDirOrder = new OrderRequest(symbol, OrderDirection.Buy, OrderType.Limit, price, 5m, ReduceOnly: true);
+        long buySameDirId = broker.SubmitOrder(buySameDirOrder);
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(buySameDirId), "多头持仓下同向提交买入 ReduceOnly 必须被拒单");
+
+        // 2.2 多头持仓下，超额提交卖出 15 手 ReduceOnly（试图倒欠开空 5 手） -> 坚决拒单
+        var sellExcessOrder = new OrderRequest(symbol, OrderDirection.Sell, OrderType.Limit, price, 15m, ReduceOnly: true);
+        long sellExcessId = broker.SubmitOrder(sellExcessOrder);
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(sellExcessId), "多头持仓下超额卖出 ReduceOnly 必须被拒单");
+
+        // 2.3 提交合法 10 手卖出 ReduceOnly 平仓 -> 放行并成功平仓
+        var sellValidOrder = new OrderRequest(symbol, OrderDirection.Sell, OrderType.Limit, price, 10m, ReduceOnly: true);
+        long sellValidId = broker.SubmitOrder(sellValidOrder);
+        Assert.AreNotEqual(OrderStatus.Rejected, broker.GetOrderStatus(sellValidId), "合法 ReduceOnly 平仓单必须被放行");
+        simExchange.Step(dates[0], tsRegistry, 0);
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(sellValidId));
+        Assert.AreEqual(0m, broker.GetPosition(symbol), "多头持仓成功平仓归零");
+
+        // 门线 3：对称验证空头持仓
+        // 建立 10 手空头持仓
+        var shortOpenOrder = new OrderRequest(symbol, OrderDirection.Sell, OrderType.Limit, price, 10m);
+        long shortOpenId = broker.SubmitOrder(shortOpenOrder);
+        simExchange.Step(dates[0], tsRegistry, 0);
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(shortOpenId));
+        Assert.AreEqual(-10m, broker.GetPosition(symbol), "当前持仓应为空头 10 手");
+
+        // 3.1 空头持仓下，同向提交卖出 ReduceOnly -> 坚决拒单
+        var shortSameDirOrder = new OrderRequest(symbol, OrderDirection.Sell, OrderType.Limit, price, 5m, ReduceOnly: true);
+        long shortSameDirId = broker.SubmitOrder(shortSameDirOrder);
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(shortSameDirId), "空头持仓下同向提交卖出 ReduceOnly 必须被拒单");
+
+        // 3.2 空头持仓下，超额提交买入 15 手 ReduceOnly（试图倒欠开多 5 手） -> 坚决拒单
+        var buyExcessOrder = new OrderRequest(symbol, OrderDirection.Buy, OrderType.Limit, price, 15m, ReduceOnly: true);
+        long buyExcessId = broker.SubmitOrder(buyExcessOrder);
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(buyExcessId), "空头持仓下超额买入 ReduceOnly 必须被拒单");
+
+        // 3.3 提交合法 10 手买入 ReduceOnly 平空 -> 放行并平空归零
+        var buyValidOrder = new OrderRequest(symbol, OrderDirection.Buy, OrderType.Limit, price, 10m, ReduceOnly: true);
+        long buyValidId = broker.SubmitOrder(buyValidOrder);
+        Assert.AreNotEqual(OrderStatus.Rejected, broker.GetOrderStatus(buyValidId), "合法 ReduceOnly 平空单必须被放行");
+        simExchange.Step(dates[0], tsRegistry, 0);
+        Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyValidId));
+        Assert.AreEqual(0m, broker.GetPosition(symbol), "空头持仓成功平仓归零");
+
+        // 保证金全额解冻，初始资金分厘不差严格守恒
+        Assert.AreEqual(1000000.0, broker.GetCash(), 1e-4, "双向平仓后保证金全额释放");
+        Assert.AreEqual(1000000.0, broker.GetTotalEquity(), 1e-4, "总权益守恒");
+    }
+
+    #endregion
+
     #region 测试辅助策略类
 
     private sealed class BracketLifecycleStrategy : StrategyBase
@@ -1151,6 +1414,59 @@ public class TradingFinancialPipelineIntegrationTests
             {
                 context.Buy(_symbol, _quantity);
                 _bought = true;
+            }
+        }
+    }
+
+    private sealed class NextOpenPositionFlipStrategy : StrategyBase
+    {
+        public int StepCount { get; private set; }
+
+        public override void OnUpdate(IEngineContext context)
+        {
+            string symbol = "IF2401";
+
+            if (StepCount == 0)
+            {
+                // Day 0 收盘: 卖出 10 手开空（跨夜挂起至 Day 1 开盘撮合）
+                context.Broker.SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, 10m));
+            }
+            else if (StepCount == 1)
+            {
+                // Day 1 收盘: 买入 15 手（平空 10 手 + 开多 5 手，跨夜挂起至 Day 2 开盘撮合）
+                context.Broker.SubmitOrder(new OrderRequest(symbol, OrderDirection.Buy, 15m));
+            }
+            else if (StepCount == 2)
+            {
+                // Day 2 收盘: 卖出 5 手平多清仓（跨夜挂起至 Day 3 开盘撮合）
+                context.Broker.SubmitOrder(new OrderRequest(symbol, OrderDirection.Sell, 5m));
+            }
+
+            StepCount++;
+        }
+    }
+
+    private sealed class SpotOnOpenT1Strategy : StrategyBase
+    {
+        public long Day0BuyOrderId { get; private set; }
+        public long Day0SellOrderId { get; private set; }
+        public long Day1SellOrderId { get; private set; }
+
+        public override void OnUpdate(IEngineContext context)
+        {
+            string symbol = "SH.600000";
+
+            if (context.CurrentIndex == 0)
+            {
+                // Day 0 开盘: 买入 1000 股
+                Day0BuyOrderId = context.Buy(symbol, 1000m);
+                // 同一步开盘尝试卖出 1000 股（必须被 T+1 拦截）
+                Day0SellOrderId = context.Sell(symbol, 1000m);
+            }
+            else if (context.CurrentIndex == 1)
+            {
+                // Day 1 开盘: T+1 持仓已在 Phase 1.2 步解锁，此时平仓卖出 1000 股
+                Day1SellOrderId = context.Sell(symbol, 1000m);
             }
         }
     }

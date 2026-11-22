@@ -1100,5 +1100,135 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual("macro_rate", strategy.ReceivedEvents[0].table);
             Assert.AreEqual(1, strategy.ReceivedEvents[0].count);
         }
+
+        private class InlineActionStrategy : IStrategy
+        {
+            private readonly Action<IEngineContext> _action;
+            public string Name => "InlineActionStrategy";
+            public int Lookback => 0;
+            public int UpdateCount { get; private set; }
+            public bool Stopped { get; private set; }
+
+            public InlineActionStrategy(Action<IEngineContext> action) => _action = action;
+            public void OnStart(IEngineContext context) { }
+            public void OnStop(IEngineContext context) => Stopped = true;
+            public void OnUpdate(IEngineContext context)
+            {
+                UpdateCount++;
+                _action(context);
+            }
+        }
+
+        [TestMethod]
+        public void RunAsync_PausedThenCanceledByToken_ShouldCatchOperationCanceledAndFinishGracefully()
+        {
+            var (ts, _) = CreateTestTimeseries(100);
+            var broker = CreateBroker(new BrokerConfig());
+
+            BacktestingEngine? engineRef = null;
+            var strategy = new InlineActionStrategy(ctx =>
+            {
+                if (ctx.CurrentIndex == 2)
+                {
+                    engineRef?.Pause();
+                }
+            });
+
+            var pipeline = StrategyPipeline.Sequential();
+            pipeline.Add(strategy);
+
+            using var engine = new BacktestingEngine(ts, broker, pipeline);
+            engineRef = engine;
+            using var cts = new CancellationTokenSource();
+
+            var runTask = engine.RunAsync(cts.Token);
+
+            // 等待引擎进入 Paused 状态
+            while (engine.Status != EngineStatus.Paused && !runTask.IsCompleted)
+            {
+                Thread.Sleep(5);
+            }
+            Assert.AreEqual(EngineStatus.Paused, engine.Status);
+
+            // 取消 Token 触发 ManualResetEventSlim.Wait 的 OperationCanceledException
+            cts.Cancel();
+
+            runTask.Wait(2000);
+
+            // 验证引擎捕获取消异常，调用 OnStop 并正常标记为 Completed
+            Assert.AreEqual(EngineStatus.Completed, engine.Status);
+            Assert.IsTrue(strategy.Stopped, "引擎取消退出时应触发策略 OnStop");
+            Assert.IsTrue(strategy.UpdateCount < 50, "在第 2 步暂停后取消，步数应远小于 100");
+        }
+
+        [TestMethod]
+        public void Run_PendingOrdersAtEnd_ShouldCloseGatewayAndUnfreezeAll()
+        {
+            var (ts, _) = CreateTestTimeseries(5);
+            var closeMat = new ChunkMatrix2D<double>(2, 4096, 5);
+            for (int r = 0; r < 5; r++)
+            {
+                closeMat[r, 0] = 10.0;
+                closeMat[r, 1] = 10.0;
+            }
+            ts.SetMatrix("close", closeMat);
+
+            var broker = CreateBroker(new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 });
+
+            var strategy = new InlineActionStrategy(ctx =>
+            {
+                // 在最后一天 (step 4) 提交一笔未成交的低价 Day 限价买单 (9.0 < 市价 10.0)，进入挂单排队冻结 9000 元
+                if (ctx.CurrentIndex == 4)
+                {
+                    ctx.Broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, 9.0, 1000m, timeInForce: TimeInForce.Day));
+                }
+            });
+
+            var pipeline = StrategyPipeline.Sequential();
+            pipeline.Add(strategy);
+
+            using var engine = new BacktestingEngine(ts, broker, pipeline);
+            engine.Run();
+
+            // 验证回测结束时：
+            // 1. 引擎状态为 Completed
+            // 2. 网关触发 CloseGateway，挂单簿中的挂单被统一撤销解冻
+            // 3. Broker 的 FrozenCash 彻底清零，可用资金全额守恒恢复为 100,000 元
+            Assert.AreEqual(EngineStatus.Completed, engine.Status);
+            Assert.AreEqual(0.0, broker.FrozenCash, 1e-4);
+            Assert.AreEqual(100_000.0, broker.GetCash(), 1e-4);
+        }
+
+        [TestMethod]
+        public void BacktestingEngine_PropertiesAndLedgerVersion_ShouldReflectStateAccurately()
+        {
+            var (ts, _) = CreateTestTimeseries(2);
+            var broker = CreateBroker(new BrokerConfig { InitialCash = 100_000.0 });
+            var pipeline = StrategyPipeline.Sequential();
+
+            using var engine = new BacktestingEngine(ts, broker, pipeline);
+            
+            // 验证未挂载复权与 Recorder 默认状态
+            Assert.IsFalse(engine.HasAdjustments);
+            Assert.IsNotNull(engine.Recorder);
+
+            // 验证 Ledger PositionVersion
+            var ledger = new AccountLedger(new BrokerConfig { InitialCash = 100_000.0 });
+            Assert.IsTrue(ledger.PositionVersion >= 1);
+            
+            // 验证负数量预冻结拦截
+            bool preFreezeResult = ledger.TryFreeze(
+                new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, -10m),
+                estimatedPrice: 10.0,
+                multiplier: 1.0,
+                marginRate: 1.0,
+                out _,
+                out _,
+                out _,
+                out _,
+                out string? rejectReason);
+            Assert.IsFalse(preFreezeResult);
+            Assert.AreEqual("Order quantity must be positive.", rejectReason);
+        }
     }
 }

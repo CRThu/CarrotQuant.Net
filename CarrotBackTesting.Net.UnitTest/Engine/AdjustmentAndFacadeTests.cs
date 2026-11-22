@@ -9,6 +9,7 @@ using CarrotBacktesting.NET.Abstraction.Strategy;
 using CarrotBacktesting.NET.Config;
 using CarrotBacktesting.NET.Data;
 using CarrotBacktesting.NET.Engine;
+using CarrotBacktesting.NET.Engine.Broker;
 using CarrotBacktesting.NET.Engine.Exchange;
 using CarrotBacktesting.NET.Indicators;
 using CarrotBacktesting.NET.Strategy;
@@ -451,6 +452,143 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(2, recordedLookbackPrices.Count);
             Assert.AreEqual(10.0, recordedLookbackPrices[0], 1e-12);
             Assert.AreEqual(22.0, recordedLookbackPrices[1], 1e-12);
+        }
+
+        [TestMethod]
+        public void Engine_AdjustmentFullPipeline_IndicatorPoolSmoothedAndRawExecutionConservation()
+        {
+            // 场景：复权全链路闭环（节点1至节点6穿透）
+            // 4 个交易日: 10送10除权除息（Day 2 物理价腰斩，因子翻倍为 2.0）
+            // 节点5：IndicatorPool<Sma> 自动按 PriceMode.Post 平滑步进，Day 2 消除断崖缺口
+            // 节点6：策略在 Day 3 均线金叉发出买单，SimulatedExchangeGateway 必须严格以物理价 Raw 成交
+            // 账本扣除物理成交金额，终局资金与市值绝对守恒
+            var dates = new List<DateTime>
+            {
+                new(2025, 1, 2), // Day 0: Raw=20.0, Factor=1.0, Post=20.0
+                new(2025, 1, 3), // Day 1: Raw=20.0, Factor=1.0, Post=20.0
+                new(2025, 1, 4), // Day 2 (除权日): Raw=10.0, Factor=2.0, Post=20.0 (无跳空缺口!)
+                new(2025, 1, 5)  // Day 3: Raw=10.5, Factor=2.0, Post=21.0 (均线上行，触发买入)
+            };
+            var symbols = new List<string> { "sh.600000" };
+            var meta = new SimpleMarketMetadata(dates, symbols);
+
+            var ts = new MockTimeseriesRegistry(meta);
+            var closeData = new double[,] { { 20.0 }, { 20.0 }, { 10.0 }, { 10.5 } };
+            var openData = new double[,] { { 20.0 }, { 20.0 }, { 10.0 }, { 10.5 } };
+            var highData = new double[,] { { 20.5 }, { 20.5 }, { 10.5 }, { 11.0 } };
+            var lowData = new double[,] { { 19.5 }, { 19.5 }, { 9.5 }, { 10.0 } };
+            var volData = new double[,] { { 10000.0 }, { 10000.0 }, { 20000.0 }, { 15000.0 } };
+
+            ts.RegisterMatrix("close", closeData);
+            ts.RegisterMatrix("open", openData);
+            ts.RegisterMatrix("high", highData);
+            ts.RegisterMatrix("low", lowData);
+            ts.RegisterMatrix("volume", volData);
+
+            // 构造事件表: 1/2 因子 1.0, 1/4 除权因子跃迁为 2.0
+            var ordinals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { { "back_adj_factor", 0 } };
+            var eventData = new Dictionary<MarketTime, Dictionary<string, List<DataRow>>>();
+
+            var d1 = new MarketTime(2025, 1, 2);
+            eventData[d1] = new Dictionary<string, List<DataRow>>
+            {
+                ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d1, new[] { "1.0" }, ordinals) }
+            };
+
+            var d3 = new MarketTime(2025, 1, 4);
+            eventData[d3] = new Dictionary<string, List<DataRow>>
+            {
+                ["sh.600000"] = new List<DataRow> { new DataRow("sh.600000", d3, new[] { "2.0" }, ordinals) }
+            };
+
+            var adjTable = new EventTable("adjustments", new[] { "back_adj_factor" }, eventData);
+            var events = new EventRegistry();
+            events.Register("adjustments", adjTable);
+
+            // 连接真实的 SimulatedExchangeGateway 与 Broker
+            const double initialCash = 100000.0;
+            var brokerConfig = new BrokerConfig
+            {
+                InitialCash = initialCash,
+                FeeRate = 0.0,
+                Slippage = 0.0,
+                VolumeLimit = 0.0, // 禁用成交量限制以纯净验证复权与撮合链路
+                DefaultExecutionPrice = ExecutionPriceType.Close
+            };
+            var simExchange = new SimulatedExchangeGateway(brokerConfig);
+            var broker = new Broker(simExchange, brokerConfig);
+
+            var recordedSmaValues = new List<double>();
+            long orderId = 0;
+
+            var strategy = new FullAdjustmentPipelineStrategy((ctx, smaPool) =>
+            {
+                double smaVal = smaPool["sh.600000"].Current;
+                recordedSmaValues.Add(smaVal);
+
+                // 在 Day 3 (CurrentIndex == 3)，均线由 20.0 升至 20.5，触发买入 1000 股
+                if (ctx.CurrentIndex == 3)
+                {
+                    orderId = ctx.Buy("sh.600000", 1000m);
+                }
+            });
+
+            var pipeline = StrategyPipeline.Sequential().Add(strategy);
+
+            var sessionConfig = new SessionConfig
+            {
+                Engine = new EngineConfig
+                {
+                    StartDate = dates[0],
+                    EndDate = dates[^1],
+                    UpdateTiming = StrategyUpdateTiming.OnClose
+                },
+                Data = new DataConfig
+                {
+                    Adjust = new AdjustmentConfig
+                    {
+                        Mode = AdjustmentMode.Post,
+                        TableId = "adjustments",
+                        FactorField = "back_adj_factor"
+                    }
+                }
+            };
+
+            using var engine = new BacktestingEngine(
+                ts,
+                broker,
+                pipeline,
+                events: events,
+                config: sessionConfig.Engine,
+                adjustConfig: sessionConfig.Data.Adjust,
+                simExchange: simExchange);
+
+            engine.Run();
+
+            // 1. 验证节点 5：指标池后复权平滑计算
+            // Day 0 (index 0): 首次数据，SMA(2) = NaN
+            // Day 1 (index 1): (20.0 + 20.0) / 2 = 20.0
+            // Day 2 (index 2, 除权日): 物理价跳空到 10.0，但后复权为 20.0，SMA(2) = (20.0 + 20.0) / 2 = 20.0（完全平滑无断崖！）
+            // Day 3 (index 3): 今日后复权 21.0，SMA(2) = (20.0 + 21.0) / 2 = 20.5
+            Assert.AreEqual(4, recordedSmaValues.Count);
+            Assert.IsTrue(double.IsNaN(recordedSmaValues[0]));
+            Assert.AreEqual(20.0, recordedSmaValues[1], 1e-12);
+            Assert.AreEqual(20.0, recordedSmaValues[2], 1e-12, "除权当日指标池必须使用 Post 价格消除跳空缺口");
+            Assert.AreEqual(20.5, recordedSmaValues[3], 1e-12);
+
+            // 2. 验证节点 6：真实物理价格撮合（绝非复权价 21.0）
+            Assert.IsTrue(orderId > 0);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(orderId));
+            var trades = engine.GetResult().Settlements;
+            Assert.AreEqual(1, trades.Count);
+            Assert.AreEqual(10.5, trades[0].Price, 1e-12, "撮合引擎必须严格以 Raw 物理价格 10.5 撮合成交，绝对不可按复权价 21.0 撮合！");
+
+            // 3. 验证节点 6：账本资金扣减与盯市绝对守恒
+            // 买入 1000 股花 10.5 * 1000 = 10500.0 元，剩余可用现金 = 100000 - 10500 = 89500.0 元
+            Assert.AreEqual(89500.0, broker.GetCash(), 1e-4, "账本现金必须按物理成交价扣除");
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+            // 终局持仓市值 = 1000 * 10.5 = 10500.0，总资产 = 89500 + 10500 = 100000.0
+            Assert.AreEqual(initialCash, broker.GetTotalEquity(), 1e-4, "回测终局总权益严格守恒");
         }
 
         [TestMethod]
@@ -1097,6 +1235,35 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public void Log(string message, LogLevel level = LogLevel.Info) => _onLog($"[{level}] {message}");
             public void ReportMetric(string metricName, double value) { }
             public void Alert(string message) { }
+        }
+
+        private class FullAdjustmentPipelineStrategy : IStrategy
+        {
+            public string Name => "FullAdjustmentPipelineStrategy";
+            public int Lookback => 5;
+            private readonly Action<IEngineContext, IndicatorPool<Sma>> _onUpdate;
+            private IndicatorPool<Sma>? _smaPool;
+
+            public FullAdjustmentPipelineStrategy(Action<IEngineContext, IndicatorPool<Sma>> onUpdate)
+            {
+                _onUpdate = onUpdate;
+            }
+
+            public void OnStart(IEngineContext context)
+            {
+                _smaPool = context.Indicators.GetOrAdd("sma2", () => new Sma(2));
+            }
+
+            public void OnUpdate(IEngineContext context)
+            {
+                if (_smaPool != null)
+                {
+                    _onUpdate(context, _smaPool);
+                }
+            }
+
+            public void OnEvent(IEngineContext context, string tableName, IReadOnlyList<IDataRow> events) { }
+            public void OnStop(IEngineContext context) { }
         }
 
         #endregion

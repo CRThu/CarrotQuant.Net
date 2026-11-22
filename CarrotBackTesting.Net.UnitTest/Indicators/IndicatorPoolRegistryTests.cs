@@ -229,7 +229,117 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             Assert.AreEqual(0, allocated, $"Context facades allocated {allocated} bytes!");
         }
 
+        [TestMethod]
+        public void IndicatorPool_MultiSymbolAsymmetricListing_ShouldSmoothNaNAndWarmUpCorrectly()
+        {
+            // 标的 A (sh.600000): Day 0 上市，价格序列 10, 11, 12, 13, 14, 15
+            // 标的 B (sz.300001): 新股 IPO，Day 0~2 均未上市 (NaN)，Day 3 上市 (20)，Day 4 (22)，Day 5 (24)
+            var symbols = new[] { "sh.600000", "sz.300001" };
+            var dates = new[]
+            {
+                (MarketTime)new DateTime(2025, 1, 2),
+                (MarketTime)new DateTime(2025, 1, 3),
+                (MarketTime)new DateTime(2025, 1, 4),
+                (MarketTime)new DateTime(2025, 1, 5),
+                (MarketTime)new DateTime(2025, 1, 6),
+                (MarketTime)new DateTime(2025, 1, 7)
+            };
+
+            var metadata = new DynamicMarketMetadata(symbols, dates);
+            var closeMat = new ChunkMatrix2D<double>(width: 2, pageSize: 4096, initialRowCount: 6);
+
+            // Day 0: 老股票 10.0，新股未上市 NaN
+            closeMat[0, 0] = 10.0; closeMat[0, 1] = double.NaN;
+            // Day 1: 老股票 11.0，新股未上市 NaN
+            closeMat[1, 0] = 11.0; closeMat[1, 1] = double.NaN;
+            // Day 2: 老股票 12.0，新股未上市 NaN
+            closeMat[2, 0] = 12.0; closeMat[2, 1] = double.NaN;
+            // Day 3: 老股票 13.0，新股上市首日 20.0
+            closeMat[3, 0] = 13.0; closeMat[3, 1] = 20.0;
+            // Day 4: 老股票 14.0，新股 22.0
+            closeMat[4, 0] = 14.0; closeMat[4, 1] = 22.0;
+            // Day 5: 老股票 15.0，新股 24.0
+            closeMat[5, 0] = 15.0; closeMat[5, 1] = 24.0;
+
+            var matrices = new Dictionary<string, IReadOnlyMatrix2D<double>>(StringComparer.OrdinalIgnoreCase)
+            {
+                [StandardFields.Close] = closeMat
+            };
+            var timeseries = new ArrayMatrixTimeseries(metadata, matrices);
+            var registry = new IndicatorRegistry(metadata);
+            var pool = registry.GetOrAdd("sma3", () => new Sma(3));
+
+            var mockBroker = new FakeBroker();
+            var context = new EngineContext(timeseries, mockBroker, indicators: registry);
+
+            // 步进 Day 0 ~ Day 2
+            for (int step = 0; step < 3; step++)
+            {
+                context.UpdateStep(step, dates[step]);
+                registry.Step(context);
+
+                // 新股 sz.300001 必须保持未就绪且值为 NaN，绝不抛出任何异常
+                Assert.IsFalse(pool[1].IsReady, $"新股在未上市 Day {step} 必须未就绪");
+                Assert.IsTrue(double.IsNaN(pool[1].Current), $"新股在未上市 Day {step} 值必须为 NaN");
+            }
+
+            // Day 2 结束时，老股票 sh.600000 已经累计 3 天样本 (10, 11, 12)，必须就绪且均值为 11.0
+            Assert.IsTrue(pool[0].IsReady);
+            Assert.AreEqual(11.0, pool[0].Current, 1e-4);
+
+            // 步进 Day 3 (新股上市首日: 20.0)
+            context.UpdateStep(3, dates[3]);
+            registry.Step(context);
+            Assert.IsFalse(pool[1].IsReady, "新股仅有 1 个样本，SMA(3) 必须未就绪");
+
+            // 步进 Day 4 (新股上市次日: 22.0)
+            context.UpdateStep(4, dates[4]);
+            registry.Step(context);
+            Assert.IsFalse(pool[1].IsReady, "新股仅有 2 个样本，SMA(3) 必须未就绪");
+
+            // 步进 Day 5 (新股上市第 3 日: 24.0)
+            context.UpdateStep(5, dates[5]);
+            registry.Step(context);
+
+            // 验证：
+            // 1. 新股在 Day 5 样本达到 3，成功就绪，均值无偏差等于 (20.0 + 22.0 + 24.0) / 3 = 22.0
+            Assert.IsTrue(pool[1].IsReady, "新股样本达到 3，SMA(3) 必须就绪");
+            Assert.AreEqual(22.0, pool[1].Current, 1e-4);
+
+            // 2. 老股票在 Day 5 的 SMA(3) = (13.0 + 14.0 + 15.0) / 3 = 14.0
+            Assert.IsTrue(pool[0].IsReady);
+            Assert.AreEqual(14.0, pool[0].Current, 1e-4);
+        }
+
         #region Helper Fakes
+
+        private class ArrayMatrixTimeseries : ITimeseriesRegistry
+        {
+            private readonly Dictionary<string, IReadOnlyMatrix2D<double>> _matrices;
+            public IMarketMetadata Metadata { get; }
+
+            public ArrayMatrixTimeseries(IMarketMetadata metadata, Dictionary<string, IReadOnlyMatrix2D<double>> matrices)
+            {
+                Metadata = metadata;
+                _matrices = matrices;
+            }
+
+            public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
+            {
+                if (_matrices.TryGetValue(fieldName, out var mat))
+                {
+                    return (IReadOnlyMatrix2D<T>)mat;
+                }
+                throw new KeyNotFoundException($"Field '{fieldName}' not found.");
+            }
+
+            public bool HasField(string fieldName) => _matrices.ContainsKey(fieldName);
+            public IReadOnlyList<T> GetSeries<T>(string fieldName) where T : unmanaged => throw new NotImplementedException();
+            public void StepTo(int index) { }
+            public bool IsUpdated(int tableIndex) => false;
+            public bool IsUpdated(string tableName) => false;
+            public int GetTableIndex(string tableName) => 0;
+        }
 
         private class FakeTimeseries : ITimeseriesRegistry
         {

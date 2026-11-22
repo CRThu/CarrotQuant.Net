@@ -470,5 +470,47 @@ public class SimulatedExchangeGatewayTests
         Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
     }
 
+    [TestMethod]
+    public void Step_InFlightGtcOrder_SuspendedOnNextDay_ShouldPurgeAndUnfreeze()
+    {
+        var symbols = new[] { "sh.600000" };
+        var dates = new[] { (MarketTime)new DateTime(2025, 1, 2), (MarketTime)new DateTime(2025, 1, 3) };
+        // Day 1: 正常交易 (10.0), Day 2: 突发停牌 (NaN)
+        var closePrices = new double[,] { { 10.0 }, { double.NaN } };
+        var timeseries = CreateMockTimeseries(symbols, dates, closePrices);
+
+        var config = new BrokerConfig
+        {
+            InitialCash = 100_000.0,
+            Slippage = 0.0,
+            FeeRate = 0.0
+        };
+        var gateway = new SimulatedExchangeGateway(config);
+        var broker = new Broker(gateway, config);
+
+        // Day 1: 提交显式 GTC 限价买单 (9.0 元，未触碰市价 -> 入簿排队)
+        gateway.Step(dates[0], timeseries, 0);
+        ((IBrokerEngineDriver)broker).Step(dates[0]);
+
+        var req = new OrderRequest("sh.600000", OrderDirection.Buy, 9.0, 1000m, timeInForce: TimeInForce.GoodTilCanceled);
+        long orderId = broker.SubmitOrder(req);
+
+        Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
+        Assert.AreEqual(91_000.0, broker.GetCash(), 1e-4);
+
+        // Day 2: 标的突发停牌 (行情为 NaN)，网关时步步进触发撮合
+        gateway.Step(dates[1], timeseries, 1);
+        ((IBrokerEngineDriver)broker).Step(dates[1]);
+
+        // 验证：
+        // 1. 网关必须在遍历标的时触发停牌熔断检查 (isSuspended)，将挂单簿中的排队在途挂单主动剔除；
+        // 2. 状态变更为 Rejected，拒绝理由明确包含停牌判定信息；
+        // 3. Broker 收到拒绝报告后必须全额释放预冻结的 9000 元现金，恢复可用资金！
+        Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(orderId));
+        Assert.AreEqual(0.0, broker.FrozenCash, 1e-4);
+        Assert.AreEqual(100_000.0, broker.GetCash(), 1e-4);
+    }
+
     #endregion
 }

@@ -214,5 +214,229 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.IsTrue(cleared);
             Assert.IsFalse(ctx.HasState<int>("scalar_key"));
         }
+
+        #region 行情读取门面与复权全字段覆盖测试 (Market Data Facades & Post Adjustment)
+
+        private class FullMockTimeseriesRegistry : ITimeseriesRegistry
+        {
+            private readonly Dictionary<string, IReadOnlyMatrix2D<double>> _matrices;
+            public IMarketMetadata Metadata { get; }
+
+            public FullMockTimeseriesRegistry(IMarketMetadata metadata, Dictionary<string, IReadOnlyMatrix2D<double>> matrices)
+            {
+                Metadata = metadata;
+                _matrices = matrices;
+            }
+
+            public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
+            {
+                if (_matrices.TryGetValue(fieldName, out var mat)) return (IReadOnlyMatrix2D<T>)mat;
+                throw new KeyNotFoundException($"Field '{fieldName}' not found.");
+            }
+
+            public bool HasField(string fieldName) => _matrices.ContainsKey(fieldName);
+            public void StepTo(int currentLogicalRow) { }
+            public int RegisterTable(string tableName) => 0;
+            public int GetTableIndex(string tableName) => 0;
+            public string GetTableName(int tableIndex) => string.Empty;
+        }
+
+        private static (EngineContext ctx, DynamicMarketMetadata meta) CreateFullContextWithFactors()
+        {
+            var symbols = new[] { "sh.600000", "sz.000001" };
+            var dates = new[] { new MarketTime(2025, 1, 2), new MarketTime(2025, 1, 3) };
+            var meta = new DynamicMarketMetadata(symbols, dates);
+
+            var openMat = new ChunkMatrix2D<double>(2, 4096, 2);
+            var highMat = new ChunkMatrix2D<double>(2, 4096, 2);
+            var lowMat = new ChunkMatrix2D<double>(2, 4096, 2);
+            var closeMat = new ChunkMatrix2D<double>(2, 4096, 2);
+            var volMat = new ChunkMatrix2D<double>(2, 4096, 2);
+            var vwapMat = new ChunkMatrix2D<double>(2, 4096, 2);
+            var peMat = new ChunkMatrix2D<double>(2, 4096, 2);
+
+            // Row 0
+            openMat[0, 0] = 10.0; openMat[0, 1] = 20.0;
+            highMat[0, 0] = 10.5; highMat[0, 1] = 20.5;
+            lowMat[0, 0] = 9.5;   lowMat[0, 1] = 19.5;
+            closeMat[0, 0] = 10.2; closeMat[0, 1] = 20.2;
+            volMat[0, 0] = 1000.0; volMat[0, 1] = 2000.0;
+            vwapMat[0, 0] = 10.1; vwapMat[0, 1] = 20.1;
+            peMat[0, 0] = 15.0;   peMat[0, 1] = 25.0;
+
+            // Row 1
+            openMat[1, 0] = 11.0; openMat[1, 1] = 21.0;
+            highMat[1, 0] = 11.5; highMat[1, 1] = 21.5;
+            lowMat[1, 0] = 10.5;  lowMat[1, 1] = 20.5;
+            closeMat[1, 0] = 11.2; closeMat[1, 1] = 21.2;
+            volMat[1, 0] = 1100.0; volMat[1, 1] = 2100.0;
+            vwapMat[1, 0] = 11.1; vwapMat[1, 1] = 21.1;
+            peMat[1, 0] = 16.0;   peMat[1, 1] = 26.0;
+
+            var matrices = new Dictionary<string, IReadOnlyMatrix2D<double>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["open"] = openMat,
+                ["high"] = highMat,
+                ["low"] = lowMat,
+                ["close"] = closeMat,
+                ["volume"] = volMat,
+                ["vwap"] = vwapMat,
+                ["pe_ratio"] = peMat
+            };
+
+            var ts = new FullMockTimeseriesRegistry(meta, matrices);
+            var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
+            var ctx = new EngineContext(ts, broker, priceFields: new[] { "vwap" });
+
+            // 注入复权因子矩阵：Row 0 因子为 1.0，Row 1 因子为 2.0 (sh) 和 1.5 (sz)
+            var factorMat = new ChunkMatrix2D<double>(2, 4096, 2);
+            factorMat[0, 0] = 1.0; factorMat[0, 1] = 1.0;
+            factorMat[1, 0] = 2.0; factorMat[1, 1] = 1.5;
+            ctx.SetAdjustmentData(factorMat, null);
+
+            return (ctx, meta);
+        }
+
+        [TestMethod]
+        public void Facades_MarketData_AllPriceModesAndFactors_ShouldCalculateAccurately()
+        {
+            var (ctx, meta) = CreateFullContextWithFactors();
+
+            // 1. CurrentIndex = -1 时读取全部返回 NaN
+            Assert.IsTrue(double.IsNaN(ctx.GetClose(0)));
+            Assert.IsTrue(double.IsNaN(ctx.GetOpen(0)));
+            Assert.IsTrue(double.IsNaN(ctx.GetHigh(0)));
+            Assert.IsTrue(double.IsNaN(ctx.GetLow(0)));
+            Assert.IsTrue(double.IsNaN(ctx.GetVolume(0)));
+            Assert.IsTrue(double.IsNaN(ctx.GetField(0, "vwap")));
+            Assert.IsTrue(ctx.DailyFactors.IsEmpty);
+
+            // 2. 推进到 Step 1
+            ctx.UpdateStep(1, meta.TradeDates[1]);
+            Assert.IsFalse(ctx.DailyFactors.IsEmpty);
+            Assert.AreEqual(2.0, ctx.DailyFactors[0]);
+            Assert.AreEqual(1.5, ctx.DailyFactors[1]);
+
+            // 3. Raw 模式验证 (返回原始物理价格与物理量)
+            Assert.AreEqual(11.0, ctx.GetOpen(0, 0, PriceMode.Raw));
+            Assert.AreEqual(11.5, ctx.GetHigh(0, 0, PriceMode.Raw));
+            Assert.AreEqual(10.5, ctx.GetLow(0, 0, PriceMode.Raw));
+            Assert.AreEqual(11.2, ctx.GetClose(0, 0, PriceMode.Raw));
+            Assert.AreEqual(1100.0, ctx.GetVolume(0, 0, PriceMode.Raw));
+
+            // 按代码点查与按索引点查一致
+            Assert.AreEqual(11.0, ctx.GetOpen("sh.600000", 0, PriceMode.Raw));
+            Assert.AreEqual(11.5, ctx.GetHigh("sh.600000", 0, PriceMode.Raw));
+            Assert.AreEqual(10.5, ctx.GetLow("sh.600000", 0, PriceMode.Raw));
+            Assert.AreEqual(11.2, ctx.GetClose("sh.600000", 0, PriceMode.Raw));
+            Assert.AreEqual(1100.0, ctx.GetVolume("sh.600000", 0, PriceMode.Raw));
+
+            // 4. Post 后复权模式验证 (价格类乘复权因子 2.0，成交量严格保持物理原始量)
+            Assert.AreEqual(11.0 * 2.0, ctx.GetOpen(0, 0, PriceMode.Post));
+            Assert.AreEqual(11.5 * 2.0, ctx.GetHigh(0, 0, PriceMode.Post));
+            Assert.AreEqual(10.5 * 2.0, ctx.GetLow(0, 0, PriceMode.Post));
+            Assert.AreEqual(11.2 * 2.0, ctx.GetClose(0, 0, PriceMode.Post));
+            Assert.AreEqual(1100.0, ctx.GetVolume(0, 0, PriceMode.Post), "成交量绝不乘复权因子");
+
+            // 按代码点查 Post 模式
+            Assert.AreEqual(21.0 * 1.5, ctx.GetOpen("sz.000001", 0, PriceMode.Post));
+            Assert.AreEqual(21.5 * 1.5, ctx.GetHigh("sz.000001", 0, PriceMode.Post));
+            Assert.AreEqual(20.5 * 1.5, ctx.GetLow("sz.000001", 0, PriceMode.Post));
+            Assert.AreEqual(21.2 * 1.5, ctx.GetClose("sz.000001", 0, PriceMode.Post));
+            Assert.AreEqual(2100.0, ctx.GetVolume("sz.000001", 0, PriceMode.Post));
+
+            // 5. 历史回溯 offset = -1 验证 (Row 0 的因子为 1.0)
+            Assert.AreEqual(10.0, ctx.GetOpen(0, -1, PriceMode.Post));
+            Assert.AreEqual(10.5, ctx.GetHigh(0, -1, PriceMode.Post));
+            Assert.AreEqual(9.5, ctx.GetLow(0, -1, PriceMode.Post));
+            Assert.AreEqual(10.2, ctx.GetClose(0, -1, PriceMode.Post));
+            Assert.AreEqual(1000.0, ctx.GetVolume(0, -1, PriceMode.Post));
+
+            // 6. GetField 通用字段点查 (价格字段 vwap 乘因子，非价格字段 pe_ratio 保持原值)
+            Assert.AreEqual(11.1 * 2.0, ctx.GetField(0, "vwap", 0, PriceMode.Post));
+            Assert.AreEqual(11.1 * 2.0, ctx.GetField("sh.600000", "vwap", 0, PriceMode.Post));
+            Assert.AreEqual(11.1, ctx.GetField(0, "vwap", 0, PriceMode.Raw));
+            Assert.AreEqual(16.0, ctx.GetField(0, "pe_ratio", 0, PriceMode.Post), "非价格字段在 Post 模式下不乘因子");
+            Assert.AreEqual(16.0, ctx.GetField("sh.600000", "pe_ratio", 0, PriceMode.Raw));
+
+            // GetField 直通 OHLCV 字段
+            Assert.AreEqual(ctx.GetClose(0), ctx.GetField(0, "close"));
+            Assert.AreEqual(ctx.GetOpen(0), ctx.GetField(0, "open"));
+            Assert.AreEqual(ctx.GetHigh(0), ctx.GetField(0, "high"));
+            Assert.AreEqual(ctx.GetLow(0), ctx.GetField(0, "low"));
+            Assert.AreEqual(ctx.GetVolume(0), ctx.GetField(0, "volume"));
+
+            // 7. 未知标的、越界与不存在字段防御
+            Assert.IsTrue(double.IsNaN(ctx.GetClose("unknown.symbol")));
+            Assert.IsTrue(double.IsNaN(ctx.GetOpen("unknown.symbol")));
+            Assert.IsTrue(double.IsNaN(ctx.GetHigh("unknown.symbol")));
+            Assert.IsTrue(double.IsNaN(ctx.GetLow("unknown.symbol")));
+            Assert.IsTrue(double.IsNaN(ctx.GetVolume("unknown.symbol")));
+            Assert.IsTrue(double.IsNaN(ctx.GetField("unknown.symbol", "close")));
+            Assert.IsTrue(double.IsNaN(ctx.GetField(0, "non_existent_field")));
+            Assert.IsTrue(double.IsNaN(ctx.GetField(0, "")));
+            Assert.IsTrue(double.IsNaN(ctx.GetClose(999))); // 列越界
+            Assert.IsTrue(double.IsNaN(ctx.GetClose(0, -10))); // 行历史越界
+        }
+
+        [TestMethod]
+        public void Facades_MarketData_LookAheadBiasGuards_ShouldThrowExceptions()
+        {
+            var (ctx, meta) = CreateFullContextWithFactors();
+            ctx.UpdateStep(0, meta.TradeDates[0]);
+
+            // 1. 未来偏移 offset > 0 坚决抛出 ArgumentOutOfRangeException
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => ctx.GetClose(0, 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => ctx.GetOpen(0, 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => ctx.GetHigh(0, 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => ctx.GetLow(0, 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => ctx.GetVolume(0, 1));
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => ctx.GetField(0, "vwap", 1));
+
+            // 2. 模拟 OnOpen 开盘决策阶段 (IsInOpenPhase = true)
+            ctx.IsInOpenPhase = true;
+
+            // 当期 Open 允许正常读取（开盘时 open 已产出）
+            Assert.AreEqual(10.0, ctx.GetOpen(0, 0));
+            Assert.AreEqual(10.0, ctx.GetField(0, "open", 0));
+
+            // 当期 High, Low, Close, Volume 及非 open 字段严禁读取，坚决杜绝前瞻偷价！
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetClose(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetHigh(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetLow(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetVolume(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetField(0, "close", 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetField(0, "vwap", 0));
+
+            // 恢复常规决策相位
+            ctx.IsInOpenPhase = false;
+            Assert.AreEqual(10.2, ctx.GetClose(0, 0));
+        }
+
+        [TestMethod]
+        public void RecordSignal_WithAndWithoutRecorder_ShouldBehaveCorrectly()
+        {
+            var ts = CreateMockRegistry();
+            var broker = new Broker(new SimulatedExchangeGateway(new BrokerConfig()), new BrokerConfig());
+
+            // 1. 无 Recorder 时调用安全不报错
+            var ctxWithoutRecorder = new EngineContext(ts, broker);
+            ctxWithoutRecorder.RecordSignal("sh.600000", 1.5, "momentum", "breakout");
+
+            // 2. 挂载真实 Recorder
+            var recorder = new CarrotBacktesting.NET.Analysis.TradingRecorder();
+            var ctxWithRecorder = new EngineContext(ts, broker, recorder: recorder);
+            ctxWithRecorder.UpdateStep(0, new MarketTime(2025, 1, 2));
+
+            ctxWithRecorder.RecordSignal("sh.600000", 0.88, "alpha_01", "golden_cross");
+            var result = recorder.GetResult(Array.Empty<CarrotBacktesting.NET.Abstraction.Analysis.PositionSnapshot>());
+            Assert.AreEqual(1, result.Signals.Count);
+            Assert.AreEqual("sh.600000", result.Signals[0].Symbol);
+            Assert.AreEqual(0.88, result.Signals[0].SignalValue, 1e-6);
+            Assert.AreEqual("alpha_01", result.Signals[0].SignalGroup);
+            Assert.AreEqual("golden_cross", result.Signals[0].Reason);
+        }
+
+        #endregion
     }
 }

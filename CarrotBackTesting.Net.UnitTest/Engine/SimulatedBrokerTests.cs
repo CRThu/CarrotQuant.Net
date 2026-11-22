@@ -917,6 +917,197 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         }
 
         [TestMethod]
+        public void MarkToMarket_SuspendedOrDelistedSymbolWithNaN_ShouldPreserveLastPriceAndNotCorruptEquity()
+        {
+            // 验证核心防腐韧性：持仓标的突发停牌或退市（市场行情连续缺失 double.NaN）时，
+            // 账本与 Broker 盯市结算必须自动回退锁定至上一有效公允收盘价 (LastPrice)，
+            // 绝不能使每日快照或总资产权益坍塌污染为 NaN！
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                Slippage = 0.0,
+                FeeRate = 0.0
+            };
+            var broker = CreateBroker(config);
+            DateTime day1 = new DateTime(2025, 1, 2, 9, 30, 0);
+            broker.Step(day1);
+
+            // 1. 在 Day 1 以 10.0 元买入 1000 股
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+            broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m), 10.0, null);
+
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(90_000.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(100_000.0, broker.GetTotalEquity(), 1e-4);
+
+            // 2. Day 1 收盘前，价格微涨至 10.5 元，触发盯市更新
+            broker.UpdateMarketPrice("sh.600000", 10.5);
+            Assert.AreEqual(100_500.0, broker.GetTotalEquity(), 1e-4);
+
+            // 3. 推进至 Day 2 (次日)：股票突发停牌或退市，市场价格为 double.NaN
+            DateTime day2 = new DateTime(2025, 1, 3, 9, 30, 0);
+            broker.Step(day2);
+
+            // priceResolver 返回 NaN (停牌/无行情)
+            var snapDay2 = broker.CreateDailySnapshot(day2, sym => double.NaN);
+
+            // 验证核心韧性：
+            // a. 标的当日行情缺失 (NaN)，系统必须平滑回退至上一有效收盘价 (10.5 元)，绝不能被污染为 NaN！
+            Assert.IsFalse(double.IsNaN(snapDay2.TotalEquity), "总资产权益绝不能被 NaN 污染");
+            Assert.AreEqual(100_500.0, snapDay2.TotalEquity, 1e-4);
+            Assert.AreEqual(10_500.0, snapDay2.TotalMarketValue, 1e-4);
+            Assert.AreEqual(500.0, snapDay2.UnrealizedPnL, 1e-4);
+            Assert.AreEqual(90_000.0, snapDay2.AvailableCash, 1e-4);
+
+            // b. broker.GetTotalEquity 传入 null 或 NaN 解析器，同样守恒为 100,500.0
+            Assert.AreEqual(100_500.0, broker.GetTotalEquity(sym => double.NaN), 1e-4);
+            Assert.AreEqual(100_500.0, broker.GetTotalEquity(null), 1e-4);
+        }
+
+        [TestMethod]
+        public void Broker_LimitBuyFilledAtBetterPrice_ShouldReleaseExcessFrozenCash()
+        {
+            var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+
+            // 提交限价 10.0 买单 1000 股，冻结 10,000 元
+            var req = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 1000m);
+            // 以更优价 9.5 元撮合成交
+            long orderId = broker.ExecuteOrder(req, 9.5, null);
+
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(orderId));
+            Assert.AreEqual(0.0, broker.FrozenCash, 1e-4, "更优价成交后剩余冻结资金必须彻底释放归零");
+            Assert.AreEqual(100_000.0 - 9500.0, broker.GetCash(), 1e-4, "可用资金仅扣减实际成交金额 9500 元");
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+        }
+
+        [TestMethod]
+        public void Broker_AllowShortFalse_SellExceedingPosition_ShouldRejectToPreventShorting()
+        {
+            // 验证现货禁止做空防御边界：当 AllowShort = false 时，
+            // 若卖出数量超过现有持仓（试图卖平现有仓位后违规穿透开空），必须被系统在两阶段预冻结阶段硬拦截拒单！
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = false,
+                SettleDays = 0,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+
+            // 1. 买入 1000 股现货
+            broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m), 10.0, null);
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"));
+
+            // 2. 试图卖出 1500 股（现有仅 1000 股，企图平 1000 + 空 500）-> 坚决拒单！
+            long sellId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 1500m), 10.0, null);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(sellId));
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"), "拒单后持仓不可变动");
+            Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"), "拒单后可用持仓不可变动");
+            Assert.AreEqual(0.0, broker.FrozenCash, 1e-4);
+        }
+
+        [TestMethod]
+        public void Broker_ShortPosition_TakeProfitBuyTrigger_ShouldCloseShortAtFavorablePrice()
+        {
+            // 验证期货空头仓位的买入止盈 (TakeProfit Buy) 全链路：
+            // 1 手 IF 期货空头均价 4000 点，设置 3900 点买入止盈
+            // 次日开盘跳空低开至 3850 点，触发以更优开盘价 3850 成交，浮盈兑现结转！
+            var config = new BrokerConfig
+            {
+                InitialCash = 1_000_000.0,
+                AllowShort = true,
+                Multiplier = 300.0,
+                MarginRate = 0.1,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            var gateway = ((IExchangeGatewayProvider)broker).Gateway as ISimulatedExchange;
+
+            DateTime day1 = new DateTime(2025, 1, 6, 9, 30, 0);
+            broker.Step(day1);
+            broker.UpdateMarketPrice("IF2501", 4000.0);
+
+            // 1. 开空 1 手 @ 4000 点 (占用保证金 120,000 元，现金变为 880,000 元)
+            broker.ExecuteOrder(new OrderRequest("IF2501", OrderDirection.Sell, OrderType.Market, 4000.0, 1m), 4000.0, null);
+            Assert.AreEqual(-1m, broker.GetPosition("IF2501"));
+            Assert.AreEqual(880_000.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(1_000_000.0, broker.GetTotalEquity(), 1e-4);
+
+            // 2. 挂买入止盈单 TakeProfit @ 3900 点 (触发价 3900)
+            var tpRequest = new OrderRequest("IF2501", OrderDirection.Buy, OrderType.TakeProfit, 3900.0, 1m, ReduceOnly: true)
+            {
+                StopPrice = 3900.0
+            };
+            long tpOrderId = broker.SubmitOrder(tpRequest);
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(tpOrderId));
+
+            // 3. 次日开盘跳空低开至 3850 点 (open <= stopPrice 满足止盈触发条件)
+            DateTime day2 = new DateTime(2025, 1, 7, 9, 30, 0);
+            broker.Step(day2);
+            var jumpBar = new BarSnapshot(open: 3850.0, high: 3860.0, low: 3840.0, close: 3855.0, volume: 10000.0);
+            gateway?.OnMarketData("IF2501", day2, in jumpBar);
+
+            // 推进条件单触发循环
+            broker.ProcessConditionalOrders(day2);
+
+            // 验证：
+            // a. 止盈单成功触发并以更优开盘价 3850 成交平空！
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(tpOrderId));
+            Assert.AreEqual(0m, broker.GetPosition("IF2501"), "空头持仓全额平仓归零");
+
+            // b. 盈利兑现结转: (4000 - 3850) * 1 * 300 = +45,000 元，保证金 120,000 全额释放回现金
+            Assert.AreEqual(1_000_000.0 + 45_000.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(1_045_000.0, broker.GetTotalEquity(), 1e-4);
+        }
+
+        [TestMethod]
+        public void Broker_SubmitDuplicateConditionalOrderId_ShouldReject()
+        {
+            var config = new BrokerConfig();
+            var broker = CreateBroker(config);
+
+            OrderStatus? eventStatus = null;
+            broker.OnOrderStatusChanged += (oid, status) =>
+            {
+                if (oid == 8888L)
+                {
+                    eventStatus = status;
+                }
+            };
+
+            // 显式指定 OrderId = 8888 提交条件单
+            var req1 = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Stop, 9.0, 100m)
+            {
+                OrderId = 8888L,
+                StopPrice = 9.0
+            };
+            long id1 = broker.SubmitOrder(req1);
+            Assert.AreEqual(8888L, id1);
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(id1));
+
+            // 重复提交相同 OrderId = 8888 的条件单
+            var req2 = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Stop, 8.5, 100m)
+            {
+                OrderId = 8888L,
+                StopPrice = 8.5
+            };
+            long id2 = broker.SubmitOrder(req2);
+            Assert.AreEqual(8888L, id2);
+
+            // 验证：
+            // 1. Broker 必须触发 Rejected 拒单事件通知调用方
+            Assert.AreEqual(OrderStatus.Rejected, eventStatus);
+            // 2. 原订单仍完好处于 Pending 状态，不被重复提交篡改
+            Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(id1));
+        }
+
+        [TestMethod]
         public void PendingLimitOrder_Buy_ShouldFreezeMarginAndPreventDoubleSpending()
         {
             // 测试买入限价挂单：资金冻结、防双花拦截与撤单回滚
@@ -2265,6 +2456,49 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             var (sl2, tp2) = broker.Bracket("sh.600000", 100m, stopPrice: 9.0, takeProfitPrice: 12.0, closeDirection: OrderDirection.Buy);
             Assert.IsTrue(sl2 > 0);
             Assert.IsTrue(tp2 > 0);
+        }
+
+        [TestMethod]
+        public void Broker_ShortSellWithTPlus1_ShouldUpdatePositionAndAllowBuyToCover()
+        {
+            // 验证标的允许做空且交割制度为 T+1 时，做空卖出即刻产生空头可用持仓，并能顺利买入平空
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                AllowShort = true,
+                SettleDays = 1,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            var bar = CreateBar(10.0, 10.5, 9.8, 10.0, 10000.0);
+
+            // 1. 融券卖出 500 股 @ 10.0
+            long shortOrderId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 10.0, 500m), 10.0, bar);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(shortOrderId));
+            Assert.AreEqual(-500m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(-500m, broker.GetAvailablePosition("sh.600000"));
+
+            // 2. 买入平空 500 股 @ 9.0 (浮盈 500 元)
+            var coverBar = CreateBar(9.0, 9.2, 8.8, 9.0, 10000.0);
+            long coverOrderId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 9.0, 500m), 9.0, coverBar);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(coverOrderId));
+            Assert.AreEqual(0m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
+            // 初始 100,000 + (10.0 - 9.0) * 500 = 100,500
+            Assert.AreEqual(100_500.0, broker.GetCash(), 1e-4);
+        }
+
+        [TestMethod]
+        public void Broker_SubmitOrderWithNegativeOrderId_ShouldThrowArgumentOutOfRangeException()
+        {
+            var config = new BrokerConfig { InitialCash = 100_000.0 };
+            var broker = CreateBroker(config);
+
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+            {
+                broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m) with { OrderId = -5 });
+            });
         }
 
         #endregion
