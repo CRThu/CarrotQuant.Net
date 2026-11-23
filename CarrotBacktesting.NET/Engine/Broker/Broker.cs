@@ -63,6 +63,11 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     /// </summary>
     public MarketTime CurrentTime => _currentTime;
 
+    /// <summary>
+    /// 获取当前经纪商绑定的静态配置参数。
+    /// </summary>
+    public BrokerConfig Config => _config;
+
     public Broker(IExchangeGateway gateway, BrokerConfig config, IFieldRegistry? fields = null, IMonitor? monitor = null)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
@@ -1282,7 +1287,8 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
             var bar = sim.GetBar(request.Symbol);
             marketPrice = _config.DefaultExecutionPrice switch
             {
-                ExecutionPriceType.Open => bar.OpenOr(bar.CloseOr(double.NaN)),
+                ExecutionPriceType.Open => bar.OpenOr(double.NaN),
+                ExecutionPriceType.Close => bar.CloseOr(double.NaN),
                 ExecutionPriceType.Vwap => (bar.Vwap.HasValue && bar.Vwap.Value > 0.0)
                     ? bar.Vwap.Value
                     : bar.CloseOr(bar.OpenOr(double.NaN)),

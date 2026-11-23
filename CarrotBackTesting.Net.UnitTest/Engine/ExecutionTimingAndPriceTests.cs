@@ -588,4 +588,158 @@ public class ExecutionTimingAndPriceTests
         Assert.AreEqual(9.0, trades[0].FillPrice, 1e-4);
         Assert.AreEqual(LiquidityRole.Maker, trades[0].Role, "开盘撮合排队限价单必须为被动挂单方 (Maker)");
     }
+
+    [TestMethod]
+    public void ExecutionPrice_Open_MissingOpenPrice_WithOpenField_DoesNotFallbackToClose()
+    {
+        // 场景：时序源包含 Open 列，但第 T+1 日开盘价缺失（为 NaN），坚决杜绝静默回退借用当期 Close 偷价撮合
+        var open = new[] { 10.0, double.NaN };
+        var high = new[] { 10.5, 11.0 };
+        var low = new[] { 9.8, 10.0 };
+        var close = new[] { 10.0, 10.5 };
+        var (ts, _) = CreateMultiFieldTimeseries("sh.600000", open, high, low, close);
+
+        var sessionConfig = new SessionConfig
+        {
+            Broker = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                Slippage = 0.0,
+                DefaultExecutionPrice = ExecutionPriceType.Open
+            },
+            Engine = new EngineConfig
+            {
+                UpdateTiming = StrategyUpdateTiming.OnClose
+            }
+        };
+
+        var trades = new List<ExecutionReport>();
+        var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker);
+        simGateway.OnExecution += trades.Add;
+        var broker = new Broker(simGateway, sessionConfig.Broker);
+
+        var pipeline = StrategyPipeline.Sequential();
+        pipeline.Add(new ActionStrategy(ctx =>
+        {
+            if (ctx.CurrentIndex == 0) ctx.Buy("sh.600000", 100m);
+        }));
+
+        var engine = new BacktestingEngine(
+            ts,
+            broker,
+            pipeline,
+            config: sessionConfig.Engine,
+            simExchange: simGateway);
+
+        engine.Run();
+
+        // 验证：Day 1 开盘价为 NaN，严禁以 Day 1 的 Close(10.5) 偷价成交！
+        Assert.AreEqual(0, trades.Count, "当期 Open 为 NaN 时严禁向后借用当期 Close 偷跑成交");
+    }
+
+    [TestMethod]
+    public void SuspendedSymbol_ForwardFilledWithZeroVolume_ShouldRejectAndUnfreeze()
+    {
+        // 场景：第 T+1 日标的前值填充价格（Close=10.0，不是 NaN），但成交量为 0（物理停牌）
+        // 撮合引擎必须识别 zero volume，直接熔断拒单并全额解冻可用资金
+        var open = new[] { 10.0, 10.0 };
+        var high = new[] { 10.5, 10.0 };
+        var low = new[] { 9.8, 10.0 };
+        var close = new[] { 10.0, 10.0 };
+        var volume = new[] { 10_000.0, 0.0 }; // Day 1 停牌无成交量
+        var (ts, _) = CreateMultiFieldTimeseries("sh.600000", open, high, low, close, volume: volume);
+
+        var sessionConfig = new SessionConfig
+        {
+            Broker = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                Slippage = 0.0,
+                DefaultExecutionPrice = ExecutionPriceType.Open
+            },
+            Engine = new EngineConfig
+            {
+                UpdateTiming = StrategyUpdateTiming.OnClose
+            }
+        };
+
+        var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker);
+        var broker = new Broker(simGateway, sessionConfig.Broker);
+
+        var pipeline = StrategyPipeline.Sequential();
+        pipeline.Add(new ActionStrategy(ctx =>
+        {
+            if (ctx.CurrentIndex == 0) ctx.Buy("sh.600000", 100m);
+        }));
+
+        var engine = new BacktestingEngine(
+            ts,
+            broker,
+            pipeline,
+            config: sessionConfig.Engine,
+            simExchange: simGateway);
+
+        engine.Run();
+
+        var result = engine.GetResult();
+        // 验证：虽然价格不是 NaN，但成交量为 0 判定停牌熔断，资金完全退回
+        Assert.AreEqual(100_000.0, engine.Context.AvailableCash, 1e-4, "标的成交量为 0 (停牌前值填充) 时预冻结资金应 100% 解冻");
+        var rejectedEvent = result.OrderEvents.FirstOrDefault(e => e.EventType == OrderEventType.Rejected);
+        Assert.IsNotNull(rejectedEvent, "停牌订单必须记录为 Rejected");
+        StringAssert.Contains(rejectedEvent.Reason, "volume");
+    }
+
+    [TestMethod]
+    public void StrategyUpdateTiming_OnOpen_WithCloseExecution_ShouldFillAtClosePhase()
+    {
+        // 场景：OnOpen 开盘决策提交市价单，但配置为 Close（收盘价撮合）。
+        // 订单在 Phase 1 必须挂入挂单簿等待，并在 Phase 3 收盘相位按当期 Close 撮合成交，绝不能在 09:30 开盘瞬间偷看收盘价即时成交！
+        var open = new[] { 10.0, 11.0 };
+        var high = new[] { 10.8, 11.8 };
+        var low = new[] { 9.8, 10.8 };
+        var close = new[] { 10.5, 11.5 };
+        var (ts, _) = CreateMultiFieldTimeseries("sh.600000", open, high, low, close);
+
+        var sessionConfig = new SessionConfig
+        {
+            Broker = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                Slippage = 0.0,
+                DefaultExecutionPrice = ExecutionPriceType.Close
+            },
+            Engine = new EngineConfig
+            {
+                UpdateTiming = StrategyUpdateTiming.OnOpen
+            }
+        };
+
+        var trades = new List<ExecutionReport>();
+        var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker);
+        simGateway.OnExecution += trades.Add;
+        var broker = new Broker(simGateway, sessionConfig.Broker);
+
+        var pipeline = StrategyPipeline.Sequential();
+        pipeline.Add(new ActionStrategy(ctx =>
+        {
+            // 在 Day 0 开盘决策发出收盘成交市价单
+            if (ctx.CurrentIndex == 0)
+            {
+                ctx.Buy("sh.600000", 100m);
+            }
+        }));
+
+        var engine = new BacktestingEngine(
+            ts,
+            broker,
+            pipeline,
+            config: sessionConfig.Engine,
+            simExchange: simGateway);
+
+        engine.Run();
+
+        // 验证：成功在 Day 0 收盘以当期 Close(10.5) 撮合成交
+        Assert.AreEqual(1, trades.Count, "OnOpen 发出的 Close 订单应在收盘相位完成撮合");
+        Assert.AreEqual(10.5, trades[0].FillPrice, 1e-4, "成交价应严格等于当期收盘价 Close (10.5)");
+    }
 }

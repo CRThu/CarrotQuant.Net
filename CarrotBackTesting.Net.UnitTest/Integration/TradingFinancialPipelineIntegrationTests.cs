@@ -302,7 +302,8 @@ public class TradingFinancialPipelineIntegrationTests
             FeeRate = 0.0003,
             MinFee = 5.0,
             SettleDays = 0, // T+0 便于观察
-            DefaultTimeInForce = TimeInForce.GoodTilCanceled
+            DefaultTimeInForce = TimeInForce.GoodTilCanceled,
+            DefaultExecutionPrice = ExecutionPriceType.Close
         };
 
         var simExchange = new SimulatedExchangeGateway(brokerConfig);

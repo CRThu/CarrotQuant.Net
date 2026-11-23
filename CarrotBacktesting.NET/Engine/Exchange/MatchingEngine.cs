@@ -167,6 +167,12 @@ internal sealed class MatchingEngine
         out string reason)
     {
         reason = string.Empty;
+        if (bar.HasVolume && bar.Volume <= 0.0)
+        {
+            reason = $"No liquidity: BarVolume is {bar.Volume} (market suspended or zero volume).";
+            return false;
+        }
+
         if (_config.OnCheckVolume != null)
         {
             if (!_config.OnCheckVolume(request, bar))

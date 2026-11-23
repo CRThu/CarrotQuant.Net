@@ -153,7 +153,8 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
                 InitialCash = 100000.0,
                 FeeRate = 0.0,
                 MinFee = 0.0,
-                Slippage = 0.0
+                Slippage = 0.0,
+                DefaultExecutionPrice = ExecutionPriceType.Close
             };
             var simExchange = new SimulatedExchangeGateway(brokerConfig);
             var broker = new Broker(simExchange, brokerConfig);

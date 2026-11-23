@@ -31,6 +31,17 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     public event Action<ExecutionReport>? OnExecution;
     public event Action<OrderStateReport>? OnOrderStateChanged;
 
+    /// <summary>
+    /// 获取当前网关绑定的经纪商与撮合配置。
+    /// </summary>
+    public BrokerConfig Config => _config;
+
+    /// <summary>
+    /// 指示当前回测驱动是否正处于开盘决策相位（OnOpen）。
+    /// 当处于开盘相位时，非 Open 撮合指令（如 Close/Vwap）将强制压入挂单簿挂起，留待收盘相位撮合。
+    /// </summary>
+    public bool IsInOpenPhase { get; set; }
+
     public SimulatedExchangeGateway(BrokerConfig config, IFieldRegistry? fields = null)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -50,14 +61,16 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
         lock (_syncLock)
         {
-            // 无行情/未上市标的守卫拦截（第一性原理：当前时间步无合法价格数据，不接受新申报）：
+            // 无行情/未上市标的或停牌零成交守卫拦截（第一性原理：当前时间步无合法价格数据或成交量归零，不接受新申报）：
             if (_marketData != null && _marketData.Timeseries.HasField(StandardFields.Close) && _currentIndex >= 0 && !_snapshots.ContainsKey(request.Symbol))
             {
                 var bar = _marketData.GetBar(request.Symbol, _currentIndex);
-                if (!bar.IsValid)
+                if (!bar.IsValid || (bar.HasVolume && bar.Volume <= 0.0))
                 {
                     stateChanged = OrderStatus.Rejected;
-                    stateReason = $"Symbol '{request.Symbol}' has no valid market data on current step {_currentIndex}.";
+                    stateReason = !bar.IsValid
+                        ? $"Symbol '{request.Symbol}' has no valid market data on current step {_currentIndex}."
+                        : $"Symbol '{request.Symbol}' has zero volume on current step {_currentIndex}.";
                 }
             }
 
@@ -66,8 +79,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 double multiplier = GetMultiplier(request.Symbol);
                 MarketTime tradeTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
-                // 市价单处理：非 ReduceOnly 市价单若处于回测时钟推进中且非 Close 即时成交模式，统一压入 OrderBook 挂单簿留待对应相位撮合；纯平仓单（ReduceOnly）执行即时清仓撮合
-                bool isPendingMarketOrder = request.Type == OrderType.Market && !request.ReduceOnly && _marketData != null && _currentIndex >= 0 && _config.DefaultExecutionPrice != ExecutionPriceType.Close;
+                // 市价单处理：非 ReduceOnly 市价单若处于回测时钟推进中且非 Close 即时成交模式（或处于 OnOpen 开盘相位），统一压入 OrderBook 挂单簿留待对应相位撮合；纯平仓单（ReduceOnly）执行即时清仓撮合
+                bool isPendingMarketOrder = request.Type == OrderType.Market && !request.ReduceOnly && _marketData != null && _currentIndex >= 0 && (_config.DefaultExecutionPrice != ExecutionPriceType.Close || IsInOpenPhase);
                 if (isPendingMarketOrder)
                 {
                     var simOrder = new SimulatedOrder(orderId, request, tradeTime)
@@ -218,8 +231,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     string symbol = activeSymbols[i];
                     BarSnapshot bar = _marketData!.GetBar(symbol, currentIndex);
 
-                    // 1. 单一事实来源：当前 Bar 无任何合法行情数据（物理缺失 NaN），触发挂单清理与资金解冻
-                    if (!bar.IsValid)
+                    // 1. 单一事实来源：当前 Bar 无任何合法行情数据（物理缺失 NaN）或成交量归零（停牌/无流动性），触发挂单清理与资金解冻
+                    if (!bar.IsValid || (bar.HasVolume && bar.Volume <= 0.0))
                     {
                         var pending = _orderBook.GetPendingOrders(symbol);
                         if (pending != null && pending.Count > 0)
@@ -236,7 +249,9 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                                     OrderStatus.Rejected,
                                     currentTime,
                                     ord.Request.Symbol,
-                                    $"Symbol '{symbol}' lacks valid market data on step {currentIndex}.",
+                                    !bar.IsValid
+                                        ? $"Symbol '{symbol}' lacks valid market data on step {currentIndex}."
+                                        : $"Symbol '{symbol}' has zero volume on step {currentIndex}.",
                                     leaves));
                             }
                         }
@@ -246,8 +261,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     // 2. 撮合基准价根据当前执行模式与 Bar 状态自洽供给，绝不偷看未来 Close，也绝不隐式兜底 0.0：
                     double benchmarkPrice = _config.DefaultExecutionPrice switch
                     {
-                        ExecutionPriceType.Open => bar.OpenOr(bar.CloseOr(double.NaN)),
-                        ExecutionPriceType.Close => bar.CloseOr(bar.OpenOr(double.NaN)),
+                        ExecutionPriceType.Open => bar.OpenOr(double.NaN),
+                        ExecutionPriceType.Close => bar.CloseOr(double.NaN),
                         _ => bar.CloseOr(bar.OpenOr(double.NaN))
                     };
 
@@ -256,7 +271,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                         continue;
                     }
 
-                    int colIndex = _marketData.Metadata.GetSymbolIndex(symbol);
+                    int colIndex = _marketData!.Metadata.GetSymbolIndex(symbol);
                     MatchSymbolOrders(symbol, benchmarkPrice, in bar, currentTime, ref fillReports, ref stateReports, colIndex, currentIndex);
                 }
             }

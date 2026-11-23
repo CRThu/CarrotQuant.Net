@@ -804,7 +804,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         [TestMethod]
         public void SubmitOrder_MarketOrder_UsesMarketPrice()
         {
-            var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 };
+            var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0, DefaultExecutionPrice = ExecutionPriceType.Close };
             var broker = CreateBroker(config);
 
             // 预先更新市场价格
@@ -1867,7 +1867,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Slippage = 0.01, // 1% 买入滑点
                 FeeRate = 0.0,
                 MarginRate = 1.0,
-                Multiplier = 1.0
+                Multiplier = 1.0,
+                DefaultExecutionPrice = ExecutionPriceType.Close
             };
             var gateway = new SimulatedExchangeGateway(config);
             var broker = new Broker(gateway, config);
@@ -2746,6 +2747,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 AllowShort = true,
                 Slippage = 0.0,
                 FeeRate = 0.0,
+                DefaultExecutionPrice = ExecutionPriceType.Close,
                 OnLiquidation = (sym, qty, rep) =>
                 {
                     liquidatedSymbol = sym;

@@ -151,7 +151,8 @@ public class TimeInForceTests
         {
             InitialCash = 100_000.0,
             Slippage = 0.0,
-            FeeRate = 0.0
+            FeeRate = 0.0,
+            DefaultExecutionPrice = ExecutionPriceType.Close
         };
         var gateway = new SimulatedExchangeGateway(config);
         var broker = new Broker(gateway, config);

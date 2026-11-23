@@ -430,6 +430,7 @@ namespace CarrotBacktesting.NET.Engine
                     if (_config.UpdateTiming == StrategyUpdateTiming.OnOpen)
                     {
                         _context.IsInOpenPhase = true;
+                        if (_simExchange is SimulatedExchangeGateway simGateway) simGateway.IsInOpenPhase = true;
                         try
                         {
                             _pipeline.OnUpdate(_context);
@@ -437,10 +438,19 @@ namespace CarrotBacktesting.NET.Engine
                         finally
                         {
                             _context.IsInOpenPhase = false;
+                            if (_simExchange is SimulatedExchangeGateway simGatewayReset) simGatewayReset.IsInOpenPhase = false;
                         }
 
-                        // 若策略在开盘发出了开盘价撮合订单，在此即刻完成开盘撮合
-                        _simExchange?.Step(currentTime, _marketData, i);
+                        // 若策略在开盘发出了开盘价撮合订单，在此即刻完成开盘撮合；
+                        // 若配置为 Close / Vwap / Average，则保留在 OrderBook 中挂起，留待 Phase 3 收盘时集中撮合
+                        var execPrice = (_simExchange as SimulatedExchangeGateway)?.Config.DefaultExecutionPrice 
+                            ?? (_broker as CarrotBacktesting.NET.Engine.Broker.Broker)?.Config.DefaultExecutionPrice 
+                            ?? ExecutionPriceType.Open;
+
+                        if (execPrice == ExecutionPriceType.Open)
+                        {
+                            _simExchange?.Step(currentTime, _marketData, i);
+                        }
                     }
 
                     // ==================== Phase 2: Intraday 相位 (盘中时刻) ====================

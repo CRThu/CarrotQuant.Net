@@ -16,7 +16,7 @@ public class SimulatedExchangeGatewayTests
     [TestMethod]
     public void SendOrder_MarketBuy_ShouldFillImmediatelyAndDispatchOnExecution()
     {
-        var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
+        var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0, DefaultExecutionPrice = ExecutionPriceType.Close };
         var gateway = new SimulatedExchangeGateway(config);
 
         ExecutionReport? report = null;
@@ -89,7 +89,7 @@ public class SimulatedExchangeGatewayTests
     [TestMethod]
     public void OnMarketData_ShouldMatchPendingLimitOrders()
     {
-        var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
+        var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0, DefaultExecutionPrice = ExecutionPriceType.Close };
         var gateway = new SimulatedExchangeGateway(config);
         var time1 = new DateTime(2025, 1, 6, 9, 30, 0);
         gateway.OnMarketData("sh.600000", time1, new BarSnapshot(close: 10.0));
@@ -163,7 +163,7 @@ public class SimulatedExchangeGatewayTests
     [TestMethod]
     public void Step_WithPendingOrder_ShouldMatchFromCloseMatrix()
     {
-        var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0 };
+        var config = new BrokerConfig { Slippage = 0.0, FeeRate = 0.0, DefaultExecutionPrice = ExecutionPriceType.Close };
         var gateway = new SimulatedExchangeGateway(config);
         gateway.OnMarketData("sh.600000", new DateTime(2025, 1, 2), new BarSnapshot(close: 10.0));
 
