@@ -51,18 +51,6 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-
-        /// <summary>
-        /// 直接基于元数据与字段分块调度工厂构建的时序注册中心（单主表模式）。
-        /// </summary>
-        public TimeseriesRegistry(
-            IMarketMetadata metadata,
-            Func<string, Type, ITimeseriesCacheManager> managerFactory,
-            IDisposable? disposableSource = null)
-            : this(new TimeseriesTable("primary", isPrimary: true, metadata, managerFactory, null, disposableSource))
-        {
-        }
-
         private void RegisterTableInternal(string tableName, ITimeseriesTable table)
         {
             _tables[tableName] = table;

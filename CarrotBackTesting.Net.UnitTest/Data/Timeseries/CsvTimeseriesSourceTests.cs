@@ -286,7 +286,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                     TimeZone = "America/New_York",
                     Cache = false
                 };
-                var registry = TimeseriesRegistryFactory.Create(tempDir, tsConfig);
+                var registry = TimeseriesRegistryFactory.Create(new StorageResolver(tempDir), tsConfig);
                 // 纽约时间 09:30:00 EST (UTC-5) 对应 UTC 14:30:00
                 DateTime expectedNyUtc = new DateTime(2025, 1, 2, 14, 30, 0, DateTimeKind.Utc);
                 Assert.AreEqual(expectedNyUtc, registry.Primary.Metadata.TradeDates[0]);

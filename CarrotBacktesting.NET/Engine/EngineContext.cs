@@ -103,11 +103,8 @@ namespace CarrotBacktesting.NET.Engine
         /// <param name="events">异构事件流注册表（若为空则自动构建默认 EventRegistry 实例）。</param>
         /// <param name="fields">标的维表注册表（若为空则自动构建默认 FieldRegistry 实例）。</param>
         /// <param name="indicators">指标注册中心（若为空则依据时序元数据自动构建）。</param>
-        /// <param name="priceFields">价格类需复权字段白名单（默认包含 open, high, low, close）。</param>
         /// <param name="recorder">量化事实记录器（可选）。</param>
-        /// <param name="marketData">统一行情与复权数据提供器（可选）。</param>
-        /// <param name="factorMatrix">除权因子矩阵（可选，用于显式装配复权数据）。</param>
-        /// <param name="stepToDateIndex">回测时步到日历日索引映射数组（可选）。</param>
+        /// <param name="marketData">统一行情与复权数据提供器（可选，若为空则自动构建默认纯时序 MarketDataProvider 实例）。</param>
         public EngineContext(
             ITimeseriesRegistry timeseries,
             IBroker broker,
@@ -115,15 +112,12 @@ namespace CarrotBacktesting.NET.Engine
             IEventRegistry? events = null,
             IFieldRegistry? fields = null,
             IndicatorRegistry? indicators = null,
-            IEnumerable<string>? priceFields = null,
             ITradingRecorder? recorder = null,
-            IMarketDataProvider? marketData = null,
-            IReadOnlyMatrix2D<double>? factorMatrix = null,
-            int[]? stepToDateIndex = null)
+            IMarketDataProvider? marketData = null)
         {
             ArgumentNullException.ThrowIfNull(timeseries);
             Broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            MarketData = marketData ?? new MarketDataProvider(timeseries, factorMatrix, stepToDateIndex, priceFields);
+            MarketData = marketData ?? new MarketDataProvider(timeseries);
             Market = market ?? new MarketState();
             Events = events ?? new EventRegistry();
             Fields = fields ?? new FieldRegistry();

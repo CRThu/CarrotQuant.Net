@@ -75,8 +75,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             ((System.IDisposable)registry).Dispose();
 
-            // 测试 storageRoot 直接重载
-            var registry2 = TimeseriesRegistryFactory.Create(storageRoot, config);
+            // 测试 resolver 直接构建
+            var registry2 = TimeseriesRegistryFactory.Create(new StorageResolver(storageRoot), config);
             Assert.IsNotNull(registry2);
             ((System.IDisposable)registry2).Dispose();
         }
@@ -115,7 +115,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                     TableId = "test_table",
                     Cache = false
                 };
-                var strictRegistry = TimeseriesRegistryFactory.Create(tempDir, strictConfig);
+                var strictRegistry = TimeseriesRegistryFactory.Create(new StorageResolver(tempDir), strictConfig);
                 var ex = Assert.ThrowsException<InvalidDataException>(() =>
                 {
                     strictRegistry.Primary.GetMatrix<double>("Close");
@@ -130,7 +130,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                     Cache = false,
                     NullableFields = new List<string> { "Close" }
                 };
-                var allowRegistry = TimeseriesRegistryFactory.Create(tempDir, allowConfig);
+                var allowRegistry = TimeseriesRegistryFactory.Create(new StorageResolver(tempDir), allowConfig);
                 var matrix = allowRegistry.Primary.GetMatrix<double>("Close");
                 Assert.IsNotNull(matrix);
                 Assert.AreEqual(2, matrix.RowCount);

@@ -614,14 +614,16 @@ var timeseries = TimeseriesRegistryFactory.Create(
     }
 );
 
+var resolver = new StorageResolver(storageRoot);
+
 // 事件子系统（批量装配）
-var events = EventRegistryFactory.Create(storageRoot, new[]
+var events = EventRegistryFactory.Create(resolver, new[]
 {
     new EventStreamConfig { Name = "adjustments", TableId = "ashare.adj_factor.baostock" }
 });
 
 // 维表子系统（批量装配）
-var fields = FieldRegistryFactory.Create(storageRoot, new[]
+var fields = FieldRegistryFactory.Create(resolver, new[]
 {
     new FieldTableConfig { Name = "industry", TableId = "ashare.industry.eastmoney", KeyColumn = "symbol" }
 });

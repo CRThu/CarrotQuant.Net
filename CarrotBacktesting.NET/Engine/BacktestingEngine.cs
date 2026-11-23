@@ -181,7 +181,7 @@ namespace CarrotBacktesting.NET.Engine
             _resolver = resolver ?? (!string.IsNullOrWhiteSpace(_adjustConfig.StorageRoot) ? new StorageResolver(_adjustConfig.StorageRoot) : null);
 
             _marketData = new MarketDataProvider(timeseries, _adjustConfig, _resolver, events, _monitor);
-            _context = new EngineContext(timeseries, broker, market, events, fields, priceFields: _adjustConfig.PriceFields, recorder: _recorder, marketData: _marketData);
+            _context = new EngineContext(timeseries, broker, market, events, fields, recorder: _recorder, marketData: _marketData);
             _events = _context.Events;
             _fields = _context.Fields;
             _market = _context.Market;

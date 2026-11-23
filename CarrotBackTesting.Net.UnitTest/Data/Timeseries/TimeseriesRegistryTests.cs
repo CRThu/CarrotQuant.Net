@@ -513,7 +513,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void ITimeseriesScheduler_PagingInterface_IsSeparatedFromReadOnlyTimeseriesRegistry()
         {
             var meta = new CarrotBacktesting.NET.Data.DynamicMarketMetadata(new[] { "sh.600000" }, new MarketTime[] { MarketTime.UtcNow });
-            var registry = new CarrotBacktesting.NET.Data.TimeseriesRegistry(meta, (f, t) => null!);
+            var table = new CarrotBacktesting.NET.Data.TimeseriesTable("primary", isPrimary: true, meta, (f, t) => null!);
+            var registry = new CarrotBacktesting.NET.Data.TimeseriesRegistry(table);
 
             // 验证实现了调度契约
             Assert.IsTrue(registry is CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler);

@@ -16,7 +16,8 @@ public class ChangeMaskAndEventDetectionTests
         var dates = new MarketTime[] { MarketTime.FromDateTime(DateTime.Today) };
         var fieldTypes = new Dictionary<string, Type> { { "close", typeof(double) } };
         var metadata = new DynamicMarketMetadata(symbols, dates, fieldTypes);
-        return new TimeseriesRegistry(metadata, (fieldName, type) => null!);
+        var table = new TimeseriesTable("primary", isPrimary: true, metadata, (fieldName, type) => null!);
+        return new TimeseriesRegistry(table);
     }
 
     [TestMethod]

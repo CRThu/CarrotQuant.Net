@@ -133,14 +133,16 @@ namespace CarrotBackTesting.Net.UnitTest.Config
                 });
             var ts = timeseries;
 
+            var resolver = new StorageResolver(storageRoot);
+
             // 2. 事件子系统（直接传入轻量列表）
-            var events = EventRegistryFactory.Create(storageRoot, new[]
+            var events = EventRegistryFactory.Create(resolver, new[]
             {
                 new EventStreamConfig { Name = "adjustments", TableId = "ashare.adj_factor.baostock" }
             });
 
             // 3. 维表子系统（直接传入轻量列表）
-            var fields = FieldRegistryFactory.Create(storageRoot, new[]
+            var fields = FieldRegistryFactory.Create(resolver, new[]
             {
                 new FieldTableConfig { Name = "industry", TableId = "ashare.industry.eastmoney", KeyColumn = "symbol" }
             });

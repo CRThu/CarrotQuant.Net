@@ -162,8 +162,8 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 2);
             factorMatrix[0, 0] = 2.0;
             factorMatrix[1, 0] = 2.0;
-            var context = new EngineContext(tsRegistry, broker, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
-            var marketData = new MarketDataProvider(tsRegistry);
+            var marketData = new MarketDataProvider(tsRegistry, factorMatrix, new[] { 0, 1 });
+            var context = new EngineContext(tsRegistry, broker, marketData: marketData);
 
             // 步进至第 0 步
             context.UpdateStep(0, dates[0]);
@@ -222,8 +222,8 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 2);
             factorMatrix[0, 0] = 2.0;
             factorMatrix[1, 0] = 2.0;
-            var context = new EngineContext(tsRegistry, broker, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
-            var marketData = new MarketDataProvider(tsRegistry);
+            var marketData = new MarketDataProvider(tsRegistry, factorMatrix, new[] { 0, 1 });
+            var context = new EngineContext(tsRegistry, broker, marketData: marketData);
 
             context.UpdateStep(0, dates[0]);
             simExchange.Step(dates[0], marketData, 0, EnginePhase.Close);
@@ -324,7 +324,8 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             var factorMatrix = new ChunkMatrix2D<double>(width: 2, pageSize: 4096, initialRowCount: 2);
             factorMatrix[0, 0] = 2.0; factorMatrix[0, 1] = 1.5;
             factorMatrix[1, 0] = 2.0; factorMatrix[1, 1] = 1.5;
-            var context = new EngineContext(tsRegistry, broker, indicators: indicatorRegistry, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
+            var marketData = new MarketDataProvider(tsRegistry, factorMatrix, new[] { 0, 1 });
+            var context = new EngineContext(tsRegistry, broker, indicators: indicatorRegistry, marketData: marketData);
 
             // 注册收盘价后复权均线（SMA2）
             var closeSmaPost = indicatorRegistry.GetOrAdd("close_sma_post", () => new Sma(2), field: "close", mode: PriceMode.Post);
@@ -388,7 +389,8 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             // 复权因子为 2.0 (10 送 10)
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 2);
             factorMatrix[0, 0] = 2.0; factorMatrix[1, 0] = 2.0;
-            var context = new EngineContext(tsRegistry, broker, indicators: indicatorRegistry, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
+            var marketData = new MarketDataProvider(tsRegistry, factorMatrix, new[] { 0, 1 });
+            var context = new EngineContext(tsRegistry, broker, indicators: indicatorRegistry, marketData: marketData);
 
             // 注册 4 字段 VWAP（全周期累计模式：典型点价 * 物理成交量 / 物理累计成交量）
             // 字段顺序: high, low, close, volume

@@ -307,7 +307,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             factorMat[0, 0] = 1.0; factorMat[0, 1] = 1.0;
             factorMat[1, 0] = 2.0; factorMat[1, 1] = 1.5;
 
-            var ctx = new EngineContext(ts, broker, priceFields: new[] { "vwap" }, factorMatrix: factorMat, stepToDateIndex: null);
+            var marketData = new MarketDataProvider(ts, factorMat, null, new[] { "vwap" });
+            var ctx = new EngineContext(ts, broker, marketData: marketData);
 
             return (ctx, meta);
         }

@@ -1024,7 +1024,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         {
             // 构造 0 个交易日的空时序元数据
             var metadata = new DynamicMarketMetadata(new[] { "sh.600000" }, Array.Empty<MarketTime>(), new Dictionary<string, Type> { { "close", typeof(double) } });
-            using var emptyTs = new TimeseriesRegistry(metadata, (sym, f) => null!);
+            using var emptyTable = new TimeseriesTable("primary", isPrimary: true, metadata, (sym, f) => null!);
+            using var emptyTs = new TimeseriesRegistry(emptyTable);
             var broker = CreateBroker(new BrokerConfig());
             var pipeline = StrategyPipeline.Sequential();
 

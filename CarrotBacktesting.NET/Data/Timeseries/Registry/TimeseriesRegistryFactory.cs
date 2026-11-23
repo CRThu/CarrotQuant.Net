@@ -81,7 +81,7 @@ namespace CarrotBacktesting.NET.Data
             var primaryConfig = configList.First(c => c.Primary);
 
             // 2. 装配主表
-            var primaryTable = CreateTable(resolver, primaryConfig, isPrimary: true, startDate, endDate, isLive, subRowMap: null);
+            var primaryTable = TimeseriesTableFactory.Create(resolver, primaryConfig, isPrimary: true, startDate, endDate, isLive, subRowMap: null);
             var subTables = new List<ITimeseriesTable>();
 
             try
@@ -155,41 +155,6 @@ namespace CarrotBacktesting.NET.Data
                 }
                 throw;
             }
-        }
-
-        /// <summary>
-        /// 创建单个时序表实例。
-        /// </summary>
-        public static TimeseriesTable CreateTable(
-            IStorageResolver resolver,
-            TimeseriesConfig config,
-            bool isPrimary,
-            MarketTime? startDate = null,
-            MarketTime? endDate = null,
-            bool isLive = false,
-            int[]? subRowMap = null)
-        {
-            return TimeseriesTableFactory.Create(
-                resolver,
-                config,
-                isPrimary,
-                startDate,
-                endDate,
-                isLive,
-                subRowMap);
-        }
-
-        /// <summary>
-        /// 根据物理存储根目录与单表配置装配并初始化 <see cref="TimeseriesRegistry"/> 实例。
-        /// </summary>
-        public static TimeseriesRegistry Create(
-            string storageRoot,
-            TimeseriesConfig config,
-            MarketTime? startDate = null,
-            MarketTime? endDate = null,
-            bool isLive = false)
-        {
-            return Create(new StorageResolver(storageRoot), config, startDate, endDate, isLive);
         }
     }
 }

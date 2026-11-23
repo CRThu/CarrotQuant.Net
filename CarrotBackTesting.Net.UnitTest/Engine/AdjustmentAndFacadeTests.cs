@@ -53,7 +53,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             factorMatrix[1, 1] = 1.5;
 
             var stepToDateIndex = new int[] { 0, 1 };
-            using var context = new EngineContext(ts, broker, factorMatrix: factorMatrix, stepToDateIndex: stepToDateIndex);
+            var marketData = new MarketDataProvider(ts, factorMatrix, stepToDateIndex);
+            using var context = new EngineContext(ts, broker, marketData: marketData);
 
             // 步进至第 0 步
             context.UpdateStep(0, meta.TradeDates[0]);
@@ -625,7 +626,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
             factorMatrix[0, 0] = 2.0; // 因子 2.0
-            using var context = new EngineContext(ts, new FakeBroker(), priceFields: new[] { "close" }, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0 });
+            var marketData = new MarketDataProvider(ts, factorMatrix, new[] { 0 }, new[] { "close" });
+            using var context = new EngineContext(ts, new FakeBroker(), marketData: marketData);
             context.UpdateStep(0, DateTime.UtcNow);
 
             // 价格类字段在 Post 模式下乘以因子
@@ -646,7 +648,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
             factorMatrix[0, 0] = 2.5;
-            using var context = new EngineContext(ts, new FakeBroker(), factorMatrix: factorMatrix, stepToDateIndex: new[] { 0 });
+            var marketDataVol = new MarketDataProvider(ts, factorMatrix, new[] { 0 });
+            using var context = new EngineContext(ts, new FakeBroker(), marketData: marketDataVol);
             context.UpdateStep(0, DateTime.UtcNow);
 
             // 成交量严格保持物理原始量（Raw 股数），防止产生虚构成交量
@@ -878,7 +881,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             var factorMatrix = new ChunkMatrix2D<double>(width: 1, pageSize: 4096, initialRowCount: 1);
             factorMatrix[0, 0] = 2.0;
-            var context = new EngineContext(ts, new FakeBroker(), factorMatrix: factorMatrix, stepToDateIndex: new[] { 0 });
+            var marketData = new MarketDataProvider(ts, factorMatrix, new[] { 0 });
+            var context = new EngineContext(ts, new FakeBroker(), marketData: marketData);
             context.UpdateStep(0, DateTime.UtcNow);
 
             Assert.AreEqual(2.0, context.MarketData.ToPostPrice(0, 1.0, 0), 1e-12);

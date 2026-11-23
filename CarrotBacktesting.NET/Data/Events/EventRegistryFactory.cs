@@ -48,17 +48,5 @@ namespace CarrotBacktesting.NET.Data
 
             return registry;
         }
-
-        /// <summary>
-        /// 根据物理存储根目录快速构建 IEventRegistry。
-        /// </summary>
-        public static IEventRegistry Create(
-            string storageRoot,
-            IEnumerable<EventStreamConfig>? configs = null,
-            MarketTime? startDate = null,
-            MarketTime? endDate = null)
-        {
-            return Create(new StorageResolver(storageRoot), configs, startDate, endDate);
-        }
     }
 }
