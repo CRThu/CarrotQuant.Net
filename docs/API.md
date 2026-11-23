@@ -343,15 +343,18 @@ public sealed unsafe class ChunkMatrix2D<T> : IMatrix2D<T>, IReadOnlyMatrix2D<T>
 ```
 
 ### 3. 核心访问模式
-`ITimeseriesRegistry.GetMatrix<T>` 返回 `IReadOnlyMatrix2D<T>`，支持无 GC 压力的批量截面切片与序列点查：
+时序矩阵由 `ITimeseriesTable.GetMatrix<T>` 返回 `IReadOnlyMatrix2D<T>`，注册中心通过 `registry.Primary` 访问主时序表，通过 `registry[name]` 访问辅助时序子表，支持无 GC 压力的批量截面切片与序列点查：
 
 ```csharp
-// 1. 获取收盘价时序矩阵（全市场二维宽表）
-IReadOnlyMatrix2D<double> closeMatrix = provider.GetMatrix<double>("close");
+// 1. 获取主表收盘价时序矩阵（全市场二维宽表）
+IReadOnlyMatrix2D<double> closeMatrix = registry.Primary.GetMatrix<double>("close");
+
+// 或获取指定辅助子表矩阵
+IReadOnlyMatrix2D<double> dailyClose = registry["daily"].GetMatrix<double>("close");
 
 // 2. 根据元数据索引定位物理坐标
-int dateIdx = provider.Metadata.GetDateIndex(new DateTime(2025, 1, 15));
-int symbolIdx = provider.Metadata.GetSymbolIndex("sh.600000");
+int dateIdx = registry.Primary.Metadata.GetDateIndex(new DateTime(2025, 1, 15));
+int symbolIdx = registry.Primary.Metadata.GetSymbolIndex("sh.600000");
 
 // 3. 常数时间点查 (O(1))
 double closePrice = closeMatrix[dateIdx, symbolIdx];
@@ -363,8 +366,8 @@ ReadOnlyRowView<double> marketSnapshot = closeMatrix.GetRowView(dateIdx, 0, clos
 ReadOnlyColumnView<double> stockHistory = closeMatrix.GetColumnView(0, symbolIdx, closeMatrix.RowCount);
 
 // 6. 单标的回测退化便捷语法（CTA、期货、加密货币单币回测）
-ReadOnlyColumnView<double> singleStockSeries = provider.GetSeries<double>("close");
-ReadOnlyColumnView<double> btcSeries = provider.GetSeries<double>("close", "BTCUSDT");
+ReadOnlyColumnView<double> singleStockSeries = registry.Primary.GetSeries<double>("close");
+ReadOnlyColumnView<double> btcSeries = registry.Primary.GetSeries<double>("close", "BTCUSDT");
 ```
 
 ### 4. 时序缓存存储体系 (ITimeseriesCache, TimeseriesIndexStore, TimeseriesFieldStore & TimeseriesCache)

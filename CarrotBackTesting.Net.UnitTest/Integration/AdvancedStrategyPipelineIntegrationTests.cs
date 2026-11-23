@@ -53,7 +53,7 @@ public class AdvancedStrategyPipelineIntegrationTests
 
         public void OnUpdate(IEngineContext context)
         {
-            var symbols = context.Timeseries.Metadata.Symbols;
+            var symbols = context.Timeseries.Primary.Metadata.Symbols;
             for (int i = 0; i < symbols.Count; i++)
             {
                 double close = context.GetClose(i);
@@ -84,7 +84,7 @@ public class AdvancedStrategyPipelineIntegrationTests
 
         public void OnUpdate(IEngineContext context)
         {
-            var symbols = context.Timeseries.Metadata.Symbols;
+            var symbols = context.Timeseries.Primary.Metadata.Symbols;
             for (int i = 0; i < symbols.Count; i++)
             {
                 string sym = symbols[i];
@@ -306,9 +306,9 @@ public class AdvancedStrategyPipelineIntegrationTests
 
                     public void OnUpdate(IEngineContext context)
                     {
-                        if (!_ordered && context.Timeseries.Metadata.Symbols.Count > 0)
+                        if (!_ordered && context.Timeseries.Primary.Metadata.Symbols.Count > 0)
                         {
-                            string symbol = context.Timeseries.Metadata.Symbols[0];
+                            string symbol = context.Timeseries.Primary.Metadata.Symbols[0];
                             double close = context.GetClose(0);
                             if (close > 0.0 && !double.IsNaN(close))
                             {
@@ -386,7 +386,7 @@ public class AdvancedStrategyPipelineIntegrationTests
 
         public void OnUpdate(IEngineContext context)
         {
-            var symbols = context.Timeseries.Metadata.Symbols;
+            var symbols = context.Timeseries.Primary.Metadata.Symbols;
             if (symbols.Count == 0) return;
 
             string bestSymbol = "";
@@ -600,7 +600,7 @@ public class AdvancedStrategyPipelineIntegrationTests
 
         public void OnUpdate(IEngineContext context)
         {
-            var symbols = context.Timeseries.Metadata.Symbols;
+            var symbols = context.Timeseries.Primary.Metadata.Symbols;
             for (int i = 0; i < symbols.Count; i++)
             {
                 double close = context.GetClose(i);
@@ -613,7 +613,7 @@ public class AdvancedStrategyPipelineIntegrationTests
                 // 遇到复牌有效股票且尚未持有，尝试买入
                 if (context.GetPosition(symbols[i]) == 0m)
                 {
-                    var orderId = context.Broker.SubmitOrder(new OrderRequest(symbols[i], OrderDirection.Buy, close, 500m));
+                    var orderId = context.Broker.SubmitOrder(new OrderRequest(symbols[i], OrderDirection.Buy, OrderType.Limit, close, 500m));
                     if (orderId > 0)
                     {
                         BuyOrdersPlaced++;

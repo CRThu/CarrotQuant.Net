@@ -51,30 +51,37 @@ public class BacktestingEngineRecorderIntegrationTests
 
     private class MockTimeseriesRegistry : ITimeseriesRegistry
     {
-        public IMarketMetadata Metadata { get; }
+        private readonly MockTimeseriesTable _primaryTable;
+        public ITimeseriesTable Primary => _primaryTable;
+        public IMarketMetadata Metadata => _primaryTable.Metadata;
         public List<int> SteppedRows { get; } = new();
-        private readonly Dictionary<string, object> _matrices = new(StringComparer.OrdinalIgnoreCase);
+
+        public ITimeseriesTable this[string tableName] => GetTable(tableName);
+        public ITimeseriesTable GetTable(string tableName) => tableName == _primaryTable.Name ? _primaryTable : throw new KeyNotFoundException($"时序表 '{tableName}' 不存在。");
+        public bool HasTable(string tableName) => tableName == _primaryTable.Name;
+        public IReadOnlyList<string> GetTableNames() => new[] { _primaryTable.Name };
 
         public MockTimeseriesRegistry(IMarketMetadata metadata)
         {
-            Metadata = metadata;
+            _primaryTable = new MockTimeseriesTable(metadata);
         }
 
         public void SetMatrix<T>(string fieldName, IReadOnlyMatrix2D<T> matrix) where T : unmanaged
         {
-            _matrices[fieldName] = matrix;
+            _primaryTable.SetMatrix(fieldName, matrix);
         }
 
         public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
         {
-            if (_matrices.TryGetValue(fieldName, out var m)) return (IReadOnlyMatrix2D<T>)m;
-            return null!;
+            return _primaryTable.GetMatrix<T>(fieldName);
         }
-        public bool HasField(string fieldName) => _matrices.ContainsKey(fieldName);
+        public bool HasField(string fieldName) => _primaryTable.HasField(fieldName);
         public void StepTo(int currentLogicalRow) => SteppedRows.Add(currentLogicalRow);
         public int RegisterTable(string tableName) => 0;
         public int GetTableIndex(string tableName) => 0;
         public string GetTableName(int tableIndex) => string.Empty;
+        public bool IsUpdated(int tableIndex) => true;
+        public bool IsUpdated(string tableName) => true;
     }
 
     private class TradingAndSignalingStrategy : IStrategy

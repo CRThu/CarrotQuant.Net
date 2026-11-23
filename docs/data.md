@@ -93,9 +93,10 @@ Row N-1 [ val ]     [ val ]    ...     [ val ]
 - **分块调度器 (`TimeseriesCacheManager<T>`)**：
   - 遵循迪米特法则，纯粹面向 `ITimeseriesCache` 编程，管理非托管连续内存矩阵与磁盘分块持久化存储间的挂载预读、实盘追加与无写放大的增量提交（`Commit`）。
 
-### 4. 时序注册表与 CQRS 读写分离 (TimeseriesRegistry & ITimeseriesScheduler)
-`TimeseriesRegistry` 是时序子系统的聚合核心，采用 CQRS（命令查询职责分离）与接口隔离（ISP）原则：
-- **只读查询门面 (`ITimeseriesRegistry`)**：面向策略层与上层决策，仅暴露只读查询接口 `GetMatrix<T>(fieldName)`（返回只读 `IReadOnlyMatrix2D<T>`）与单标的一维视图 `GetSeries<T>`，绝不包含任何推进步进方法，杜绝策略层越权污染底层页表；
+### 4. 时序注册表与时序表抽象 (ITimeseriesRegistry & ITimeseriesTable)
+时序数据分为注册管理层与表级抽象层，职责清晰单一：
+- **时序注册中心 (`ITimeseriesRegistry`)**：纯粹的多表聚合目录与路由，暴露主时序表 `Primary`、子表索引器 `this[tableName]`、`GetTable`、`HasTable` 与 `IsUpdated` 位掩码变更感知；
+- **时序表契约 (`ITimeseriesTable`)**：代表单一时序数据表（如 1 分钟主表或日线辅助表），提供二维矩阵只读访问 `GetMatrix<T>(fieldName)`、单标的一维视图 `GetSeries<T>`、以及与主时钟 As-Of 对齐的 `GetCurrentRowIndex` / `GetCurrentRow` / `GetCurrentValue`；
 - **调度驱动契约 (`ITimeseriesScheduler`)**：专门面向回测/实盘引擎主时钟调度，暴露 `StepTo(int currentLogicalRow)`，负责滑动环形缓冲槽位并触发后台异步预读（Prefetch）；
 - **写入落盘契约 (`ITimeseriesWriter`)**：面向实盘/增量数据源，暴露 `AppendRow` 与 `Commit`。
 

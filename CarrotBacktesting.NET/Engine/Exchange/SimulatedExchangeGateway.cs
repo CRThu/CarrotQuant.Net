@@ -62,7 +62,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         lock (_syncLock)
         {
             // 无行情/未上市标的或停牌零成交守卫拦截（第一性原理：当前时间步无合法价格数据或成交量归零，不接受新申报）：
-            if (_marketData != null && _marketData.Timeseries.HasField(StandardFields.Close) && _currentIndex >= 0 && !_snapshots.ContainsKey(request.Symbol))
+            if (_marketData != null && _marketData.Timeseries.Primary.HasField(StandardFields.Close) && _currentIndex >= 0 && !_snapshots.ContainsKey(request.Symbol))
             {
                 var bar = _marketData.GetBar(request.Symbol, _currentIndex);
                 if (!bar.IsValid || (bar.HasVolume && bar.Volume <= 0.0))
@@ -663,7 +663,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         _marketData = marketData;
 
         // 强类型前置校验：若配置了自定义流动性 Hook，但行情源无 volume 矩阵，及早 Fail-Fast 阻断
-        if (_config.OnCheckVolume != null && !marketData.Timeseries.HasField(StandardFields.Volume))
+        if (_config.OnCheckVolume != null && !marketData.Timeseries.Primary.HasField(StandardFields.Volume))
         {
             throw new InvalidOperationException(
                 "BrokerConfig 已挂载自定义 OnCheckVolume 成交量委托，但时序注册表中未找到 'volume' 矩阵。");

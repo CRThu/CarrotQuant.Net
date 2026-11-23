@@ -255,10 +255,10 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
         int steps,
         string priceField)
     {
-        if (!timeseries.HasField(priceField)) return null;
+        if (!timeseries.Primary.HasField(priceField)) return null;
 
-        var matrix = timeseries.GetMatrix<double>(priceField);
-        var metadata = timeseries.Metadata;
+        var matrix = timeseries.Primary.GetMatrix<double>(priceField);
+        var metadata = timeseries.Primary.Metadata;
         int totalRows = Math.Min(metadata.TradeDates.Count, matrix.RowCount);
 
         var allStepReturns = new List<double>[steps];
@@ -338,10 +338,10 @@ public sealed class TradeAnalyzer : AnalyzerBase<TradeStatistics>
         ITimeseriesRegistry timeseries,
         string priceField)
     {
-        if (!timeseries.HasField(priceField)) return (null, null);
+        if (!timeseries.Primary.HasField(priceField)) return (null, null);
 
-        var matrix = timeseries.GetMatrix<double>(priceField);
-        var metadata = timeseries.Metadata;
+        var matrix = timeseries.Primary.GetMatrix<double>(priceField);
+        var metadata = timeseries.Primary.Metadata;
         int totalRows = Math.Min(metadata.TradeDates.Count, matrix.RowCount);
         var efficiencies = new List<double>();
 

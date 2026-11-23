@@ -94,8 +94,8 @@ public class DataLayerFactoryTests
             Assert.IsNotNull(ev, "EventRegistry 应该被正确创建");
             Assert.IsNotNull(fl, "FieldRegistry 应该被正确创建");
 
-            Assert.IsTrue(ts.Metadata.Symbols.Count > 0);
-            Assert.IsTrue(ts.Metadata.TradeDates.Count > 0);
+            Assert.IsTrue(ts.Primary.Metadata.Symbols.Count > 0);
+            Assert.IsTrue(ts.Primary.Metadata.TradeDates.Count > 0);
             Assert.IsTrue(ev.HasTable("adj_factor"));
             Assert.IsTrue(fl.HasTable("industry"));
         }
@@ -133,9 +133,9 @@ public class DataLayerFactoryTests
             Assert.IsNotNull(fl);
 
             // 验证时间剪枝正确传递给元数据
-            Assert.IsTrue(ts.Metadata.TradeDates.Count > 0);
-            Assert.IsTrue(ts.Metadata.TradeDates[0] >= startDate);
-            Assert.IsTrue(ts.Metadata.TradeDates[^1] <= endDate.AddDays(1));
+            Assert.IsTrue(ts.Primary.Metadata.TradeDates.Count > 0);
+            Assert.IsTrue(ts.Primary.Metadata.TradeDates[0] >= startDate);
+            Assert.IsTrue(ts.Primary.Metadata.TradeDates[^1] <= endDate.AddDays(1));
         }
         finally
         {
@@ -144,7 +144,24 @@ public class DataLayerFactoryTests
     }
 
     [TestMethod]
-    public void Create_MultipleTimeseries_ThrowsNotSupportedException()
+    public void Create_MultipleTimeseries_MultiplePrimary_ThrowsInvalidOperationException()
+    {
+        var config = new DataConfig
+        {
+            Root = _csvRoot,
+            Timeseries = new List<TimeseriesConfig>
+            {
+                new() { TableId = "ashare.kline.1d.raw.baostock", Cache = false, Primary = true },
+                new() { TableId = "ashare.kline.5m.raw.baostock", Cache = false, Primary = true }
+            }
+        };
+
+        var ex = Assert.ThrowsException<InvalidOperationException>(() => DataLayerFactory.Create(config));
+        StringAssert.Contains(ex.Message, "primary: true");
+    }
+
+    [TestMethod]
+    public void Create_MultipleTimeseries_SucceedsAndFederatesTables()
     {
         var config = new DataConfig
         {
@@ -156,8 +173,11 @@ public class DataLayerFactoryTests
             }
         };
 
-        var ex = Assert.ThrowsException<NotSupportedException>(() => DataLayerFactory.Create(config));
-        StringAssert.Contains(ex.Message, "仅支持单张主时序行情表");
+        var (ts, ev, fl) = DataLayerFactory.Create(config);
+        Assert.IsNotNull(ts);
+        Assert.IsTrue(ts.HasTable("ashare.kline.1d.raw.baostock"));
+        Assert.IsTrue(ts.HasTable("ashare.kline.5m.raw.baostock"));
+        Assert.AreEqual("ashare.kline.1d.raw.baostock", ts.Primary.Name);
     }
 
     [TestMethod]

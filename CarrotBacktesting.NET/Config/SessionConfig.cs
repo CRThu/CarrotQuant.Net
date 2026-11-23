@@ -139,6 +139,18 @@ namespace CarrotBacktesting.NET.Config
         public List<string>? Fields { get; set; }
 
         /// <summary>
+        /// 是否作为推进回测的主时钟表。
+        /// 仅配置单表时默认 true；配置多表时默认第一张表为 true。
+        /// </summary>
+        public bool Primary { get; set; } = false;
+
+        /// <summary>
+        /// 时间戳平移偏移量（如 "15:00:00"、"15h" 等）。
+        /// 若数据自带具体时刻（如 15:00:00）无需配置；若为 00:00:00 纯日期且主轴为日内高频时，可配置此项调整生效时刻。
+        /// </summary>
+        public string? TimeOffset { get; set; }
+
+        /// <summary>
         /// 数据源时间戳时区标识符（遵循 IANA 标准如 "Asia/Shanghai", "America/New_York", "UTC"）。
         /// 若数据源时间戳为无时区本地时间，将根据此时区转换为全局单调的 UTC 时间戳。
         /// 若为 null 或空字符串，则假定数据源时间戳本身已为 UTC 时间。

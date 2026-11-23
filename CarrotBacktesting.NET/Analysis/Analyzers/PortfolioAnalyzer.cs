@@ -191,16 +191,16 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
             return null;
         }
 
-        if (!timeseries.HasField(options.PriceFieldName))
+        if (!timeseries.Primary.HasField(options.PriceFieldName))
         {
             return null;
         }
 
-        var metadata = timeseries.Metadata;
+        var metadata = timeseries.Primary.Metadata;
         int col = metadata.GetSymbolIndex(options.BenchmarkSymbol);
         if (col < 0) return null;
 
-        var priceMatrix = timeseries.GetMatrix<double>(options.PriceFieldName);
+        var priceMatrix = timeseries.Primary.GetMatrix<double>(options.PriceFieldName);
         var snapshots = result.DailySnapshots;
 
         if (snapshots.Count > 1)

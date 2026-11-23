@@ -1,59 +1,50 @@
+using System.Collections.Generic;
+
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
 /// <summary>
-/// 时序注册表纯只读输出契约，供引擎层与策略层安全消费。
-/// 统筹管理所有加载的时序字段，聚合全局市场元数据（Metadata）与各字段非托管只读矩阵（GetMatrix）。
-/// 遵循“只读优先”原则：暴露的矩阵均为 IReadOnlyMatrix2D，禁止外部写入。
-/// 写入与生命周期调度请参见写入契约 <see cref="ITimeseriesWriter"/>。
+/// 时序注册中心契约，统筹管理主时序表与辅助时序子表。
+/// 注册中心不承载具体时序数据，具体矩阵与字段由 ITimeseriesTable 提供。
 /// </summary>
 public interface ITimeseriesRegistry
 {
     /// <summary>
-    /// 获取行情元数据（交易日历、股票列表及维度索引）。
+    /// 获取主时钟时序表。
     /// </summary>
-    IMarketMetadata Metadata { get; }
+    ITimeseriesTable Primary { get; }
 
     /// <summary>
-    /// 获取指定字段的只读二维时序矩阵。
-    /// 矩阵的行维度为 TradeDates（时间步），列维度为 Symbols（股票代码）。
+    /// 获取指定名称的时序表。若不存在则抛出 KeyNotFoundException。
     /// </summary>
-    /// <typeparam name="T">
-    /// 数据类型，必须为非托管类型（unmanaged），以匹配非托管内存物理布局。
-    /// 通常为 <see cref="float"/> 或 <see cref="double"/>。
-    /// </typeparam>
-    /// <param name="fieldName">字段名称，例如 "close"、"open"、"volume"。</param>
-    /// <returns>对应字段的只读时序矩阵，零拷贝访问。</returns>
-    IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
+    ITimeseriesTable this[string tableName] { get; }
 
     /// <summary>
-    /// 检查是否存在指定字段的数据。
+    /// 获取指定名称的时序表。若不存在则抛出 KeyNotFoundException。
     /// </summary>
-    /// <param name="fieldName">字段名称。</param>
-    /// <returns>若字段已加载则返回 true，否则返回 false。</returns>
-    bool HasField(string fieldName);
+    ITimeseriesTable GetTable(string tableName);
 
     /// <summary>
-    /// 检查指定序号的时序表在当前时间步是否触发了更新（跨 Bar / 跨时间步）。
-    /// 采用 64 位无符号位掩码实现，单次判定开销 &lt; 0.3ns。
-    /// 默认实现返回 true（保障单表回测绝对零损耗，无需感知位掩码）。
+    /// 检查指定名称的时序表是否存在。
     /// </summary>
-    /// <param name="tableIndex">时序表分配的整型序号（0 ~ 63）。</param>
-    /// <returns>若当前时间步该表已更新则返回 true，否则返回 false。</returns>
-    bool IsUpdated(int tableIndex) => true;
+    bool HasTable(string tableName);
+
+    /// <summary>
+    /// 获取所有已注册的时序表名称列表。
+    /// </summary>
+    IReadOnlyList<string> GetTableNames();
+
+    /// <summary>
+    /// 检查指定序号的时序表在当前时间步是否触发了更新。
+    /// </summary>
+    bool IsUpdated(int tableIndex);
 
     /// <summary>
     /// 检查指定名称的时序表在当前时间步是否触发了更新。
-    /// 默认实现返回 true。
     /// </summary>
-    /// <param name="tableName">时序表名称（例如 "kline.1d", "kline.5m"）。</param>
-    /// <returns>若当前时间步该表已更新则返回 true，否则返回 false。</returns>
-    bool IsUpdated(string tableName) => true;
+    bool IsUpdated(string tableName);
 
     /// <summary>
-    /// 获取指定时序表注册分配的整型序号。
-    /// 策略可在 OnStart 中预先缓存序号以在 OnUpdate 中获得寄存器级位运算判定效率。
+    /// 获取指定时序表的注册序号（0-63），未注册则返回 -1。
     /// </summary>
-    /// <param name="tableName">时序表名称。</param>
-    /// <returns>对应的整型序号（0 ~ 63）。若未注册或不支持则返回 -1。</returns>
-    int GetTableIndex(string tableName) => -1;
+    int GetTableIndex(string tableName);
 }

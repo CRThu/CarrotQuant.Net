@@ -31,12 +31,19 @@ public class BacktestSessionTests
 
     private class MockTimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler
     {
-        public IMarketMetadata Metadata { get; }
+        private readonly MockTimeseriesTable _primaryTable;
+        public ITimeseriesTable Primary => _primaryTable;
+        public IMarketMetadata Metadata => _primaryTable.Metadata;
         public List<int> SteppedRows { get; } = new();
+
+        public ITimeseriesTable this[string tableName] => GetTable(tableName);
+        public ITimeseriesTable GetTable(string tableName) => tableName == _primaryTable.Name ? _primaryTable : throw new KeyNotFoundException($"时序表 '{tableName}' 不存在。");
+        public bool HasTable(string tableName) => tableName == _primaryTable.Name;
+        public IReadOnlyList<string> GetTableNames() => new[] { _primaryTable.Name };
 
         public MockTimeseriesRegistry(IMarketMetadata metadata)
         {
-            Metadata = metadata;
+            _primaryTable = new MockTimeseriesTable(metadata);
         }
 
         public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged => null!;
@@ -50,6 +57,8 @@ public class BacktestSessionTests
         public int RegisterTable(string tableName) => 0;
         public int GetTableIndex(string tableName) => 0;
         public string GetTableName(int tableIndex) => string.Empty;
+        public bool IsUpdated(int tableIndex) => true;
+        public bool IsUpdated(string tableName) => true;
     }
 
     private static (SessionConfig Config, BacktestingEngine Engine, DummyStrategy Strategy) CreateTestEngine()

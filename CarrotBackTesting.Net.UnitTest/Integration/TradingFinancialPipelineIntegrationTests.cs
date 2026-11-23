@@ -66,7 +66,7 @@ public class TradingFinancialPipelineIntegrationTests
         public void OnUpdate(IEngineContext context)
         {
             string symbol = "SH.600000";
-            int symIdx = context.Timeseries.Metadata.GetSymbolIndex(symbol);
+            int symIdx = context.Timeseries.Primary.Metadata.GetSymbolIndex(symbol);
             if (symIdx < 0) return;
 
             double close = context.GetClose(symIdx);
@@ -539,7 +539,7 @@ public class TradingFinancialPipelineIntegrationTests
         {
             // 当前逻辑行是 context.CurrentIndex
             int currentStep = context.CurrentIndex;
-            var matrix = context.Timeseries.GetMatrix<double>("close");
+            var matrix = context.Timeseries.Primary.GetMatrix<double>("close");
 
             try
             {

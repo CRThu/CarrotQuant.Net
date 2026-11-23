@@ -127,7 +127,7 @@ namespace CarrotBacktesting.NET.Engine
             Market = market ?? new MarketState();
             Events = events ?? new EventRegistry();
             Fields = fields ?? new FieldRegistry();
-            Indicators = indicators ?? new IndicatorRegistry(timeseries.Metadata);
+            Indicators = indicators ?? new IndicatorRegistry(timeseries.Primary.Metadata);
             Recorder = recorder;
 
             CurrentIndex = -1;

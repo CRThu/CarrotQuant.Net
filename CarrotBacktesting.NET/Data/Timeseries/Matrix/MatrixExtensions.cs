@@ -60,30 +60,30 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 获取指定字段在单标的场景（第 0 列标的）下的全生命周期一维时序序列视图。
+        /// 获取指定时序表在单标的场景（第 0 列标的）下的全生命周期一维时序序列视图。
         /// </summary>
         /// <typeparam name="T">非托管数值类型</typeparam>
-        /// <param name="dataset">市场数据集实例</param>
+        /// <param name="table">时序表实例</param>
         /// <param name="fieldName">字段名称（如 "close", "volume"）</param>
         /// <param name="symbolIndex">标的列索引，默认为 0</param>
         /// <returns>标的的全周期连续只读一维列视图</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry registry, string fieldName, int symbolIndex = 0) where T : unmanaged
+        public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesTable table, string fieldName, int symbolIndex = 0) where T : unmanaged
         {
-            return registry.GetMatrix<T>(fieldName).GetSeries(symbolIndex);
+            return table.GetMatrix<T>(fieldName).GetSeries(symbolIndex);
         }
 
         /// <summary>
-        /// 根据标的代码获取指定字段的全生命周期一维时序序列视图。
+        /// 根据标的代码获取指定时序表全生命周期一维时序序列视图。
         /// </summary>
         /// <typeparam name="T">非托管数值类型</typeparam>
-        /// <param name="dataset">市场数据集实例</param>
+        /// <param name="table">时序表实例</param>
         /// <param name="fieldName">字段名称（如 "close", "volume"）</param>
         /// <param name="symbol">标的代码</param>
         /// <returns>标的的全周期连续只读一维列视图</returns>
-        public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry registry, string fieldName, string symbol) where T : unmanaged
+        public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesTable table, string fieldName, string symbol) where T : unmanaged
         {
-            return registry.GetMatrix<T>(fieldName).GetSeries(symbol, registry.Metadata);
+            return table.GetMatrix<T>(fieldName).GetSeries(symbol, table.Metadata);
         }
     }
 }

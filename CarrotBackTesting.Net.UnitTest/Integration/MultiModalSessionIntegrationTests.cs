@@ -61,14 +61,14 @@ public class MultiModalSessionIntegrationTests
 
         protected override IEnumerable<string> GetSymbols(IEngineContext context)
         {
-            return context.Timeseries.Metadata.Symbols;
+            return context.Timeseries.Primary.Metadata.Symbols;
         }
 
         protected override void CheckEntry(IEngineContext context, string symbol)
         {
             if (_smaFastPool == null || _smaSlowPool == null) return;
 
-            int symIdx = context.Timeseries.Metadata.GetSymbolIndex(symbol);
+            int symIdx = context.Timeseries.Primary.Metadata.GetSymbolIndex(symbol);
             if (symIdx < 0) return;
 
             double fast = _smaFastPool[symIdx].Current;
@@ -95,7 +95,7 @@ public class MultiModalSessionIntegrationTests
         {
             if (_smaFastPool == null || _smaSlowPool == null) return;
 
-            int symIdx = context.Timeseries.Metadata.GetSymbolIndex(symbol);
+            int symIdx = context.Timeseries.Primary.Metadata.GetSymbolIndex(symbol);
             if (symIdx < 0) return;
 
             double fast = _smaFastPool[symIdx].Current;
@@ -159,8 +159,8 @@ public class MultiModalSessionIntegrationTests
 
         try
         {
-            Assert.IsTrue(timeseries.Metadata.Symbols.Count > 0, "标的代码池不应为空");
-            Assert.IsTrue(timeseries.Metadata.TradeDates.Count > 0, "交易日网格不应为空");
+            Assert.IsTrue(timeseries.Primary.Metadata.Symbols.Count > 0, "标的代码池不应为空");
+            Assert.IsTrue(timeseries.Primary.Metadata.TradeDates.Count > 0, "交易日网格不应为空");
 
             // 2. 经纪商与交易所装配
             var brokerConfig = new BrokerConfig

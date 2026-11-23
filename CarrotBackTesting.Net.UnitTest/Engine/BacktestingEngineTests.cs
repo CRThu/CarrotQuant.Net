@@ -23,30 +23,32 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
         private class MockTimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler
         {
-            private readonly Dictionary<string, object> _matrices = new();
-            public IMarketMetadata Metadata { get; }
+            private readonly MockTimeseriesTable _primaryTable;
+            public ITimeseriesTable Primary => _primaryTable;
+            public IMarketMetadata Metadata => _primaryTable.Metadata;
             public List<int> SteppedRows { get; } = new();
+
+            public ITimeseriesTable this[string tableName] => GetTable(tableName);
+            public ITimeseriesTable GetTable(string tableName) => tableName == _primaryTable.Name ? _primaryTable : throw new KeyNotFoundException($"时序表 '{tableName}' 不存在。");
+            public bool HasTable(string tableName) => tableName == _primaryTable.Name;
+            public IReadOnlyList<string> GetTableNames() => new[] { _primaryTable.Name };
 
             public MockTimeseriesRegistry(IMarketMetadata metadata)
             {
-                Metadata = metadata;
+                _primaryTable = new MockTimeseriesTable(metadata);
             }
 
             public void SetMatrix<T>(string fieldName, IReadOnlyMatrix2D<T> matrix) where T : unmanaged
             {
-                _matrices[fieldName] = matrix;
+                _primaryTable.SetMatrix(fieldName, matrix);
             }
 
             public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
             {
-                if (_matrices.TryGetValue(fieldName, out var m))
-                {
-                    return (IReadOnlyMatrix2D<T>)m;
-                }
-                throw new KeyNotFoundException($"矩阵 '{fieldName}' 不存在。");
+                return _primaryTable.GetMatrix<T>(fieldName);
             }
 
-            public bool HasField(string fieldName) => _matrices.ContainsKey(fieldName);
+            public bool HasField(string fieldName) => _primaryTable.HasField(fieldName);
 
             public void StepTo(int currentLogicalRow)
             {
@@ -56,6 +58,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public int RegisterTable(string tableName) => 0;
             public int GetTableIndex(string tableName) => 0;
             public string GetTableName(int tableIndex) => string.Empty;
+            public bool IsUpdated(int tableIndex) => true;
+            public bool IsUpdated(string tableName) => true;
         }
 
         private class CountingStrategy : IStrategy
@@ -663,8 +667,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 if (!_ordered)
                 {
                     _ordered = true;
-                    string symbol = context.Timeseries.Metadata.Symbols[0];
-                    var matrix = context.Timeseries.GetMatrix<double>("close");
+                    string symbol = context.Timeseries.Primary.Metadata.Symbols[0];
+                    var matrix = context.Timeseries.Primary.GetMatrix<double>("close");
                     var close = matrix[context.CurrentIndex, 0];
                     if (close > 0)
                     {
@@ -724,7 +728,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             Assert.AreEqual(EngineStatus.Completed, engine.Status);
             Assert.AreEqual(1, strategy.TradeCount, "真实数据回测应且仅应触发 1 次买入成交");
-            string firstSymbol = tsRegistry.Metadata.Symbols[0];
+            string firstSymbol = tsRegistry.Primary.Metadata.Symbols[0];
             Assert.AreEqual(100m, broker.GetPosition(firstSymbol), "标的持仓应精确为 100 股");
             double cash = broker.GetCash();
             double equity = broker.GetTotalEquity();

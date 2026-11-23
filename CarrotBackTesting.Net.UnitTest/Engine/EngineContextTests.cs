@@ -16,11 +16,18 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
     {
         private class MockTimeseriesRegistry : ITimeseriesRegistry
         {
-            public IMarketMetadata Metadata { get; }
+            private readonly MockTimeseriesTable _primaryTable;
+            public ITimeseriesTable Primary => _primaryTable;
+            public IMarketMetadata Metadata => _primaryTable.Metadata;
+
+            public ITimeseriesTable this[string tableName] => GetTable(tableName);
+            public ITimeseriesTable GetTable(string tableName) => tableName == _primaryTable.Name ? _primaryTable : throw new KeyNotFoundException($"时序表 '{tableName}' 不存在。");
+            public bool HasTable(string tableName) => tableName == _primaryTable.Name;
+            public IReadOnlyList<string> GetTableNames() => new[] { _primaryTable.Name };
 
             public MockTimeseriesRegistry(IMarketMetadata metadata)
             {
-                Metadata = metadata;
+                _primaryTable = new MockTimeseriesTable(metadata);
             }
 
             public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged => null!;
@@ -29,6 +36,8 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             public int RegisterTable(string tableName) => 0;
             public int GetTableIndex(string tableName) => 0;
             public string GetTableName(int tableIndex) => string.Empty;
+            public bool IsUpdated(int tableIndex) => true;
+            public bool IsUpdated(string tableName) => true;
         }
 
         private static ITimeseriesRegistry CreateMockRegistry()
@@ -220,25 +229,31 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         private class FullMockTimeseriesRegistry : ITimeseriesRegistry
         {
             private readonly Dictionary<string, IReadOnlyMatrix2D<double>> _matrices;
-            public IMarketMetadata Metadata { get; }
+            private readonly MockTimeseriesTable _primaryTable;
+
+            public ITimeseriesTable Primary => _primaryTable;
+            public IMarketMetadata Metadata => _primaryTable.Metadata;
+
+            public ITimeseriesTable this[string tableName] => GetTable(tableName);
+            public ITimeseriesTable GetTable(string tableName) => tableName == _primaryTable.Name ? _primaryTable : throw new KeyNotFoundException($"时序表 '{tableName}' 不存在。");
+            public bool HasTable(string tableName) => tableName == _primaryTable.Name;
+            public IReadOnlyList<string> GetTableNames() => new[] { _primaryTable.Name };
 
             public FullMockTimeseriesRegistry(IMarketMetadata metadata, Dictionary<string, IReadOnlyMatrix2D<double>> matrices)
             {
-                Metadata = metadata;
                 _matrices = matrices;
+                _primaryTable = new MockTimeseriesTable(metadata, f => _matrices.TryGetValue(f, out var mat) ? mat : null, HasField);
             }
 
-            public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
-            {
-                if (_matrices.TryGetValue(fieldName, out var mat)) return (IReadOnlyMatrix2D<T>)mat;
-                throw new KeyNotFoundException($"Field '{fieldName}' not found.");
-            }
+            public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged => _primaryTable.GetMatrix<T>(fieldName);
 
             public bool HasField(string fieldName) => _matrices.ContainsKey(fieldName);
             public void StepTo(int currentLogicalRow) { }
             public int RegisterTable(string tableName) => 0;
             public int GetTableIndex(string tableName) => 0;
             public string GetTableName(int tableIndex) => string.Empty;
+            public bool IsUpdated(int tableIndex) => true;
+            public bool IsUpdated(string tableName) => true;
         }
 
         private static (EngineContext ctx, DynamicMarketMetadata meta) CreateFullContextWithFactors()

@@ -93,13 +93,13 @@ namespace CarrotBacktesting.NET.Engine
             IReadOnlyMatrix2D<double>? closeMatrix = null;
             try
             {
-                closeMatrix = _timeseries.GetMatrix<double>("close");
+                closeMatrix = _timeseries.Primary.GetMatrix<double>("close");
             }
             catch { }
 
             if (closeMatrix != null)
             {
-                var metadata = _timeseries.Metadata;
+                var metadata = _timeseries.Primary.Metadata;
                 int finalIndex = _context.CurrentIndex >= 0 ? _context.CurrentIndex : closeMatrix.RowCount - 1;
                 if (finalIndex >= 0 && finalIndex < closeMatrix.RowCount)
                 {
@@ -317,7 +317,7 @@ namespace CarrotBacktesting.NET.Engine
                 _indicators.Reset();
 
                 // 3. 获取时间坐标系与区间裁剪
-                var tradeDates = _timeseries.Metadata.TradeDates;
+                var tradeDates = _timeseries.Primary.Metadata.TradeDates;
                 if (tradeDates == null || tradeDates.Count == 0)
                 {
                     _monitor.Log("日历元数据中 TradeDates 为空，回测直接完成。", LogLevel.Warning);
@@ -764,7 +764,7 @@ namespace CarrotBacktesting.NET.Engine
 
         private void PrewarmIndicatorsAfterRestore(int restoredIndex)
         {
-            var dates = _timeseries.Metadata.TradeDates;
+            var dates = _timeseries.Primary.Metadata.TradeDates;
             if (restoredIndex < 0 || dates.Count == 0 || restoredIndex >= dates.Count)
             {
                 return;

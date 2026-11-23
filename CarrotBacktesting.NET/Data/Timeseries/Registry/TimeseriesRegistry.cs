@@ -6,216 +6,194 @@ using CarrotBacktesting.NET.Abstraction.Data;
 namespace CarrotBacktesting.NET.Data
 {
     /// <summary>
-    /// 高性能时序数据供给门面（Facade）。
-    /// 同时实现只读契约 <see cref="ITimeseriesRegistry"/> 与写入/生命周期调度契约 <see cref="ITimeseriesWriter"/>，
-    /// 对外向策略提供只读二维时序矩阵（GetMatrix）与单标的一维序列（GetSeries），
-    /// 对内纯粹持有并协调各字段分块调度器（<see cref="ITimeseriesCacheManager"/>）的生命周期与持久化一致性提交（Commit）。
+    /// 时序数据注册中心，统一管理主时序表与辅助时序子表，支持数据读取、分块调度与增量写入。
     /// </summary>
-    public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler, ITimeseriesWriter, IDisposable
+    public sealed class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler, ITimeseriesWriter, IDisposable
     {
-        private readonly IMarketMetadata _metadata;
-        private readonly Func<string, Type, ITimeseriesCacheManager> _managerFactory;
-        private readonly ConcurrentDictionary<string, ITimeseriesCacheManager> _managers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ITimeseriesTable _primaryTable;
+        private readonly ConcurrentDictionary<string, ITimeseriesTable> _tables = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, int> _tableIndices = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<string> _tableNames = new();
         private readonly object _tableLock = new();
-        private readonly IDisposable? _disposableSource;
         private ulong _updatedMask = ulong.MaxValue;
         private bool _disposed;
 
         /// <inheritdoc />
-        public IMarketMetadata Metadata => _metadata;
+        public ITimeseriesTable Primary => _primaryTable;
 
         /// <inheritdoc />
-        public bool HasField(string fieldName) => _metadata.FieldNames.Any(f => f.Equals(fieldName, StringComparison.OrdinalIgnoreCase));
+        public ITimeseriesTable this[string tableName] => GetTable(tableName);
 
         /// <summary>
-        /// 初始化 <see cref="TimeseriesRegistry"/> 实例（纯粹的工厂装配模式，彻底解耦底层存储细节）。
+        /// 基于主时序表与辅助子表列表构建时序注册中心。
         /// </summary>
-        /// <param name="metadata">市场元数据。</param>
-        /// <param name="managerFactory">单字段分块管理器解析工厂委托。</param>
-        /// <param name="disposableSource">底层数据源释放资源句柄（可选）。</param>
+        /// <param name="primaryTable">主时钟时序表。</param>
+        /// <param name="subTables">可选的辅助时序子表列表。</param>
+        public TimeseriesRegistry(ITimeseriesTable primaryTable, IEnumerable<ITimeseriesTable>? subTables = null)
+        {
+            ArgumentNullException.ThrowIfNull(primaryTable);
+            _primaryTable = primaryTable;
+
+            RegisterTableInternal(primaryTable.Name, primaryTable);
+
+            if (subTables != null)
+            {
+                foreach (var sub in subTables)
+                {
+                    if (sub != null)
+                    {
+                        RegisterTableInternal(sub.Name, sub);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 直接基于单表时序数据源构建的时序注册中心（单主表模式）。
+        /// </summary>
+        public TimeseriesRegistry(
+            ITimeseriesSource source,
+            string storageRoot = "",
+            int pageSize = 4096,
+            bool enableCache = false,
+            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy,
+            string tableId = "primary",
+            CacheCompression compression = CacheCompression.Lz4,
+            int commitBatchSize = 64,
+            int maxPages = 4,
+            bool prefetch = true,
+            bool isLive = false,
+            bool ownsSource = false)
+            : this(new TimeseriesTable(
+                string.IsNullOrWhiteSpace(tableId) ? "primary" : tableId,
+                isPrimary: true,
+                source,
+                storageRoot,
+                pageSize,
+                enableCache,
+                refreshMode,
+                compression,
+                commitBatchSize,
+                maxPages,
+                prefetch,
+                isLive,
+                ownsSource))
+        {
+        }
+
+        /// <summary>
+        /// 直接基于元数据与字段分块调度工厂构建的时序注册中心（单主表模式）。
+        /// </summary>
         public TimeseriesRegistry(
             IMarketMetadata metadata,
             Func<string, Type, ITimeseriesCacheManager> managerFactory,
             IDisposable? disposableSource = null)
+            : this(new TimeseriesTable("primary", isPrimary: true, metadata, managerFactory, null, disposableSource))
         {
-            ArgumentNullException.ThrowIfNull(metadata);
-            _metadata = metadata is DynamicMarketMetadata dynamicMeta 
-                ? dynamicMeta 
-                : new DynamicMarketMetadata(metadata);
-            _managerFactory = managerFactory ?? throw new ArgumentNullException(nameof(managerFactory));
-            _disposableSource = disposableSource;
         }
 
-        /// <summary>
-        /// 初始化 <see cref="TimeseriesRegistry"/> 实例（直接基于时序数据源构建的便捷构造函数）。
-        /// </summary>
-        public TimeseriesRegistry(
-            ITimeseriesSource source, 
-            string storageRoot,
-            int pageSize = 4096,
-            bool enableCache = false,
-            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy,
-            string tableId = "default",
-            CacheCompression compression = CacheCompression.Lz4,
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false,
-            bool ownsSource = false)
-            : this(source, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive), ownsSource ? source : null)
+        private void RegisterTableInternal(string tableName, ITimeseriesTable table)
         {
-            if (!string.IsNullOrWhiteSpace(tableId)) RegisterTable(tableId);
-        }
-
-        /// <summary>
-        /// 初始化 <see cref="TimeseriesRegistry"/> 实例。
-        /// </summary>
-        public TimeseriesRegistry(
-            IMarketMetadata metadata, 
-            ITimeseriesSource source, 
-            string storageRoot,
-            int pageSize = 4096,
-            bool enableCache = false,
-            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy,
-            string tableId = "default",
-            CacheCompression compression = CacheCompression.Lz4,
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false,
-            bool ownsSource = false)
-            : this(metadata, CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, tableId, compression, commitBatchSize, maxPages, prefetch, isLive), ownsSource ? source : null)
-        {
-            if (!string.IsNullOrWhiteSpace(tableId)) RegisterTable(tableId);
-        }
-
-        private static Func<string, Type, ITimeseriesCacheManager> CreateDefaultFactory(
-            ITimeseriesSource source,
-            string storageRoot,
-            int pageSize,
-            bool enableCache,
-            CacheRefreshMode refreshMode,
-            string tableId,
-            CacheCompression compression,
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false)
-        {
-            ITimeseriesCache? store = null;
-            if (enableCache && !string.IsNullOrWhiteSpace(storageRoot))
-            {
-                store = new TimeseriesCache(storageRoot, tableId, pageSize, compression);
-            }
-
-            return (fieldName, dataType) =>
-            {
-                var managerType = typeof(TimeseriesCacheManager<>).MakeGenericType(dataType);
-                return (ITimeseriesCacheManager)Activator.CreateInstance(
-                    managerType,
-                    fieldName,
-                    source,
-                    source,
-                    store,
-                    pageSize,
-                    refreshMode,
-                    commitBatchSize,
-                    maxPages,
-                    prefetch,
-                    isLive)!;
-            };
+            _tables[tableName] = table;
+            RegisterTable(tableName);
         }
 
         /// <inheritdoc />
-        public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
+        public ITimeseriesTable GetTable(string tableName)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-
-            // 1. 字段注册路由校验
-            if (!HasField(fieldName))
+            ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+            if (_tables.TryGetValue(tableName, out var table))
             {
-                throw new KeyNotFoundException($"Field '{fieldName}' not registered in metadata.");
+                return table;
             }
+            throw new KeyNotFoundException($"未找到名称为 '{tableName}' 的时序表。已注册表: [{string.Join(", ", GetTableNames())}]。");
+        }
 
-            // 2. 类型检查 (确保 requested T 与 field 实际类型一致)
-            var fieldType = _metadata.GetFieldType(fieldName);
-            if (fieldType != typeof(T))
+        /// <inheritdoc />
+        public bool HasTable(string tableName)
+        {
+            return !string.IsNullOrWhiteSpace(tableName) && _tables.ContainsKey(tableName);
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyList<string> GetTableNames()
+        {
+            lock (_tableLock)
             {
-                throw new InvalidOperationException($"Type mismatch for field '{fieldName}'. Expected {fieldType}, requested {typeof(T)}.");
+                return _tableNames.ToArray();
             }
-
-            // 3. 原子获取或通过工厂委托创建该字段的 TimeseriesCacheManager
-            var manager = (TimeseriesCacheManager<T>)_managers.GetOrAdd(fieldName, name => _managerFactory(name, typeof(T)));
-            return manager.AsReadOnly();
         }
 
         /// <summary>
-        /// 获取指定字段的非泛型分块调度器实例（供生命周期装配、数据加载与分块管理使用）。
+        /// 精确获取指定时序表的只读二维矩阵。
         /// </summary>
-        /// <param name="fieldName">字段名称。</param>
-        /// <returns>对应的分块调度器实例。</returns>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public IReadOnlyMatrix2D<T> GetMatrix<T>(string tableName, string fieldName) where T : unmanaged
+        {
+            return GetTable(tableName).GetMatrix<T>(fieldName);
+        }
+
+        /// <summary>
+        /// 获取指定字段的分块调度器实例（供缓存预热与分块加载管理使用）。
+        /// 若字段包含点号（例如 "daily.close"），则路由至对应子表；否则路由至主表。
+        /// </summary>
         public ITimeseriesCacheManager GetCacheManager(string fieldName)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-
-            if (!HasField(fieldName))
+            int dotIdx = fieldName.IndexOf('.');
+            if (dotIdx > 0 && dotIdx < fieldName.Length - 1)
             {
-                throw new KeyNotFoundException($"Field '{fieldName}' not registered in metadata.");
+                string tblName = fieldName[..dotIdx];
+                string subField = fieldName[(dotIdx + 1)..];
+                if (GetTable(tblName) is TimeseriesTable typedTbl)
+                {
+                    return typedTbl.GetCacheManager(subField);
+                }
             }
 
-            var fieldType = _metadata.GetFieldType(fieldName);
-            return _managers.GetOrAdd(fieldName, name => _managerFactory(name, fieldType));
+            if (_primaryTable is TimeseriesTable primaryTyped)
+            {
+                return primaryTyped.GetCacheManager(fieldName);
+            }
+
+            throw new NotSupportedException($"当前主表类型 '{_primaryTable.GetType().Name}' 未公开分块调度器。");
         }
 
-        /// <summary>
-        /// 门面级时序行追加：向指定字段追加截面数据并同步推进元数据时间轴。
-        /// </summary>
+        /// <inheritdoc />
         public void AppendRow<T>(string fieldName, MarketTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged
         {
-            var fieldType = _metadata.GetFieldType(fieldName);
-            if (fieldType != typeof(T))
+            if (_primaryTable is ITimeseriesWriter writer)
             {
-                throw new InvalidOperationException($"Type mismatch for field '{fieldName}'. Expected {fieldType}, requested {typeof(T)}.");
-            }
-
-            var manager = (TimeseriesCacheManager<T>)GetCacheManager(fieldName);
-            manager.AppendRow(timestamp, rowValues);
-        }
-
-        /// <summary>
-        /// 门面级新标的上市扩列（因果顺序：先结清未落盘行，再拓宽列并提交元数据）。
-        /// 广播通知所有已活跃的字段管理器执行列拓宽。
-        /// </summary>
-        public void AppendCol(string symbol)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_metadata is IMutableMarketMetadata mutableMeta)
-            {
-                mutableMeta.AppendSymbol(symbol);
+                writer.AppendRow(fieldName, timestamp, rowValues);
             }
             else
             {
-                throw new NotSupportedException($"当前元数据实例 '{_metadata.GetType().Name}' 未实现 IMutableMarketMetadata，不支持动态拓宽标的代码。");
-            }
-
-            foreach (var manager in _managers.Values)
-            {
-                manager.AppendCol(symbol);
+                throw new NotSupportedException($"当前主时序表 '{_primaryTable.Name}' 未实现 ITimeseriesWriter，不支持行追加操作。");
             }
         }
 
-        /// <summary>
-        /// 门面级时间步步进通知：广播通知所有活跃的分块管理器推进至第 <paramref name="currentLogicalRow"/> 行，
-        /// 触发后台异步预读（Prefetch）与常驻窗口滑动淘汰。
-        /// </summary>
+        /// <inheritdoc />
+        public void AppendCol(string symbol)
+        {
+            if (_primaryTable is ITimeseriesWriter writer)
+            {
+                writer.AppendCol(symbol);
+            }
+            else
+            {
+                throw new NotSupportedException($"当前主时序表 '{_primaryTable.Name}' 未实现 ITimeseriesWriter，不支持标的扩列操作。");
+            }
+        }
+
+        /// <inheritdoc />
         public void StepTo(int currentLogicalRow)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            foreach (var manager in _managers.Values)
+            foreach (var table in _tables.Values)
             {
-                manager.StepTo(currentLogicalRow);
+                if (table is ITimeseriesScheduler scheduler)
+                {
+                    scheduler.StepTo(currentLogicalRow);
+                }
             }
         }
 
@@ -223,9 +201,12 @@ namespace CarrotBacktesting.NET.Data
         public void Commit()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            foreach (var manager in _managers.Values)
+            foreach (var table in _tables.Values)
             {
-                manager.Commit();
+                if (table is ITimeseriesWriter writer)
+                {
+                    writer.Commit();
+                }
             }
         }
 
@@ -233,8 +214,6 @@ namespace CarrotBacktesting.NET.Data
         /// 注册并分配时序表在当前注册中心内的整型位序号（0 ~ 63）。
         /// 若表名已存在则直接返回已有序号；若超过 64 张表则抛出强类型异常防御。
         /// </summary>
-        /// <param name="tableName">时序表名称。</param>
-        /// <returns>分配的序号（0 ~ 63）。</returns>
         public int RegisterTable(string tableName)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
@@ -271,6 +250,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public bool IsUpdated(string tableName)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
@@ -282,6 +262,7 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <inheritdoc />
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public int GetTableIndex(string tableName)
         {
             if (string.IsNullOrWhiteSpace(tableName)) return -1;
@@ -291,7 +272,6 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 设置当前时间步的时序变更位掩码。由引擎在每步推进时统一刷新。
         /// </summary>
-        /// <param name="mask">64 位变更掩码。</param>
         public void SetUpdatedMask(ulong mask)
         {
             lock (_tableLock)
@@ -303,8 +283,6 @@ namespace CarrotBacktesting.NET.Data
         /// <summary>
         /// 设置指定序号时序表在当前时间步的更新状态。
         /// </summary>
-        /// <param name="tableIndex">表序号（0 ~ 63）。</param>
-        /// <param name="isUpdated">是否更新。</param>
         public void SetUpdated(int tableIndex, bool isUpdated)
         {
             if ((uint)tableIndex >= 64)
@@ -342,12 +320,14 @@ namespace CarrotBacktesting.NET.Data
         {
             if (_disposed) return;
             _disposed = true;
-            foreach (var manager in _managers.Values)
+            foreach (var table in _tables.Values)
             {
-                manager.Dispose();
+                if (table is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
             }
-            _managers.Clear();
-            _disposableSource?.Dispose();
+            _tables.Clear();
         }
     }
 }

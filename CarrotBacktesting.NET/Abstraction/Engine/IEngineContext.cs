@@ -53,21 +53,28 @@ public interface IEngineContext
 
     /// <summary>
     /// 获取当前加载的全市场标的代码只读列表（固定顺序，与列索引一一对应）。
-    /// 作为高频访问门面直通 <see cref="ITimeseriesRegistry.Metadata"/>，消除多层穿透。
+    /// 作为高频访问门面直通主时序表元数据，消除多层穿透。
     /// </summary>
-    IReadOnlyList<string> Symbols => Timeseries.Metadata.Symbols;
+    IReadOnlyList<string> Symbols => Timeseries.Primary.Metadata.Symbols;
 
     /// <summary>
     /// 获取当前市场标的总数量。
     /// </summary>
-    int SymbolCount => Timeseries.Metadata.Symbols.Count;
+    int SymbolCount => Timeseries.Primary.Metadata.Symbols.Count;
 
     /// <summary>
     /// 获取指定股票代码对应的全局列索引。
     /// </summary>
     /// <param name="symbol">股票代码。</param>
     /// <returns>列索引，若不存在则返回 -1。</returns>
-    int GetSymbolIndex(string symbol) => Timeseries.Metadata.GetSymbolIndex(symbol);
+    int GetSymbolIndex(string symbol) => Timeseries.Primary.Metadata.GetSymbolIndex(symbol);
+
+    /// <summary>
+    /// 获取指定辅助时序子表在当前主时钟时间步中合法可见的最新行索引（As-Of 因果映射）。
+    /// </summary>
+    /// <param name="tableName">时序子表名称。</param>
+    /// <returns>合法可见的最新行索引；若在该步之前子表尚无闭合数据，则返回 -1。</returns>
+    int GetSubRowIndex(string tableName) => Timeseries[tableName].GetCurrentRowIndex(CurrentIndex);
 
     /// <summary>
     /// 便捷提交买入订单（默认以市价单形式发出）。

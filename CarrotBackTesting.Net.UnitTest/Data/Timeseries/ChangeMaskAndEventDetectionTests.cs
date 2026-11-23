@@ -41,23 +41,27 @@ public class ChangeMaskAndEventDetectionTests
     {
         using var registry = CreateTestRegistry();
 
+        // 主表已作为 index 0 自动注册
+        Assert.AreEqual(0, registry.GetTableIndex("primary"));
+        Assert.AreEqual(0, registry.RegisterTable("primary"));
+
         int idx1m = registry.RegisterTable("kline.1m");
         int idx5m = registry.RegisterTable("kline.5m");
         int idx1d = registry.RegisterTable("kline.1d");
 
-        Assert.AreEqual(0, idx1m);
-        Assert.AreEqual(1, idx5m);
-        Assert.AreEqual(2, idx1d);
+        Assert.AreEqual(1, idx1m);
+        Assert.AreEqual(2, idx5m);
+        Assert.AreEqual(3, idx1d);
 
         // 重复注册返回已有序号
-        Assert.AreEqual(1, registry.RegisterTable("kline.5m"));
+        Assert.AreEqual(2, registry.RegisterTable("kline.5m"));
         // 大小写不敏感
-        Assert.AreEqual(0, registry.RegisterTable("KLINE.1M"));
+        Assert.AreEqual(1, registry.RegisterTable("KLINE.1M"));
 
         // GetTableIndex 验证
-        Assert.AreEqual(0, registry.GetTableIndex("kline.1m"));
-        Assert.AreEqual(1, registry.GetTableIndex("kline.5m"));
-        Assert.AreEqual(2, registry.GetTableIndex("kline.1d"));
+        Assert.AreEqual(1, registry.GetTableIndex("kline.1m"));
+        Assert.AreEqual(2, registry.GetTableIndex("kline.5m"));
+        Assert.AreEqual(3, registry.GetTableIndex("kline.1d"));
         Assert.AreEqual(-1, registry.GetTableIndex("non_existent"));
         Assert.AreEqual(-1, registry.GetTableIndex(""));
         Assert.AreEqual(-1, registry.GetTableIndex(null!));
@@ -68,7 +72,8 @@ public class ChangeMaskAndEventDetectionTests
     {
         using var registry = CreateTestRegistry();
 
-        for (int i = 0; i < 64; i++)
+        // 主表已占用 index 0，再注册 63 张表达到 64 张上限
+        for (int i = 1; i < 64; i++)
         {
             int idx = registry.RegisterTable($"table_{i}");
             Assert.AreEqual(i, idx);
@@ -91,8 +96,9 @@ public class ChangeMaskAndEventDetectionTests
         int idx1 = registry.RegisterTable("t1");
         int idx2 = registry.RegisterTable("t2");
 
-        // 设置掩码为二进制 101 (第 0 位与第 2 位为 1，第 1 位为 0)
-        registry.SetUpdatedMask(0b101UL);
+        // 设置掩码为对应位：idx0 与 idx2 为 1，idx1 为 0
+        ulong mask = (1UL << idx0) | (1UL << idx2);
+        registry.SetUpdatedMask(mask);
 
         Assert.IsTrue(registry.IsUpdated(idx0));
         Assert.IsFalse(registry.IsUpdated(idx1));
@@ -126,7 +132,7 @@ public class ChangeMaskAndEventDetectionTests
 
         // 通过表名调用 SetUpdated（自动注册并设置）
         registry.SetUpdated("kline.auto", false);
-        Assert.AreEqual(1, registry.GetTableIndex("kline.auto"));
+        Assert.AreEqual(2, registry.GetTableIndex("kline.auto"));
         Assert.IsFalse(registry.IsUpdated("kline.auto"));
 
         registry.SetUpdated("kline.auto", true);

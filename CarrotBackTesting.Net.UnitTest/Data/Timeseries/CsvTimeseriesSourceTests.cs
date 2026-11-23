@@ -289,7 +289,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 var registry = TimeseriesRegistryFactory.Create(tempDir, tsConfig);
                 // 纽约时间 09:30:00 EST (UTC-5) 对应 UTC 14:30:00
                 DateTime expectedNyUtc = new DateTime(2025, 1, 2, 14, 30, 0, DateTimeKind.Utc);
-                Assert.AreEqual(expectedNyUtc, registry.Metadata.TradeDates[0]);
+                Assert.AreEqual(expectedNyUtc, registry.Primary.Metadata.TradeDates[0]);
             }
             finally
             {

@@ -78,7 +78,7 @@ public sealed class MarketDataProvider : IMarketDataProvider, IDisposable
         {
             var (factorMatrix, stepToDateIndex) = AdjustmentProvider.Resolve(
                 adjustConfig,
-                timeseries.Metadata,
+                timeseries.Primary.Metadata,
                 resolver: resolver,
                 events: events,
                 timeseries: timeseries,
@@ -90,7 +90,7 @@ public sealed class MarketDataProvider : IMarketDataProvider, IDisposable
     }
 
     /// <inheritdoc />
-    public IMarketMetadata Metadata => _timeseries.Metadata;
+    public IMarketMetadata Metadata => _timeseries.Primary.Metadata;
 
     /// <inheritdoc />
     public ITimeseriesRegistry Timeseries => _timeseries;
@@ -111,7 +111,7 @@ public sealed class MarketDataProvider : IMarketDataProvider, IDisposable
     [MethodImpl(MethodImplOptions.NoInlining)]
     private IReadOnlyMatrix2D<double>? LoadMatrix(string fieldName)
     {
-        var m = _timeseries.HasField(fieldName) ? _timeseries.GetMatrix<double>(fieldName) : null;
+        var m = _timeseries.Primary.HasField(fieldName) ? _timeseries.Primary.GetMatrix<double>(fieldName) : null;
         _matrixCache[fieldName] = m;
         return m;
     }

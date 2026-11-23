@@ -58,13 +58,13 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var registry = TimeseriesRegistryFactory.Create(resolver, config);
 
             Assert.IsNotNull(registry);
-            Assert.IsTrue(registry.HasField("close"));
-            Assert.IsTrue(registry.Metadata.Symbols.Count > 0);
+            Assert.IsTrue(registry.Primary.HasField("close"));
+            Assert.IsTrue(registry.Primary.Metadata.Symbols.Count > 0);
 
             // 验证 ITimeseriesScheduler.StepTo 契约方法可被直接调用
             ((CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler)registry).StepTo(0);
 
-            var matrix = registry.GetMatrix<double>("close");
+            var matrix = registry.Primary.GetMatrix<double>("close");
             Assert.IsNotNull(matrix);
             Assert.IsTrue(matrix.RowCount > 0);
 
@@ -113,7 +113,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 var strictRegistry = TimeseriesRegistryFactory.Create(tempDir, strictConfig);
                 var ex = Assert.ThrowsException<InvalidDataException>(() =>
                 {
-                    strictRegistry.GetMatrix<double>("Close");
+                    strictRegistry.Primary.GetMatrix<double>("Close");
                 });
                 Assert.IsTrue(ex.Message.Contains("Close") && ex.Message.Contains("共 1/2 行无效"));
                 ((System.IDisposable)strictRegistry).Dispose();
@@ -126,7 +126,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                     NullableFields = new List<string> { "Close" }
                 };
                 var allowRegistry = TimeseriesRegistryFactory.Create(tempDir, allowConfig);
-                var matrix = allowRegistry.GetMatrix<double>("Close");
+                var matrix = allowRegistry.Primary.GetMatrix<double>("Close");
                 Assert.IsNotNull(matrix);
                 Assert.AreEqual(2, matrix.RowCount);
                 Assert.IsTrue(double.IsNaN(matrix[0, 0]));

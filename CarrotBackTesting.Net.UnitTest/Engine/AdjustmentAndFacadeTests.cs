@@ -1163,24 +1163,27 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
         private class MockTimeseriesRegistry : ITimeseriesRegistry
         {
             private readonly Dictionary<string, MockMatrix> _matrices = new(StringComparer.OrdinalIgnoreCase);
-            public IMarketMetadata Metadata { get; }
+            private readonly MockTimeseriesTable _primaryTable;
 
-            public MockTimeseriesRegistry(IMarketMetadata metadata) => Metadata = metadata;
+            public ITimeseriesTable Primary => _primaryTable;
+            public IMarketMetadata Metadata => _primaryTable.Metadata;
+
+            public ITimeseriesTable this[string tableName] => GetTable(tableName);
+            public ITimeseriesTable GetTable(string tableName) => tableName == _primaryTable.Name ? _primaryTable : throw new KeyNotFoundException($"时序表 '{tableName}' 不存在。");
+            public bool HasTable(string tableName) => tableName == _primaryTable.Name;
+            public IReadOnlyList<string> GetTableNames() => new[] { _primaryTable.Name };
+
+            public MockTimeseriesRegistry(IMarketMetadata metadata)
+            {
+                _primaryTable = new MockTimeseriesTable(metadata, f => _matrices.TryGetValue(f, out var m) ? m : null, HasField);
+            }
 
             public void RegisterMatrix(string field, double[,] data)
             {
                 _matrices[field] = new MockMatrix(data);
             }
 
-            public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
-            {
-                if (_matrices.TryGetValue(fieldName, out var m))
-                {
-                    return (IReadOnlyMatrix2D<T>)(object)m;
-                }
-                throw new KeyNotFoundException($"Field {fieldName} not found.");
-            }
-
+            public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged => _primaryTable.GetMatrix<T>(fieldName);
             public bool HasField(string fieldName) => _matrices.ContainsKey(fieldName);
             public bool IsUpdated(int tableIndex) => true;
             public bool IsUpdated(string tableName) => true;

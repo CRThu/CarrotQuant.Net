@@ -44,9 +44,9 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             
             using (var provider = new TimeseriesRegistry(source, _tempCacheDir))
             {
-                Assert.IsTrue(provider.HasField("close"));
+                Assert.IsTrue(provider.Primary.HasField("close"));
                 
-                var buffer = provider.GetMatrix<double>("close");
+                var buffer = provider.Primary.GetMatrix<double>("close");
                 Assert.IsNotNull(buffer);
                 Assert.AreEqual(source.TradeDates.Count, buffer.RowCount);
                 Assert.AreEqual(source.Symbols.Count, buffer.Width);
@@ -63,10 +63,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             using var provider = new TimeseriesRegistry(source, _tempCacheDir);
 
-            Assert.IsTrue(provider.HasField("close"));
-            Assert.IsTrue(provider.HasField("open"));
+            Assert.IsTrue(provider.Primary.HasField("close"));
+            Assert.IsTrue(provider.Primary.HasField("open"));
 
-            var buffer = provider.GetMatrix<double>("close");
+            var buffer = provider.Primary.GetMatrix<double>("close");
             Assert.IsNotNull(buffer);
             Assert.AreEqual(source.TradeDates.Count, buffer.RowCount);
             Assert.AreEqual(source.Symbols.Count, buffer.Width);
@@ -81,7 +81,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             
             using var provider = new TimeseriesRegistry(source, _tempCacheDir);
             
-            Assert.ThrowsException<KeyNotFoundException>(() => provider.GetMatrix<double>("non_existent_field"));
+            Assert.ThrowsException<KeyNotFoundException>(() => provider.Primary.GetMatrix<double>("non_existent_field"));
         }
 
         [TestMethod]
@@ -92,10 +92,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
             using var provider = new TimeseriesRegistry(source, _tempCacheDir);
-            var buffer = provider.GetMatrix<double>("close");
+            var buffer = provider.Primary.GetMatrix<double>("close");
             
-            Assert.AreEqual(provider.Metadata.TradeDates.Count, buffer.RowCount, "Buffer 行数与交易日数量不匹配");
-            Assert.AreEqual(provider.Metadata.Symbols.Count, buffer.Width, "Buffer 列数与股票数量不匹配");
+            Assert.AreEqual(provider.Primary.Metadata.TradeDates.Count, buffer.RowCount, "Buffer 行数与交易日数量不匹配");
+            Assert.AreEqual(provider.Primary.Metadata.Symbols.Count, buffer.Width, "Buffer 列数与股票数量不匹配");
         }
 
         [TestMethod]
@@ -107,15 +107,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             
             using (var provider = new TimeseriesRegistry(source, _tempCacheDir))
             {
-                var buffer = provider.GetMatrix<double>("close");
+                var buffer = provider.Primary.GetMatrix<double>("close");
                 
                 string csvPath = Path.Combine(csvRoot, tableId, "year=2021", "sh.600000.csv");
                 var lines = File.ReadAllLines(csvPath).Skip(1).ToList();
                 
                 int colIdx = -1;
-                for (int i = 0; i < provider.Metadata.Symbols.Count; i++)
+                for (int i = 0; i < provider.Primary.Metadata.Symbols.Count; i++)
                 {
-                    if (provider.Metadata.Symbols[i] == "sh.600000")
+                    if (provider.Primary.Metadata.Symbols[i] == "sh.600000")
                     {
                         colIdx = i;
                         break;
@@ -149,7 +149,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 refreshMode: CacheRefreshMode.Lazy, 
                 tableId: tableId))
             {
-                var buf1 = provider1.GetMatrix<double>("close");
+                var buf1 = provider1.Primary.GetMatrix<double>("close");
                 Assert.IsNotNull(buf1);
                 Assert.AreEqual(source.TradeDates.Count, buf1.RowCount);
             }
@@ -168,7 +168,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 refreshMode: CacheRefreshMode.Lazy, 
                 tableId: tableId))
             {
-                var buf2 = provider2.GetMatrix<double>("close");
+                var buf2 = provider2.Primary.GetMatrix<double>("close");
                 Assert.IsNotNull(buf2);
                 Assert.AreEqual(source.TradeDates.Count, buf2.RowCount);
                 Assert.AreEqual(source.Symbols.Count, buf2.Width);
@@ -182,7 +182,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 refreshMode: CacheRefreshMode.Force, 
                 tableId: tableId))
             {
-                var buf3 = provider3.GetMatrix<double>("close");
+                var buf3 = provider3.Primary.GetMatrix<double>("close");
                 Assert.IsNotNull(buf3);
                 Assert.AreEqual(source.TradeDates.Count, buf3.RowCount);
             }
@@ -211,7 +211,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 refreshMode: CacheRefreshMode.Lazy,
                 tableId: tableId))
             {
-                var buf1 = provider1.GetMatrix<double>(fieldName);
+                var buf1 = provider1.Primary.GetMatrix<double>(fieldName);
                 Assert.AreEqual(2, buf1.Width);
                 Assert.AreEqual(3, buf1.RowCount);
                 Assert.AreEqual(0.0, buf1[0, 0], 1e-4);
@@ -235,7 +235,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 refreshMode: CacheRefreshMode.Lazy,
                 tableId: tableId))
             {
-                var buf2 = provider2.GetMatrix<double>(fieldName);
+                var buf2 = provider2.Primary.GetMatrix<double>(fieldName);
                 Assert.AreEqual(3, buf2.Width);
                 Assert.AreEqual(3, buf2.RowCount);
                 Assert.AreEqual(0.0, buf2[0, 0], 1e-4);
@@ -269,7 +269,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 refreshMode: CacheRefreshMode.Force,
                 tableId: tableId))
             {
-                var bufPe = provider1.GetMatrix<double>(fieldPe);
+                var bufPe = provider1.Primary.GetMatrix<double>(fieldPe);
                 Assert.AreEqual(1, bufPe.Width);
             }
 
@@ -282,7 +282,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 refreshMode: CacheRefreshMode.Lazy,
                 tableId: tableId))
             {
-                var bufPe = provider2.GetMatrix<double>(fieldPe);
+                var bufPe = provider2.Primary.GetMatrix<double>(fieldPe);
                 Assert.AreEqual(2, bufPe.Width);
                 Assert.IsFalse(double.IsNaN(bufPe[0, 0]));
             }
@@ -297,7 +297,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             mockSource.DatesList.Add(new DateTime(2025, 1, 2));
 
             using var provider = new TimeseriesRegistry(mockSource, _tempCacheDir);
-            provider.GetMatrix<int>("close");
+            provider.Primary.GetMatrix<int>("close");
         }
 
         [TestMethod]
@@ -314,7 +314,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
             {
-                var buffer = provider.GetMatrix<double>("close");
+                var buffer = provider.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(1, buffer.RowCount);
 
                 // 通过门面追加实时行
@@ -336,7 +336,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
             {
-                var buffer = providerRestart.GetMatrix<double>("close");
+                var buffer = providerRestart.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(2, buffer.RowCount);
                 Assert.AreEqual(88.8, buffer[1, 0], 1e-4);
                 Assert.AreEqual(99.9, buffer[1, 1], 1e-4);
@@ -359,7 +359,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
             {
-                var buf = provider1.GetMatrix<double>("close");
+                var buf = provider1.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
             }
 
@@ -368,7 +368,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
             {
-                var buf = provider2.GetMatrix<double>("close");
+                var buf = provider2.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
             }
 
@@ -378,7 +378,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
             {
-                var buf = provider3.GetMatrix<double>("close");
+                var buf = provider3.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(2, buf.Width);
             }
 
@@ -394,7 +394,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource, _tempCacheDir,
                 pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
             {
-                var buf = provider4.GetMatrix<double>("close");
+                var buf = provider4.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
             }
         }
@@ -413,7 +413,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             using var provider = new TimeseriesRegistry(mockSource, _tempCacheDir);
 
             // 1. 验证通过一维扩展获取默认标的（第 0 列）全量时间序列
-            var defaultSeries = provider.GetSeries<double>("close");
+            var defaultSeries = provider.Primary.GetSeries<double>("close");
             Assert.AreEqual(100, defaultSeries.Length);
 
             for (int r = 0; r < 100; r++)
@@ -422,14 +422,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 2. 验证通过代码名称获取指定标的一维序列
-            var namedSeries = provider.GetSeries<double>("close", "BTCUSDT");
+            var namedSeries = provider.Primary.GetSeries<double>("close", "BTCUSDT");
             Assert.AreEqual(100, namedSeries.Length);
             Assert.AreEqual(defaultSeries[50], namedSeries[50]);
 
             // 3. 验证查询不存在的代码抛出 KeyNotFoundException
             Assert.ThrowsException<KeyNotFoundException>(() =>
             {
-                provider.GetSeries<double>("close", "ETHUSDT");
+                provider.Primary.GetSeries<double>("close", "ETHUSDT");
             });
         }
 
@@ -447,7 +447,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             using var provider = new TimeseriesRegistry(mockSource, _tempCacheDir);
-            var buffer = provider.GetMatrix<double>("close");
+            var buffer = provider.Primary.GetMatrix<double>("close");
 
             // 并发模拟：20 个线程、10,000 次高频并发随机访问同一个只读二维矩阵
             System.Threading.Tasks.Parallel.For(0, 10000, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 20 }, iter =>

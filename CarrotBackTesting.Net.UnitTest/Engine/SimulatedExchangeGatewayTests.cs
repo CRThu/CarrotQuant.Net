@@ -300,15 +300,22 @@ public class SimulatedExchangeGatewayTests
     private class DummyTimeseriesRegistry : ITimeseriesRegistry
     {
         private readonly IReadOnlyMatrix2D<double> _matrix;
-        private readonly IMarketMetadata _metadata;
+        private readonly MockTimeseriesTable _primaryTable;
 
         public DummyTimeseriesRegistry(IReadOnlyMatrix2D<double> matrix, IMarketMetadata metadata)
         {
             _matrix = matrix;
-            _metadata = metadata;
+            _primaryTable = new MockTimeseriesTable(metadata, f => _matrix, HasField);
         }
 
-        public IMarketMetadata Metadata => _metadata;
+        public ITimeseriesTable Primary => _primaryTable;
+        public IMarketMetadata Metadata => _primaryTable.Metadata;
+
+        public ITimeseriesTable this[string tableName] => GetTable(tableName);
+        public ITimeseriesTable GetTable(string tableName) => tableName == _primaryTable.Name ? _primaryTable : throw new KeyNotFoundException($"时序表 '{tableName}' 不存在。");
+        public bool HasTable(string tableName) => tableName == _primaryTable.Name;
+        public IReadOnlyList<string> GetTableNames() => new[] { _primaryTable.Name };
+
         public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged => (IReadOnlyMatrix2D<T>)_matrix;
         public bool HasField(string fieldName) => string.Equals(fieldName, "close", StringComparison.OrdinalIgnoreCase);
         public IReadOnlyList<T> GetSeries<T>(string fieldName) where T : unmanaged => throw new NotImplementedException();
@@ -323,13 +330,21 @@ public class SimulatedExchangeGatewayTests
     internal class MultiMatrixTimeseriesRegistry : ITimeseriesRegistry
     {
         private readonly Dictionary<string, IReadOnlyMatrix2D<double>> _matrices;
-        public IMarketMetadata Metadata { get; }
+        private readonly MockTimeseriesTable _primaryTable;
 
         public MultiMatrixTimeseriesRegistry(IMarketMetadata metadata, Dictionary<string, IReadOnlyMatrix2D<double>> matrices)
         {
-            Metadata = metadata;
             _matrices = matrices;
+            _primaryTable = new MockTimeseriesTable(metadata, f => _matrices.TryGetValue(f, out var mat) ? mat : null, HasField);
         }
+
+        public ITimeseriesTable Primary => _primaryTable;
+        public IMarketMetadata Metadata => _primaryTable.Metadata;
+
+        public ITimeseriesTable this[string tableName] => GetTable(tableName);
+        public ITimeseriesTable GetTable(string tableName) => tableName == _primaryTable.Name ? _primaryTable : throw new KeyNotFoundException($"时序表 '{tableName}' 不存在。");
+        public bool HasTable(string tableName) => tableName == _primaryTable.Name;
+        public IReadOnlyList<string> GetTableNames() => new[] { _primaryTable.Name };
 
         public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged
         {

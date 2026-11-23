@@ -196,9 +196,9 @@ public class CliRunnerTests
 
                 public void OnUpdate(IEngineContext context)
                 {
-                    if (!_bought && context.Timeseries.Metadata.Symbols.Count > 0)
+                    if (!_bought && context.Timeseries.Primary.Metadata.Symbols.Count > 0)
                     {
-                        string symbol = context.Timeseries.Metadata.Symbols[0];
+                        string symbol = context.Timeseries.Primary.Metadata.Symbols[0];
                         double close = context.GetClose(0);
                         if (close > 0.0 && !double.IsNaN(close))
                         {

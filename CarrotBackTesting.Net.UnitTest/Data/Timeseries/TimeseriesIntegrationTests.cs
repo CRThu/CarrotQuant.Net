@@ -55,17 +55,17 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var tsRegistry = (ITimeseriesRegistry)registry;
 
             Assert.IsNotNull(tsRegistry);
-            Assert.IsTrue(tsRegistry.HasField("close"));
-            Assert.IsTrue(tsRegistry.Metadata.Symbols.Count > 0);
-            Assert.IsTrue(tsRegistry.Metadata.TradeDates.Count > 0);
+            Assert.IsTrue(tsRegistry.Primary.HasField("close"));
+            Assert.IsTrue(tsRegistry.Primary.Metadata.Symbols.Count > 0);
+            Assert.IsTrue(tsRegistry.Primary.Metadata.TradeDates.Count > 0);
 
             // 验证时步推进
             ((CarrotBacktesting.NET.Abstraction.Data.ITimeseriesScheduler)tsRegistry).StepTo(0);
 
-            var closeMatrix = tsRegistry.GetMatrix<double>("close");
+            var closeMatrix = tsRegistry.Primary.GetMatrix<double>("close");
             Assert.IsNotNull(closeMatrix);
-            Assert.AreEqual(tsRegistry.Metadata.TradeDates.Count, closeMatrix.RowCount);
-            Assert.AreEqual(tsRegistry.Metadata.Symbols.Count, closeMatrix.Width);
+            Assert.AreEqual(tsRegistry.Primary.Metadata.TradeDates.Count, closeMatrix.RowCount);
+            Assert.AreEqual(tsRegistry.Primary.Metadata.Symbols.Count, closeMatrix.Width);
 
             double firstVal = closeMatrix[0, 0];
             Assert.IsFalse(double.IsInfinity(firstVal));
@@ -89,14 +89,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var tsRegistry = (ITimeseriesRegistry)registry;
 
             Assert.IsNotNull(tsRegistry);
-            Assert.IsTrue(tsRegistry.HasField("close"));
-            Assert.IsTrue(tsRegistry.Metadata.Symbols.Count > 0);
-            Assert.IsTrue(tsRegistry.Metadata.TradeDates.Count > 0);
+            Assert.IsTrue(tsRegistry.Primary.HasField("close"));
+            Assert.IsTrue(tsRegistry.Primary.Metadata.Symbols.Count > 0);
+            Assert.IsTrue(tsRegistry.Primary.Metadata.TradeDates.Count > 0);
 
-            var closeMatrix = tsRegistry.GetMatrix<double>("close");
+            var closeMatrix = tsRegistry.Primary.GetMatrix<double>("close");
             Assert.IsNotNull(closeMatrix);
-            Assert.AreEqual(tsRegistry.Metadata.TradeDates.Count, closeMatrix.RowCount);
-            Assert.AreEqual(tsRegistry.Metadata.Symbols.Count, closeMatrix.Width);
+            Assert.AreEqual(tsRegistry.Primary.Metadata.TradeDates.Count, closeMatrix.RowCount);
+            Assert.AreEqual(tsRegistry.Primary.Metadata.Symbols.Count, closeMatrix.Width);
         }
 
         [TestMethod]
@@ -132,8 +132,8 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             var tsRegistry = (ITimeseriesRegistry)registry;
 
             // 3. 验证数据读取
-            Assert.IsTrue(tsRegistry.HasField("close"));
-            var matrix = tsRegistry.GetMatrix<double>("close");
+            Assert.IsTrue(tsRegistry.Primary.HasField("close"));
+            var matrix = tsRegistry.Primary.GetMatrix<double>("close");
             Assert.IsNotNull(matrix);
             Assert.IsTrue(matrix.RowCount > 0);
             Assert.IsTrue(matrix.Width > 0);

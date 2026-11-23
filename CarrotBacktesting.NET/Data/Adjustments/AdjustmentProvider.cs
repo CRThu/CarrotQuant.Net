@@ -261,9 +261,9 @@ namespace CarrotBacktesting.NET.Data
             }
 
             IReadOnlyMatrix2D<double>? closeMatrix = null;
-            if (timeseries.HasField("close"))
+            if (timeseries.Primary.HasField("close"))
             {
-                closeMatrix = timeseries.GetMatrix<double>("close");
+                closeMatrix = timeseries.Primary.GetMatrix<double>("close");
             }
 
             var unassignedSymbols = new List<string>();

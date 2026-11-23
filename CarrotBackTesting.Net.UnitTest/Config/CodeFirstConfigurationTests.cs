@@ -93,10 +93,10 @@ namespace CarrotBackTesting.Net.UnitTest.Config
 
             // 5. 验证纯代码装配结果
             Assert.IsNotNull(ts);
-            Assert.IsTrue(ts.HasField("close"));
-            Assert.IsTrue(ts.Metadata.Symbols.Count > 0);
+            Assert.IsTrue(ts.Primary.HasField("close"));
+            Assert.IsTrue(ts.Primary.Metadata.Symbols.Count > 0);
 
-            var closeMatrix = ts.GetMatrix<double>("close");
+            var closeMatrix = ts.Primary.GetMatrix<double>("close");
             Assert.IsNotNull(closeMatrix);
             Assert.IsTrue(closeMatrix.RowCount > 0);
 
@@ -143,7 +143,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             });
 
             // 验证可用性
-            Assert.IsTrue(ts.HasField("close"));
+            Assert.IsTrue(ts.Primary.HasField("close"));
             Assert.IsTrue(events.HasTable("adjustments"));
             Assert.IsTrue(fields.HasTable("industry"));
         }
@@ -172,7 +172,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
             // 直接构建单字段时序矩阵
             using var source = TimeseriesSourceFactory.Create(resolver, "ashare.kline.1d.raw.baostock");
             using var tsRegistry = new TimeseriesRegistry(source, resolver.StorageRoot, enableCache: false);
-            var closeMatrix = tsRegistry.GetMatrix<double>("close");
+            var closeMatrix = tsRegistry.Primary.GetMatrix<double>("close");
             Assert.IsNotNull(closeMatrix);
             Assert.IsTrue(closeMatrix.RowCount > 0);
         }

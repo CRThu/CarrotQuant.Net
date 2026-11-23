@@ -49,7 +49,7 @@ public sealed class SignalAnalyzer : AnalyzerBase<SignalStatistics>
             return null;
         }
 
-        if (!timeseries.HasField(options.PriceFieldName))
+        if (!timeseries.Primary.HasField(options.PriceFieldName))
         {
             return null;
         }
@@ -64,8 +64,8 @@ public sealed class SignalAnalyzer : AnalyzerBase<SignalStatistics>
         bool isRoot)
     {
         int horizonSteps = options.SignalHorizonSteps;
-        var matrix = timeseries.GetMatrix<double>(options.PriceFieldName);
-        var metadata = timeseries.Metadata;
+        var matrix = timeseries.Primary.GetMatrix<double>(options.PriceFieldName);
+        var metadata = timeseries.Primary.Metadata;
         int rowCount = Math.Min(metadata.TradeDates.Count, matrix.RowCount);
 
         var validSamples = new List<SignalSample>(signals.Count);

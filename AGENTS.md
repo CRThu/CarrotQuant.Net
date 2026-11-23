@@ -98,7 +98,8 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 
 | 接口 / 类型 | 文件 | 职责 |
 | :--- | :--- | :--- |
-| `ITimeseriesRegistry` | `Abstraction/Data/ITimeseriesRegistry.cs` | 数据层只读输出入口，`GetMatrix<T>(fieldName)` 返回 `IReadOnlyMatrix2D<T>`，提供 `IsUpdated(tableIndex/tableName)` 常数时间变更感知与 `GetTableIndex` |
+| `ITimeseriesRegistry` | `Abstraction/Data/ITimeseriesRegistry.cs` | 时序注册中心，统一管理主时序表 `Primary` 与子表 `this[name]`，提供 `IsUpdated` 常数时间变更感知与 `GetTableIndex` |
+| `ITimeseriesTable` | `Abstraction/Data/ITimeseriesTable.cs` | 单一时序表契约，提供 `GetMatrix<T>` 返回 `IReadOnlyMatrix2D<T>`、`GetCurrentRowIndex` 时间轴映射与 `GetCurrentRow`/`GetCurrentValue` 切片访问 |
 | `ITimeseriesWriter` | `Abstraction/Data/ITimeseriesWriter.cs` | 实盘时序写入与一致性落盘契约（`AppendRow`, `AppendCol`, `Commit`） |
 | `IFieldTable` | `Abstraction/Data/IFieldTable.cs` | 标的静态维表契约，单一内核支持动态点查与 `.Get<T>()`/`.As<T>()` 强类型流式 LINQ |
 | `IFieldRegistry` | `Abstraction/Data/IFieldRegistry.cs` | 标的静态属性与维表对应契约，支持 1:1 单值点查、1:N 多值标签及 N:1 双向倒排索引选股 |
@@ -115,7 +116,7 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
    - `HasNewEvents(DateTime time, string? tableName = null)`：在主时钟推进时，常数时间探测指定时刻全表或特定事件表是否存在新到达事件，避免空跑无用事件处理逻辑。
 
 **核心内存约束 (SSOT)**：
-1. `ITimeseriesRegistry.GetMatrix<T>()` 必须返回只读类型 `IReadOnlyMatrix2D<T>`，严禁暴露可写 Matrix。单标的（$N=1$）回测通过 `provider.GetSeries<T>()` 获取只读一维时序序列。
+1. `ITimeseriesTable.GetMatrix<T>()` 必须返回只读类型 `IReadOnlyMatrix2D<T>`，严禁暴露可写 Matrix。单标的（$N=1$）回测通过 `table.GetSeries<T>()` 获取只读一维时序序列。主表矩阵通过 `registry.Primary.GetMatrix<T>()` 获取，子表矩阵通过 `registry[tableName].GetMatrix<T>()` 获取。
 2. 维度严格对齐：`IMarketMetadata.Symbols` 顺序对应列索引；`TradeDates` 顺序对应行索引。
 3. 零内存暴露：严禁对外暴露 `List<T>`、`T[]` 等分配型集合供外部持有。
 4. **Symbol 维度契约（只增不减，只多不少）**：在系统生命周期内，标的代码（Symbols）具有全局唯一且单调递增的列索引（`SymbolIndex`）。退市标的绝不剔除（以 `NaN` 占位），新增标的只追加在尾部。已有列索引绝对不可变动，杜绝幸存者偏差。
