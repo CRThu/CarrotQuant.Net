@@ -26,7 +26,15 @@ public sealed record LedgerPositionSnapshot(
 /// <summary>
 /// 在途 T+N 批次快照模型。
 /// </summary>
-public sealed record PendingLotSnapshot(decimal Quantity, MarketTime AvailableDate);
+public sealed record PendingLotSnapshot(
+    decimal Quantity,
+    int RemainingDays,
+    MarketTime AvailableDate = default,
+    MarketTime LastUpdatedDate = default)
+{
+    public PendingLotSnapshot(decimal quantity, MarketTime availableDate)
+        : this(quantity, 1, availableDate, default) { }
+}
 
 /// <summary>
 /// 纯内存财务账本不可变状态快照。

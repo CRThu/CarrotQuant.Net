@@ -279,20 +279,20 @@ public class OnlineTradingIntegrationTests
         broker.SyncState(99_000.0, new Dictionary<string, decimal> { ["sh.600000"] = 100m });
         Assert.AreEqual(100m, broker.GetAvailablePosition("sh.600000"));
 
-        // 提交卖出 300 股 @ 10 元（平多 100 股 + 开空 200 股，冻结现金 2000 元，冻结持仓 100 股）
+        // 提交卖出 300 股 @ 10 元（平多 100 股 + 开空 200 股，扣除平多 1000 信用后冻结现金 1000 元，冻结持仓 100 股）
         var order = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 300m);
         long orderId = broker.SubmitOrder(order);
 
         Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "100 股平仓额度被 100% 冻结");
-        Assert.AreEqual(99_000.0 - 2000.0, broker.GetCash(), "新开空 200 股预冻结 2000 元保证金");
+        Assert.AreEqual(99_000.0 - 1000.0, broker.GetCash(), "新开空 200 股抵扣平多 1000 信用后预冻结 1000 元保证金");
 
         // 批次 1: 成交 40 股（纯平仓）
         gateway.SimulateTradeFill(orderId, 10.0, 40m, 0.0);
         Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(orderId));
         Assert.AreEqual(60m, broker.GetPosition("sh.600000"));
         Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
-        // 纯平仓不消耗开空保证金，冻结现金仍为 2000，可用现金为 97000 + 400 (平仓回款) = 97400
-        Assert.AreEqual(97400.0, broker.GetCash());
+        // 纯平仓不消耗开空保证金，冻结现金仍为 1000，可用现金为 98000 + 400 (平仓回款) = 98400
+        Assert.AreEqual(98400.0, broker.GetCash());
 
         // 批次 2: 成交 80 股（平多最后 60 股 + 开空 20 股）
         gateway.SimulateTradeFill(orderId, 10.0, 80m, 0.0);

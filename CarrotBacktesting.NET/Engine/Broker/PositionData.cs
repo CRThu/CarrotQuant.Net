@@ -68,6 +68,7 @@ internal sealed class PositionData
 }
 
 /// <summary>
-/// 在途交收份额批次模型。
+/// 在途交收份额批次模型（只读不可变值类型，0 GC 堆分配）。
+/// 专职维护 T+N 在途锁定份额及所需剩余交收交易日步长。
 /// </summary>
-internal sealed record PendingLot(decimal Quantity, MarketTime AvailableDate);
+internal readonly record struct PendingLot(decimal Quantity, int RemainingDays);

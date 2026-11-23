@@ -114,6 +114,7 @@ namespace CarrotBacktesting.NET.Config
             }
         }
 
+
         #region 对称 Hook 矩阵 (仅在代码中挂载，YAML 序列化时自动忽略)
 
         /// <summary>

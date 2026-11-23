@@ -22,6 +22,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 
     private double _cash;
     private double _frozenCash;
+    private MarketTime _lastRolloverDate = MarketTime.MinValue;
 
     public double Cash => _cash;
     public double FrozenCash => _frozenCash;
@@ -362,7 +363,14 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             }
         }
 
-        // 3. 资金可用性校验：纯平仓所需现金为 0（手续费在成交回款中扣除）；新开仓部分需冻结保证金与预估手续费
+        // 3. 资金可用性校验：
+        // 新开仓部分需计算基础保证金与预估手续费需求
+        if (openQty > 0m && (estimatedPrice <= 0.0 || double.IsNaN(estimatedPrice) || double.IsInfinity(estimatedPrice)))
+        {
+            rejectReason = $"Cannot determine valid reference price for '{request.Symbol}' to estimate margin for opening position.";
+            return false;
+        }
+
         double requiredMargin = (double)openQty * estimatedPrice * multiplier * marginRate;
         double estimatedTurnover = (double)openQty * estimatedPrice * multiplier;
         double estimatedFee = openQty > 0m && estimatedPrice > 0.0
@@ -370,15 +378,40 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             : 0.0;
         double requiredCash = requiredMargin + estimatedFee;
 
-        if (AvailableCash < requiredCash)
+        // 翻仓场景信用对冲（First Principles）：
+        // 当订单同时包含平仓 (closeQty > 0) 与反向开仓 (openQty > 0) 时，
+        // 平仓成交将在落账瞬间释放持仓保证金与平仓货款 (marginReleased + grossPnL - closeFee)，
+        // 此部分释放金额可作为反向开仓的信用缓冲，抵扣新开仓的现金预冻结需求。
+        double netRequiredCash = requiredCash;
+        if (closeQty > 0m && openQty > 0m)
         {
-            rejectReason = $"Insufficient cash: available={AvailableCash:F2}, required={requiredCash:F2}";
+            // 平仓预计释放的持仓保证金
+            double marginReleased = (double)closeQty * pos.AverageCost * multiplier * marginRate;
+
+            // 平仓预计实现的毛盈亏
+            double grossPnL = pos.TotalQuantity > 0m
+                ? (estimatedPrice - pos.AverageCost) * (double)closeQty * multiplier
+                : (pos.AverageCost - estimatedPrice) * (double)closeQty * multiplier;
+
+            // 平仓预计手续费
+            double closeTurnover = (double)closeQty * estimatedPrice * multiplier;
+            double closeFee = FeeCalculator.CalculateFee(closeTurnover, request, _config);
+
+            // 平仓预计净现金流入（正值抵扣新仓需求，负值追加亏损现金准备）
+            double estimatedCloseCashInflow = marginReleased + grossPnL - closeFee;
+
+            netRequiredCash = Math.Max(0.0, requiredCash - estimatedCloseCashInflow);
+        }
+
+        if (AvailableCash < netRequiredCash)
+        {
+            rejectReason = $"Insufficient cash: available={AvailableCash:F2}, required={netRequiredCash:F2}";
             return false;
         }
 
         // 4. 执行 Phase 1 预冻结
-        _frozenCash += requiredCash;
-        frozenCash = requiredCash;
+        _frozenCash += netRequiredCash;
+        frozenCash = netRequiredCash;
 
         if (closeQty > 0m)
         {
@@ -492,6 +525,10 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
         out SettlementRecord settlement)
     {
         ArgumentNullException.ThrowIfNull(report);
+        if (exchangeDate.Date > _lastRolloverDate)
+        {
+            _lastRolloverDate = exchangeDate.Date;
+        }
 
         // 1. 释放对应的预冻结额度
         if (unfreezeCash > 0.0)
@@ -624,7 +661,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
                 {
                     if (isBuy)
                     {
-                        pos.PendingLots.Add(new PendingLot(openQty, exchangeDate.Date.AddDays(settleDays)));
+                        pos.PendingLots.Add(new PendingLot(openQty, settleDays));
                     }
                     else
                     {
@@ -654,7 +691,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
                     }
                     else
                     {
-                        pos.PendingLots.Add(new PendingLot(openQty, exchangeDate.Date.AddDays(settleDays)));
+                        pos.PendingLots.Add(new PendingLot(openQty, settleDays));
                     }
                 }
                 else
@@ -689,10 +726,17 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 
     /// <summary>
     /// 推进交易所本地日切清算：将已到期的 T+N 在途持仓划转为可用持仓。
+    /// 纯事件驱动步进：每个客观交易日步进递减 1 个交易日步长；归零时全额解冻，零未来依赖，回测与实盘绝对同构。
     /// </summary>
     public void ProcessDayRollover(MarketTime exchangeDate)
     {
-        MarketTime targetDate = exchangeDate.Date;
+        MarketTime today = exchangeDate.Date;
+        if (today <= _lastRolloverDate)
+        {
+            return; // 同一日内或陈旧时间步，纯幂等守卫直接短路
+        }
+        _lastRolloverDate = today;
+
         foreach (var pos in _positions.Values)
         {
             if (pos.PendingLots.Count == 0) continue;
@@ -701,10 +745,15 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             for (int i = pos.PendingLots.Count - 1; i >= 0; i--)
             {
                 var lot = pos.PendingLots[i];
-                if (targetDate >= lot.AvailableDate)
+                int remaining = lot.RemainingDays - 1;
+                if (remaining <= 0)
                 {
                     unlocked += lot.Quantity;
                     pos.PendingLots.RemoveAt(i);
+                }
+                else
+                {
+                    pos.PendingLots[i] = new PendingLot(lot.Quantity, remaining);
                 }
             }
 
@@ -726,6 +775,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 
         _cash = cash;
         _frozenCash = 0.0;
+        _lastRolloverDate = MarketTime.MinValue;
         _positions.Clear();
         _positionsSnapshot = null;
         _positionVersion++;
@@ -754,7 +804,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             var lots = new List<PendingLotSnapshot>(pos.PendingLots.Count);
             foreach (var lot in pos.PendingLots)
             {
-                lots.Add(new PendingLotSnapshot(lot.Quantity, lot.AvailableDate));
+                lots.Add(new PendingLotSnapshot(lot.Quantity, lot.RemainingDays));
             }
 
             positionsList.Add(new LedgerPositionSnapshot(
@@ -805,7 +855,8 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 
             foreach (var lot in snap.PendingLots)
             {
-                pos.PendingLots.Add(new PendingLot(lot.Quantity, lot.AvailableDate));
+                int remDays = lot.RemainingDays > 0 ? lot.RemainingDays : 1;
+                pos.PendingLots.Add(new PendingLot(lot.Quantity, remDays));
             }
 
             _positions[snap.Symbol] = pos;

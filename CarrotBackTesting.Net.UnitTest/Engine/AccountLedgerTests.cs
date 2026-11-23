@@ -208,7 +208,7 @@ public class AccountLedgerTests
         Assert.AreEqual(100m, closeQty, "平仓额度被准确限制为当前多头 100 股");
         Assert.AreEqual(150m, openQty, "反手开空额度为剩余 150 股");
         Assert.AreEqual(100m, fPos, "持仓冻结 100 股");
-        Assert.AreEqual(1500.0, fCash, "反手新开 150 股按 10 元冻结 1500 元现金");
+        Assert.AreEqual(500.0, fCash, "反手新开 150 股扣除平多释放 1000 信用后，净冻结 500 元现金");
         Assert.AreEqual(0m, ledger.GetAvailablePosition("sh.600000"));
     }
 

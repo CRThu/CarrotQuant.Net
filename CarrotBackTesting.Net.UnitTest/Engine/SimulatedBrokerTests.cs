@@ -791,9 +791,10 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             // 初始持有多头 5 手 (假设通过 SyncState 注入，避免开仓扣现金)
             broker.SyncState(10.0, new Dictionary<string, decimal> { ["rb2505"] = 5m });
 
-            // 意图卖出 8 手 (平多 5 手，反手开空 3 手)
-            // 反手开空 3 手需要保证金 3 * 100 * 0.1 = 30 元，而可用现金仅 10 元，必须被拒单拦截
-            long id = broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 100.0, 8m), 100.0, null);
+            // 意图卖出 80 手 (平多 5 手，反手开空 75 手)
+            // 平多 5 手释放 50 元信用，反手开空 75 手需要保证金 75 * 100 * 0.1 = 750 元
+            // 净需现金 750 - 50 = 700 元，而可用现金仅 10 元，必须被拒单拦截
+            long id = broker.ExecuteOrder(new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 100.0, 80m), 100.0, null);
             Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(id));
             Assert.AreEqual(5m, broker.GetPosition("rb2505"), "拒单后持仓不变");
             Assert.AreEqual(10.0, broker.GetCash(), "拒单后资金不变");
@@ -1324,24 +1325,25 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(5m, broker.GetAvailablePosition("rb2505"));
             Assert.AreEqual(500_000.0 - 50.0, broker.GetCash(), 1e-4);
 
-            // 意图：在 110.0 元反手卖出 8 手 (平多 5 手 + 开空 3 手)
+            // 意图：在 110.0 元反手卖出 20 手 (平多 5 手 + 开空 15 手)
             // 市价为 100.0，挂单 110.0 未能立即成交 -> 进入未成交挂单
             // 复合冻结检查：
             // 1. 持仓冻结：多头 5 手可用持仓全部冻结 -> AvailableQty 从 5 降为 0
-            // 2. 资金冻结：反手新开 3 手所需保证金 = 3 * 110.0 * 0.1 = 33.0 元 -> Cash 从 (500000-50) 降为 (500000-50-33)
-            var flipOrder = new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 110.0, 8m);
+            // 2. 资金冻结：平多 5 手释放信用 50(保证金) + 50(浮盈) = 100 元；反手新开 15 手需保证金 15 * 110 * 0.1 = 165 元
+            //    净冻结现金 = 165 - 100 = 65 元 -> Cash 从 (500000-50) 降为 (500000-50-65)
+            var flipOrder = new OrderRequest("rb2505", OrderDirection.Sell, OrderType.Limit, 110.0, 20m);
             long orderId = broker.ExecuteOrder(flipOrder, 100.0, null);
 
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(orderId));
             Assert.AreEqual(5m, broker.GetPosition("rb2505"), "总持仓仍归属于账户");
             Assert.AreEqual(0m, broker.GetAvailablePosition("rb2505"), "平多的 5 手必须已被冻结");
-            Assert.AreEqual(500_000.0 - 50.0 - 33.0, broker.GetCash(), 1e-4, "反手新开 3 手的保证金 33 元必须已被冻结");
+            Assert.AreEqual(500_000.0 - 50.0 - 65.0, broker.GetCash(), 1e-4, "反手新开 15 手扣除平仓信用后净冻结 65 元保证金");
 
             // 撤单：持仓与反手保证金同时全额释放
             broker.CancelOrder(orderId);
             Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(orderId));
             Assert.AreEqual(5m, broker.GetAvailablePosition("rb2505"), "持仓冻结释放，可用持仓恢复为 5");
-            Assert.AreEqual(500_000.0 - 50.0, broker.GetCash(), 1e-4, "反手保证金 33 元释放恢复");
+            Assert.AreEqual(500_000.0 - 50.0, broker.GetCash(), 1e-4, "反手保证金 65 元释放恢复");
         }
 
         [TestMethod]
@@ -1655,11 +1657,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             broker.CancelOrder(id1);
             Assert.AreEqual(-5m, broker.GetAvailablePosition("rb2505"), "撤单后 5 手平空额度安全恢复");
 
-            // 发起 Buy 10 手翻多单：平 5 手空头 + 新开 5 手多头（按 90 元冻结 5 * 90 * 0.1 = 45 元保证金）
+            // 发起 Buy 10 手翻多单：平 5 手空头 + 新开 5 手多头
+            // 平空 5 手释放信用 50(保证金) + 50(浮盈) = 100 元，开多 5 手需保证金 5 * 90 * 0.1 = 45 元
+            // 释放信用完全覆盖开多保证金，净冻结现金为 0 元
             var flipOrder = new OrderRequest("rb2505", OrderDirection.Buy, OrderType.Limit, 90.0, 10m);
             long flipId = broker.SubmitOrder(flipOrder);
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(flipId));
-            Assert.AreEqual(50_000.0 - 50.0 - 45.0, broker.GetCash(), 1e-4, "翻多单的开多部分精准冻结 45 元开多保证金");
+            Assert.AreEqual(50_000.0 - 50.0, broker.GetCash(), 1e-4, "平空释放信用完全覆盖开多保证金，净现金冻结为 0 元");
         }
 
         [TestMethod]
@@ -2108,32 +2112,33 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(100_000.0 - 1000.0, broker.GetCash());
 
             // 2. 发起 25 手卖出（挂单 100），意图平 10 多 + 开 15 空
+            // 平多 10 手释放信用 1000 元，开空 15 手需保证金 1500 元，净冻结 500 元现金
             var flipReq = new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Limit, 100.0, 25m);
             long flipId = broker.SubmitOrder(flipReq);
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(flipId));
             Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "10 手多头全部被平仓冻结");
-            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4, "开 15 手空头需冻结 15 * 100 = 1500 现金");
+            Assert.AreEqual(500.0, broker.FrozenCash, 1e-4, "开 15 手空头扣除平多 1000 信用后冻结 500 现金");
 
             // 3. 分笔 1: 成交 6 手 @ 100 (平多段)
             gateway.PushExecution(new ExecutionReport(flipId, "BTCUSDT", 100.0, 6m, 0.0, now, CumQuantity: 6m, LeavesQuantity: 19m));
             Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(flipId));
             Assert.AreEqual(4m, broker.GetPosition("BTCUSDT"), "持仓剩余 4 手多头");
             Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "剩余 4 手多头仍在冻结");
-            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4, "平多阶段尚未消耗开空保证金冻结");
+            Assert.AreEqual(500.0, broker.FrozenCash, 1e-4, "平多阶段尚未消耗开空保证金冻结");
 
             // 4. 分笔 2: 成交 4 手 @ 100 (多头刚好平尽)
             gateway.PushExecution(new ExecutionReport(flipId, "BTCUSDT", 100.0, 4m, 0.0, now, CumQuantity: 10m, LeavesQuantity: 15m));
             Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(flipId));
             Assert.AreEqual(0m, broker.GetPosition("BTCUSDT"), "持仓归零");
             Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"));
-            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4, "持仓归零但开空 1500 冻结现金依然在途");
+            Assert.AreEqual(500.0, broker.FrozenCash, 1e-4, "持仓归零但开空 500 冻结现金依然在途");
 
             // 5. 分笔 3: 成交 5 手 @ 110 (正式翻空，建仓 5 手空头)
             gateway.PushExecution(new ExecutionReport(flipId, "BTCUSDT", 110.0, 5m, 0.0, now, CumQuantity: 15m, LeavesQuantity: 10m));
             Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(flipId));
             Assert.AreEqual(-5m, broker.GetPosition("BTCUSDT"), "持仓成功翻空为 -5");
             Assert.AreEqual(-5m, broker.GetAvailablePosition("BTCUSDT"));
-            Assert.AreEqual(1000.0, broker.FrozenCash, 1e-4, "剩余 10 手冻结现金 1000");
+            Assert.AreEqual(500.0 * 10 / 15, broker.FrozenCash, 1e-4, "剩余 10 手冻结现金按比例释放");
 
             // 6. 分笔 4: 成交 10 手 @ 120 (完成全额成交，LeavesQty = 0)
             gateway.PushExecution(new ExecutionReport(flipId, "BTCUSDT", 120.0, 10m, 0.0, now, CumQuantity: 25m, LeavesQuantity: 0m));
@@ -2169,13 +2174,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             gateway.PushExecution(new ExecutionReport(buyId, "BTCUSDT", 100.0, 10m, 0.0, now, CumQuantity: 10m, LeavesQuantity: 0m));
             Assert.AreEqual(10m, broker.GetPosition("BTCUSDT"));
 
-            // 发起 25 手卖出（挂单 100），冻结 10 手多头 + 1500 现金
+            // 发起 25 手卖出（挂单 100），冻结 10 手多头；开空 15 手扣除平多 1000 信用后净冻结 500 现金
             var flipSellId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Limit, 100.0, 25m));
             // 分笔成交 6 手 @ 100（还剩 4 手多头待平，15 手空头待开）
             gateway.PushExecution(new ExecutionReport(flipSellId, "BTCUSDT", 100.0, 6m, 0.0, now, CumQuantity: 6m, LeavesQuantity: 19m));
             Assert.AreEqual(4m, broker.GetPosition("BTCUSDT"));
             Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "剩余 4 手多头仍在冻结中");
-            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4);
+            Assert.AreEqual(500.0, broker.FrozenCash, 1e-4);
 
             // 撤单
             broker.CancelOrder(flipSellId);
@@ -2192,13 +2197,13 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.AreEqual(-10m, broker.GetPosition("BTCUSDT"));
             Assert.AreEqual(-10m, broker.GetAvailablePosition("BTCUSDT"));
 
-            // 发起 25 手买入（挂单 100），冻结 10 手平空 + 1500 现金开多
+            // 发起 25 手买入（挂单 100），冻结 10 手平空；开多 15 手扣除平空 1000 信用后净冻结 500 现金
             var flipBuyId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Limit, 100.0, 25m));
             // 分笔成交 6 手 @ 100（平掉 6 手空头，还剩 4 手空头待平，15 手多头待开）
             gateway.PushExecution(new ExecutionReport(flipBuyId, "BTCUSDT", 100.0, 6m, 0.0, now, CumQuantity: 6m, LeavesQuantity: 19m));
             Assert.AreEqual(-4m, broker.GetPosition("BTCUSDT"));
             Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "剩余 4 手空头平仓额度仍在冻结中");
-            Assert.AreEqual(1500.0, broker.FrozenCash, 1e-4);
+            Assert.AreEqual(500.0, broker.FrozenCash, 1e-4);
 
             // 撤单
             broker.CancelOrder(flipBuyId);
@@ -2231,10 +2236,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             double cashBefore = broker.GetCash();
 
             // 发出 25 手卖出限价单（挂单 110，未成交）
+            // 平多 10 手释放信用 1000(成本) + 100(浮盈) = 1100 元；开空 15 手需 1650 元，净冻结 550 元现金
             long flipSellId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Sell, OrderType.Limit, 110.0, 25m));
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(flipSellId));
             Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "多头全部冻结");
-            Assert.AreEqual(15 * 110.0, broker.FrozenCash, 1e-4, "开空 15 手冻结 1650 现金");
+            Assert.AreEqual(550.0, broker.FrozenCash, 1e-4, "开空 15 手扣除平多 1100 信用后净冻结 550 现金");
 
             // 撤单
             broker.CancelOrder(flipSellId);
@@ -2251,10 +2257,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             double cashShort = broker.GetCash();
 
             // 发出 25 手买入限价单（挂单 90，未成交）
+            // 平空 10 手释放信用 1000(成本) + 100(浮盈) = 1100 元；开多 15 手需 1350 元，净冻结 250 元现金
             long flipBuyId = broker.SubmitOrder(new OrderRequest("BTCUSDT", OrderDirection.Buy, OrderType.Limit, 90.0, 25m));
             Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(flipBuyId));
             Assert.AreEqual(0m, broker.GetAvailablePosition("BTCUSDT"), "空头平仓额度被挂单冻结占满");
-            Assert.AreEqual(15 * 90.0, broker.FrozenCash, 1e-4, "开多 15 手冻结 1350 现金");
+            Assert.AreEqual(250.0, broker.FrozenCash, 1e-4, "开多 15 手扣除平空 1100 信用后净冻结 250 现金");
 
             // 撤单
             broker.CancelOrder(flipBuyId);
@@ -2521,6 +2528,203 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 broker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 100m) with { OrderId = -5 });
             });
         }
+
+        #region 审计 8.5 与 8.2 专项闭环测试
+
+        [TestMethod]
+        public void UniversalNetting_FlipOrder_ZeroAvailableCash_WithAdequateCloseProceeds_ShouldSucceed()
+        {
+            // 防御审计 8.5：满仓/可用现金为 0 场景下的反手翻仓测试
+            var config = new BrokerConfig
+            {
+                InitialCash = 10_000.0,
+                AllowShort = true,
+                MarginRate = 1.0,
+                Multiplier = 1.0,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("AAPL", 100.0);
+
+            // 1. 全仓买入 100 股 @ 100 元，现金从 10,000 降为 0！可用现金完全归零！
+            broker.ExecuteOrder(new OrderRequest("AAPL", OrderDirection.Buy, OrderType.Market, 100.0, 100m), 100.0, null);
+            Assert.AreEqual(100m, broker.GetPosition("AAPL"));
+            Assert.AreEqual(0.0, broker.GetCash(), 1e-4, "满仓后可用现金为 0");
+
+            // 2. 意图翻仓做空：卖出 150 股 @ 100 元（平多 100 股 + 开空 50 股）
+            // 平多 100 股释放 10,000 元货款，开空 50 股需保证金 5,000 元
+            // 净需现金 Math.Max(0, 5000 - 10000) = 0 元！
+            // 旧版因 AvailableCash(0) < 5000 被错误拦截，新版必须成功提交并即时成交！
+            long flipId = broker.ExecuteOrder(new OrderRequest("AAPL", OrderDirection.Sell, OrderType.Market, 100.0, 150m), 100.0, null);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(flipId), "零现金满仓反手翻空必须成功执行，严禁误拒");
+            Assert.AreEqual(-50m, broker.GetPosition("AAPL"), "成功平掉 100 股多头并反手持有 50 股空头");
+            Assert.AreEqual(5_000.0, broker.GetCash(), 1e-4, "平多回款 10,000 扣减开空保证金 5,000 后现金为 5,000");
+            Assert.AreEqual(10_000.0, broker.GetTotalEquity(), 1e-4, "账户总权益 100% 守恒");
+        }
+
+        [TestMethod]
+        public void UniversalNetting_FlipOrder_ZeroAvailableCash_ShortToLong_WithAdequateCloseProceeds_ShouldSucceed()
+        {
+            // 防御审计 8.5：空翻多（Short to Long）零现金满仓翻多测试
+            var config = new BrokerConfig
+            {
+                InitialCash = 10_000.0,
+                AllowShort = true,
+                MarginRate = 1.0,
+                Multiplier = 1.0,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("AAPL", 100.0);
+
+            // 1. 建立 100 股空头 @ 100 元，扣除 10,000 元保证金，现金降为 0！
+            broker.ExecuteOrder(new OrderRequest("AAPL", OrderDirection.Sell, OrderType.Market, 100.0, 100m), 100.0, null);
+            Assert.AreEqual(-100m, broker.GetPosition("AAPL"));
+            Assert.AreEqual(0.0, broker.GetCash(), 1e-4, "空头建仓后可用现金为 0");
+
+            // 2. 发起翻多单：买入 150 股 @ 100 元（平空 100 股 + 开多 50 股）
+            // 平空释放 10,000 元保证金，开多需要 5,000 元保证金，净需现金为 0！
+            long flipId = broker.ExecuteOrder(new OrderRequest("AAPL", OrderDirection.Buy, OrderType.Market, 100.0, 150m), 100.0, null);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(flipId));
+            Assert.AreEqual(50m, broker.GetPosition("AAPL"), "成功平掉 100 股空头并反手持有 50 股多头");
+            Assert.AreEqual(5_000.0, broker.GetCash(), 1e-4);
+            Assert.AreEqual(10_000.0, broker.GetTotalEquity(), 1e-4, "账户总权益 100% 守恒");
+        }
+
+        [TestMethod]
+        public void UniversalNetting_FlipOrder_LowCash_WhenProceedsInsufficient_ShouldRejectWithDeficit()
+        {
+            // 防御审计 8.5：平仓释放信用不足以覆盖反手新开仓时的真实拒单拦截测试
+            var config = new BrokerConfig
+            {
+                InitialCash = 100.0,
+                AllowShort = true,
+                MarginRate = 1.0,
+                Multiplier = 1.0,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            broker.SyncState(100.0, new Dictionary<string, decimal> { ["AAPL"] = 10m });
+            broker.UpdateMarketPrice("AAPL", 10.0); // 标的暴跌至 10 元
+
+            // 持有 10 股多头，试图卖出 60 股（平多 10 股 + 开空 50 股）
+            // 平多 10 股 @ 10 元仅回款 100 元；反手开空 50 股 @ 10 元需保证金 500 元
+            // 净需现金 500 - 100 = 400 元，当前可用现金仅 100 元，必须被拒单拦截！
+            long flipId = broker.SubmitOrder(new OrderRequest("AAPL", OrderDirection.Sell, OrderType.Limit, 10.0, 60m));
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(flipId));
+            Assert.AreEqual(10m, broker.GetPosition("AAPL"), "拒单后持仓完好");
+            Assert.AreEqual(100.0, broker.GetCash(), 1e-4, "拒单后现金完好");
+        }
+
+        [TestMethod]
+        public void TPlusTwo_FridayToMonday_ShouldRemainLockedOnMonday_AndUnlockOnTuesday()
+        {
+            // 防御审计 8.2：跨周末 T+2 结算测试（周五买入，周一 T+1 仍锁定，周二 T+2 准时解锁）
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                SettleDays = 2,
+                AllowShort = false,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+
+            // 1. 周五 2025-01-03 盘中买入 1000 股
+            DateTime friday = new DateTime(2025, 1, 3, 10, 0, 0);
+            DateTime monday = new DateTime(2025, 1, 6, 9, 30, 0);
+            DateTime tuesday = new DateTime(2025, 1, 7, 9, 30, 0);
+
+            broker.Step(friday);
+            long buyId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 1000m), 10.0, null);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyId));
+            Assert.AreEqual(1000m, broker.GetPosition("sh.600000"));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "T+2 买入当日可用持仓为 0");
+
+            // 2. 周一 2025-01-06 跨过周末首个交易日开盘（经历 1 个客观交易日步长 T+1）
+            // 剩余步长为 1，周一必须依然保持锁定！
+            broker.Step(monday);
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "跨周末的周一仅经历 1 个交易日步长，T+2 持仓必须依然锁定！");
+
+            // 周一盘中多次推进依然严格守卫
+            broker.Step(new DateTime(2025, 1, 6, 14, 55, 0));
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"), "周一盘中持仓必须依然锁定");
+
+            // 3. 周二 2025-01-07 跨日开盘（经历第 2 个客观交易日步长 T+2）
+            // 到达 T+2 结算阈值，必须精准解锁为可用！
+            broker.Step(tuesday);
+            Assert.AreEqual(1000m, broker.GetAvailablePosition("sh.600000"), "周二开盘到达 T+2 结算，持仓必须精准解冻可用！");
+        }
+
+        [TestMethod]
+        public void TPlusN_WithHolidayCalendar_ShouldSkipHolidaysAccurately()
+        {
+            // 防御审计 8.2：法定节假日休市下的 T+1 跨节假日结算测试
+            // 周五买入，下周一为法定节假日休市，休市期间不推日切；周二开市为下一个实际交易日（经历第 1 个交易日步长解锁）
+            DateTime friday = new DateTime(2025, 5, 2, 10, 0, 0); // 周五
+            DateTime tuesday = new DateTime(2025, 5, 6, 9, 30, 0); // 节后周二首个开市日
+
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                SettleDays = 1,
+                AllowShort = false,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+
+            // 周五买入
+            broker.Step(friday);
+            broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 500m), 10.0, null);
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
+
+            // 节后首个实际交易日开盘（周二），日切步进 1 个交易日
+            broker.Step(tuesday);
+            Assert.AreEqual(500m, broker.GetAvailablePosition("sh.600000"), "节假日后首个实际交易日开盘，T+1 持仓精准解锁！");
+        }
+
+        [TestMethod]
+        public void TPlusThree_SpanningWeekend_ShouldUnlockOnThirdTradingDay()
+        {
+            // 防御审计 8.2：通用 T+3 跨周末结算（周三买入 -> 周四T+1 -> 周五T+2 -> 周一T+3 解锁）
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                SettleDays = 3,
+                AllowShort = false,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+
+            DateTime wednesday = new DateTime(2025, 1, 1, 10, 0, 0);
+            DateTime thursday = new DateTime(2025, 1, 2, 9, 30, 0);
+            DateTime friday = new DateTime(2025, 1, 3, 9, 30, 0);
+            DateTime monday = new DateTime(2025, 1, 6, 9, 30, 0);
+
+            // 1. 周三买入（SettleDays = 3）
+            broker.Step(wednesday);
+            broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 800m), 10.0, null);
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
+
+            // 2. 周四（经历 1 个交易日步长，剩余 2，锁定）
+            broker.Step(thursday);
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
+
+            // 3. 周五（经历第 2 个交易日步长，剩余 1，锁定）
+            broker.Step(friday);
+            Assert.AreEqual(0m, broker.GetAvailablePosition("sh.600000"));
+
+            // 4. 周一（跨过周末，经历第 3 个交易日步长，剩余 0，准时解锁）
+            broker.Step(monday);
+            Assert.AreEqual(800m, broker.GetAvailablePosition("sh.600000"), "周一开盘到达 T+3 结算阈值，持仓精准解冻可用！");
+        }
+
+        #endregion
 
         #endregion
     }
