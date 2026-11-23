@@ -82,10 +82,10 @@ namespace CarrotBacktesting.NET.Config
         public MarketTime? EndDate { get; set; }
 
         /// <summary>
-        /// 策略决策与更新时点（StrategyUpdateTiming）。
-        /// 默认为 StrategyUpdateTiming.OnClose（收盘更新），即当期 Bar 完全走完时驱动 OnUpdate。
+        /// 策略决策与更新时态相位（EnginePhase）。
+        /// 默认为 EnginePhase.Close（收盘相位更新），即当期 Bar 完全走完时驱动 OnUpdate。
         /// </summary>
-        public StrategyUpdateTiming UpdateTiming { get; set; } = StrategyUpdateTiming.OnClose;
+        public EnginePhase UpdatePhase { get; set; } = EnginePhase.Close;
     }
 
     /// <summary>

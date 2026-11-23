@@ -697,6 +697,7 @@ public interface IEngineContext
 {
     DateTime CurrentTime { get; }           // 当前时间步
     int CurrentIndex { get; }               // 当前交易日行索引
+    EnginePhase Phase { get; }              // 当前推进的微观时钟相位 (PreMarket/Open/Intraday/Close/PostMarket)
     ITimeseriesRegistry Timeseries { get; } // 全局时序注册表与行情矩阵输入
     IEventRegistry Events { get; }          // 异构事件流
     IFieldRegistry Fields { get; }          // 标的静态属性与维表字典
@@ -824,7 +825,7 @@ public interface ISimulatedExchange : IExchangeGateway
 {
     BarSnapshot GetBar(string symbol);
     void SetCurrentTime(MarketTime currentTime);
-    void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
+    void Step(MarketTime currentTime, IMarketDataProvider marketData, int currentIndex, EnginePhase phase);
     void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot);
 }
 

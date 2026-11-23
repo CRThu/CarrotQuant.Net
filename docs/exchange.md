@@ -98,8 +98,8 @@ public interface ISimulatedExchange : IExchangeGateway
     // 显式校准交易所当前物理时间
     void SetCurrentTime(MarketTime currentTime);
 
-    // 离线时间步推进与矩阵撮合
-    void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
+    // 离线时间步推进与矩阵撮合（微观时钟相位驱动，零历史兼容重载）
+    void Step(MarketTime currentTime, IMarketDataProvider marketData, int currentIndex, EnginePhase phase);
 
     // 纯行情数据驱动撮合（唯一物理切片权威输入，48 字节栈传递零 GC）
     void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot);
@@ -212,7 +212,7 @@ void OnMarketData(string symbol, MarketTime time, in BarSnapshot snapshot);
 - **回测时间穿越防御**：绝不隐式回退使用系统当前时钟 `DateTime.UtcNow`，彻底消除回测报告与历史时间轴错位的隐患。
 
 ### 3. 离线时间步撮合与日切自动撤单 (Step & Day Order)
-在离线回测中，引擎推进主时钟时调用 `gateway.Step(currentTime, timeseries, currentIndex)`：
+在离线回测中，引擎推进主时钟时调用 `gateway.Step(currentTime, marketData, currentIndex, phase)`：
 1. **跨日挂单集中撤销**：检测到全局时间戳发生跨日时，网关在撮合前自动扫描挂单簿，集中撤销所有当日有效（`TimeInForce.Day`）的未成交排队挂单，并在锁外统一派发 `OrderStatus.Canceled` 回报，驱动 `Broker` 自动全额解冻预占资金与持仓；撤单前有效（`TimeInForce.GoodTilCanceled`）挂单则继续在挂单簿排队；
 2. **快速排队检查**：若挂单簿总数 `OrderBook.Count == 0`，锁外派发已撤销回报后立即常数时间安全退出；
 3. **活跃标的索引遍历**：仅遍历挂单簿中当前存在排队订单的标的集合 `OrderBook.ActiveSymbols`；

@@ -102,16 +102,29 @@ stateDiagram-v2
   $$\text{TargetEndDate} = \text{EndDate.Date} + 1\text{天} - 1\text{纳秒Tick} \quad (23:59:59.9999999)$$
   确保截至日全天的盘中所有分钟 Bar（如 09:30 至 15:00）全部被包含在回测中，绝不丢失尾日数据。
 
-### 2. 热路径步进流水线 (Step Pipeline)
-每个时间步内部严格按以下顺序执行，全程无堆内存分配：
-1. **时钟推进**：`_context.UpdateStep(i, currentTime)`，更新上下文中的索引与当前物理时间戳；
-2. **跨日增量因子供给**：检测到跨日且存在除权事件时，针对性增量更新 `_context` 对应标的的累计复权因子；
-3. **时序缓存滑动**：引擎通过 `ITimeseriesScheduler` 调度契约（`_timeseriesScheduler?.StepTo(i)`）驱动底层 4096 行分块内存槽位滑动与异步预读，与上层策略只读门面 `ITimeseriesRegistry` 形成 CQRS 物理隔离；
-4. **仿真交易所撮合**：`_simExchange.Step(currentTime, _timeseries, i)`，撮合在途订单，**强制使用未复权物理价格（Raw）**；
-5. **经纪商时钟推进与跨日结算**：调用 `_broker.Step(currentTime)`，由经纪商自主比对换日阈值 `_nextRollTimeUtc`，到达交易所本地次日 00:00:00 时自动触发 T+N 可用持仓划转（详见 [broker.md](broker.md)）；
-6. **离散事件探测**：常数时间探测 `_events.HasNewEvents(currentTime)`，命中时调用预分配静态缓冲派发；
-7. **指标注册中心单步驱动**：`_indicators.Step(_context)`，统一单次泵送所有已注册指标池，多策略共享单次计算；
-8. **策略管线执行**：驱动 `_pipeline.OnUpdate(_context)`，策略黑板与状态机协同。
+### 2. 热路径 5 相位微观状态机 (EnginePhase Pipeline)
+每个时间步内部严格按 5 个微观时序相位依序推进，全程无堆内存分配（Zero GC）：
+1. **Phase 1: PreMarket（盘前准备阶段）**：
+   - `_context.Phase = EnginePhase.PreMarket`；
+   - 推进经纪商跨日结算 `_brokerDriver.PreMarketStep(currentTime)`（T+N 可用持仓解锁，先结算后可用）；
+   - 当日所有行情均尚未发生，`EngineContext` 严禁访问当期任何数据（包含 open），访问 `offset == 0` 严格抛出异常防前瞻偏差。
+2. **Phase 2: Open（开盘阶段）**：
+   - `_context.Phase = EnginePhase.Open`；
+   - 驱动仿真交易所执行开盘切片撮合 `_simExchange.Step(currentTime, _marketData, i, EnginePhase.Open)`（仅依据 `bar.Open` 撮合在途隔夜单，严禁偷看当期 Bar 的 `High/Low`）；
+   - 若策略/管线 `UpdatePhase` 配置为 `EnginePhase.Open`，触发策略开盘单次决策 `_pipeline.OnUpdate(_context)` 并即刻完成开盘价撮合。
+3. **Phase 3: Intraday（盘中阶段）**：
+   - `_context.Phase = EnginePhase.Intraday`；
+   - 驱动盘中条件单判定 `_brokerDriver.ProcessConditionalOrders(currentTime)`；
+   - 探测并派发离散异构事件（公告、舆情、停复牌等）`_pipeline.OnEvent(...)`。
+4. **Phase 4: Close（收盘阶段）**：
+   - `_context.Phase = EnginePhase.Close`；
+   - 指标注册中心单步驱动 `_indicators.Step(_context)`，统一单次泵送当期完整 OHLCV 矩阵；
+   - 驱动仿真交易所执行收盘撮合 `_simExchange.Step(currentTime, _marketData, i, EnginePhase.Close)`（撮合开盘挂起的 VWAP / Close 订单）；
+   - 若策略/管线 `UpdatePhase` 配置为 `EnginePhase.Close`（默认黄金标准），触发策略收盘单次决策 `_pipeline.OnUpdate(_context)`，委托进入挂单簿留待次日撮合。
+5. **Phase 5: PostMarket（盘后结算阶段）**：
+   - `_context.Phase = EnginePhase.PostMarket`；
+   - 触发日终穿仓与破产清算核验 `_brokerDriver.CheckLiquidation(currentTime)`；
+   - 沉淀日终真实净值快照点与持仓快照，上报执行进度。
 
 ### 3. 复权因子冷启动极速滚动与跨模态覆盖告警
 - **免剪枝全量加载**：除权因子事件表（`ashare.adj_factor.*`）全历史仅 2~3 MB，不按起测年份激进剪枝；
@@ -129,6 +142,7 @@ public class EngineContext : IEngineContext
 {
     public int CurrentIndex { get; }
     public DateTime CurrentTime { get; }
+    public EnginePhase Phase { get; }
     public ITimeseriesRegistry Timeseries { get; }
     public IEventRegistry Events { get; }
     public IFieldRegistry Fields { get; }

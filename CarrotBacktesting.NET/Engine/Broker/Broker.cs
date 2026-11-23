@@ -698,7 +698,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     }
 
     /// <inheritdoc />
-    public void Step(MarketTime currentTime)
+    public void PreMarketStep(MarketTime currentTime)
     {
         lock (_syncLock)
         {
@@ -714,9 +714,13 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                 _ledger.ProcessDayRollover(exchangeDate);
             }
         }
+    }
 
+    /// <inheritdoc />
+    public void Step(MarketTime currentTime)
+    {
+        PreMarketStep(currentTime);
         ProcessConditionalOrders(currentTime);
-
         CheckLiquidation(currentTime);
     }
 

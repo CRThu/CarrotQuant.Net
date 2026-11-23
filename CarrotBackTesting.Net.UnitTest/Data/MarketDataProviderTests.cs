@@ -410,7 +410,7 @@ public class MarketDataProviderTests
         // 在时钟推进第一步时必须立即 Fail-Fast 阻断并抛出包含明确指引的强类型异常
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
         {
-            gateway.Step(meta.TradeDates[0], marketData, 0);
+            gateway.Step(meta.TradeDates[0], marketData, 0, EnginePhase.Close);
         });
 
         StringAssert.Contains(ex.Message, "OnCheckVolume");

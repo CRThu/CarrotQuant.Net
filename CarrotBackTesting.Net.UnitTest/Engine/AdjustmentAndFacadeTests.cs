@@ -542,7 +542,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 {
                     StartDate = dates[0],
                     EndDate = dates[^1],
-                    UpdateTiming = StrategyUpdateTiming.OnClose
+                    UpdatePhase = EnginePhase.Close
                 },
                 Data = new DataConfig
                 {

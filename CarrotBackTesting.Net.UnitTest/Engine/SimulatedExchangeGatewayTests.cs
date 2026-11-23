@@ -155,7 +155,7 @@ public class SimulatedExchangeGatewayTests
         gateway.OnExecution += _ => reportFired = true;
 
         // 挂单簿为空时直接安全返回，且不派发任何成交回报
-        gateway.Step(dates[0], registry, 0);
+        gateway.Step(dates[0], new MarketDataProvider(registry), 0, EnginePhase.Close);
 
         Assert.IsFalse(reportFired, "空挂单簿在时间步推进时不应触发任何成交回报");
     }
@@ -181,7 +181,7 @@ public class SimulatedExchangeGatewayTests
         ExecutionReport? report = null;
         gateway.OnExecution += r => report = r;
 
-        gateway.Step(dates[0], registry, 0);
+        gateway.Step(dates[0], new MarketDataProvider(registry), 0, EnginePhase.Close);
 
         Assert.IsNotNull(report);
         Assert.AreEqual(101L, report.OrderId);
@@ -379,12 +379,13 @@ public class SimulatedExchangeGatewayTests
         var closePrices = new double[,] { { 10.0, double.NaN } };
 
         var timeseries = CreateMockTimeseries(symbols, dates, closePrices);
+        var marketData = new MarketDataProvider(timeseries);
         var config = new BrokerConfig { InitialCash = 100_000.0 };
         var gateway = new SimulatedExchangeGateway(config);
         var broker = new Broker(gateway, config);
 
         // 推进网关时步绑定时序
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
 
         // 对停牌标的 sh.600001 提交限价买单
         var req = new OrderRequest("sh.600001", OrderDirection.Buy, OrderType.Limit, 15.0, 100m);
@@ -402,6 +403,7 @@ public class SimulatedExchangeGatewayTests
         var dates = new[] { (MarketTime)new DateTime(2025, 1, 2), (MarketTime)new DateTime(2025, 1, 3) };
         var closePrices = new double[,] { { 10.0 }, { 10.5 } };
         var timeseries = CreateMockTimeseries(symbols, dates, closePrices);
+        var marketData = new MarketDataProvider(timeseries);
 
         var config = new BrokerConfig
         {
@@ -414,7 +416,7 @@ public class SimulatedExchangeGatewayTests
         var broker = new Broker(gateway, config);
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[0]);
 
         // 提交限价 9.0 买单（默认 Day 时效，未触碰 -> 排队挂单）
@@ -425,7 +427,7 @@ public class SimulatedExchangeGatewayTests
         Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
 
         // Day 2 (跨日推进)
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[1]);
 
         // 验证：Day 挂单在跨日结算时被集中撤销，且 Broker 收到撤单事件后全额解冻资金
@@ -440,6 +442,7 @@ public class SimulatedExchangeGatewayTests
         var dates = new[] { (MarketTime)new DateTime(2025, 1, 2), (MarketTime)new DateTime(2025, 1, 3) };
         var closePrices = new double[,] { { 10.0 }, { 10.5 } };
         var timeseries = CreateMockTimeseries(symbols, dates, closePrices);
+        var marketData = new MarketDataProvider(timeseries);
 
         var config = new BrokerConfig
         {
@@ -451,7 +454,7 @@ public class SimulatedExchangeGatewayTests
         var broker = new Broker(gateway, config);
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[0]);
 
         // 提交显式 GTC 时效的限价 9.0 买单
@@ -462,7 +465,7 @@ public class SimulatedExchangeGatewayTests
         Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
 
         // Day 2 (跨日推进)
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[1]);
 
         // 验证：GTC 挂单继续保留在挂单簿排队，资金维持冻结
@@ -478,6 +481,7 @@ public class SimulatedExchangeGatewayTests
         // Day 1: 正常交易 (10.0), Day 2: 突发停牌 (NaN)
         var closePrices = new double[,] { { 10.0 }, { double.NaN } };
         var timeseries = CreateMockTimeseries(symbols, dates, closePrices);
+        var marketData = new MarketDataProvider(timeseries);
 
         var config = new BrokerConfig
         {
@@ -489,7 +493,7 @@ public class SimulatedExchangeGatewayTests
         var broker = new Broker(gateway, config);
 
         // Day 1: 提交显式 GTC 限价买单 (9.0 元，未触碰市价 -> 入簿排队)
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[0]);
 
         var req = new OrderRequest("sh.600000", OrderDirection.Buy, 9.0, 1000m, timeInForce: TimeInForce.GoodTilCanceled);
@@ -500,7 +504,7 @@ public class SimulatedExchangeGatewayTests
         Assert.AreEqual(91_000.0, broker.GetCash(), 1e-4);
 
         // Day 2: 标的突发停牌 (行情为 NaN)，网关时步步进触发撮合
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[1]);
 
         // 验证：

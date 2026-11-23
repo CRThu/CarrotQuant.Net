@@ -144,11 +144,8 @@ namespace CarrotBacktesting.NET.Engine
 
         #region 时序与复权取价门面实现
 
-        /// <summary>
-        /// 是否处于开盘决策相位（Phase 1）。
-        /// 在 OnOpen 开盘决策模式下激活，硬隔离当期未完结数据，防前瞻偏差（Look-ahead Bias）。
-        /// </summary>
-        internal bool IsInOpenPhase { get; set; } = false;
+        /// <inheritdoc />
+        public EnginePhase Phase { get; internal set; } = EnginePhase.Close;
 
         [System.Diagnostics.CodeAnalysis.DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -159,17 +156,77 @@ namespace CarrotBacktesting.NET.Engine
 
         [System.Diagnostics.CodeAnalysis.DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void ThrowLookAheadBiasException(string fieldName)
+        private static void ThrowPreMarketLookAheadException(string fieldName)
         {
-            throw new InvalidOperationException($"当前处于 OnOpen 开盘决策模式，当期 '{fieldName}' 尚未完结产生，严禁读取当期数据（offset = 0）以防前瞻偏差（Look-ahead Bias）。");
+            throw new InvalidOperationException($"当前处于 PreMarket 盘前阶段，当日行情尚未产生，严禁读取当期 '{fieldName}'（offset = 0）以防前瞻偏差（Look-ahead Bias）。");
+        }
+
+        [System.Diagnostics.CodeAnalysis.DoesNotReturn]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowPhaseLookAheadException(string fieldName, EnginePhase phase)
+        {
+            throw new InvalidOperationException($"当前处于 {phase} 决策阶段，当期 '{fieldName}' 尚未完结产生，严禁读取当期数据（offset = 0）以防前瞻偏差（Look-ahead Bias）。");
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ValidateOpenAccessSecurity(int offset)
+        {
+            if (offset > 0) ThrowFutureOffsetException(offset);
+            if (offset < 0) return;
+
+            // 当 offset == 0 时，Open 价格仅在 PreMarket 盘前尚未产生，其余所有时序相位（Open/Intraday/Close/PostMarket）均绝对物理合法
+            if (Phase == EnginePhase.PreMarket)
+            {
+                ThrowPreMarketLookAheadException(StandardFields.Open);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ValidateBarClosedAccessSecurity(string fieldName, int offset)
+        {
+            if (offset > 0) ThrowFutureOffsetException(offset);
+            if (offset < 0) return;
+
+            // 当 offset == 0 时，收盘/量能/极值等完结型行情仅在 Close 与 PostMarket 相位完结产生
+            if (Phase < EnginePhase.Close)
+            {
+                if (Phase == EnginePhase.PreMarket)
+                {
+                    ThrowPreMarketLookAheadException(fieldName);
+                }
+                ThrowPhaseLookAheadException(fieldName, Phase);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ValidateFieldAccessSecurity(string fieldName, int offset)
+        {
+            if (offset > 0) ThrowFutureOffsetException(offset);
+            if (offset < 0) return;
+
+            if (Phase < EnginePhase.Close)
+            {
+                if (Phase == EnginePhase.PreMarket)
+                {
+                    ThrowPreMarketLookAheadException(fieldName);
+                }
+
+                // 在 Open 或 Intraday 相位，仅允许访问 open；优先单指令指针比对，消除高频字符串开销
+                if (ReferenceEquals(fieldName, StandardFields.Open) ||
+                    fieldName.Equals(StandardFields.Open, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                ThrowPhaseLookAheadException(fieldName, Phase);
+            }
         }
 
         /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetClose(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post)
         {
-            if (offset > 0) ThrowFutureOffsetException(offset);
-            if (offset == 0 && IsInOpenPhase) ThrowLookAheadBiasException("close");
+            ValidateBarClosedAccessSecurity(StandardFields.Close, offset);
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -190,7 +247,7 @@ namespace CarrotBacktesting.NET.Engine
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetOpen(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post)
         {
-            if (offset > 0) ThrowFutureOffsetException(offset);
+            ValidateOpenAccessSecurity(offset);
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -211,8 +268,7 @@ namespace CarrotBacktesting.NET.Engine
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetHigh(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post)
         {
-            if (offset > 0) ThrowFutureOffsetException(offset);
-            if (offset == 0 && IsInOpenPhase) ThrowLookAheadBiasException("high");
+            ValidateBarClosedAccessSecurity(StandardFields.High, offset);
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -233,8 +289,7 @@ namespace CarrotBacktesting.NET.Engine
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetLow(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Post)
         {
-            if (offset > 0) ThrowFutureOffsetException(offset);
-            if (offset == 0 && IsInOpenPhase) ThrowLookAheadBiasException("low");
+            ValidateBarClosedAccessSecurity(StandardFields.Low, offset);
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -255,8 +310,7 @@ namespace CarrotBacktesting.NET.Engine
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetVolume(int symbolIndex, int offset = 0, PriceMode mode = PriceMode.Raw)
         {
-            if (offset > 0) ThrowFutureOffsetException(offset);
-            if (offset == 0 && IsInOpenPhase) ThrowLookAheadBiasException("volume");
+            ValidateBarClosedAccessSecurity(StandardFields.Volume, offset);
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;
@@ -277,12 +331,8 @@ namespace CarrotBacktesting.NET.Engine
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public double GetField(int symbolIndex, string fieldName, int offset = 0, PriceMode mode = PriceMode.Post)
         {
-            if (offset > 0) ThrowFutureOffsetException(offset);
             if (string.IsNullOrWhiteSpace(fieldName)) return double.NaN;
-            if (offset == 0 && IsInOpenPhase && !fieldName.Equals("open", StringComparison.OrdinalIgnoreCase))
-            {
-                ThrowLookAheadBiasException(fieldName);
-            }
+            ValidateFieldAccessSecurity(fieldName, offset);
             if (CurrentIndex < 0) return double.NaN;
 
             int targetIndex = CurrentIndex + offset;

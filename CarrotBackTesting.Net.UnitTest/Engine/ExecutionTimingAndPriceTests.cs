@@ -90,7 +90,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnClose
+                UpdatePhase = EnginePhase.Close
             }
         };
 
@@ -148,7 +148,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnClose
+                UpdatePhase = EnginePhase.Close
             }
         };
 
@@ -197,7 +197,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnClose
+                UpdatePhase = EnginePhase.Close
             }
         };
 
@@ -244,7 +244,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnClose
+                UpdatePhase = EnginePhase.Close
             }
         };
 
@@ -269,7 +269,7 @@ public class ExecutionTimingAndPriceTests
     }
 
     [TestMethod]
-    public void StrategyUpdateTiming_OnOpen_ShouldFillImmediatelyAtCurrentOpen()
+    public void StrategyUpdatePhase_Open_ShouldFillImmediatelyAtCurrentOpen()
     {
         // 场景：OnOpen 决策，开盘即刻以当期 Open 成交
         var open = new[] { 10.0, 11.0, 12.0 };
@@ -288,7 +288,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnOpen
+                UpdatePhase = EnginePhase.Open
             }
         };
 
@@ -321,7 +321,7 @@ public class ExecutionTimingAndPriceTests
     }
 
     [TestMethod]
-    public void StrategyUpdateTiming_OnOpen_AccessCurrentCloseOrHighLow_ThrowsInvalidOperationException()
+    public void StrategyUpdatePhase_Open_AccessCurrentCloseOrHighLow_ThrowsInvalidOperationException()
     {
         // 场景：OnOpen 模式下，策略试图读取当期尚未完结的 Close/High/Low，防未来函数守卫抛出 InvalidOperationException
         var open = new[] { 10.0, 11.0, 12.0 };
@@ -333,7 +333,7 @@ public class ExecutionTimingAndPriceTests
         var sessionConfig = new SessionConfig
         {
             Broker = new BrokerConfig { InitialCash = 100_000.0 },
-            Engine = new EngineConfig { UpdateTiming = StrategyUpdateTiming.OnOpen }
+            Engine = new EngineConfig { UpdatePhase = EnginePhase.Open }
         };
 
         var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker);
@@ -392,7 +392,7 @@ public class ExecutionTimingAndPriceTests
         var sessionConfig = new SessionConfig
         {
             Broker = new BrokerConfig { InitialCash = 100_000.0, DefaultExecutionPrice = ExecutionPriceType.Open },
-            Engine = new EngineConfig { UpdateTiming = StrategyUpdateTiming.OnClose }
+            Engine = new EngineConfig { UpdatePhase = EnginePhase.Close }
         };
 
         var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker);
@@ -453,7 +453,7 @@ public class ExecutionTimingAndPriceTests
         var sessionConfig = new SessionConfig
         {
             Broker = new BrokerConfig { InitialCash = 100_000.0, DefaultExecutionPrice = ExecutionPriceType.Open },
-            Engine = new EngineConfig { UpdateTiming = StrategyUpdateTiming.OnClose }
+            Engine = new EngineConfig { UpdatePhase = EnginePhase.Close }
         };
 
         var simGateway = new SimulatedExchangeGateway(sessionConfig.Broker);
@@ -482,7 +482,7 @@ public class ExecutionTimingAndPriceTests
     }
 
     [TestMethod]
-    public void StrategyUpdateTiming_OnOpen_WithVwapExecution_ShouldFillAtClosePhase()
+    public void StrategyUpdatePhase_Open_WithVwapExecution_ShouldFillAtClosePhase()
     {
         // 场景：OnOpen 决策，但配置为全天均价 VWAP 成交模式，订单在 Phase 1 挂起并于 Phase 3 收盘按当期 VWAP 撮合成交
         var open = new[] { 10.0, 11.0 };
@@ -502,7 +502,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnOpen
+                UpdatePhase = EnginePhase.Open
             }
         };
 
@@ -535,7 +535,7 @@ public class ExecutionTimingAndPriceTests
     }
 
     [TestMethod]
-    public void StrategyUpdateTiming_OnClose_GtcLimitOrder_ShouldPreserveToNextDayAndFill()
+    public void StrategyUpdatePhase_Close_GtcLimitOrder_ShouldPreserveToNextDayAndFill()
     {
         // 场景：OnClose 决策下提交的 GTC 限价单，跨日保留，次日开盘价格满足触碰条件成功以 Maker 撮合成交
         var open = new[] { 10.0, 9.0 };
@@ -556,7 +556,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnClose
+                UpdatePhase = EnginePhase.Close
             }
         };
 
@@ -609,7 +609,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnClose
+                UpdatePhase = EnginePhase.Close
             }
         };
 
@@ -659,7 +659,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnClose
+                UpdatePhase = EnginePhase.Close
             }
         };
 
@@ -690,7 +690,7 @@ public class ExecutionTimingAndPriceTests
     }
 
     [TestMethod]
-    public void StrategyUpdateTiming_OnOpen_WithCloseExecution_ShouldFillAtClosePhase()
+    public void StrategyUpdatePhase_Open_WithCloseExecution_ShouldFillAtClosePhase()
     {
         // 场景：OnOpen 开盘决策提交市价单，但配置为 Close（收盘价撮合）。
         // 订单在 Phase 1 必须挂入挂单簿等待，并在 Phase 3 收盘相位按当期 Close 撮合成交，绝不能在 09:30 开盘瞬间偷看收盘价即时成交！
@@ -710,7 +710,7 @@ public class ExecutionTimingAndPriceTests
             },
             Engine = new EngineConfig
             {
-                UpdateTiming = StrategyUpdateTiming.OnOpen
+                UpdatePhase = EnginePhase.Open
             }
         };
 

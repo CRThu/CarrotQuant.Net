@@ -168,6 +168,12 @@ namespace CarrotBacktesting.NET.Engine
             _simExchange = simExchange ?? (broker as ISimulatedExchange) ?? ((broker as IExchangeGatewayProvider)?.Gateway as ISimulatedExchange);
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
             _config = config ?? new EngineConfig();
+            if (_config.UpdatePhase != EnginePhase.Open && _config.UpdatePhase != EnginePhase.Close)
+            {
+                throw new ArgumentException(
+                    $"EngineConfig.UpdatePhase 仅支持 EnginePhase.Open 或 EnginePhase.Close，不支持配置为 '{_config.UpdatePhase}'。",
+                    nameof(config));
+            }
             _monitor = monitor ?? NullMonitor.Instance;
             _adjustConfig = adjustConfig ?? new AdjustmentConfig();
             _recorder = recorder ?? new TradingRecorder();
@@ -419,64 +425,69 @@ namespace CarrotBacktesting.NET.Engine
                     // 5.2 时序滑动窗口与预读驱动
                     _timeseriesScheduler?.StepTo(i);
 
-                    // ==================== Phase 1: Open 相位 (开盘时刻) ====================
-                    // 1.1 驱动仿真交易所批量撮合在途限价单与前一日收盘跨步市价单
-                    _simExchange?.Step(currentTime, _marketData, i);
+                    // ==================== Phase 1: PreMarket 相位 (盘前准备) ====================
+                    _context.Phase = EnginePhase.PreMarket;
+                    // 推进经纪商盘前时钟与跨日结算（T+N 在途持仓解锁，先结算后可用）
+                    _brokerDriver?.PreMarketStep(currentTime);
 
-                    // 1.2 推进经纪商时钟与交易所本地跨日结算（T+N 在途持仓解锁，先结算后可用）
-                    _brokerDriver?.Step(currentTime);
+                    // ==================== Phase 2: Open 相位 (开盘阶段) ====================
+                    _context.Phase = EnginePhase.Open;
+                    // 2.1 驱动仿真交易所执行开盘切片撮合（仅依据 bar.Open 撮合在途限价单与跨步单，严禁偷看当期 Bar 的 High/Low）
+                    _simExchange?.Step(currentTime, _marketData, i, EnginePhase.Open);
 
-                    // 1.3 若 StrategyUpdateTiming == OnOpen：执行开盘策略决策
-                    if (_config.UpdateTiming == StrategyUpdateTiming.OnOpen)
+                    // 2.2 确定本时间步策略决策时态相位（优先遵循管线策略的显式声明，否则遵循引擎配置）
+                    EnginePhase effectivePhase = _pipeline.UpdatePhase != EnginePhase.Close
+                        ? _pipeline.UpdatePhase
+                        : _config.UpdatePhase;
+
+                    // 2.3 若 UpdatePhase == EnginePhase.Open：执行开盘策略决策
+                    if (effectivePhase == EnginePhase.Open)
                     {
-                        _context.IsInOpenPhase = true;
-                        if (_simExchange is SimulatedExchangeGateway simGateway) simGateway.IsInOpenPhase = true;
-                        try
-                        {
-                            _pipeline.OnUpdate(_context);
-                        }
-                        finally
-                        {
-                            _context.IsInOpenPhase = false;
-                            if (_simExchange is SimulatedExchangeGateway simGatewayReset) simGatewayReset.IsInOpenPhase = false;
-                        }
+                        _pipeline.OnUpdate(_context);
 
                         // 若策略在开盘发出了开盘价撮合订单，在此即刻完成开盘撮合；
-                        // 若配置为 Close / Vwap / Average，则保留在 OrderBook 中挂起，留待 Phase 3 收盘时集中撮合
+                        // 若配置为 Close / Vwap / Average，则保留在 OrderBook 中挂起，留待收盘相位集中撮合
                         var execPrice = (_simExchange as SimulatedExchangeGateway)?.Config.DefaultExecutionPrice 
                             ?? (_broker as CarrotBacktesting.NET.Engine.Broker.Broker)?.Config.DefaultExecutionPrice 
                             ?? ExecutionPriceType.Open;
 
                         if (execPrice == ExecutionPriceType.Open)
                         {
-                            _simExchange?.Step(currentTime, _marketData, i);
+                            _simExchange?.Step(currentTime, _marketData, i, EnginePhase.Open);
                         }
                     }
 
-                    // ==================== Phase 2: Intraday 相位 (盘中时刻) ====================
-                    // 2.1 驱动盘中条件单判定（针对 OnOpen 阶段新提交的条件单）
+                    // ==================== Phase 3: Intraday 相位 (盘中阶段) ====================
+                    _context.Phase = EnginePhase.Intraday;
+                    // 3.1 驱动盘中条件单判定（针对已触发的价格条件单）
                     _brokerDriver?.ProcessConditionalOrders(currentTime);
 
-                    // 2.2 离散事件常数时间轻量探测与派发
+                    // 3.2 离散事件常数时间轻量探测与派发
                     if (_events.HasNewEvents(currentTime))
                     {
                         DispatchEvents(currentTime);
                     }
 
-                    // ==================== Phase 3: Close 相位 (收盘时刻) ====================
-                    // 3.1 驱动指标注册中心步进更新（单步单次批量泵送当期完整 OHLCV）
+                    // ==================== Phase 4: Close 相位 (收盘阶段) ====================
+                    _context.Phase = EnginePhase.Close;
+                    // 4.1 驱动指标注册中心步进更新（单步单次批量泵送当期完整 OHLCV）
                     _indicators.Step(_context);
 
-                    // 3.2 驱动仿真交易所执行收盘撮合（针对开盘挂起至收盘成交的 VWAP / Close 订单）
-                    _simExchange?.Step(currentTime, _marketData, i);
+                    // 4.2 驱动仿真交易所执行收盘撮合（针对开盘挂起至收盘成交的 VWAP / Close 订单）
+                    _simExchange?.Step(currentTime, _marketData, i, EnginePhase.Close);
 
-                    // 3.3 若 StrategyUpdateTiming == OnClose：执行收盘策略决策
-                    if (_config.UpdateTiming == StrategyUpdateTiming.OnClose)
+                    // 4.3 若 UpdatePhase == EnginePhase.Close：执行收盘策略决策（常规日频基准，委托进入挂单簿留待次日撮合）
+                    if (effectivePhase == EnginePhase.Close)
                     {
                         _pipeline.OnUpdate(_context);
                     }
 
-                    // 3.3 记录当前时间步净值点
+                    // ==================== Phase 5: PostMarket 相位 (盘后结算与快照) ====================
+                    _context.Phase = EnginePhase.PostMarket;
+                    // 5.1 日终穿仓与破产清算核验
+                    _brokerDriver?.CheckLiquidation(currentTime);
+
+                    // 5.2 记录当前时间步净值点
                     if (_snapshotProvider != null)
                     {
                         int currentIdx = i;
@@ -485,7 +496,7 @@ namespace CarrotBacktesting.NET.Engine
                             sym => ResolveStepPrice(sym, currentIdx)));
                     }
 
-                    // 3.4 上报执行进度
+                    // 5.3 上报执行进度
                     int currentStep = i - startIndex + 1;
                     _progress = (double)currentStep / totalSteps;
                     if (_progressReporter != null)
@@ -696,7 +707,8 @@ namespace CarrotBacktesting.NET.Engine
                     brokerSnap,
                     exchangeSnap,
                     recorderSnap,
-                    marketSnap
+                    marketSnap,
+                    _context.Phase
                 );
             }
         }
@@ -739,6 +751,7 @@ namespace CarrotBacktesting.NET.Engine
                 }
 
                 _context.UpdateStep(state.CurrentIndex, state.CurrentTime);
+                _context.Phase = state.Phase;
                 _lastDate = state.LastDate;
                 _progress = state.Progress;
                 _resumeFromIndex = state.CurrentIndex >= 0 ? state.CurrentIndex + 1 : -1;

@@ -1028,7 +1028,7 @@ public class TradingFinancialPipelineIntegrationTests
         simExchange.SendOrder(101L, new OrderRequest("SH.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m));
 
         // 推进步进，驱动挂单簿被动撮合
-        simExchange.Step(dates[0], tsRegistry, 0);
+        simExchange.Step(dates[0], new MarketDataProvider(tsRegistry), 0, EnginePhase.Close);
 
         Assert.IsNotNull(report, "日内最低价 9.4 触碰了买入限价 9.5，限价单应成功撮合成交");
         Assert.AreEqual(9.5, report.FillPrice, 1e-4, "Maker 限价单成交价严格遵循委托限价 9.5");
@@ -1163,7 +1163,7 @@ public class TradingFinancialPipelineIntegrationTests
             Mode = "backtest",
             StartDate = dates[0],
             EndDate = dates[^1],
-            UpdateTiming = StrategyUpdateTiming.OnClose
+            UpdatePhase = EnginePhase.Close
         };
 
         using var engine = new BacktestingEngine(
@@ -1244,7 +1244,7 @@ public class TradingFinancialPipelineIntegrationTests
             Mode = "backtest",
             StartDate = dates[0],
             EndDate = dates[1],
-            UpdateTiming = StrategyUpdateTiming.OnOpen // 关键：开盘决策！
+            UpdatePhase = EnginePhase.Open // 关键：开盘决策！
         };
 
         using var engine = new BacktestingEngine(
@@ -1319,7 +1319,7 @@ public class TradingFinancialPipelineIntegrationTests
         // 门线 2：建立 10 手多头持仓
         var buyOpenOrder = new OrderRequest(symbol, OrderDirection.Buy, OrderType.Limit, price, 10m);
         long buyOpenId = broker.SubmitOrder(buyOpenOrder);
-        simExchange.Step(dates[0], tsRegistry, 0); // 即刻撮合（限价单穿透市价）
+        simExchange.Step(dates[0], new MarketDataProvider(tsRegistry), 0, EnginePhase.Close); // 即刻撮合（限价单穿透市价）
         Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyOpenId));
         Assert.AreEqual(10m, broker.GetPosition(symbol), "当前持仓应为多头 10 手");
 
@@ -1337,7 +1337,7 @@ public class TradingFinancialPipelineIntegrationTests
         var sellValidOrder = new OrderRequest(symbol, OrderDirection.Sell, OrderType.Limit, price, 10m, ReduceOnly: true);
         long sellValidId = broker.SubmitOrder(sellValidOrder);
         Assert.AreNotEqual(OrderStatus.Rejected, broker.GetOrderStatus(sellValidId), "合法 ReduceOnly 平仓单必须被放行");
-        simExchange.Step(dates[0], tsRegistry, 0);
+        simExchange.Step(dates[0], new MarketDataProvider(tsRegistry), 0, EnginePhase.Close);
         Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(sellValidId));
         Assert.AreEqual(0m, broker.GetPosition(symbol), "多头持仓成功平仓归零");
 
@@ -1345,7 +1345,7 @@ public class TradingFinancialPipelineIntegrationTests
         // 建立 10 手空头持仓
         var shortOpenOrder = new OrderRequest(symbol, OrderDirection.Sell, OrderType.Limit, price, 10m);
         long shortOpenId = broker.SubmitOrder(shortOpenOrder);
-        simExchange.Step(dates[0], tsRegistry, 0);
+        simExchange.Step(dates[0], new MarketDataProvider(tsRegistry), 0, EnginePhase.Close);
         Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(shortOpenId));
         Assert.AreEqual(-10m, broker.GetPosition(symbol), "当前持仓应为空头 10 手");
 
@@ -1363,7 +1363,7 @@ public class TradingFinancialPipelineIntegrationTests
         var buyValidOrder = new OrderRequest(symbol, OrderDirection.Buy, OrderType.Limit, price, 10m, ReduceOnly: true);
         long buyValidId = broker.SubmitOrder(buyValidOrder);
         Assert.AreNotEqual(OrderStatus.Rejected, broker.GetOrderStatus(buyValidId), "合法 ReduceOnly 平空单必须被放行");
-        simExchange.Step(dates[0], tsRegistry, 0);
+        simExchange.Step(dates[0], new MarketDataProvider(tsRegistry), 0, EnginePhase.Close);
         Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(buyValidId));
         Assert.AreEqual(0m, broker.GetPosition(symbol), "空头持仓成功平仓归零");
 
@@ -1449,6 +1449,7 @@ public class TradingFinancialPipelineIntegrationTests
 
     private sealed class SpotOnOpenT1Strategy : StrategyBase
     {
+        public override EnginePhase UpdatePhase => EnginePhase.Open;
         public long Day0BuyOrderId { get; private set; }
         public long Day0SellOrderId { get; private set; }
         public long Day1SellOrderId { get; private set; }

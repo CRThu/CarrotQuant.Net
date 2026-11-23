@@ -390,8 +390,14 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => ctx.GetVolume(0, 1));
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => ctx.GetField(0, "vwap", 1));
 
-            // 2. 模拟 OnOpen 开盘决策阶段 (IsInOpenPhase = true)
-            ctx.IsInOpenPhase = true;
+            // 2. 模拟 PreMarket 盘前结算阶段 (Phase = EnginePhase.PreMarket)
+            ctx.Phase = EnginePhase.PreMarket;
+            // 盘前结算时当日任何行情均尚未产生，连 open 也不允许读取
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetOpen(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetClose(0, 0));
+
+            // 3. 模拟 Open 开盘决策阶段 (Phase = EnginePhase.Open)
+            ctx.Phase = EnginePhase.Open;
 
             // 当期 Open 允许正常读取（开盘时 open 已产出）
             Assert.AreEqual(10.0, ctx.GetOpen(0, 0));
@@ -405,9 +411,60 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
             Assert.ThrowsException<InvalidOperationException>(() => ctx.GetField(0, "close", 0));
             Assert.ThrowsException<InvalidOperationException>(() => ctx.GetField(0, "vwap", 0));
 
-            // 恢复常规决策相位
-            ctx.IsInOpenPhase = false;
+            // 4. 恢复常规收盘决策相位
+            ctx.Phase = EnginePhase.Close;
             Assert.AreEqual(10.2, ctx.GetClose(0, 0));
+        }
+
+        [TestMethod]
+        public void Facades_MarketData_HighFrequencyPhaseGuards_FastPathAndHistoricalAccess()
+        {
+            var (ctx, meta) = CreateFullContextWithFactors();
+            // 步进到 Row 1，测试当前步与历史步 (offset = -1)
+            ctx.UpdateStep(1, meta.TradeDates[1]);
+
+            // 1. 测试 PreMarket 阶段：当期 offset = 0 全部禁止，但历史 offset = -1 全部绝对物理放行
+            ctx.Phase = EnginePhase.PreMarket;
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetOpen(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetClose(0, 0));
+            Assert.AreEqual(10.0, ctx.GetOpen(0, -1), 1e-6);
+            Assert.AreEqual(10.2, ctx.GetClose(0, -1), 1e-6);
+            Assert.AreEqual(1000.0, ctx.GetVolume(0, -1), 1e-6);
+
+            // 2. 测试 Open 阶段：当期 Open 极速放行（含常量引用直通与字符串大小写回退），完结型字段阻断
+            // 注：Row 1 注入复权因子为 2.0，默认 Post 价格为 11.0 * 2.0 = 22.0，Raw 价格为 11.0
+            ctx.Phase = EnginePhase.Open;
+            Assert.AreEqual(22.0, ctx.GetOpen(0, 0), 1e-6);
+            Assert.AreEqual(11.0, ctx.GetOpen(0, 0, PriceMode.Raw), 1e-6);
+            // 验证 ReferenceEquals 常量指针直通
+            Assert.AreEqual(22.0, ctx.GetField(0, StandardFields.Open, 0), 1e-6);
+            // 验证动态字符串与忽略大小写回退
+            Assert.AreEqual(22.0, ctx.GetField(0, "OPEN", 0), 1e-6);
+            Assert.AreEqual(22.0, ctx.GetField(0, "open", 0), 1e-6);
+            // 完结型字段当期拦截
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetClose(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetHigh(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetLow(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetVolume(0, 0));
+            // 历史数据无阻碍放行 (Row 0 因子为 1.0)
+            Assert.AreEqual(10.2, ctx.GetClose(0, -1), 1e-6);
+            Assert.AreEqual(10.5, ctx.GetHigh(0, -1), 1e-6);
+            Assert.AreEqual(9.5, ctx.GetLow(0, -1), 1e-6);
+            Assert.AreEqual(1000.0, ctx.GetVolume(0, -1), 1e-6);
+
+            // 3. 测试 Intraday 盘中阶段：行为与 Open 一致，允许读取 open 与历史，禁止读取当期完结数据
+            ctx.Phase = EnginePhase.Intraday;
+            Assert.AreEqual(22.0, ctx.GetOpen(0, 0), 1e-6);
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetClose(0, 0));
+            Assert.ThrowsException<InvalidOperationException>(() => ctx.GetVolume(0, 0));
+            Assert.AreEqual(10.2, ctx.GetClose(0, -1), 1e-6);
+
+            // 4. 测试 PostMarket 盘后阶段：所有当期与历史字段全部物理合法放行
+            ctx.Phase = EnginePhase.PostMarket;
+            Assert.AreEqual(22.0, ctx.GetOpen(0, 0), 1e-6);
+            Assert.AreEqual(23.0, ctx.GetHigh(0, 0), 1e-6);
+            Assert.AreEqual(21.0, ctx.GetLow(0, 0), 1e-6);
+            Assert.AreEqual(10.2, ctx.GetClose(0, -1), 1e-6);
         }
 
         [TestMethod]

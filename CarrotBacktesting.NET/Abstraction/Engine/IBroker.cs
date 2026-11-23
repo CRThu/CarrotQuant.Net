@@ -237,6 +237,12 @@ public interface IBroker
 public interface IBrokerEngineDriver : IBroker
 {
     /// <summary>
+    /// 推进经纪商盘前时钟与跨日结算（T+N 解锁冻结持仓、账本换日），不触发盘中条件单与盘后破产清算。
+    /// </summary>
+    /// <param name="currentTime">当前全局物理时间戳。</param>
+    void PreMarketStep(MarketTime currentTime);
+
+    /// <summary>
     /// 推进经纪商物理时钟时间步，驱动日内精确时间戳对齐与多时区自动跨日清算（如 T+N 解锁冻结持仓、按日盯市等）。
     /// </summary>
     /// <param name="currentTime">当前全局物理时间戳。</param>
@@ -247,6 +253,13 @@ public interface IBrokerEngineDriver : IBroker
     /// </summary>
     /// <param name="currentTime">当前时间戳。</param>
     void ProcessConditionalOrders(MarketTime currentTime);
+
+    /// <summary>
+    /// 触发账户穿仓与破产清算检查。
+    /// 当动态权益 TotalEquity &lt;= 0 时，确立破产状态并清空排队挂单。
+    /// </summary>
+    /// <param name="currentTime">当前时间戳。</param>
+    void CheckLiquidation(MarketTime currentTime);
 
     /// <summary>
     /// 实盘断线重连或定时对账时，由交易所权威数据原子同步本地账户状态（回测模式无需调用）。

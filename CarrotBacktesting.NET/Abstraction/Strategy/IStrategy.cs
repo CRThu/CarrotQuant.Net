@@ -23,6 +23,12 @@ public interface IStrategy
     int Lookback => 200;
 
     /// <summary>
+    /// 获取策略核心决策时态相位，默认在收盘相位决策（EnginePhase.Close）。
+    /// 支持指定 EnginePhase.Open（开盘相位）以实现开盘调仓决策与日内算法单。
+    /// </summary>
+    EnginePhase UpdatePhase => EnginePhase.Close;
+
+    /// <summary>
     /// 策略启动生命周期回调。由引擎在正式运行循环前按拓扑顺序触发一次，用于预热指标缓存与状态初始化。
     /// </summary>
     /// <param name="context">引擎运行上下文。</param>

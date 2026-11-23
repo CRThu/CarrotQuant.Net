@@ -18,7 +18,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine;
 [TestClass]
 public class ConditionalOrderTests
 {
-    private static (ITimeseriesRegistry Timeseries, MarketTime[] Dates) CreateMultiFieldTimeseries(
+    private static (IMarketDataProvider MarketData, MarketTime[] Dates) CreateMultiFieldTimeseries(
         string symbol,
         double[] open,
         double[] high,
@@ -51,7 +51,7 @@ public class ConditionalOrderTests
         if (volume != null) matrices[StandardFields.Volume] = CreateMatrix(volume);
 
         var timeseries = new SimulatedExchangeGatewayTests.MultiMatrixTimeseriesRegistry(metadata, matrices);
-        return (timeseries, dates);
+        return (new MarketDataProvider(timeseries), dates);
     }
 
     [TestMethod]
@@ -97,7 +97,7 @@ public class ConditionalOrderTests
     {
         // 场景：多头持仓 1000 股，止损价 9.0 元。次日开盘跳空低开至 8.5 元（低于止损价）。
         // 验证：四象限定价法则 - 必须以恶化的开盘价 8.5 元成交并承担滑点惩罚，严禁以 9.0 或收盘价偷价成交。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 8.5 },
             high: new[] { 10.5, 8.8 },
@@ -116,7 +116,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1: 开仓买入 1000 股，并挂出 9.0 止损单
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
         long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
@@ -126,7 +126,7 @@ public class ConditionalOrderTests
         broker.OnTrade += r => { if (r.OrderId == stopId) fillReport = r; };
 
         // Day 2: 跳空低开至 8.5，驱动步进
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // 验证：止损单触发且成交价严格等于 Open 8.5 元
@@ -142,7 +142,7 @@ public class ConditionalOrderTests
     {
         // 场景：多头持仓 1000 股，止损价 9.0 元。次日开盘 9.5 元，盘中下探至 8.8 元跌破止损线，收盘 9.2 元。
         // 验证：四象限定价法则 - 开盘未跌破，盘中触碰击穿，必须以 StopPrice 9.0 元成交。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 9.5 },
             high: new[] { 10.5, 9.6 },
@@ -161,7 +161,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
         long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
@@ -170,7 +170,7 @@ public class ConditionalOrderTests
         broker.OnTrade += r => { if (r.OrderId == stopId) fillReport = r; };
 
         // Day 2
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // 验证：成交价严格等于委托止损价 9.0
@@ -186,7 +186,7 @@ public class ConditionalOrderTests
     {
         // 场景：多头持仓 1000 股，止盈价 12.0 元。次日开盘跳空高开至 12.5 元（高过止盈价）。
         // 验证：四象限定价法则 - 必须以更优的开盘价 12.5 元成交（享受价格改善 Price Improvement）。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 12.5 },
             high: new[] { 10.5, 12.8 },
@@ -205,7 +205,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
         long tpId = broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 1000m);
@@ -214,7 +214,7 @@ public class ConditionalOrderTests
         broker.OnTrade += r => { if (r.OrderId == tpId) fillReport = r; };
 
         // Day 2
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // 验证：成交价为开盘改善价 12.5 元
@@ -229,7 +229,7 @@ public class ConditionalOrderTests
     {
         // 场景：多头持仓 1000 股，止盈价 12.0 元。次日开盘 11.5 元，盘中冲高至 12.2 元触碰止盈线，收盘 11.8 元。
         // 验证：以 TargetPrice 12.0 元成交。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 11.5 },
             high: new[] { 10.5, 12.2 },
@@ -248,7 +248,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
         long tpId = broker.TakeProfit("sh.600000", targetPrice: 12.0, quantity: 1000m);
@@ -257,7 +257,7 @@ public class ConditionalOrderTests
         broker.OnTrade += r => { if (r.OrderId == tpId) fillReport = r; };
 
         // Day 2
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(tpId));
@@ -271,7 +271,7 @@ public class ConditionalOrderTests
     {
         // 场景：提交 Bracket 括号单（止损 9.0，止盈 12.0）。行情下跌触发止损。
         // 验证：止损单成交，止盈单被原子化自动联动撤销（Canceled），且记录 OCO 撤销原因。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 9.5 },
             high: new[] { 10.5, 9.6 },
@@ -290,7 +290,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1: 买入持仓并提交 Bracket 订单
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
 
@@ -302,7 +302,7 @@ public class ConditionalOrderTests
         broker.OnOrderEvent += ev => { if (ev.OrderId == tpId && ev.EventType == OrderEventType.Canceled) tpCancelEvent = ev; };
 
         // Day 2: 价格跌至 8.8，触发止损
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // 验证：止损单成交，止盈单被联动撤销
@@ -318,7 +318,7 @@ public class ConditionalOrderTests
     {
         // 场景：提交 Bracket 括号单（止损 9.0，止盈 12.0）。行情上涨冲高至 12.2 触发止盈。
         // 验证：止盈单成交，止损单被自动联动撤销。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 11.5 },
             high: new[] { 10.5, 12.2 },
@@ -337,14 +337,14 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
 
         var (stopId, tpId) = broker.Bracket("sh.600000", 1000m, stopPrice: 9.0, takeProfitPrice: 12.0);
 
         // Day 2
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(tpId));
@@ -357,7 +357,7 @@ public class ConditionalOrderTests
     {
         // 场景：挂出止损单，但在触碰前策略提前把持仓手动平仓。当行情后续暴跌触碰止损线时，
         // 验证：Broker 在触发转单时核验 TryFreeze 失败，订单直接判定为 Rejected，派发带明确理由的 OrderEvent。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 9.5 },
             high: new[] { 10.5, 9.6 },
@@ -376,7 +376,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1: 买入持仓并设置止损单
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
         long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
@@ -390,7 +390,7 @@ public class ConditionalOrderTests
         broker.OnOrderEvent += ev => { if (ev.OrderId == stopId && ev.EventType == OrderEventType.Rejected) rejectEvent = ev; };
 
         // Day 2: 行情跌至 8.5，触碰止损线
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // 验证：由于持仓为 0，预冻结失败，被权威判定为 Rejected
@@ -405,7 +405,7 @@ public class ConditionalOrderTests
     {
         // 场景：单根 Bar 振幅极大，Open=10.0, High=13.0（触碰 12.0 止盈）, Low=8.0（触碰 9.0 止损）。
         // 验证：自营量化风控准则 - 悲观仲裁机制（Pessimistic Arbitration）：优先判定止损生效，止盈注销。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 10.0 },
             high: new[] { 10.5, 13.0 },
@@ -424,14 +424,14 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
 
         var (stopId, tpId) = broker.Bracket("sh.600000", 1000m, stopPrice: 9.0, takeProfitPrice: 12.0);
 
         // Day 2: 巨大日内波动
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // 验证：悲观仲裁，止损生效，止盈取消
@@ -445,7 +445,7 @@ public class ConditionalOrderTests
     {
         // 场景：提交条件单未显式传参 TIF。
         // 验证：强制默认采用 GoodTilCanceled，日切清算时不被撤销。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 10.2 },
             high: new[] { 10.5, 10.4 },
@@ -462,7 +462,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
 
@@ -470,7 +470,7 @@ public class ConditionalOrderTests
         long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
 
         // Day 2: 未触碰价格（价格维持在 10.1 以上）
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // 验证：即使全局配置是 Day，条件单依然保持 Pending 状态跨日存续，绝不被撤单
@@ -482,7 +482,7 @@ public class ConditionalOrderTests
     {
         // 场景：挂出止损单，抓取 Broker 快照后恢复到新实例中。
         // 验证：未触发条件单完整还原，且后续价格触碰时正常触发成交。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 10.0, 9.5 },
             high: new[] { 10.5, 10.2, 9.6 },
@@ -501,13 +501,13 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
         long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
 
         // Day 2: 保持在 10.1，抓取检查点
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
         Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(stopId));
 
@@ -523,7 +523,7 @@ public class ConditionalOrderTests
         Assert.AreEqual(1000m, newBroker.GetPosition("sh.600000"));
 
         // Day 3: 价格跌至 8.8，触碰止损线
-        gateway.Step(dates[2], timeseries, 2);
+        gateway.Step(dates[2], marketData, 2, EnginePhase.Close);
         newDriver.Step(dates[2]);
 
         // 验证还原后的条件单正常触发成交
@@ -536,7 +536,7 @@ public class ConditionalOrderTests
     {
         // 场景：标的出现一字跌停无量（Volume = 0），配置了 VolumeLimit 约束。策略持有 1000 股且挂有止损单。
         // 验证：虽然跌破止损线，但流动性硬约束检查失败，订单被拒绝，绝对断言不以 Open 价格虚假成交逃顶。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 8.5 },
             high: new[] { 10.5, 8.5 },
@@ -557,7 +557,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1: 正常买入并挂止损单
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 1000m, price: 10.0, type: OrderType.Market);
         long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 1000m);
@@ -566,7 +566,7 @@ public class ConditionalOrderTests
         broker.OnOrderEvent += ev => { if (ev.OrderId == stopId && ev.EventType == OrderEventType.Rejected) rejectEvent = ev; };
 
         // Day 2: 一字跌停无量
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // 验证：因流动性不足被拒绝，未能成功逃顶，持仓依然保持 1000 股
@@ -615,7 +615,7 @@ public class ConditionalOrderTests
     {
         // 场景：开空单 100 股，挂出买入平空止损单 (11.0) 与止盈单 (9.0)。
         // 行情冲高至 11.5，触发止损，验证买入平仓且止盈单被自动联动撤销。
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "IF2412",
             open: new[] { 10.0, 10.5 },
             high: new[] { 10.5, 11.5 },
@@ -635,7 +635,7 @@ public class ConditionalOrderTests
         var driver = (IBrokerEngineDriver)broker;
 
         // Day 1: 建立空头仓位 -100 股
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Sell("IF2412", 100m, price: 10.0, type: OrderType.Market);
 
@@ -651,7 +651,7 @@ public class ConditionalOrderTests
         Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(tpId));
 
         // Day 2: 价格涨至 11.2，触发买入平空止损
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(stopId));
@@ -662,7 +662,7 @@ public class ConditionalOrderTests
     [TestMethod]
     public void ConditionalOrder_ActivePruningAndCancellation_ShouldPruneImmediately()
     {
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 8.5 },
             high: new[] { 10.5, 8.6 },
@@ -674,7 +674,7 @@ public class ConditionalOrderTests
         var broker = new Broker(gateway, config);
         var driver = (IBrokerEngineDriver)broker;
 
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 200m, price: 10.0, type: OrderType.Market);
 
@@ -687,7 +687,7 @@ public class ConditionalOrderTests
         Assert.AreEqual(OrderStatus.Pending, broker.GetOrderStatus(stopId2));
 
         // Day 2 步进
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         driver.Step(dates[1]);
 
         // stopId1 依然为 Canceled，stopId2 触发成交
@@ -699,7 +699,7 @@ public class ConditionalOrderTests
     [TestMethod]
     public void ConditionalOrder_CheckpointRestore_PendingConditionalsPreservedAndTriggered()
     {
-        var (timeseries, dates) = CreateMultiFieldTimeseries(
+        var (marketData, dates) = CreateMultiFieldTimeseries(
             "sh.600000",
             open: new[] { 10.0, 8.5 },
             high: new[] { 10.5, 8.6 },
@@ -711,7 +711,7 @@ public class ConditionalOrderTests
         var broker = new Broker(gateway, config);
         var driver = (IBrokerEngineDriver)broker;
 
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         driver.Step(dates[0]);
         broker.Buy("sh.600000", 100m, price: 10.0, type: OrderType.Market);
         long stopId = broker.StopLoss("sh.600000", stopPrice: 9.0, quantity: 100m);
@@ -729,7 +729,7 @@ public class ConditionalOrderTests
         Assert.AreEqual(OrderStatus.Pending, newBroker.GetOrderStatus(stopId));
 
         // 推进 Day 2 行情，验证恢复后的活跃条件单能正常触发并成交
-        newGateway.Step(dates[1], timeseries, 1);
+        newGateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         newDriver.Step(dates[1]);
 
         Assert.AreEqual(OrderStatus.Filled, newBroker.GetOrderStatus(stopId));

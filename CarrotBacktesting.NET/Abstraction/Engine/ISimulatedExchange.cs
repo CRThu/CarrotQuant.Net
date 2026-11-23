@@ -26,21 +26,13 @@ public interface ISimulatedExchange : IExchangeGateway
 
     /// <summary>
     /// 回测时间步时钟推进。
-    /// 根据当前时间步的最新行情数据，驱动内部挂单簿批量撮合判定。
+    /// 根据当前时间步的最新行情数据与微观时序相位，驱动内部挂单簿批量撮合判定。
     /// </summary>
     /// <param name="currentTime">当前时间步的全局物理时间戳。</param>
     /// <param name="marketData">统一行情与复权数据提供器。</param>
     /// <param name="currentIndex">当前时间步在时序注册表中的行索引。</param>
-    void Step(MarketTime currentTime, IMarketDataProvider marketData, int currentIndex);
-
-    /// <summary>
-    /// 回测时间步时钟推进。
-    /// 根据当前时间步的最新行情数据，驱动内部挂单簿批量撮合判定。
-    /// </summary>
-    /// <param name="currentTime">当前时间步的全局物理时间戳。</param>
-    /// <param name="timeseries">全局时序注册表，用于获取当前时间步的标的价格与行情数据。</param>
-    /// <param name="currentIndex">当前时间步在时序注册表中的行索引。</param>
-    void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex);
+    /// <param name="phase">当前推进的微观时钟相位。</param>
+    void Step(MarketTime currentTime, IMarketDataProvider marketData, int currentIndex, EnginePhase phase);
 
     /// <summary>
     /// 反应式行情数据切片到达驱动（唯一权威行情灌入入口）。

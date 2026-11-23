@@ -1,43 +1,25 @@
 namespace CarrotBacktesting.NET.Abstraction.Engine;
 
 /// <summary>
-/// 策略决策与更新时点。
-/// </summary>
-public enum StrategyUpdateTiming : byte
-{
-    /// <summary>
-    /// 收盘更新（默认推荐，绝大多数策略适用）。
-    /// 当前时间步 Bar 完全走完时驱动 OnUpdate，策略可读取当期完整 OHLCV 与收盘指标。
-    /// </summary>
-    OnClose = 0,
-
-    /// <summary>
-    /// 开盘更新（开盘跳空、集合竞价选股、日内算法拆单策略）。
-    /// 在当前时间步 Bar 刚开盘时驱动 OnUpdate，策略可读取当期 Open 与历史已完结 Bar。
-    /// </summary>
-    OnOpen = 1
-}
-
-/// <summary>
 /// 撮合成交价格基准（回测环境与经纪商执行规则配置）。
 /// </summary>
 public enum ExecutionPriceType : byte
 {
     /// <summary>
     /// 开盘价成交（默认推荐，对齐国际主流框架标准）。
-    /// OnOpen 模式下以当期 Open 撮合；OnClose 模式下以次日 Open 撮合。
+    /// UpdatePhase 为 Open 时以当期 Open 撮合；UpdatePhase 为 Close 时以次日 Open 撮合。
     /// </summary>
     Open = 0,
 
     /// <summary>
     /// 收盘价成交。
-    /// 假设尾盘 14:55 决策并参与收盘集合竞价，以当期 Close 撮合。
+    /// 以当期 Close 撮合。
     /// </summary>
     Close = 1,
 
     /// <summary>
     /// 全日成交量加权均价成交（大资金机构回测标准，行业通用缩写：VWAP）。
-    /// OnOpen 模式下以当期 VWAP 拆单；OnClose 模式下以次日 VWAP 拆单。
+    /// UpdatePhase 为 Open 时以当期 VWAP 拆单；UpdatePhase 为 Close 时以次日 VWAP 拆单。
     /// 契约约束：若数据源缺失 vwap 且无法通过 amount/volume 计算，显式抛出强类型异常，坚决杜绝隐式降级伪实现！
     /// </summary>
     Vwap = 2,

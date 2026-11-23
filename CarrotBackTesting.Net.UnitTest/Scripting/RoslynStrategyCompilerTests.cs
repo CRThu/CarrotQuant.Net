@@ -36,6 +36,7 @@ public class RoslynStrategyCompilerTests
     {
         public MarketTime CurrentTime { get; set; } = MarketTime.MinValue;
         public int CurrentIndex { get; set; } = 0;
+        public EnginePhase Phase { get; set; } = EnginePhase.Close;
         public CarrotBacktesting.NET.Abstraction.Data.ITimeseriesRegistry Timeseries => throw new NotImplementedException();
         public CarrotBacktesting.NET.Abstraction.Data.IMarketDataProvider MarketData => throw new NotImplementedException();
         public CarrotBacktesting.NET.Abstraction.Data.IEventRegistry Events => throw new NotImplementedException();

@@ -19,6 +19,9 @@ public abstract class StrategyBase : IStrategy
     public virtual int Lookback => 200;
 
     /// <inheritdoc />
+    public virtual EnginePhase UpdatePhase => EnginePhase.Close;
+
+    /// <inheritdoc />
     public virtual void OnStart(IEngineContext context) { }
 
     /// <inheritdoc />

@@ -156,9 +156,10 @@ public class TimeInForceTests
         };
         var gateway = new SimulatedExchangeGateway(config);
         var broker = new Broker(gateway, config);
+        var marketData = new MarketDataProvider(timeseries);
 
         // Day 1
-        gateway.Step(dates[0], timeseries, 0);
+        gateway.Step(dates[0], marketData, 0, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[0]);
 
         // 同时挂出两笔限价 9.0 买单：一笔 Day，一笔 GTC
@@ -170,7 +171,7 @@ public class TimeInForceTests
         Assert.AreEqual(18000.0, broker.FrozenCash, 1e-4);
 
         // Day 2 (跨日推进，当日价格 10.5 未触碰限价 9.0)
-        gateway.Step(dates[1], timeseries, 1);
+        gateway.Step(dates[1], marketData, 1, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[1]);
 
         // 验证：Day 挂单被撤销解冻，GTC 挂单继续保留
@@ -179,7 +180,7 @@ public class TimeInForceTests
         Assert.AreEqual(9000.0, broker.FrozenCash, 1e-4);
 
         // Day 3 (价格跌至 8.5，触碰 GTC 挂单的 9.0 限价)
-        gateway.Step(dates[2], timeseries, 2);
+        gateway.Step(dates[2], marketData, 2, EnginePhase.Close);
         ((IBrokerEngineDriver)broker).Step(dates[2]);
 
         // 验证：GTC 挂单成功撮合成交，冻结资金释放为持仓

@@ -22,6 +22,11 @@ public interface IEngineContext
     int CurrentIndex { get; }
 
     /// <summary>
+    /// 获取当前时间步引擎正处于的微观执行相位（只读暴露，统一时态权威）。
+    /// </summary>
+    EnginePhase Phase { get; }
+
+    /// <summary>
     /// 获取全局时序注册表，提供稠密时序矩阵与市场维度坐标。
     /// </summary>
     ITimeseriesRegistry Timeseries { get; }

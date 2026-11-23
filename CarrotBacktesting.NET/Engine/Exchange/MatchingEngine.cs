@@ -79,12 +79,14 @@ internal sealed class MatchingEngine
     /// <param name="marketPrice">标的当前市场价格。</param>
     /// <param name="bar">标的当前行情切片。</param>
     /// <param name="tradeTime">撮合发生的时间戳。</param>
+    /// <param name="phase">当前推进的微观时钟相位。</param>
     /// <returns>撮合判定结果。</returns>
     public MatchResult EvaluatePendingLimitOrder(
         SimulatedOrder order,
         double marketPrice,
         in BarSnapshot bar,
-        MarketTime tradeTime)
+        MarketTime tradeTime,
+        EnginePhase phase = EnginePhase.Close)
     {
         ArgumentNullException.ThrowIfNull(order);
 
@@ -94,6 +96,40 @@ internal sealed class MatchingEngine
         }
 
         var request = order.Request;
+
+        // 若处于 Bar 初始时态 (Open 相位)：
+        // 1. 严格以开盘切片价 bar.Open 作为当前撮合基准；
+        // 2. 限价单判定仅看是否触碰开盘价（买单 Price >= bar.Open，卖单 Price <= bar.Open）；
+        // 3. 严禁偷看当期未完结 Bar 的 Low / High！未满足条件的限价单保留在挂单簿排队。
+        if (phase == EnginePhase.Open)
+        {
+            if (!bar.HasOpen || bar.Open <= 0.0 || double.IsNaN(bar.Open))
+            {
+                return MatchResult.NoFill();
+            }
+
+            double openPrice = bar.Open;
+            bool canFillAtOpen = request.IsBuy
+                ? request.Price >= openPrice
+                : request.Price <= openPrice;
+
+            if (!canFillAtOpen)
+            {
+                return MatchResult.NoFill();
+            }
+
+            if (bar.IsValid && !CheckLiquidity(request, in bar, out var openReason))
+            {
+                return MatchResult.Rejected(openReason);
+            }
+
+            if (bar.IsValid && _config.CheckLimit && !CheckPriceLimit(request, in bar, out openReason))
+            {
+                return MatchResult.Rejected(openReason);
+            }
+
+            return MatchResult.Filled(openPrice, request.Quantity, tradeTime, LiquidityRole.Maker);
+        }
         
         // 触碰判定：买单看 LowOr，卖单看 HighOr；若区间极值缺失，平滑自适应回退至基准价格
         double execPrice = bar.CloseOr(bar.OpenOr(marketPrice));

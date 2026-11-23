@@ -37,10 +37,10 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     public BrokerConfig Config => _config;
 
     /// <summary>
-    /// 指示当前回测驱动是否正处于开盘决策相位（OnOpen）。
+    /// 当前回测撮合网关所处的微观时序相位（权威单一事实来源）。
     /// 当处于开盘相位时，非 Open 撮合指令（如 Close/Vwap）将强制压入挂单簿挂起，留待收盘相位撮合。
     /// </summary>
-    public bool IsInOpenPhase { get; set; }
+    public EnginePhase CurrentPhase { get; set; } = EnginePhase.Close;
 
     public SimulatedExchangeGateway(BrokerConfig config, IFieldRegistry? fields = null)
     {
@@ -79,8 +79,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 double multiplier = GetMultiplier(request.Symbol);
                 MarketTime tradeTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
-                // 市价单处理：非 ReduceOnly 市价单若处于回测时钟推进中且非 Close 即时成交模式（或处于 OnOpen 开盘相位），统一压入 OrderBook 挂单簿留待对应相位撮合；纯平仓单（ReduceOnly）执行即时清仓撮合
-                bool isPendingMarketOrder = request.Type == OrderType.Market && !request.ReduceOnly && _marketData != null && _currentIndex >= 0 && (_config.DefaultExecutionPrice != ExecutionPriceType.Close || IsInOpenPhase);
+                // 市价单处理：非 ReduceOnly 市价单若处于回测时钟推进中且非 Close 即时成交模式（或处于 Open 开盘相位），统一压入 OrderBook 挂单簿留待对应相位撮合；纯平仓单（ReduceOnly）执行即时清仓撮合
+                bool isPendingMarketOrder = request.Type == OrderType.Market && !request.ReduceOnly && _marketData != null && _currentIndex >= 0 && (_config.DefaultExecutionPrice != ExecutionPriceType.Close || CurrentPhase == EnginePhase.Open);
                 if (isPendingMarketOrder)
                 {
                     var simOrder = new SimulatedOrder(orderId, request, tradeTime)
@@ -187,7 +187,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
     }
 
     /// <inheritdoc />
-    public void Step(MarketTime currentTime, IMarketDataProvider marketData, int currentIndex)
+    public void Step(MarketTime currentTime, IMarketDataProvider marketData, int currentIndex, EnginePhase phase)
     {
         ArgumentNullException.ThrowIfNull(marketData);
         EnsureMarketDataBound(marketData);
@@ -197,6 +197,7 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
         lock (_syncLock)
         {
+            CurrentPhase = phase;
             bool isNewDay = _currentTime != MarketTime.MinValue && currentTime.Date != _currentTime.Date;
             _currentTime = currentTime;
             _currentIndex = currentIndex;
@@ -259,12 +260,14 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     }
 
                     // 2. 撮合基准价根据当前执行模式与 Bar 状态自洽供给，绝不偷看未来 Close，也绝不隐式兜底 0.0：
-                    double benchmarkPrice = _config.DefaultExecutionPrice switch
-                    {
-                        ExecutionPriceType.Open => bar.OpenOr(double.NaN),
-                        ExecutionPriceType.Close => bar.CloseOr(double.NaN),
-                        _ => bar.CloseOr(bar.OpenOr(double.NaN))
-                    };
+                    double benchmarkPrice = phase == EnginePhase.Open
+                        ? bar.OpenOr(double.NaN)
+                        : _config.DefaultExecutionPrice switch
+                        {
+                            ExecutionPriceType.Open => bar.OpenOr(double.NaN),
+                            ExecutionPriceType.Close => bar.CloseOr(double.NaN),
+                            _ => bar.CloseOr(bar.OpenOr(double.NaN))
+                        };
 
                     if (double.IsNaN(benchmarkPrice) || benchmarkPrice <= 0.0 || double.IsInfinity(benchmarkPrice))
                     {
@@ -272,24 +275,13 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                     }
 
                     int colIndex = _marketData!.Metadata.GetSymbolIndex(symbol);
-                    MatchSymbolOrders(symbol, benchmarkPrice, in bar, currentTime, ref fillReports, ref stateReports, colIndex, currentIndex);
+                    MatchSymbolOrders(symbol, benchmarkPrice, in bar, currentTime, ref fillReports, ref stateReports, colIndex, currentIndex, phase);
                 }
             }
         }
 
         // 锁外派发成交回报、拒绝及跨日自动撤单事件
         DispatchReports(fillReports, stateReports);
-    }
-
-    /// <inheritdoc />
-    public void Step(MarketTime currentTime, ITimeseriesRegistry timeseries, int currentIndex)
-    {
-        ArgumentNullException.ThrowIfNull(timeseries);
-        if (_marketData == null || !ReferenceEquals(_marketData.Timeseries, timeseries))
-        {
-            _marketData = new CarrotBacktesting.NET.Data.MarketDataProvider(timeseries);
-        }
-        Step(currentTime, _marketData, currentIndex);
     }
 
     /// <inheritdoc />
@@ -340,7 +332,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
         ref List<ExecutionReport>? fillReports,
         ref List<OrderStateReport>? stateReports,
         int colIndex = -1,
-        int currentIndex = -1)
+        int currentIndex = -1,
+        EnginePhase phase = EnginePhase.Close)
     {
         var pendingList = _orderBook.GetPendingOrders(symbol);
         if (pendingList == null || pendingList.Count == 0)
@@ -362,6 +355,12 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
             if (order.Request.Type == OrderType.Market)
             {
+                // 若处于开盘相位但该市价单非开盘价撮合（例如指定为收盘或 VWAP 撮合），开盘阶段不予撮合，保留在挂单簿等待收盘相位
+                if (phase == EnginePhase.Open && _config.DefaultExecutionPrice != ExecutionPriceType.Open)
+                {
+                    continue;
+                }
+
                 // 市价跨步单按 ExecutionPriceType 撮合
                 double execPrice;
                 switch (_config.DefaultExecutionPrice)
@@ -405,8 +404,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
             }
             else
             {
-                // 限价单在挂单簿被动撮合（享受开盘跳空价格改善）
-                matchResult = _matcher.EvaluatePendingLimitOrder(order, marketPrice, in bar, tradeTime);
+                // 限价单在挂单簿被动撮合（Open 相位仅依据 bar.Open 判定，严禁偷看当期 Bar 的 High/Low）
+                matchResult = _matcher.EvaluatePendingLimitOrder(order, marketPrice, in bar, tradeTime, phase);
             }
 
             if (matchResult.IsFilled)

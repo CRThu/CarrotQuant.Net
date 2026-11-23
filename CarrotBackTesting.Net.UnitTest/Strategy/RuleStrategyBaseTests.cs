@@ -41,6 +41,7 @@ public class RuleStrategyBaseTests
     {
         public MarketTime CurrentTime { get; set; } = MarketTime.MinValue;
         public int CurrentIndex { get; set; } = 0;
+        public EnginePhase Phase { get; set; } = EnginePhase.Close;
         public ITimeseriesRegistry Timeseries => throw new NotImplementedException();
         public IMarketDataProvider MarketData => throw new NotImplementedException();
         public IEventRegistry Events => throw new NotImplementedException();

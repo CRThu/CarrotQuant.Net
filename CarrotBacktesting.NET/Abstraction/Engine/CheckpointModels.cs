@@ -141,7 +141,8 @@ public sealed record EngineCheckpointState(
     BrokerSnapshot Broker,
     ExchangeSnapshot Exchange,
     TradingRecorderSnapshot? Recorder = null,
-    MarketStateSnapshot? Market = null
+    MarketStateSnapshot? Market = null,
+    EnginePhase Phase = EnginePhase.Close
 )
 {
     /// <summary>

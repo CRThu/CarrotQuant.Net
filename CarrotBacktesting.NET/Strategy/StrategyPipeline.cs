@@ -20,6 +20,7 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     private IStrategy[] _compiledStrategies = Array.Empty<IStrategy>();
     private bool _isCompiled = false;
     private int _sealedLookback = 200;
+    private EnginePhase _sealedUpdatePhase = EnginePhase.Close;
 
     /// <summary>
     /// 创建串行拓扑组合管线。
@@ -49,6 +50,12 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
     /// 编译后固化锁定，杜绝运行期二次扩容。
     /// </summary>
     public int Lookback => _isCompiled ? _sealedLookback : CalculateMaxLookback();
+
+    /// <summary>
+    /// 获取当前策略管线的核心决策时态相位。
+    /// 编译前动态聚合校验，编译后密封固化。
+    /// </summary>
+    public EnginePhase UpdatePhase => _isCompiled ? _sealedUpdatePhase : CalculateUpdatePhase();
 
     /// <inheritdoc cref="IStrategyPipeline.Add(IStrategy)" />
     public StrategyPipeline Add(IStrategy strategy)
@@ -115,9 +122,36 @@ public abstract class StrategyPipeline : IStrategyPipeline, IDisposable
         }
 
         _sealedLookback = CalculateMaxLookback();
+        _sealedUpdatePhase = CalculateUpdatePhase();
         _compiledStrategies = _strategies.ToArray();
         _isCompiled = true;
         return this;
+    }
+
+    private EnginePhase CalculateUpdatePhase()
+    {
+        EnginePhase? uniform = null;
+        foreach (var s in GetStrategies())
+        {
+            if (s.UpdatePhase != EnginePhase.Open && s.UpdatePhase != EnginePhase.Close)
+            {
+                throw new NotSupportedException(
+                    $"[策略时态非法] 策略 '{s.Name}' 的 UpdatePhase 配置为 '{s.UpdatePhase}'。量化策略主时间步仅支持在 EnginePhase.Open 或 EnginePhase.Close 相位触发 OnUpdate 周期决策。");
+            }
+
+            if (!uniform.HasValue)
+            {
+                uniform = s.UpdatePhase;
+            }
+            else if (uniform.Value != s.UpdatePhase)
+            {
+                throw new InvalidOperationException(
+                    $"[策略管线时态冲突] 管线 '{Name}' 中的子策略存在不同的 UpdatePhase 配置！" +
+                    $"子策略 '{s.Name}' 配置为 {s.UpdatePhase}，而前序策略配置为 {uniform.Value}。" +
+                    $"同一组合管线内的所有子策略必须具备一致的时态触发相位。");
+            }
+        }
+        return uniform ?? EnginePhase.Close;
     }
 
     /// <inheritdoc />

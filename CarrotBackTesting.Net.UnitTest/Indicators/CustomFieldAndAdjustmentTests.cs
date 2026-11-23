@@ -163,10 +163,11 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             factorMatrix[0, 0] = 2.0;
             factorMatrix[1, 0] = 2.0;
             var context = new EngineContext(tsRegistry, broker, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
+            var marketData = new MarketDataProvider(tsRegistry);
 
             // 步进至第 0 步
             context.UpdateStep(0, dates[0]);
-            simExchange.Step(dates[0], tsRegistry, 0);
+            simExchange.Step(dates[0], marketData, 0, EnginePhase.Close);
 
             // 1. 验证策略端读取后复权价格为 100.0 元
             double postClose = context.GetClose(symbol);
@@ -188,12 +189,12 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 
             // 4. 验证撮合对齐：
             //    当期真实收盘价 50.0 元 > 限价 47.5 元，未触碰限价，订单必须处于挂单状态未成交
-            simExchange.Step(dates[0], tsRegistry, 0);
+            simExchange.Step(dates[0], marketData, 0, EnginePhase.Close);
             Assert.AreEqual(0m, context.GetPosition(symbol));
 
             // 5. 跨入时间步 1：次日真实收盘价跌至 47.0 元（低于物理限价 47.5 元）
             context.UpdateStep(1, dates[1]);
-            simExchange.Step(dates[1], tsRegistry, 1);
+            simExchange.Step(dates[1], marketData, 1, EnginePhase.Close);
 
             // 撮合成交：成功买入 100 股！
             Assert.AreEqual(100m, context.GetPosition(symbol));
@@ -222,9 +223,10 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             factorMatrix[0, 0] = 2.0;
             factorMatrix[1, 0] = 2.0;
             var context = new EngineContext(tsRegistry, broker, factorMatrix: factorMatrix, stepToDateIndex: new[] { 0, 1 });
+            var marketData = new MarketDataProvider(tsRegistry);
 
             context.UpdateStep(0, dates[0]);
-            simExchange.Step(dates[0], tsRegistry, 0);
+            simExchange.Step(dates[0], marketData, 0, EnginePhase.Close);
             brokerDriver.Step(dates[0]);
 
             // 预设买入持仓 100 股（后复权限价 100.0 元，折合物理价格 50.0 元，即时成交）
@@ -241,7 +243,7 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
 
             // 跨入时间步 1：标的物理价格跌至 44.0 元（折合后复权 88.0 元，跌破 90.0 止损线，物理价格 44.0 <= 45.0）
             context.UpdateStep(1, dates[1]);
-            simExchange.Step(dates[1], tsRegistry, 1);
+            simExchange.Step(dates[1], marketData, 1, EnginePhase.Close);
             brokerDriver.Step(dates[1]);
 
             // 止损单成功触发并撮合成交，持仓安全归零！
@@ -291,13 +293,13 @@ namespace CarrotBackTesting.Net.UnitTest.Indicators
             // 3. 验证正向偏移（未来函数）防御性抛错
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => context.GetClose(0, offset: 1));
 
-            // 4. 验证开盘决策模式（IsInOpenPhase）防前瞻偏差
-            context.IsInOpenPhase = true;
+            // 4. 验证开盘决策模式（Phase = EnginePhase.Open）防前瞻偏差
+            context.Phase = EnginePhase.Open;
             // 开盘时允许读取 open
             Assert.AreEqual(9.0, context.GetOpen(0, offset: 0), 1e-9);
             // 开盘时严禁读取当期 close
             Assert.ThrowsException<InvalidOperationException>(() => context.GetClose(0, offset: 0));
-            context.IsInOpenPhase = false;
+            context.Phase = EnginePhase.Close;
         }
 
         [TestMethod]
