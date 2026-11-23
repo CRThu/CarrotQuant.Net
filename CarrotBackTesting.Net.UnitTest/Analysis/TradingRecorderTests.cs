@@ -372,4 +372,57 @@ public class TradingRecorderTests
         Assert.AreEqual(1, restoredResult.OrderEvents.Count);
         Assert.AreEqual(OrderEventType.Submitted, restoredResult.OrderEvents[0].EventType);
     }
+
+    [TestMethod]
+    public void TradingResult_TradingStatus_DefaultNormal_AndCustomStatusPreserved()
+    {
+        // 验证 TradingResult 默认状态为 Normal，且支持显式传入 Bankrupt 状态
+        var defaultResult = new TradingResult();
+        Assert.AreEqual(TradingStatus.Normal, defaultResult.Status);
+
+        var bankruptResult = new TradingResult(
+            Array.Empty<SettlementRecord>(),
+            Array.Empty<Trade>(),
+            Array.Empty<PositionSnapshot>(),
+            Array.Empty<EquityPoint>(),
+            Array.Empty<DailySnapshot>(),
+            Array.Empty<SignalRecord>(),
+            Array.Empty<OrderEvent>(),
+            status: TradingStatus.Bankrupt);
+
+        Assert.AreEqual(TradingStatus.Bankrupt, bankruptResult.Status);
+    }
+
+    [TestMethod]
+    public void TradingRecorder_GetResult_WithCustomStatus_ShouldReflectInTradingResult()
+    {
+        var recorder = new TradingRecorder();
+        var resultNormal = recorder.GetResult(Array.Empty<PositionSnapshot>());
+        Assert.AreEqual(TradingStatus.Normal, resultNormal.Status);
+
+        var resultBankrupt = recorder.GetResult(Array.Empty<PositionSnapshot>(), TradingStatus.Bankrupt);
+        Assert.AreEqual(TradingStatus.Bankrupt, resultBankrupt.Status);
+    }
+
+    [TestMethod]
+    public void CapitalStatistics_WithTradingStatus_ShouldOutputSelfDescribingMetricsAccurately()
+    {
+        // 验证 CapitalStatistics 自描述指标流输出 TradingStatus
+        var capital = new CapitalStatistics(
+            AveragePositionRatio: 0.5,
+            MaxPositionRatio: 0.8,
+            AverageMarginRatio: 0.2,
+            MaxMarginRatio: 0.4,
+            CashDrag: 0.5,
+            AnnualizedTurnover: 2.5,
+            Status: TradingStatus.Bankrupt);
+
+        Assert.AreEqual(TradingStatus.Bankrupt, capital.Status);
+
+        var metrics = capital.GetMetrics().ToList();
+        var statusMetric = metrics.FirstOrDefault(m => m.Label.Contains("Trading Status"));
+        Assert.IsNotNull(statusMetric);
+        Assert.AreEqual("Bankrupt", statusMetric.Value);
+        Assert.AreEqual("状态监控", statusMetric.Category);
+    }
 }

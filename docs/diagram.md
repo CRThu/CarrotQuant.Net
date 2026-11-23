@@ -100,11 +100,13 @@ graph TD
             AccountLedger[AccountLedger]
             PositionData[PositionData]
             IBroker[IBroker]
+            IBrokerEngineDriver[IBrokerEngineDriver]
             IAccountSnapshotProvider[IAccountSnapshotProvider]
 
             Broker --> AccountLedger
             AccountLedger --> PositionData
             Broker --> IBroker
+            Broker --> IBrokerEngineDriver
             Broker --> IAccountSnapshotProvider
         end
 

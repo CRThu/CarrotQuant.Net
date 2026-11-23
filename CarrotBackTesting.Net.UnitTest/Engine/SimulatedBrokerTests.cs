@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using CarrotBacktesting.NET.Abstraction.Analysis;
 using CarrotBacktesting.NET.Abstraction.Data;
 using CarrotBacktesting.NET.Abstraction.Engine;
 using CarrotBacktesting.NET.Config;
@@ -1521,11 +1522,11 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 Assert.IsTrue(cash > 0);
             };
 
-            // 提交两笔均未成交的买单：
+            // 提交两笔同价均未成交的买单：
             // Order 1 (先来): 9.5 元买 100 股
-            // Order 2 (后来): 9.6 元买 100 股
+            // Order 2 (后来): 9.5 元买 100 股
             var o1 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m);
-            var o2 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.6, 100m);
+            var o2 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m);
 
             long id1 = broker.ExecuteOrder(o1, 10.0, null);
             long id2 = broker.ExecuteOrder(o2, 10.0, null);
@@ -2726,6 +2727,228 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
         #endregion
 
+        #region Issue 8.4 穿仓爆仓与破产清算机制专项测试 (Bankruptcy & Liquidation)
+
+        [TestMethod]
+        public void Bankruptcy_NegativeEquity_ShouldTriggerLiquidation_CancelPendingOrders_AndClearPositions()
+        {
+            // 验证 Issue 8.4：当账户动态权益跌至 <= 0 时（如空头持仓遭遇轧空暴涨严重穿仓）：
+            // 1. 全市场未成交挂单被强制撤销，释放预冻结现金；
+            // 2. 现有持仓被生成 ReduceOnly 市价强平单执行清空；
+            // 3. 账户状态更新为 Status == TradingStatus.Bankrupt，拒绝后续任何非减仓新委托；
+            // 4. OnLiquidation 回调接收到强平成交明细。
+            string? liquidatedSymbol = null;
+            decimal liquidatedQty = 0m;
+
+            var config = new BrokerConfig
+            {
+                InitialCash = 20_000.0,
+                AllowShort = true,
+                Slippage = 0.0,
+                FeeRate = 0.0,
+                OnLiquidation = (sym, qty, rep) =>
+                {
+                    liquidatedSymbol = sym;
+                    liquidatedQty = qty;
+                }
+            };
+            var broker = CreateBroker(config);
+            var t0 = new MarketTime(2025, 1, 6, 9, 30, 0);
+            broker.Step(t0);
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+            broker.UpdateMarketPrice("sh.600001", 20.0);
+
+            // 1. 开空卖出 1,000 股 sh.600000（占用保证金 10,000 元，剩余可用现金 10,000 元）
+            var openSell = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 10.0, 100m);
+            long openId = broker.ExecuteOrder(openSell, 10.0);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(openId));
+            Assert.AreEqual(-100m, broker.GetPosition("sh.600000"));
+
+            // 2. 挂一笔限价买单（在途排队挂单，冻结 500 元，剩余现金 18,500 元）
+            var pendingOrder = new OrderRequest("sh.600001", OrderDirection.Buy, OrderType.Limit, 5.0, 100m);
+            long pendingId = broker.ExecuteOrder(pendingOrder, 20.0); // 现价 20，挂单 5.0，处于 Submitted 在途排队
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(pendingId));
+
+            // 3. 标的 sh.600000 发生极端轧空暴涨：价格从 10.0 暴涨到 300.0（空头浮亏 -29,000 元）
+            // 导致账户总权益跌破 0 元（20,000 - 29,000 = -9,000 < 0，严重穿仓破产）
+            broker.UpdateMarketPrice("sh.600000", 300.0);
+            Assert.IsTrue(broker.GetTotalEquity() <= 0.0, "权益必须已跌成负数");
+
+            // 4. 推进时间步触发爆仓清算机制
+            broker.Step(new MarketTime(2025, 1, 6, 9, 31, 0));
+
+            // 5. 验证强平断言：
+            // A. 在途排队限价单必须已被撤销
+            Assert.AreEqual(OrderStatus.Canceled, broker.GetOrderStatus(pendingId), "穿仓时在途挂单必须全部撤销");
+
+            // B. 标的 sh.600000 持仓必须已被市价强平清零
+            Assert.AreEqual(0m, broker.GetPosition("sh.600000"), "强平后持仓必须全部清零");
+
+            // C. 账户状态必须标记为已破产
+            Assert.AreEqual(TradingStatus.Bankrupt, broker.Status, "账户必须被标记为已破产");
+
+            // D. OnLiquidation Hook 必须被精准触发
+            Assert.AreEqual("sh.600000", liquidatedSymbol);
+            Assert.AreEqual(100m, liquidatedQty);
+
+            // E. 破产后尝试再次提交新的开仓买单，必须被立即拒绝
+            var newOrder = new OrderRequest("sh.600001", OrderDirection.Buy, OrderType.Market, 20.0, 10m);
+            long newId = broker.SubmitOrder(newOrder);
+            Assert.AreEqual(OrderStatus.Rejected, broker.GetOrderStatus(newId), "破产账户禁止提交新开仓委托");
+        }
+
+        [TestMethod]
+        public void Bankruptcy_SaveAndRestoreState_ShouldPreserveBankruptState()
+        {
+            var config = new BrokerConfig
+            {
+                InitialCash = 2000.0,
+                AllowShort = true,
+                FeeRate = 0.0,
+                Slippage = 0.0
+            };
+            var broker = CreateBroker(config);
+            var t0 = new MarketTime(2025, 1, 6, 9, 30, 0);
+            broker.Step(t0);
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+
+            // 开空卖出 100 股（占 1,000 元保证金，剩余现金 1,000 元）
+            long openId = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Market, 10.0, 100m), 10.0);
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(openId));
+
+            // 标的暴涨至 40.0，浮亏 3,000 元，权益变为 2,000 - 3,000 = -1,000 穿仓破产
+            var t1 = new MarketTime(2025, 1, 6, 9, 31, 0);
+            broker.UpdateMarketPrice("sh.600000", 40.0);
+            broker.Step(t1);
+            Assert.AreEqual(TradingStatus.Bankrupt, broker.Status);
+
+            // 保存检查点快照
+            var snapshot = broker.SaveState();
+            Assert.AreEqual(TradingStatus.Bankrupt, snapshot.Ledger.Status);
+
+            // 恢复快照至全新经纪商
+            var restoredBroker = CreateBroker(config);
+            restoredBroker.RestoreState(snapshot);
+            Assert.AreEqual(TradingStatus.Bankrupt, restoredBroker.Status, "恢复后破产状态必须保持守恒");
+
+            // 验证恢复后的破产拦截
+            var orderId = restoredBroker.SubmitOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Market, 10.0, 10m));
+            Assert.AreEqual(OrderStatus.Rejected, restoredBroker.GetOrderStatus(orderId));
+        }
+
+        #endregion
+
+        #region Issue 7.6 撮合盘口深度与时间价格优先排队专项测试 (Price-Time Priority)
+
+        [TestMethod]
+        public void PriceTimePriority_LimitOrders_HigherBid_ShouldMatchBeforeLowerBid_EvenIfSubmittedLater()
+        {
+            // 验证时间价格优先核心物理法则：
+            // 买单 A (先提交): 9.5 元买 100 股
+            // 买单 B (后提交): 9.8 元买 100 股
+            // 当市场价格跌至 9.0 元时，买单 B（出价更高）必须先于买单 A 成交！
+            var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+
+            List<long> fillOrderIds = new();
+            broker.OnTrade += rep => fillOrderIds.Add(rep.OrderId);
+
+            var reqA = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 100m);
+            var reqB = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.8, 100m);
+
+            long idA = broker.ExecuteOrder(reqA, 10.0);
+            long idB = broker.ExecuteOrder(reqB, 10.0);
+
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(idA));
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(idB));
+
+            // 行情跌至 9.0 元触发撮合
+            broker.UpdateMarketPrice("sh.600000", 9.0);
+
+            Assert.AreEqual(2, fillOrderIds.Count);
+            Assert.AreEqual(idB, fillOrderIds[0], "出价 9.8 元的后来买单必须优先成交（价格优先 > 时间优先）");
+            Assert.AreEqual(idA, fillOrderIds[1], "出价 9.5 元的先来买单必须后成交");
+        }
+
+        [TestMethod]
+        public void PriceTimePriority_LimitOrders_LowerAsk_ShouldMatchBeforeHigherAsk_EvenIfSubmittedLater()
+        {
+            // 验证卖单时间价格优先：
+            // 卖单 A (先提交): 10.8 元卖 100 股
+            // 卖单 B (后提交): 10.3 元卖 100 股
+            // 当市场价格涨至 11.0 元时，卖单 B（售价更低更优）必须先于卖单 A 成交！
+            var config = new BrokerConfig { InitialCash = 100_000.0, Slippage = 0.0, FeeRate = 0.0 };
+            var broker = CreateBroker(config);
+            broker.SyncState(100_000.0, new Dictionary<string, decimal> { ["sh.600000"] = 1000m });
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+
+            List<long> fillOrderIds = new();
+            broker.OnTrade += rep => fillOrderIds.Add(rep.OrderId);
+
+            var reqA = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.8, 100m);
+            var reqB = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.3, 100m);
+
+            long idA = broker.ExecuteOrder(reqA, 10.0);
+            long idB = broker.ExecuteOrder(reqB, 10.0);
+
+            // 行情涨至 11.0 元触发撮合
+            broker.UpdateMarketPrice("sh.600000", 11.0);
+
+            Assert.AreEqual(2, fillOrderIds.Count);
+            Assert.AreEqual(idB, fillOrderIds[0], "售价 10.3 元的后来卖单必须优先成交（低价先卖 > 时间优先）");
+            Assert.AreEqual(idA, fillOrderIds[1], "售价 10.8 元的先来卖单必须后成交");
+        }
+
+        [TestMethod]
+        public void VolumeBudget_MultipleOrdersInSameBar_ShouldShareVolumeLimit_AndQueueRemaining()
+        {
+            // 验证 Issue 7.6 成交量预算配额（Volume Budget）：
+            // 单根 Bar 成交量为 1,000 股，VolumeLimit = 0.1（当期总预算上限为 100 股）。
+            // 策略提交 3 笔买单：Order 1 (60 股), Order 2 (60 股), Order 3 (60 股)。
+            // 撮合结果必须为：
+            // - Order 1: 全额成交 60 股（剩余预算 40 股）；
+            // - Order 2: 部分成交 40 股（PartialFilled，挂单簿剩余 20 股，预算归零）；
+            // - Order 3: 无法成交，继续在挂单簿排队；
+            // - 该根 Bar 累计成交严格等于 100 股，绝不超容！
+            var config = new BrokerConfig
+            {
+                InitialCash = 100_000.0,
+                Slippage = 0.0,
+                FeeRate = 0.0,
+                VolumeLimit = 0.1
+            };
+            var broker = CreateBroker(config);
+            broker.UpdateMarketPrice("sh.600000", 10.0);
+
+            long id1 = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 60m), 10.0);
+            long id2 = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 60m), 10.0);
+            long id3 = broker.ExecuteOrder(new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 9.5, 60m), 10.0);
+
+            // 当期 Bar 成交量 1,000 股，价格跌至 9.0 元满足撮合条件
+            var bar1 = new BarSnapshot(open: 9.2, high: 9.3, low: 8.9, close: 9.0, volume: 1000.0);
+            broker.UpdateMarketPrice("sh.600000", 9.0, bar1);
+
+            // 断言状态：
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(id1), "Order 1 必须全额成交 60 股");
+            Assert.AreEqual(OrderStatus.PartialFilled, broker.GetOrderStatus(id2), "Order 2 必须部分成交 40 股");
+            Assert.AreEqual(OrderStatus.Submitted, broker.GetOrderStatus(id3), "Order 3 预算耗尽，必须保留在挂单簿排队");
+
+            // 断言总持仓严格等于 100 股（60 + 40）
+            Assert.AreEqual(100m, broker.GetPosition("sh.600000"), "当期累计成交量严格受限于 100 股流动性预算");
+
+            // 第二根 Bar 到达，又有 1,000 股流动性（新增 100 股预算）
+            var bar2 = new BarSnapshot(open: 9.0, high: 9.1, low: 8.8, close: 8.9, volume: 1000.0);
+            broker.UpdateMarketPrice("sh.600000", 8.9, bar2);
+
+            // 断言状态：
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(id2), "Order 2 剩余 20 股在第二根 Bar 完成全额成交");
+            Assert.AreEqual(OrderStatus.Filled, broker.GetOrderStatus(id3), "Order 3 在第二根 Bar 完成全额成交 60 股");
+            Assert.AreEqual(180m, broker.GetPosition("sh.600000"), "三笔订单全部执行完毕，总持仓为 180 股");
+        }
+
+        #endregion
+
         #endregion
     }
 
@@ -2747,6 +2970,15 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
                 MarketTime effectiveTime = broker.CurrentTime != MarketTime.MinValue ? broker.CurrentTime : MarketTime.UtcNow;
                 BarSnapshot snapshot = bar != null ? BarSnapshot.FromDataRow(bar) : new BarSnapshot(close: price);
                 sim.OnMarketData(symbol, effectiveTime, in snapshot);
+            }
+        }
+
+        public static void UpdateMarketPrice(this Broker broker, string symbol, double price, in BarSnapshot bar)
+        {
+            if (((IExchangeGatewayProvider)broker).Gateway is ISimulatedExchange sim)
+            {
+                MarketTime effectiveTime = broker.CurrentTime != MarketTime.MinValue ? broker.CurrentTime : MarketTime.UtcNow;
+                sim.OnMarketData(symbol, effectiveTime, in bar);
             }
         }
 

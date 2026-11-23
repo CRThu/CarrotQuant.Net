@@ -117,7 +117,8 @@ namespace CarrotBacktesting.NET.Engine
             }
 
             var endingPositions = _snapshotProvider?.GetActivePositions(finalPriceResolver) ?? Array.Empty<PositionSnapshot>();
-            return _recorder.GetResult(endingPositions);
+            var status = _brokerDriver?.Status ?? TradingStatus.Normal;
+            return _recorder.GetResult(endingPositions, status);
         }
 
         /// <inheritdoc />

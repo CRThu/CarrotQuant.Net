@@ -94,7 +94,7 @@ public sealed class TradingRecorder : ITradingRecorder, ICheckpointable<TradingR
     }
 
     /// <inheritdoc />
-    public TradingResult GetResult(IReadOnlyList<PositionSnapshot> endingPositions)
+    public TradingResult GetResult(IReadOnlyList<PositionSnapshot> endingPositions, TradingStatus status = TradingStatus.Normal)
     {
         lock (_syncLock)
         {
@@ -105,7 +105,8 @@ public sealed class TradingRecorder : ITradingRecorder, ICheckpointable<TradingR
                 _equityCurve.ToArray(),
                 _dailySnapshots.ToArray(),
                 _signals.ToArray(),
-                _orderEvents.ToArray());
+                _orderEvents.ToArray(),
+                status);
         }
     }
 

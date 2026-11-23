@@ -254,4 +254,9 @@ public interface IBrokerEngineDriver : IBroker
     /// <param name="cash">权威可用资金。</param>
     /// <param name="positions">权威持仓快照。</param>
     void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions);
+
+    /// <summary>
+    /// 获取账户当前运行期交易状态。
+    /// </summary>
+    TradingStatus Status { get; }
 }

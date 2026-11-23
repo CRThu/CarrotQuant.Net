@@ -42,7 +42,8 @@ public sealed record PendingLotSnapshot(
 public sealed record AccountLedgerSnapshot(
     double Cash,
     double FrozenCash,
-    IReadOnlyList<LedgerPositionSnapshot> Positions
+    IReadOnlyList<LedgerPositionSnapshot> Positions,
+    TradingStatus Status = TradingStatus.Normal
 );
 
 /// <summary>

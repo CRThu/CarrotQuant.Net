@@ -32,13 +32,14 @@ public class OrderBookTests
     public void FIFO_MultipleOrdersSameSymbol_ShouldPreserveSequence()
     {
         var book = new OrderBook();
+        // 同价买单：测试纯粹的同价格先来后到 FIFO 时间优先
         var req1 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 100m);
-        var req2 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.1, 200m);
-        var req3 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.2, 300m);
+        var req2 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 200m);
+        var req3 = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 300m);
 
         book.Add(new SimulatedOrder(1L, req1, DateTime.UtcNow));
-        book.Add(new SimulatedOrder(2L, req2, DateTime.UtcNow));
-        book.Add(new SimulatedOrder(3L, req3, DateTime.UtcNow));
+        book.Add(new SimulatedOrder(2L, req2, DateTime.UtcNow.AddMilliseconds(1)));
+        book.Add(new SimulatedOrder(3L, req3, DateTime.UtcNow.AddMilliseconds(2)));
 
         var pending = book.GetPendingOrders("sh.600000");
         Assert.IsNotNull(pending);
@@ -54,6 +55,48 @@ public class OrderBookTests
         Assert.AreEqual(2, pending.Count);
         Assert.AreEqual(1L, pending[0].OrderId);
         Assert.AreEqual(3L, pending[1].OrderId);
+    }
+
+    [TestMethod]
+    public void PriceTimePriority_Bids_HigherPriceMustBePrioritizedOverEarlierTime()
+    {
+        var book = new OrderBook();
+        // 买单时间价格优先：出价更高者（10.2 > 10.1 > 10.0）必须排在更早提交的低价单之前
+        var reqLow = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.0, 100m);
+        var reqMid = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.1, 200m);
+        var reqHigh = new OrderRequest("sh.600000", OrderDirection.Buy, OrderType.Limit, 10.2, 300m);
+
+        book.Add(new SimulatedOrder(1L, reqLow, DateTime.UtcNow));
+        book.Add(new SimulatedOrder(2L, reqMid, DateTime.UtcNow.AddMilliseconds(1)));
+        book.Add(new SimulatedOrder(3L, reqHigh, DateTime.UtcNow.AddMilliseconds(2)));
+
+        var pending = book.GetPendingOrders("sh.600000");
+        Assert.IsNotNull(pending);
+        Assert.AreEqual(3, pending.Count);
+        Assert.AreEqual(3L, pending[0].OrderId, "出价 10.2 元的买单必须排在第 0 位（价格最高最优先）");
+        Assert.AreEqual(2L, pending[1].OrderId, "出价 10.1 元的买单必须排在第 1 位");
+        Assert.AreEqual(1L, pending[2].OrderId, "出价 10.0 元的买单必须排在第 2 位（出价最低最靠后）");
+    }
+
+    [TestMethod]
+    public void PriceTimePriority_Asks_LowerPriceMustBePrioritizedOverEarlierTime()
+    {
+        var book = new OrderBook();
+        // 卖单时间价格优先：售价更低者（10.0 < 10.1 < 10.2）必须排在更早提交的高价单之前
+        var reqHigh = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.2, 100m);
+        var reqMid = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.1, 200m);
+        var reqLow = new OrderRequest("sh.600000", OrderDirection.Sell, OrderType.Limit, 10.0, 300m);
+
+        book.Add(new SimulatedOrder(1L, reqHigh, DateTime.UtcNow));
+        book.Add(new SimulatedOrder(2L, reqMid, DateTime.UtcNow.AddMilliseconds(1)));
+        book.Add(new SimulatedOrder(3L, reqLow, DateTime.UtcNow.AddMilliseconds(2)));
+
+        var pending = book.GetPendingOrders("sh.600000");
+        Assert.IsNotNull(pending);
+        Assert.AreEqual(3, pending.Count);
+        Assert.AreEqual(3L, pending[0].OrderId, "售价 10.0 元的卖单必须排在第 0 位（售价最低最优先）");
+        Assert.AreEqual(2L, pending[1].OrderId, "售价 10.1 元的卖单必须排在第 1 位");
+        Assert.AreEqual(1L, pending[2].OrderId, "售价 10.2 元的卖单必须排在第 2 位（售价最高最靠后）");
     }
 
     [TestMethod]

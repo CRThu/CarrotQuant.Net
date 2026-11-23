@@ -45,6 +45,11 @@ public sealed class TradingResult
     public IReadOnlyList<OrderEvent> OrderEvents { get; init; } = Array.Empty<OrderEvent>();
 
     /// <summary>
+    /// 交易会话终局状态。
+    /// </summary>
+    public TradingStatus Status { get; init; } = TradingStatus.Normal;
+
+    /// <summary>
     /// 无参构造函数。
     /// </summary>
     public TradingResult() { }
@@ -59,7 +64,8 @@ public sealed class TradingResult
         IReadOnlyList<EquityPoint> equityCurve,
         IReadOnlyList<DailySnapshot> dailySnapshots,
         IReadOnlyList<SignalRecord> signals,
-        IReadOnlyList<OrderEvent>? orderEvents = null)
+        IReadOnlyList<OrderEvent>? orderEvents = null,
+        TradingStatus status = TradingStatus.Normal)
     {
         Settlements = settlements ?? Array.Empty<SettlementRecord>();
         ClosedTrades = closedTrades ?? Array.Empty<Trade>();
@@ -68,5 +74,6 @@ public sealed class TradingResult
         DailySnapshots = dailySnapshots ?? Array.Empty<DailySnapshot>();
         Signals = signals ?? Array.Empty<SignalRecord>();
         OrderEvents = orderEvents ?? Array.Empty<OrderEvent>();
+        Status = status;
     }
 }

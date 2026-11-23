@@ -66,8 +66,8 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
                 double multiplier = GetMultiplier(request.Symbol);
                 MarketTime tradeTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
-                // 市价单处理：若处于回测时钟推进中且非 Close 即时成交模式，统一压入 OrderBook 挂单簿，留待对应相位撮合
-                bool isPendingMarketOrder = request.Type == OrderType.Market && _marketData != null && _currentIndex >= 0 && _config.DefaultExecutionPrice != ExecutionPriceType.Close;
+                // 市价单处理：非 ReduceOnly 市价单若处于回测时钟推进中且非 Close 即时成交模式，统一压入 OrderBook 挂单簿留待对应相位撮合；纯平仓单（ReduceOnly）执行即时清仓撮合
+                bool isPendingMarketOrder = request.Type == OrderType.Market && !request.ReduceOnly && _marketData != null && _currentIndex >= 0 && _config.DefaultExecutionPrice != ExecutionPriceType.Close;
                 if (isPendingMarketOrder)
                 {
                     var simOrder = new SimulatedOrder(orderId, request, tradeTime)
@@ -333,6 +333,11 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
             return;
         }
 
+        double volumeLimit = _config.VolumeLimit;
+        double remainingBudget = (volumeLimit > 0.0 && bar.HasVolume)
+            ? bar.Volume * volumeLimit
+            : double.PositiveInfinity;
+
         // 复制一份快照避免遍历时从 OrderBook 移除发生集合修改冲突
         var ordersToMatch = new List<SimulatedOrder>(pendingList);
         for (int i = 0; i < ordersToMatch.Count; i++)
@@ -391,19 +396,43 @@ public sealed class SimulatedExchangeGateway : ISimulatedExchange, ICheckpointab
 
             if (matchResult.IsFilled)
             {
-                order.FilledQuantity += matchResult.FillQuantity;
-                decimal leavesQuantity = Math.Max(0m, order.Request.Quantity - order.FilledQuantity);
-                if (leavesQuantity == 0m)
+                // 流动性容量耗尽检查：若当期 Bar 的 VolumeBudget 已耗尽，后续订单无法在当前 Bar 成交，保留在挂单簿排队
+                if (remainingBudget <= 0.0)
                 {
+                    continue;
+                }
+
+                decimal neededQuantity = Math.Max(0m, order.Request.Quantity - order.FilledQuantity);
+                decimal actualFillQty;
+
+                if ((double)neededQuantity <= remainingBudget)
+                {
+                    // 预算充足，全额成交出簿
+                    actualFillQty = neededQuantity;
+                    remainingBudget -= (double)actualFillQty;
+                    order.FilledQuantity += actualFillQty;
+                    order.Status = OrderStatus.Filled;
                     _orderBook.Remove(order.OrderId, out _);
                 }
+                else
+                {
+                    // 预算不足，部分成交（Partial Fill），剩余份额保留在挂单簿排队
+                    actualFillQty = (decimal)remainingBudget;
+                    if (actualFillQty <= 0m) continue;
+
+                    remainingBudget = 0.0;
+                    order.FilledQuantity += actualFillQty;
+                    order.Status = OrderStatus.PartialFilled;
+                }
+
+                decimal leavesQuantity = Math.Max(0m, order.Request.Quantity - order.FilledQuantity);
 
                 fillReports ??= new List<ExecutionReport>();
                 fillReports.Add(new ExecutionReport(
                     order.OrderId,
                     order.Request.Symbol,
                     matchResult.FillPrice,
-                    matchResult.FillQuantity,
+                    actualFillQty,
                     matchResult.Commission,
                     tradeTime,
                     CumQuantity: order.FilledQuantity,

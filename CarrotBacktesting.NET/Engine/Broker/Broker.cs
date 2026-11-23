@@ -38,6 +38,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     private readonly List<(BrokerOrderRecord Order, double ExecPrice)> _triggeredOrdersBuffer = new();
     private readonly List<OrderEvent> _orderEventsBuffer = new();
     private readonly HashSet<long> _triggeredOcoGroupsBuffer = new();
+    private readonly HashSet<long> _liquidationOrderIds = new();
 
     public event Action<long, OrderStatus>? OnOrderStatusChanged;
     public event Action<ExecutionReport>? OnTrade;
@@ -46,6 +47,11 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
     public event Action<SettlementRecord>? OnSettlement;
     public event Action<PositionEvent>? OnPositionChanged;
     public event Action<OrderEvent>? OnOrderEvent;
+
+    /// <summary>
+    /// 获取账户当前运行期交易状态。
+    /// </summary>
+    public TradingStatus Status => _ledger.Status;
 
     /// <summary>
     /// 显式实现 <see cref="IExchangeGatewayProvider"/>，封闭外部对原始网关的直接访问，避免策略绕过两阶段预冻结。
@@ -322,6 +328,26 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         int settleDays = GetSettleDays(request.Symbol);
         var submitTime = _currentTime != MarketTime.MinValue ? _currentTime : MarketTime.UnixEpoch;
 
+        // 破产状态拦截：账户穿仓破产后，禁止一切非减仓委托
+        if (Status == TradingStatus.Bankrupt && !request.ReduceOnly)
+        {
+            var rejectEvt = new OrderEvent(
+                submitTime,
+                orderId,
+                request.Symbol,
+                request.Direction,
+                request.Type,
+                request.Price,
+                request.Quantity,
+                OrderEventType.Rejected,
+                OrderStatus.Rejected,
+                Reason: "账户已穿仓破产，拒绝非减仓委托。",
+                OrderTag: request.OrderTag);
+            OnOrderStatusChanged?.Invoke(orderId, OrderStatus.Rejected);
+            OnOrderEvent?.Invoke(rejectEvt);
+            return orderId;
+        }
+
         // 条件单处理（触发前零冻结）
         if (IsConditional(request.Type))
         {
@@ -573,6 +599,99 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         _gateway.CancelOrder(orderId);
     }
 
+    /// <summary>
+    /// 账户穿仓与破产清算检查。
+    /// 当动态权益 TotalEquity &lt;= 0 时：
+    /// 1. 确立破产状态 Status = TradingStatus.Bankrupt；
+    /// 2. 撤销全市场在途排队挂单（释放资金与持仓冻结）；
+    /// 3. 生成市价强平单（ReduceOnly = true）清空全部活跃持仓；
+    /// 4. 熔断后续一切非减仓委托。
+    /// </summary>
+    public void CheckLiquidation(MarketTime currentTime)
+    {
+        List<long>? pendingOrderIds = null;
+        List<OrderRequest>? liquidationOrders = null;
+
+        lock (_syncLock)
+        {
+            double equity = _ledger.GetTotalEquity(sym => ResolvePrice(sym, null));
+            if (equity > 0.0) return;
+
+            // 1. 动态权益 <= 0，确立破产状态
+            _ledger.SetStatus(TradingStatus.Bankrupt);
+
+            // 2. 同一锁内搜集在途待撤销排队挂单
+            foreach (var ord in _orders.Values)
+            {
+                if (ord.Status is OrderStatus.Submitted or OrderStatus.PartialFilled or OrderStatus.Pending)
+                {
+                    pendingOrderIds ??= new List<long>();
+                    pendingOrderIds.Add(ord.OrderId);
+                }
+            }
+
+            // 3. 同一锁内搜集待强平持仓
+            var positions = _ledger.GetPositions();
+            bool hasActivePosition = false;
+            foreach (var kvp in positions)
+            {
+                if (kvp.Value != 0m)
+                {
+                    hasActivePosition = true;
+                    break;
+                }
+            }
+
+            if (hasActivePosition)
+            {
+                _monitor?.Log(
+                    $"[Broker 强平] 账户总权益 ({equity:F2}) <= 0 发生穿仓，执行撤单与强平清仓。",
+                    LogLevel.Error);
+
+                foreach (var kvp in positions)
+                {
+                    string symbol = kvp.Key;
+                    decimal qty = kvp.Value;
+                    if (qty == 0m) continue;
+
+                    var dir = qty > 0m ? OrderDirection.Sell : OrderDirection.Buy;
+                    decimal absQty = Math.Abs(qty);
+                    long orderId = Interlocked.Increment(ref _orderSequence);
+
+                    liquidationOrders ??= new List<OrderRequest>();
+                    liquidationOrders.Add(new OrderRequest(
+                        symbol,
+                        dir,
+                        OrderType.Market,
+                        0.0,
+                        absQty,
+                        TimeInForce: TimeInForce.Day,
+                        ReduceOnly: true) { OrderId = orderId });
+
+                    _liquidationOrderIds.Add(orderId);
+                }
+            }
+        }
+
+        // 4. 锁外撤销全部挂单（遵循 Open Calls 原则，释放预冻结额度）
+        if (pendingOrderIds != null)
+        {
+            for (int i = 0; i < pendingOrderIds.Count; i++)
+            {
+                CancelOrder(pendingOrderIds[i]);
+            }
+        }
+
+        // 5. 锁外提交强平市价单（走标准 SubmitOrder 管道）
+        if (liquidationOrders != null)
+        {
+            for (int i = 0; i < liquidationOrders.Count; i++)
+            {
+                SubmitOrder(liquidationOrders[i]);
+            }
+        }
+    }
+
     /// <inheritdoc />
     public void Step(MarketTime currentTime)
     {
@@ -592,6 +711,8 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         }
 
         ProcessConditionalOrders(currentTime);
+
+        CheckLiquidation(currentTime);
     }
 
     /// <inheritdoc />
@@ -873,6 +994,7 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         Trade? closedTrade = null;
         SettlementRecord? settlement = null;
         OrderEvent? orderEvt = null;
+        bool isLiquidation = false;
 
         lock (_syncLock)
         {
@@ -881,6 +1003,8 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
                 // 未知订单或外部自成交，以无订单模式直接落账
                 return;
             }
+
+            isLiquidation = _liquidationOrderIds.Remove(report.OrderId);
 
             // 若外部回报未显式填充分笔进度凭证，依据订单当前成交状态自适应推导补全
             if (report.CumQuantity == 0m && report.LeavesQuantity == 0m)
@@ -1014,6 +1138,11 @@ public sealed class Broker : IBroker, IBrokerEngineDriver, IAccountSnapshotProvi
         if (posEvent != null)
         {
             OnPositionChanged?.Invoke(posEvent);
+        }
+
+        if (isLiquidation)
+        {
+            _config.OnLiquidation?.Invoke(report.Symbol, report.FillQuantity, report);
         }
     }
 

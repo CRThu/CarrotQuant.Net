@@ -81,7 +81,8 @@ namespace CarrotBacktesting.NET.Abstraction.Analysis
         double AverageMarginRatio,
         double MaxMarginRatio,
         double CashDrag,
-        double AnnualizedTurnover
+        double AnnualizedTurnover,
+        TradingStatus Status = TradingStatus.Normal
     ) : IAnalysisResult
     {
         /// <inheritdoc />
@@ -93,6 +94,7 @@ namespace CarrotBacktesting.NET.Abstraction.Analysis
         /// <inheritdoc />
         public IEnumerable<MetricItem> GetMetrics()
         {
+            yield return new("交易终局状态 (Trading Status)", $"{Status}", "状态监控");
             yield return new("平均持仓占比 (Avg Position)", $"{AveragePositionRatio:P2}", "仓位暴露");
             yield return new("最大持仓占比 (Max Position)", $"{MaxPositionRatio:P2}", "仓位暴露");
             yield return new("平均保证金占用 (Avg Margin)", $"{AverageMarginRatio:P2}", "杠杆安全");

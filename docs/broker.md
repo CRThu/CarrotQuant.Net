@@ -1,6 +1,6 @@
 # 客户端经纪商与账户账本体系 (Client Broker & Account Ledger System)
 
-本文档面向系统架构师与策略开发者，深入介绍 CarrotQuant.NET 中**客户端经纪商子系统**（`CarrotBacktesting.NET/Engine/Broker/`）的核心契约（`IBroker`）、账户财务账本（`AccountLedger`）、持仓实体（`PositionData`）、两阶段挂单冻结状态机、零现金卖出平仓支持、多时区自然日清算、以及在线实盘交易对接规范。
+本文档面向系统架构师与策略开发者，深入介绍 CarrotQuant.NET 中**客户端经纪商子系统**（`CarrotBacktesting.NET/Engine/Broker/`）的核心契约（`IBroker`）、账户财务账本（`AccountLedger`）、持仓实体（`PositionData`）、两阶段挂单冻结状态机、零现金卖出平仓支持、T+N 纯交易日步长递减清算、穿仓破产清算与强平机制、以及在线实盘交易对接规范。
 
 > [!NOTE]
 > 关于交易所撮合机制、订单簿挂单排队、滑点与流动性模型，请参阅专门文档 [交易所仿真与集中撮合体系 (exchange.md)](exchange.md)。
@@ -18,11 +18,12 @@
   - [4. 部分成交分段精准核销 (Partial Fills)](#4-部分成交分段精准核销-partial-fills)
   - [5. 异常拒单与撤单全额解冻 (Unfreeze)](#5-异常拒单与撤单全额解冻-unfreeze)
 - [五、多资产数学状态转移统一 (现货全额 vs 期货保证金)](#五多资产数学状态转移统一-现货全额-vs-期货保证金)
-- [六、多时区自然日清算与 T+N 可用持仓划转 (ProcessDayRollover)](#六多时区自然日清算与-tn-可用持仓划转-processdayrollover)
+- [六、T+N 纯交易日客观步长递减清算与可用持仓划转 (ProcessDayRollover)](#六tn-纯交易日客观步长递减清算与可用持仓划转-processdayrollover)
 - [七、动态盯市估值 (GetTotalEquity)](#七动态盯市估值-gettotalequity)
-- [八、并发线程安全与开放调用 (Open Calls)](#八并发线程安全与开放调用-open-calls)
-- [九、在线实盘交易集成与状态对账 (Online Trading & SyncState)](#九在线实盘交易集成与状态对账-online-trading--syncstate)
-- [十、可观测性与能力接口扩展 (Capability Interfaces)](#十可观测性与能力接口扩展-capability-interfaces)
+- [八、穿仓爆仓、破产清算与强平机制 (Bankruptcy & Liquidation)](#八穿仓爆仓破产清算与强平机制-bankruptcy--liquidation)
+- [九、并发线程安全与开放调用 (Open Calls)](#九并发线程安全与开放调用-open-calls)
+- [十、在线实盘交易集成与状态对账 (Online Trading & SyncState)](#十在线实盘交易集成与状态对账-online-trading--syncstate)
+- [十一、可观测性与能力接口扩展 (Capability Interfaces)](#十一可观测性与能力接口扩展-capability-interfaces)
 
 ---
 
@@ -95,7 +96,7 @@ public interface IBroker
 }
 ```
 
-> 💡 **分层契约与生命周期驱动分离**：`IBroker` 保持纯净的交易与持仓查询门面。时钟步进推进（`Step`）与柜台状态同步（`SyncState`）定义于专有基础设施契约 `IBrokerEngineDriver`，供引擎主循环与对账模块调用。详见 [第十节](#十可观测性与能力接口扩展-capability-interfaces)。
+> 💡 **分层契约与生命周期驱动分离**：`IBroker` 保持纯净的交易与持仓查询门面。时钟步进推进（`Step`）与柜台状态同步（`SyncState`）定义于专有基础设施契约 `IBrokerEngineDriver`，供引擎主循环与对账模块调用。详见 [第十一节](#十一可观测性与能力接口扩展-capability-interfaces)。
 
 ---
 
@@ -205,24 +206,39 @@ sequenceDiagram
 
 ---
 
-## 六、多时区自然日清算与 T+N 可用持仓划转 (ProcessDayRollover)
+## 六、T+N 纯交易日客观步长递减清算与可用持仓划转 (ProcessDayRollover)
+
+在 $T+N$ 交易结算中（如 A 股现货 $T+1$、港美股 $T+2$ 或特定跨境/场外标的），传统自然日累加方案在跨周末或长假时会将休市日错误计入交收天数，导致提前违规解锁；而依赖未来全量日历数组又会在实盘增量流式按天追加（`AppendDate`）时发生未来越界异常。
+
+CarrotQuant.NET 遵循第一性原理，确立**纯客观交易日步长递减模型**：
 
 ```mermaid
-flowchart LR
-    subgraph HotLoop ["回测/实盘主时钟推进 (Hot Path)"]
-        UTCGrid["全局时间戳<br>(UTC DateTime)"] -->|单向单调推进| BrokerStep["Broker.Step(currentTimeUtc)"]
+flowchart TD
+    subgraph Fill ["买入成交建仓 (CommitFill)"]
+        F1["开仓 openQty > 0"] --> F2["纯值类型批次: PendingLot(openQty, RemainingDays: settleDays)<br>(20 字节纯只读 struct，8 字节紧凑对齐为 24 字节，0 GC 堆分配)"]
+        F2 --> F3["记录当前交易日 _lastRolloverDate (当日买入绝对防早熟)"]
     end
 
-    subgraph SettleLogic ["交易所本地清算 (Zero GC)"]
-        BrokerStep --> Check{"currentTimeUtc >= _nextRollTimeUtc?"}
-        Check -->|Yes| DoRoll["本地 00:00:00 换日结算<br>AccountLedger.ProcessDayRollover<br>T+N 可用持仓划转<br>预计算下一换日阈值"]
-        Check -->|No| FastPass["直接放行 (常数时间比对)"]
+    subgraph Step ["引擎主时钟跨日步进 (Broker.Step)"]
+        S1["接收当期时间步交易日 exchangeDate"] --> S2{"exchangeDate.Date != _lastRolloverDate.Date ?"}
+        S2 -->|否: 日内高频 Bar 重复调用| S3["双层幂等守卫短路: 直接放行 (Zero Cost)"]
+        S2 -->|是: 真实经历客观交易日跃迁| S4["更新 _lastRolloverDate = exchangeDate.Date"]
+        S4 --> S5["AccountLedger.ProcessDayRollover()"]
+    end
+
+    subgraph Roll ["账本持仓划转 (ProcessDayRollover)"]
+        S5 --> R1["遍历活跃持仓各 PendingLot 批次"]
+        R1 --> R2["RemainingDays-- (客观扣减 1 个交易日步长)"]
+        R2 --> R3{"RemainingDays <= 0 ?"}
+        R3 -->|是: 到期交收| R4["pos.AvailableQuantity += lot.Quantity (释放为可用持仓)"]
+        R3 -->|否: 仍处于在途锁定| R5["保留在 PendingLots 继续等待后续交易日"]
     end
 ```
 
-1. **统一 IANA 时区标准**：支持 `"Asia/Shanghai"`、`"America/New_York"`、`"UTC"` 等标准跨平台时区标识；
-2. **预计算换日阈值 (`NextRollTimeUtc`)**：初始化及每次换日完成时，预先计算交易所本地次日 `00:00:00` 对应的 UTC 绝对时间戳，热路径仅需一次整数时间戳比对即可判定是否日切，零高频 API 调用开销；
-3. **T+N 持仓解锁**：跨日清算触发时，`AccountLedger.ProcessDayRollover` 遍历各标的的 `PendingLots`，将到达结算日期的持仓批次划入 `AvailableQuantity`，次日首根 Bar 即可用于平仓交易。
+1. **纯事件驱动步长递减（回测与实盘 100% 同构）**：买入成交时仅在栈上生成紧凑值类型 `PendingLot`，不依赖任何未来日历数组或外部工作日判定委托；实盘流式按天追加行情天然自洽；
+2. **双层绝对幂等日切守卫**：
+   - 盘中高频（分钟/Tick）行情重复步进时，`exchangeDate.Date == _lastRolloverDate.Date` 立即短路，热路径零损耗；
+   - 真实跨交易日推进时，仅在首个跨日 Bar 递减一个交易日步长，严防当日新开仓被提前划转（防早熟）。
 
 ---
 
@@ -230,24 +246,61 @@ flowchart LR
 
 `AccountLedger.GetTotalEquity(priceResolver)` 原生支持通过注入当前最新行情委托动态盯市：
 $$\text{TotalEquity} = \text{Cash} + \sum (\text{Position} \times \text{CurrentPrice} \times \text{Multiplier}) + \text{UnrealizedPnL}$$
-当未提供行情委托时，平滑降级采用持仓开仓均价（`AveragePrice`）计算成本资产，兼顾离线测算与在线实时盯市。
+当未提供行情委托时，平滑降级采用持仓开仓均价（`AveragePrice`）计算成本资产，兼顾离线测算与在线实时盯市。在盯市解析出公允最新价 `resolvedPrice > 0.0` 时，同步刷新持仓实体的最新价格 `pos.LastPrice = resolvedPrice`，保证持仓跟踪时刻贴合真实市场。
 
 ---
 
-## 八、并发线程安全与开放调用 (Open Calls)
+## 八、穿仓爆仓、破产清算与强平机制 (Bankruptcy & Liquidation)
+
+在带有杠杆的衍生品或允许融券做空的交易场景中，若市场出现剧烈单边行情（如轧空暴涨 Short Squeeze），持仓浮亏可能穿透投资者本金，导致账户动态总权益跌破 0 元（穿仓）。
+
+传统回测框架往往放任账户负资产存续跑完数年回测，严重粉饰下行风险，违背金融物理法则。CarrotQuant.NET 内置了坚固的**破产清算与强平机制（Liquidation Protocol）**：
+
+```mermaid
+flowchart TD
+    subgraph Check ["步进盯市风控检查 (Broker.Step)"]
+        C1["GetTotalEquity(priceResolver)"] --> C2{"TotalEquity <= 0.0 ?"}
+        C2 -->|否: 权益健康| C3["放行正常步进"]
+        C2 -->|是: 发生穿仓| C4["确立状态机: Status = TradingStatus.Bankrupt<br>底层 TryFreeze 拦截: openQty > 0 拒单"]
+    end
+
+    subgraph Clear ["强平执行 (遵循 Open Calls 原则)"]
+        C4 --> L1["锁内搜集在途挂单与待强平持仓"]
+        L1 --> L2["锁外撤回全部排队挂单<br>释放预冻结现金与持仓"]
+        L2 --> L3["锁外提交市价平仓单: SubmitOrder(ReduceOnly: true)<br>内部订单 ID 识别，零 Tag 依赖"]
+        L3 --> L4["网关即时撮合平仓清盘，结算终局真实盈亏"]
+        L4 --> L5["锁外派发成交流水与强平通知: BrokerConfig.OnLiquidation?.Invoke(...)"]
+    end
+```
+
+1. **破产状态确立与熔断 (`TradingStatus.Bankrupt`)**：
+   - 当账户总净值 $\text{TotalEquity} \le 0.0$ 时，经纪商与账本立即跃迁至状态 `TradingStatus.Bankrupt`；
+   - 底层 `AccountLedger.TryFreeze` 执行前置拦截：凡涉及新开仓的委托（`openQty > 0`）一律拦截并返回拒单 `Account is bankrupt. Trading suspended.`；
+2. **在途排队挂单集中撤销**：
+   - 触发强平时，立即自动撤销挂单簿中全市场所有未成交限价单与在途条件单，释放全部冻结资金与持仓；
+3. **市价强平清仓与零 Tag 内部识别**：
+   - 对全市场现有活跃持仓生成标准市价平仓委托（`ReduceOnly: true`，`OrderTag` 留空）；
+   - 强平识别完全由经纪商内部维护的订单 ID 集合权威管理，彻底拔除魔数标签（`OrderTag`）与网关特权旁路，复用成熟的撮合与事件分发管道；
+4. **外部可观测性与断点续跑守恒**：
+   - 锁外派发 `BrokerConfig.OnLiquidation` 回调供外部记录风险日志；
+   - `AccountLedgerSnapshot` 包含 `TradingStatus Status = TradingStatus.Normal` 字段，断点续跑时状态机无损复原。
+
+---
+
+## 九、并发线程安全与开放调用 (Open Calls)
 
 量化交易系统在多策略并发、多线程行情推送与跨组件回调时极易因锁竞争或锁重入发生死锁。CarrotQuant.NET 遵循严格的并发架构红线：
 
 1. **锁内极简状态跃迁，锁外开放调用 (Open Calls)**：
    - 客户端 `Broker` 在向 `_gateway.SendOrder` 或 `_gateway.CancelOrder` 发起物理调用时，**严格在释放内部 `_syncLock` 之后执行**；
-   - 所有的外部事件派发（`OnTrade`、`OnOrderStatusChanged`、`OnPositionChanged`）全部暂存至栈变量或预分配列表，在彻底退出锁后在锁外进行派发。绝不持有内部锁调用未知外部代码，从物理架构层面根绝死锁。
+   - 所有的外部事件派发（`OnTrade`、`OnOrderStatusChanged`、`OnPositionChanged`、`OnLiquidation`）全部暂存至栈变量或预分配列表，在彻底退出锁后在锁外进行派发。绝不持有内部锁调用未知外部代码，从物理架构层面根绝死锁。
 2. **128 位 `decimal` 撕裂读防御 (Torn Read Prevention)**：
    - 对 `GetPosition`、`GetAvailablePosition`、`GetOrderStatus` 等所有外部读取契约统一施加内部锁保护，杜绝 64 位 CPU 跨多寄存器读取 `decimal` 时发生数值撕裂。
 3. **高并发压测保证**：经全套 20 线程并发高压测试验证，零死锁、零竞态脏读。
 
 ---
 
-## 九、在线实盘交易集成与状态对账 (Online Trading & SyncState)
+## 十、在线实盘交易集成与状态对账 (Online Trading & SyncState)
 
 ### 1. 状态对账同步 (`SyncState`)
 在实盘交易中，因网络断线重连、盘前初始化或日切对账，需要将经纪商本地账本与真实柜台权威数据对齐：
@@ -266,7 +319,7 @@ broker.SyncState(liveCash, livePositionsDictionary);
 
 ---
 
-## 十、可观测性与能力接口扩展 (Capability Interfaces)
+## 十一、可观测性与能力接口扩展 (Capability Interfaces)
 
 遵循接口隔离原则（ISP），经纪商核心接口 `IBroker` 保持纯净精简，针对记账审计与系统装配扩展了专门的能力契约（位于 `CarrotBacktesting.NET.Abstraction.Engine`）：
 

@@ -49,6 +49,7 @@ public interface ITradingRecorder
     /// 生成并返回交易账本综合结果集。
     /// </summary>
     /// <param name="endingPositions">当前或结束时的未平仓持仓明细（含未实现收益）。</param>
+    /// <param name="status">交易会话终局状态（默认为正常状态 Normal）。</param>
     /// <returns>交易账本结果集。</returns>
-    TradingResult GetResult(IReadOnlyList<PositionSnapshot> endingPositions);
+    TradingResult GetResult(IReadOnlyList<PositionSnapshot> endingPositions, TradingStatus status = TradingStatus.Normal);
 }

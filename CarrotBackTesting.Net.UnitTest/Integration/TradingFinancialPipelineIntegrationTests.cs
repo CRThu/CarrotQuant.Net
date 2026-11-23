@@ -1471,5 +1471,85 @@ public class TradingFinancialPipelineIntegrationTests
         }
     }
 
+    private sealed class ShortSqueezeBankruptcyStrategy : StrategyBase
+    {
+        public override void OnUpdate(IEngineContext context)
+        {
+            if (context.CurrentIndex == 0)
+            {
+                // Day 0: 卖空 100 股 @ 10.0（初始资金 10,000 元，占用保证金 1,000 元）
+                context.Sell("SH.600000", 100m);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void Bankruptcy_EndToEnd_ShouldReportTradingStatusBankrupt_InResultAndAnalysisReport()
+    {
+        var symbols = new[] { "SH.600000" };
+        var dates = new[] { new DateTime(2024, 1, 2), new DateTime(2024, 1, 3) };
+        var metadata = new MockMetadata(symbols, dates, new[] { "close", "open", "high", "low", "volume" });
+        var tsRegistry = new MockTimeseriesRegistry(metadata);
+
+        // Day 0: 10.0 元开空；Day 1: 500.0 元暴涨（严重穿仓爆仓）
+        var closeData = new double[,] { { 10.0 }, { 500.0 } };
+        var volumeData = new double[,] { { 100000.0 }, { 100000.0 } };
+
+        tsRegistry.SetMatrix("close", new MockMatrix(closeData));
+        tsRegistry.SetMatrix("open", new MockMatrix(closeData));
+        tsRegistry.SetMatrix("high", new MockMatrix(closeData));
+        tsRegistry.SetMatrix("low", new MockMatrix(closeData));
+        tsRegistry.SetMatrix("volume", new MockMatrix(volumeData));
+
+        var brokerConfig = new BrokerConfig
+        {
+            InitialCash = 10000.0,
+            AllowShort = true,
+            FeeRate = 0.0,
+            Slippage = 0.0,
+            DefaultExecutionPrice = ExecutionPriceType.Close
+        };
+
+        var simExchange = new SimulatedExchangeGateway(brokerConfig);
+        var broker = new Broker(simExchange, brokerConfig);
+
+        var strategy = new ShortSqueezeBankruptcyStrategy();
+        var pipeline = StrategyPipeline.Sequential().Add(strategy);
+
+        var engineConfig = new EngineConfig
+        {
+            Mode = "backtest",
+            StartDate = dates[0],
+            EndDate = dates[1]
+        };
+
+        using var engine = new BacktestingEngine(
+            tsRegistry,
+            broker,
+            pipeline,
+            config: engineConfig,
+            simExchange: simExchange);
+
+        engine.Run();
+
+        // 1. 验证引擎终局导出的 TradingResult 状态为 Bankrupt
+        var result = engine.GetResult();
+        Assert.AreEqual(TradingStatus.Bankrupt, result.Status, "穿仓破产策略导出的交易事实必须准确反映 TradingStatus.Bankrupt");
+
+        // 2. 验证分析引擎生成的综合报告 AnalysisReport 正确承载该状态
+        var analysisEngine = AnalysisEngineFactory.Create();
+        var report = analysisEngine.Analyze(result, new AnalysisOptions());
+
+        Assert.AreEqual(TradingStatus.Bankrupt, report.Facts.Status);
+        Assert.IsNotNull(report.Capital);
+        Assert.AreEqual(TradingStatus.Bankrupt, report.Capital.Status);
+
+        // 3. 验证 Capital 统计自描述指标流输出状态项
+        var metrics = report.Capital.GetMetrics().ToList();
+        var statusMetric = metrics.FirstOrDefault(m => m.Label.Contains("Trading Status"));
+        Assert.IsNotNull(statusMetric);
+        Assert.AreEqual("Bankrupt", statusMetric.Value);
+    }
+
     #endregion
 }

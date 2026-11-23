@@ -166,6 +166,13 @@ namespace CarrotBacktesting.NET.Config
         [YamlIgnore]
         public Func<string, IFieldRegistry?, double>? OnGetMarginRate { get; set; }
 
+        /// <summary>
+        /// 强行平仓执行 Hook。在账户发生穿仓爆仓触发系统强平市价单时通知调用端。
+        /// 参数：(string symbol, decimal quantity, ExecutionReport report) -> void
+        /// </summary>
+        [YamlIgnore]
+        public Action<string, decimal, ExecutionReport>? OnLiquidation { get; set; }
+
         #endregion
     }
 }

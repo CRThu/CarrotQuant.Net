@@ -44,7 +44,7 @@ public static class SessionConfigLoader
 ### 2. 配置模型
 - **`SessionConfig`**: 顶层聚合配置四大支柱：`EngineConfig Engine`、`BrokerConfig Broker`、`DataConfig Data` 与可选的 `PipelineConfiguration? Pipeline`。
 - **`EngineConfig`**: 引擎自身参数：`Mode` (`backtest`/`living`)、`StartDate` (DateTime?)、`EndDate` (DateTime?)。
-- **`BrokerConfig`**: `InitialCash` (double)、`SettleDays` (int: 0 即 T+0, 1 即 T+1)、`AllowShort` (bool)、`FeeRate` (double)、`MinFee` (double)、`Slippage` (double)、`VolumeLimit` (double)、`CheckLimit` (bool)、`Multiplier` (double)、`MarginRate` (double)，对称覆盖 Hook，以及内置静态市场预设（`Universal`, `AStock`, `Futures`, `Crypto`）。
+- **`BrokerConfig`**: `InitialCash` (double)、`SettleDays` (int: 0 即 T+0, 1 即 T+1)、`AllowShort` (bool)、`FeeRate` (double)、`MinFee` (double)、`Slippage` (double)、`VolumeLimit` (double)、`CheckLimit` (bool)、`CancelPendingOrdersOnDailyClose` (bool)、`Multiplier` (double)、`MarginRate` (double)、`OnLiquidation` (Action<string, decimal, ExecutionReport>?)，对称覆盖 Hook，以及内置静态市场预设（`Universal`, `AStock`, `Futures`, `Crypto`）。
 - **`DataConfig`**: `Root` (string)、`Timeseries` (`List<TimeseriesConfig>`)、`Events` (`List<EventStreamConfig>`)、`Fields` (`List<FieldTableConfig>`)、`Adjust` (`AdjustmentConfig`)。
 - **`AdjustmentConfig`**: `Mode` (`AdjustmentMode`: `None` / `Post`)、`TableId` (string: 默认 "adjustments")、`FactorField` (string: 默认 "back_adj_factor")、`PriceFields` (`List<string>`: 默认 ["open", "high", "low", "close"])、`Cache` (bool: 默认 true)。
 - **`TimeseriesConfig`**: `TableId` (string)、`Fields` (`List<string>?`)、`TimeZone` (string?)、`Cache` (bool)、`PageSize` (int)、`Refresh` (`CacheRefreshMode`: `Lazy` / `Auto` / `Force`)、`Compression` (`CacheCompression`: `Lz4` / `None`)、`CommitBatchSize` (int)、`MaxPages` (int)、`Prefetch` (bool)、`NullableFields` (`List<string>?`)。
@@ -768,25 +768,32 @@ public interface IBroker
     double GetPositionCost(string symbol);
     IReadOnlyDictionary<string, decimal> GetPositions();
     long SubmitOrder(OrderRequest request);
-    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
-    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
+    long Buy(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false);
+    long Sell(string symbol, decimal quantity, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null, bool reduceOnly = false);
     long ClosePosition(string symbol, double price = 0.0, OrderType type = OrderType.Market, string orderTag = "", TimeInForce? timeInForce = null);
     long StopLoss(string symbol, double stopPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
     long TakeProfit(string symbol, double targetPrice, decimal? quantity = null, string orderTag = "", TimeInForce? timeInForce = null);
-    (long StopLossOrderId, long TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null);
+    (long StopLossOrderId, long TakeProfitOrderId) Bracket(string symbol, decimal quantity, double stopPrice, double takeProfitPrice, string orderTag = "", TimeInForce? timeInForce = null, OrderDirection? closeDirection = null);
     void CancelOrder(long orderId);
     OrderStatus GetOrderStatus(long orderId);
-    void Step(DateTime currentTime);
-    void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions);
     
     event Action<long, OrderStatus> OnOrderStatusChanged;
     event Action<ExecutionReport> OnTrade;
     event Action<PositionEvent>? OnPositionChanged;
 }
+
+/// <summary>
+/// 引擎驱动与基础设施内部契约（物理隔离于策略门面）。
+/// </summary>
+public interface IBrokerEngineDriver : IBroker
+{
+    void Step(MarketTime currentTime);
+    void SyncState(double cash, IReadOnlyDictionary<string, decimal> positions);
+}
 ```
 
 #### 核心数据模型
-- **`OrderRequest`**: `(string Symbol, OrderDirection Direction, OrderType Type, double Price, decimal Quantity, string OrderTag = "", TimeInForce? TimeInForce = null, long OrderId = 0)`
+- **`OrderRequest`**: `(string Symbol, OrderDirection Direction, OrderType Type, double Price, decimal Quantity, string OrderTag = "", TimeInForce? TimeInForce = null, long OrderId = 0, bool ReduceOnly = false)`
 - **`ExecutionReport`**: `(long OrderId, string Symbol, double FillPrice, decimal FillQuantity, double Commission, DateTime Time)`
 - **`PositionEvent`**: `(string Symbol, decimal NewQuantity, double AveragePrice, DateTime Time)`
 - **`OrderStatus`**: `Pending`, `Submitted`, `PartialFilled`, `Filled`, `Canceled`, `Rejected`

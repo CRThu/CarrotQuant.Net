@@ -80,6 +80,30 @@ public sealed class ConsoleExporter : IReportExporter
         targetConsole.WriteLine();
         targetConsole.Write(new Rule("[bold cyan]CarrotQuant 量化回测与实盘绩效归因报告[/]").Centered());
 
+        if (report.Facts.Status != TradingStatus.Normal)
+        {
+            targetConsole.WriteLine();
+            string statusTitle = report.Facts.Status switch
+            {
+                TradingStatus.Bankrupt => "状态提示: 账户穿仓 (Bankrupt)",
+                TradingStatus.Aborted => "状态提示: 会话中止 (Aborted)",
+                _ => $"状态提示: {report.Facts.Status}"
+            };
+            string statusDesc = report.Facts.Status switch
+            {
+                TradingStatus.Bankrupt => "账户总权益小于等于零，在途委托已撤销并执行强平，后续开仓委托已被拦截。",
+                TradingStatus.Aborted => "交易会话异常中止退出。",
+                _ => string.Empty
+            };
+            var alertPanel = new Panel(new Markup($"[bold yellow]{statusTitle}[/]\n{statusDesc}"))
+            {
+                Border = BoxBorder.Rounded,
+                BorderStyle = new Style(Color.Yellow)
+            };
+            targetConsole.Write(alertPanel);
+            targetConsole.WriteLine();
+        }
+
         if (_options.ShowPortfolio && report.Portfolio != null)
         {
             RenderPortfolio(targetConsole, report.Portfolio);
@@ -237,6 +261,17 @@ public sealed class ConsoleExporter : IReportExporter
         table.AddColumn("资本与敞口指标");
         table.AddColumn(new TableColumn("数值").RightAligned());
 
+        string statusStr = c.Status switch
+        {
+            TradingStatus.Bankrupt => "[bold red]Bankrupt (穿仓)[/]",
+            TradingStatus.Aborted => "[bold yellow]Aborted (中止)[/]",
+            _ => "[springgreen3]Normal (正常)[/]"
+        };
+
+        table.AddRow(
+            "交易终局状态 (Status)", statusStr,
+            "年化单边换手率 (Turnover)", $"[yellow1]{c.AnnualizedTurnover:F2}x[/]"
+        );
         table.AddRow(
             "平均持仓占比 (Avg Position)", $"[cyan]{c.AveragePositionRatio:P2}[/]",
             "最大持仓占比 (Max Position)", $"[cyan]{c.MaxPositionRatio:P2}[/]"
@@ -247,7 +282,7 @@ public sealed class ConsoleExporter : IReportExporter
         );
         table.AddRow(
             "现金闲置率 (Cash Drag)", $"{c.CashDrag:P2}",
-            "年化单边换手率 (Turnover)", $"[yellow1]{c.AnnualizedTurnover:F2}x[/]"
+            "-", "-"
         );
 
         console.Write(table);

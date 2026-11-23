@@ -24,7 +24,7 @@ public sealed class CapitalAnalyzer : AnalyzerBase<CapitalStatistics>
         ArgumentNullException.ThrowIfNull(facts);
         ArgumentNullException.ThrowIfNull(options);
 
-        return Calculate(facts.DailySnapshots, facts.EquityCurve, facts.Settlements, options);
+        return Calculate(facts.DailySnapshots, facts.EquityCurve, facts.Settlements, options, facts.Status);
     }
 
     /// <summary>
@@ -34,7 +34,8 @@ public sealed class CapitalAnalyzer : AnalyzerBase<CapitalStatistics>
         IReadOnlyList<DailySnapshot> dailySnapshots,
         IReadOnlyList<EquityPoint> equityCurve,
         IReadOnlyList<SettlementRecord> settlements,
-        AnalysisOptions options)
+        AnalysisOptions options,
+        TradingStatus status = TradingStatus.Normal)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -134,7 +135,8 @@ public sealed class CapitalAnalyzer : AnalyzerBase<CapitalStatistics>
             AverageMarginRatio: avgMarginRatio,
             MaxMarginRatio: maxMarginRatio,
             CashDrag: avgCashDrag,
-            AnnualizedTurnover: annualizedTurnover
+            AnnualizedTurnover: annualizedTurnover,
+            Status: status
         );
     }
 }

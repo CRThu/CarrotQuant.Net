@@ -5,13 +5,16 @@ using CarrotBacktesting.NET.Abstraction.Engine;
 namespace CarrotBacktesting.NET.Engine.Exchange;
 
 /// <summary>
-/// 标的桶化 FIFO 挂单簿。
-/// 专职负责在途未成交限价单的内存存储、检索与快速撤销。
-/// 内部按 Symbol 分桶保持先来后到的正序队列，桶空自动注销，杜绝内存泄漏。
+/// 标的桶化时间价格优先挂单簿（Price-Time Priority OrderBook）。
+/// 专职负责在途未成交订单的内存排序存储、检索、撮合切片与快速撤销。
+/// 严格遵循物理交易所规则：
+/// 1. 买单（Bids）：市价优先 > 价格降序（高价先买） > 时间升序（先来先到）；
+/// 2. 卖单（Asks）：市价优先 > 价格升序（低价先卖） > 时间升序（先来先到）；
+/// 采用二分查找插入保序，内存连续紧凑，热路径零 GC 分配；桶空自动注销，杜绝内存泄漏。
 /// </summary>
 internal sealed class OrderBook
 {
-    private readonly Dictionary<string, List<SimulatedOrder>> _pendingBySymbol = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SymbolPendingQueue> _pendingBySymbol = new(StringComparer.Ordinal);
     private readonly Dictionary<long, SimulatedOrder> _ordersById = new();
 
     /// <summary>
@@ -25,7 +28,7 @@ internal sealed class OrderBook
     public IEnumerable<string> ActiveSymbols => _pendingBySymbol.Keys;
 
     /// <summary>
-    /// 将新的限价挂单压入对应标的的 FIFO 队列尾部。
+    /// 将新的挂单按时间价格优先级插入对应标的的队列中。
     /// </summary>
     public void Add(SimulatedOrder order)
     {
@@ -33,12 +36,12 @@ internal sealed class OrderBook
 
         _ordersById[order.OrderId] = order;
 
-        if (!_pendingBySymbol.TryGetValue(order.Request.Symbol, out var list))
+        if (!_pendingBySymbol.TryGetValue(order.Request.Symbol, out var queue))
         {
-            list = new List<SimulatedOrder>();
-            _pendingBySymbol[order.Request.Symbol] = list;
+            queue = new SymbolPendingQueue();
+            _pendingBySymbol[order.Request.Symbol] = queue;
         }
-        list.Add(order);
+        queue.Add(order);
     }
 
     /// <summary>
@@ -57,10 +60,10 @@ internal sealed class OrderBook
         if (_ordersById.Remove(orderId, out removedOrder))
         {
             string symbol = removedOrder.Request.Symbol;
-            if (_pendingBySymbol.TryGetValue(symbol, out var list))
+            if (_pendingBySymbol.TryGetValue(symbol, out var queue))
             {
-                list.Remove(removedOrder);
-                if (list.Count == 0)
+                queue.Remove(removedOrder);
+                if (queue.Count == 0)
                 {
                     _pendingBySymbol.Remove(symbol);
                 }
@@ -73,12 +76,34 @@ internal sealed class OrderBook
     }
 
     /// <summary>
-    /// 获取指定标的当前按 FIFO 排队的在途挂单列表快照。
+    /// 获取指定标的当前按时间价格优先排队的全部活跃挂单（先买盘后卖盘）。
     /// 若无挂单返回 null。
     /// </summary>
     public IReadOnlyList<SimulatedOrder>? GetPendingOrders(string symbol)
     {
-        return _pendingBySymbol.TryGetValue(symbol, out var list) && list.Count > 0 ? list : null;
+        return _pendingBySymbol.TryGetValue(symbol, out var queue) && queue.Count > 0
+            ? queue.GetAllSorted()
+            : null;
+    }
+
+    /// <summary>
+    /// 获取指定标的当前按价格降序、时间升序排队的买盘队列。
+    /// </summary>
+    public IReadOnlyList<SimulatedOrder>? GetPendingBids(string symbol)
+    {
+        return _pendingBySymbol.TryGetValue(symbol, out var queue) && queue.Bids.Count > 0
+            ? queue.Bids
+            : null;
+    }
+
+    /// <summary>
+    /// 获取指定标的当前按价格升序、时间升序排队的卖盘队列。
+    /// </summary>
+    public IReadOnlyList<SimulatedOrder>? GetPendingAsks(string symbol)
+    {
+        return _pendingBySymbol.TryGetValue(symbol, out var queue) && queue.Asks.Count > 0
+            ? queue.Asks
+            : null;
     }
 
     /// <summary>
@@ -127,10 +152,10 @@ internal sealed class OrderBook
         }
 
         List<string>? emptySymbols = null;
-        foreach (var (symbol, list) in _pendingBySymbol)
+        foreach (var (symbol, queue) in _pendingBySymbol)
         {
-            list.RemoveAll(o => o.TimeInForce == TimeInForce.Day && o.Request.Type != OrderType.Market);
-            if (list.Count == 0)
+            queue.RemoveAll(o => o.TimeInForce == TimeInForce.Day && o.Request.Type != OrderType.Market);
+            if (queue.Count == 0)
             {
                 emptySymbols ??= new List<string>();
                 emptySymbols.Add(symbol);
@@ -146,6 +171,122 @@ internal sealed class OrderBook
         }
 
         return canceled;
+    }
+}
+
+/// <summary>
+/// 单标的买卖双侧时间价格优先排队桶。
+/// </summary>
+internal sealed class SymbolPendingQueue
+{
+    private readonly List<SimulatedOrder> _bids = new();
+    private readonly List<SimulatedOrder> _asks = new();
+    private List<SimulatedOrder>? _cachedMerged;
+
+    public IReadOnlyList<SimulatedOrder> Bids => _bids;
+    public IReadOnlyList<SimulatedOrder> Asks => _asks;
+    public int Count => _bids.Count + _asks.Count;
+
+    public void Add(SimulatedOrder order)
+    {
+        _cachedMerged = null;
+        if (order.Request.IsBuy)
+        {
+            int idx = _bids.BinarySearch(order, BidComparer.Instance);
+            if (idx < 0) idx = ~idx;
+            _bids.Insert(idx, order);
+        }
+        else
+        {
+            int idx = _asks.BinarySearch(order, AskComparer.Instance);
+            if (idx < 0) idx = ~idx;
+            _asks.Insert(idx, order);
+        }
+    }
+
+    public bool Remove(SimulatedOrder order)
+    {
+        _cachedMerged = null;
+        return order.Request.IsBuy ? _bids.Remove(order) : _asks.Remove(order);
+    }
+
+    public void RemoveAll(Predicate<SimulatedOrder> match)
+    {
+        _cachedMerged = null;
+        _bids.RemoveAll(match);
+        _asks.RemoveAll(match);
+    }
+
+    public IReadOnlyList<SimulatedOrder> GetAllSorted()
+    {
+        if (_cachedMerged != null) return _cachedMerged;
+        var list = new List<SimulatedOrder>(_bids.Count + _asks.Count);
+        list.AddRange(_bids);
+        list.AddRange(_asks);
+        _cachedMerged = list;
+        return list;
+    }
+}
+
+/// <summary>
+/// 买单价格-时间比较器：市价优先 > 价格降序（出价越高越优先） > 提交时间升序 > OrderId 升序。
+/// </summary>
+internal sealed class BidComparer : IComparer<SimulatedOrder>
+{
+    public static readonly BidComparer Instance = new();
+
+    public int Compare(SimulatedOrder? x, SimulatedOrder? y)
+    {
+        if (ReferenceEquals(x, y)) return 0;
+        if (x is null) return 1;
+        if (y is null) return -1;
+
+        // 1. 市价单优先于限价单
+        bool xMarket = x.Request.Type == OrderType.Market;
+        bool yMarket = y.Request.Type == OrderType.Market;
+        if (xMarket && !yMarket) return -1;
+        if (!xMarket && yMarket) return 1;
+
+        // 2. 价格优先：出价高者优先（降序）
+        int priceCmp = y.Request.Price.CompareTo(x.Request.Price);
+        if (priceCmp != 0) return priceCmp;
+
+        // 3. 时间优先：时间早优先（升序）
+        int timeCmp = x.SubmitTime.CompareTo(y.SubmitTime);
+        if (timeCmp != 0) return timeCmp;
+
+        return x.OrderId.CompareTo(y.OrderId);
+    }
+}
+
+/// <summary>
+/// 卖单价格-时间比较器：市价优先 > 价格升序（售价越低越优先） > 提交时间升序 > OrderId 升序。
+/// </summary>
+internal sealed class AskComparer : IComparer<SimulatedOrder>
+{
+    public static readonly AskComparer Instance = new();
+
+    public int Compare(SimulatedOrder? x, SimulatedOrder? y)
+    {
+        if (ReferenceEquals(x, y)) return 0;
+        if (x is null) return 1;
+        if (y is null) return -1;
+
+        // 1. 市价单优先于限价单
+        bool xMarket = x.Request.Type == OrderType.Market;
+        bool yMarket = y.Request.Type == OrderType.Market;
+        if (xMarket && !yMarket) return -1;
+        if (!xMarket && yMarket) return 1;
+
+        // 2. 价格优先：售价低者优先（升序）
+        int priceCmp = x.Request.Price.CompareTo(y.Request.Price);
+        if (priceCmp != 0) return priceCmp;
+
+        // 3. 时间优先：时间早优先（升序）
+        int timeCmp = x.SubmitTime.CompareTo(y.SubmitTime);
+        if (timeCmp != 0) return timeCmp;
+
+        return x.OrderId.CompareTo(y.OrderId);
     }
 }
 

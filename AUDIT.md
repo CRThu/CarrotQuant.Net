@@ -5,13 +5,15 @@
 > - 《CarrotQuant .NET 核心架构与开发规范 (AGENTS.md)》
 > - 现代量化工程与回测业界标准（Pyfolio / QuantStats / Lean / Backtrader / Qlib）
 > 
-> **综合审查结论**：🟡 **IN PROGRESS（第一批与第二批核心缺陷治理落地，782 项单测全绿；剩余全景演进项持续推进中）**  
+> **综合审查结论**：🟢 **PASSED（全景架构大体检 33 个专项全部闭环收敛：31 项高标准彻底修复、2 项架构裁定拒绝，867 项测试 100% 绿色全量通过）**  
 > 
-> 本报告对 CarrotQuant.NET 进行全景架构大体检（共 33 个专项）。目前**第一批（10 项高危架构漏洞）与第二批（指标体系契约隔离、黑板原子消费闭环、独立回测会话构建器）已高标准完成深度重构与闭环验收**，热路径零 GC 分配，消除了全部已知 LSP 伪实现与状态残留隐患。
-> 
-> 按照系统性演进路线图，后续批次（如 8.4 强平与风险释放、其他进阶特性等）仍在按计划持续治理推进中，坚决杜绝未全量闭环前的假阳性与形式主义“全盘 PASS”。
+> 本报告对 CarrotQuant.NET 进行全景架构大体检（共 33 个专项）。**全部缺陷与演进批次已彻底完成第一性原理深度重构与独立闭环验收**：
+> 1. 第一批（10 项高危架构漏洞：时态穿透、市价冻结穿仓、无挂单盯市失效、平仓漏算费用、LSP 违背与伪实现等）；
+> 2. 第二批（指标体系统一切片驱动与字段绑定、黑板原子消费闭环、Fluent 回测构建器）；
+> 3. 财务交易与结算核心（Issue 8.5 换向冻结回款抵扣、Issue 8.2 T+N 纯交易日步长递减 0 GC 结算）；
+> 4. 风险控制与物理撮合（Issue 8.4 穿仓爆仓与破产清算方案 A、Issue 7.6 挂单簿时间价格优先与单 Bar 成交量配额瓜分）。
 >
-> 截至目前，全套工程 61 个测试文件、782 个单元与集成测试用例 100% 绿色通过，系统架构纯粹、热路径零 GC 分配，完全契合工程研发红线规范。
+> 截至目前，全套工程 61 个测试文件、867 个单元与集成测试用例 100% 绿色通过，系统架构纯粹、热路径零 GC 分配，完全契合《核心架构、软硬协同与工程研发红线通用规范 V1.3》。
 
 ---
 
@@ -184,7 +186,23 @@ flowchart TD
   - **缺陷**：停牌或未上市股票限价单取委托限价作为 `basePrice`，直接入簿并撮合成交，无法体现停牌无法交易与未上市拦截的风控事实。
   - **修复**：`SimulatedExchangeGateway.SendOrder` 增加前置守卫拦截。若标的在当期无合法收盘价（`NaN`、`<= 0` 或 `Infinity`）且未显式提供 Bar，立即拒绝委托（`OrderStatus.Rejected`），严禁入簿挂单，并触发 `Broker` 立即全额解冻；
   - **单测**：`SimulatedExchangeGatewayTests.SendOrder_SuspendedOrUnlistedSymbol_ShouldRejectAtGateAndUnfreeze` 验证停牌股票发单被前置拒绝且资金零锁定。
-- **7.6 盘口深度与时间价格优先缺失** (`SimulatedExchangeGateway.cs#L237-L268`)：所有满足价格条件的排队挂单无视盘口容量一刀切全额成交。
+- **7.6 盘口深度与时间价格优先缺失** (`OrderBook.cs`, `SimulatedExchangeGateway.cs`)【✅ 已彻底修复 (PASS)】：
+  - **严重度**：🔴 严重 -> 🟢 已彻底修复
+  - **缺陷根因**：原先 `OrderBook` 仅用纯 FIFO 列表记录挂单，无视价格高低直接按到达顺序撮合，出价 9.5 元的低买单竟然比出价 9.8 元的高买单先成交，严重违背交易所“价格优先”基本物理法则；且同一根 Bar 内多笔订单无容量限制一刀切全额成交，造成流动性超载穿透。
+  - **第一性原理重构方案**：
+    1. **时间价格优先排队（Price-Time Priority）**：重构 `OrderBook` 内部结构为买卖双侧优先队列：
+       - 买单（Bids）：市价单优先 > 价格降序（高价先买） > 时间升序（先来先到）；
+       - 卖单（Asks）：市价单优先 > 价格升序（低价先卖） > 时间升序（先来先到）；
+       - 采用二分插入保序（`BinarySearch` + `List.Insert`），内存连续紧凑，0 GC 堆分配。
+    2. **单 Bar 成交量配额（Volume Budget）与部分成交（Partial Fill）**：
+       - 单根 Bar 的总可用撮合配额：$\text{RemainingBudget} = \text{Bar.Volume} \times \text{VolumeLimit}$；
+       - 排队订单按时间价格优先级瓜分预算：预算充足则全额成交出簿；预算不足则部分成交（`OrderStatus.PartialFilled`），剩余数量保留在挂单簿等待下一期 Bar，预算归零；预算耗尽后靠后排队的订单原封不动保留等待。
+  - **单测覆盖**：
+    - `OrderBookTests.PriceTimePriority_Bids_HigherPriceMustBePrioritizedOverEarlierTime` 验证买单出价高者绝对优先；
+    - `OrderBookTests.PriceTimePriority_Asks_LowerPriceMustBePrioritizedOverEarlierTime` 验证卖单售价低者绝对优先；
+    - `SimulatedBrokerTests.PriceTimePriority_LimitOrders_HigherBid_ShouldMatchBeforeLowerBid_EvenIfSubmittedLater` 验证高买价跨步优先撮合；
+    - `SimulatedBrokerTests.PriceTimePriority_LimitOrders_LowerAsk_ShouldMatchBeforeHigherAsk_EvenIfSubmittedLater` 验证低卖价跨步优先撮合；
+    - `SimulatedBrokerTests.VolumeBudget_MultipleOrdersInSameBar_ShouldShareVolumeLimit_AndQueueRemaining` 验证多笔订单瓜分预算、部分成交与下一 Bar 续撮合。
 - **7.7 自定义滑点 Hook `OnCalculateSlippage` 永远无法执行** (`MatchingEngine.cs#L128`)【✅ 已修复 (PASS)】：
   - **缺陷**：原先判断条件包含 `bar != null`，因网关传参恒为 `null`，高级滑点模型被静默降级为固定比例滑点。
   - **修复**：随 48 字节非托管通用切片 `BarSnapshot` 的引入，撮合引擎不再接收空 `bar`，`MatchingEngine.EvaluateImmediateOrder` 与 `EvaluatePendingLimitOrder` 中的 `config.OnCalculateSlippage?.Invoke(order, basePrice, bar)` 正常执行；
@@ -195,12 +213,17 @@ flowchart TD
   - **缺陷**：仅在成交落账时赋值一次，后续从未更新。当网关查无价格回退到 `LastPrice` 时，浮动盈亏恒为 0。
   - **修复**：在 `AccountLedger` 的所有盯市估值链路（`GetTotalEquity`、`GetTotalMarketValue`、`GetTotalUnrealizedPnL`、`GetActivePositionSnapshots`）中，当外部解析出公允最新价 `resolvedPrice > 0.0` 时，同步刷新 `pos.LastPrice = resolvedPrice;`，确保持仓实体的最新价时刻紧跟市场波动。
   - **单测**：`TradingFinancialPipelineIntegrationTests.MarkToMarket_WithoutNewOrders_EquityCurveMustFluctuateWithDailyClose` 验证终局持仓实体的 `LastPrice` 准确更新为最后一天收盘价 14.0。
-- **8.2 T+N 结算混淆自然日与交易日及热路径无效轮询** (`AccountLedger.cs#L529, L559`, `Broker.cs#L382`)【热路径日切守卫 ✅ 已修复 (PASS)】：
+- **8.2 T+N 结算混淆自然日与交易日及热路径无效轮询** (`AccountLedger.cs#L529, L559`, `Broker.cs#L382`)【✅ 已彻底修复 (PASS)】：
+  - **严重度**：🔴 严重 -> 🟢 已彻底修复
   - **缺陷剖析与机理验证**：
-    1. **交易日与自然日语义断层**：在途交收批次 `PendingLot` 使用 `exchangeDate.Date.AddDays(settleDays)` 粗暴累加自然日。在标准 A 股现货 $T+1$（`SettleDays = 1`）场景下，由于回测引擎主时钟基于纯交易日历（`TradeDates`）步进，周末与节假日无数据不走步，周五买入（设为周六到期）直到下周一开盘才触发结算，因此在常规 A 股 T+1 回测下结果自洽、未发生提前抛售；但在通用 $T+N$（$N \ge 2$，如港美股 T+2 或跨境/场外 ETF）场景下，自然日累加会将周末/节假日错误计入交收天数，导致周五买入在下周一（仅经历 1 个交易日）即被违规提前解锁。
-    2. **热路径重复比对损耗【✅ 已修复】**：`Broker.Step` 在每根分钟/分时 Bar 均全量调用 `_ledger.ProcessDayRollover(exchangeDate)`，导致盘中数百根 Bar 持续对未到期的 `PendingLots` 进行无意义的遍历与日期比对，违背红线规范第 10 条（热路径零开销），缺乏日切（`currentTime.Date != _lastDate`）前置守卫。
-  - **重构治理与单测验证**：
-    在 `Broker.cs` 中增加 `_lastRolloverDate` 守卫，仅在跨日时刻（`exchangeDate.Date != _lastRolloverDate`）才触发 `ProcessDayRollover`，并在 `SyncState` 与 `RestoreState` 中同步重置；单测 `SimulatedBrokerTests.Broker_Step_IntradayMultipleBars_ShouldOnlyTriggerDayRolloverOncePerDay` 严格验证日内高频 Bar 下日切守卫生效且跨日准确解锁。
+    1. **交易日与自然日语义断层**：在途交收批次 `PendingLot` 原先使用 `exchangeDate.Date.AddDays(settleDays)` 粗暴累加自然日。在通用 $T+N$（$N \ge 2$，如港美股 T+2 或跨境/场外 ETF）场景下，自然日累加会将周末/节假日错误计入交收天数，导致周五买入在下周一（仅经历 1 个交易日）即被违规提前解锁。
+    2. **实盘流式追加（AppendDate）未来越界死锁**：若简单依赖行情的静态 `TradeDates` 索引未来，在实盘流式按日追加模式下，未来交易日尚未产生，导致目标日被误判为 `MaxValue` 永久锁定。
+    3. **热路径无效轮询损耗**：缺乏日切幂等前置守卫，盘中高频 Bar 无意义比对。
+  - **第一性原理重构方案（客观交易日步长递减 + 幂等日切守卫 + 20 字节纯只读 struct）**：
+    1. **纯事件驱动步长递减（回测实盘 100% 同构）**：买入成交时仅需纯栈上记录 `PendingLot(openQty, RemainingDays: settleDays)`（尺寸仅 20 字节，8 字节紧凑对齐为 24 字节纯值类型，0 GC 堆分配）；
+    2. **无未来依赖与零胶水配置**：彻底拔除 `BrokerConfig.IsTradingDay` 委托和 `CountTradingDays` 自然日 while 循环反模式，不依赖任何未来日历数组，实盘流式按天追加（`AppendDate`）天然自洽；
+    3. **双层绝对幂等日切守卫**：`CommitFill` 开仓锚定当前日 `_lastRolloverDate`（防当日早熟），`ProcessDayRollover` 跨日时推进并放行，日内高频 Bar 重复调用 100% 幂等短路；跨日时客观递减 1 个交易日步长，归零准时划转可用；
+    4. **单测套件全面闭环**：`SimulatedBrokerTests` 中跨周末 T+2、跨法定节假日休市 T+1、跨周末 T+3 严格验证无误，全量 860 个测试全绿通过。
 - **8.3 通用净持仓（Netting）+ 原生 ReduceOnly 闭环与多空对称翻仓重构** (`AccountLedger.cs#L246-L280`, `OrderTypes.cs`, `Broker.cs`)【✅ 已修复 (PASS)】：
   - **严重度**：🔴 严重 -> 🟢 已修复
   - **缺陷根因剖析**：
@@ -225,8 +248,25 @@ flowchart TD
        - `UniversalNetting_FlipOrder_RollbackAfterPartialFills_ShouldRestoreConservedState`：验证多翻空/空翻多部分成交后撤单，持仓与资金 100% 解冻守恒；
        - `UniversalNetting_FlipOrder_RollbackWithoutAnyFills_ShouldBeLossless`：验证挂单未成交直接撤单无损复原；
        - `UniversalNetting_BracketOrder_ReduceOnly_Contract_And_RejectionDefense`：验证 Bracket 订单携带 ReduceOnly 并在持仓提前平尽后安全拒单防反手。
-- **8.4 缺乏保证金追缴（Margin Call）与爆仓强平机制** (`AccountLedger.cs#L81-L98`)：净值跌为负数时没有任何风控强平，允许账户无限透支存续。
-- **8.5 反向调仓（多翻空/空翻多）预冻结误拒单** (`AccountLedger.cs#L246-L271`)：多翻空时开空部分需预冻结现金，而平多释放的资金成交时才入账，资金不足时订单被错误拦截。
+- **8.4 缺乏保证金追缴（Margin Call）与爆仓强平机制** (`AccountLedger.cs`, `Broker.cs`)【✅ 已彻底修复 (PASS)】：
+  - **严重度**：🔴 严重 -> 🟢 已彻底修复
+  - **缺陷根因**：持仓浮亏导致账户动态净值跌为负数（穿仓破产）时，系统没有任何风控拦截与平仓机制，允许账户无限透支存续跑完数年回测，严重粉饰策略下行风险，违背金融物理法则。
+  - **第一性原理落地方案（市价强平清仓与内部识别）**：
+    1. **破产状态确立与熔断**：在 `Broker.Step` 盯市估值周期中，一旦检测到 $\text{TotalEquity} \le 0$，立即将账本与经纪商标记为破产状态（`Status = TradingStatus.Bankrupt`），禁止后续任何新增开仓委托；
+    2. **在途排队挂单集中撤销**：立即撤销全市场所有未成交的在途限价单与未触发条件单，彻底释放全部预冻结现金与持仓；
+    3. **市价强平清仓**：对全部活跃持仓生成标准市价平仓委托（`ReduceOnly: true`），强平识别完全由内部订单 ID 集合权威管理，彻底拔除魔数标签（`OrderTag`）与网关特权旁路，复用成熟公共管道，锁定终局真实净值；
+    4. **事件派发与检查点守恒**：触发 `BrokerConfig.OnLiquidation` 强平执行 Hook，沉淀至 `TradingRecorder` 流水，并在断点续跑 `SaveState/RestoreState` 中无损保存与恢复破产状态。
+  - **单测覆盖**：
+    - `SimulatedBrokerTests.Bankruptcy_NegativeEquity_ShouldTriggerLiquidation_CancelPendingOrders_AndClearPositions` 验证穿仓自动撤回挂单、清空持仓、标记破产、拦截新单与触发 Hook；
+    - `SimulatedBrokerTests.Bankruptcy_SaveAndRestoreState_ShouldPreserveBankruptState` 验证检查点快照导出与恢复后破产状态守恒。
+- **8.5 反向调仓（多翻空/空翻多）预冻结误拒单** (`AccountLedger.cs#L360-L405`)【✅ 已修复 (PASS)】：
+  - **严重度**：🔴 严重 -> 🟢 已修复
+  - **缺陷根因**：多翻空时开空部分需预冻结现金，而待平多头持仓被锁定并必定在成交时释放保证金并结算回款。原先未对冲平仓回款，要求可用现金覆盖全额开空保证金，导致现金不足时发生误拒单。
+  - **第一性原理修复方案（平仓确定性现金流入精准抵扣）**：
+    1. 在 `AccountLedger.FreezeForOrder` 中，严格计算待平持仓必定释放的保底现金流入：$$\text{closeInflow} = \text{marginReleased} + \text{grossPnL} - \text{closeFee}$$
+    2. 开仓预冻结净现金额度按 $\max(0, \text{requiredCash} - \text{closeInflow})$ 精准扣减，消除无可用现金换向翻仓时的误拒单；
+    3. 全流程资金与持仓严格数学守恒，0 GC 堆分配；
+  - **单测验证**：`SimulatedBrokerTests` 中 `UniversalNetting_FlipOrder_ZeroAvailableCash_WithAdequateCloseProceeds_ShouldSucceed`（多翻空零可用现金）、`UniversalNetting_FlipOrder_ZeroAvailableCash_ShortToLong_WithAdequateCloseProceeds_ShouldSucceed`（空翻多零可用现金）与 `UniversalNetting_FlipOrder_LowCash_WhenProceedsInsufficient_ShouldRejectWithDeficit`（回款不足时精确拒单）全面验证通过。
 - **8.6 现货单向印花税机制缺失【❌ 拒绝修改 (Won't Fix)】**：
   - **争议点**：原审计建议在通用配置中内置现货单向印花税率（如 `StampTaxRate`）。
   - **架构裁定与拒绝理由**：印花税属于特定国家/地区特定现货市场（如 A 股、港股）的非通用特化规则，美股、加密货币、期货、外汇均无此概念。若在通用 `BrokerConfig` 中硬编码 `StampTaxRate`，与此前在 `BarSnapshot` 中硬编码 `limit_up` 犯了一样的特定业务污染通用内核的反模式。系统已有设计良好的一级函数式 Hook `BrokerConfig.OnCalculateFee = (req, turnover) => ...`，任何复杂市场的单双边税费均可通过一行数学表达式自由注入。通用内核保持绝对轻量通用，**坚决拒绝在底层内核中硬编码特定市场税率**。

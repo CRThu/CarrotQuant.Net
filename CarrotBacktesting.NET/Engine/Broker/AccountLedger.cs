@@ -29,6 +29,16 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
     public double AvailableCash => _cash - _frozenCash;
     public long PositionVersion => _positionVersion;
 
+    /// <summary>
+    /// 账户运行期资金与交易状态。
+    /// </summary>
+    public TradingStatus Status { get; private set; } = TradingStatus.Normal;
+
+    /// <summary>
+    /// 设置账户当前交易状态。
+    /// </summary>
+    public void SetStatus(TradingStatus status) => Status = status;
+
     public AccountLedger(BrokerConfig config, IFieldRegistry? fields = null)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -364,6 +374,13 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
         }
 
         // 3. 资金可用性校验：
+        // 破产状态拦截：账户穿仓破产后，禁止一切新增开仓委托
+        if (Status == TradingStatus.Bankrupt && openQty > 0m)
+        {
+            rejectReason = "账户已穿仓破产，禁止新增开仓委托。";
+            return false;
+        }
+
         // 新开仓部分需计算基础保证金与预估手续费需求
         if (openQty > 0m && (estimatedPrice <= 0.0 || double.IsNaN(estimatedPrice) || double.IsInfinity(estimatedPrice)))
         {
@@ -822,7 +839,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
             ));
         }
 
-        return new AccountLedgerSnapshot(_cash, _frozenCash, positionsList);
+        return new AccountLedgerSnapshot(_cash, _frozenCash, positionsList, Status);
     }
 
     /// <summary>
@@ -834,6 +851,7 @@ internal sealed class AccountLedger : ICheckpointable<AccountLedgerSnapshot>
 
         _cash = snapshot.Cash;
         _frozenCash = snapshot.FrozenCash;
+        Status = snapshot.Status;
         _positions.Clear();
         _positionsSnapshot = null;
         _positionVersion++;
