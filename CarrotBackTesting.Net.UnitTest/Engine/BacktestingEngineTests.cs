@@ -700,7 +700,7 @@ namespace CarrotBackTesting.Net.UnitTest.Engine
 
             var resolver = new StorageResolver(storageRoot);
             using var source = TimeseriesSourceFactory.Create(resolver, "ashare.kline.1d.raw.baostock");
-            using var tsRegistry = new TimeseriesRegistry(source, resolver.StorageRoot, enableCache: false);
+            using var tsRegistry = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions(resolver.StorageRoot, enableCache: false));
 
             var industryTable = FieldSourceFactory.Create(resolver, "ashare.industry.eastmoney", keyColumn: "symbol");
             var fieldRegistry = new FieldRegistry();

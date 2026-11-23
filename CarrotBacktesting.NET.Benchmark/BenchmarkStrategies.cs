@@ -31,7 +31,7 @@ public sealed class DualMaBenchmarkStrategy : IStrategy
 
     public void OnUpdate(IEngineContext context)
     {
-        var symbols = context.Timeseries.Metadata.Symbols;
+        var symbols = context.Symbols;
         int count = symbols.Count;
 
         for (int i = 0; i < count; i++)
@@ -89,7 +89,7 @@ public sealed class ReadPriceBenchmarkStrategy : IStrategy
 
     public void OnUpdate(IEngineContext context)
     {
-        int count = context.Timeseries.Metadata.Symbols.Count;
+        int count = context.Symbols.Count;
         double sum = 0.0;
         for (int i = 0; i < count; i++)
         {
@@ -112,7 +112,7 @@ public sealed class RandomReadPriceBenchmarkStrategy : IStrategy
 
     public void OnStart(IEngineContext context)
     {
-        int count = context.Timeseries.Metadata.Symbols.Count;
+        int count = context.Symbols.Count;
         _shuffledIndices = new int[count];
         for (int i = 0; i < count; i++) _shuffledIndices[i] = i;
         Random.Shared.Shuffle(_shuffledIndices);
@@ -154,7 +154,7 @@ public sealed class SingleIndicatorBenchmarkStrategy : IStrategy
 
     public void OnUpdate(IEngineContext context)
     {
-        int count = context.Timeseries.Metadata.Symbols.Count;
+        int count = context.Symbols.Count;
         double sum = 0.0;
         for (int i = 0; i < count; i++)
         {
@@ -178,7 +178,7 @@ public sealed class SingleTradeBenchmarkStrategy : IStrategy
 
     public void OnUpdate(IEngineContext context)
     {
-        var symbols = context.Timeseries.Metadata.Symbols;
+        var symbols = context.Symbols;
         int count = symbols.Count;
         int step = context.CurrentIndex;
 

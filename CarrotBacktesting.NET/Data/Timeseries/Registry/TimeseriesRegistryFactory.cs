@@ -13,42 +13,29 @@ namespace CarrotBacktesting.NET.Data
     public static class TimeseriesRegistryFactory
     {
         /// <summary>
-        /// 根据已初始化的时序数据源装配单表模式的 <see cref="ITimeseriesRegistry"/> 实例。
+        /// 根据已初始化的时序数据源与分块缓存选项装配单表模式的 <see cref="TimeseriesRegistry"/> 实例。
         /// </summary>
-        public static ITimeseriesRegistry Create(
-            string storageRoot,
+        public static TimeseriesRegistry Create(
             ITimeseriesSource source,
-            int pageSize = 4096,
-            bool enableCache = false,
-            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy,
-            string tableId = "default",
-            CacheCompression compression = CacheCompression.Lz4,
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false)
+            TimeseriesCacheOptions? options = null,
+            string tableId = "primary",
+            bool ownsSource = false)
         {
-            var primaryTable = new TimeseriesTable(
-                tableId,
+            var primaryTable = TimeseriesTableFactory.Create(
+                string.IsNullOrWhiteSpace(tableId) ? "primary" : tableId,
                 isPrimary: true,
-                source,
-                storageRoot,
-                pageSize,
-                enableCache,
-                refreshMode,
-                compression,
-                commitBatchSize,
-                maxPages,
-                prefetch,
-                isLive,
-                ownsSource: false);
+                source: source,
+                options: options,
+                subRowMap: null,
+                ownsSource: ownsSource);
             return new TimeseriesRegistry(primaryTable);
         }
 
+
         /// <summary>
-        /// 根据路径寻址解析器与单表配置装配并初始化 <see cref="ITimeseriesRegistry"/> 实例。
+        /// 根据路径寻址解析器与单表配置装配并初始化 <see cref="TimeseriesRegistry"/> 实例。
         /// </summary>
-        public static ITimeseriesRegistry Create(
+        public static TimeseriesRegistry Create(
             IStorageResolver resolver,
             TimeseriesConfig config,
             MarketTime? startDate = null,
@@ -60,9 +47,10 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 根据配置列表装配主时序表及辅助子表，构建时间轴映射并初始化 <see cref="ITimeseriesRegistry"/> 实例。
+        /// 根据配置列表装配主时序表及辅助子表，构建时间轴映射并初始化 <see cref="TimeseriesRegistry"/> 实例。
+        /// 具备严格的异常安全保障：装配过程中若发生任何异常，自动安全释放已分配的所有时序表资源。
         /// </summary>
-        public static ITimeseriesRegistry Create(
+        public static TimeseriesRegistry Create(
             IStorageResolver resolver,
             IEnumerable<TimeseriesConfig> configs,
             MarketTime? startDate = null,
@@ -94,74 +82,79 @@ namespace CarrotBacktesting.NET.Data
 
             // 2. 装配主表
             var primaryTable = CreateTable(resolver, primaryConfig, isPrimary: true, startDate, endDate, isLive, subRowMap: null);
-
-            // 3. 构建辅助子表，并生成相对于主表时间轴的行映射
             var subTables = new List<ITimeseriesTable>();
-            foreach (var cfg in configList)
+
+            try
             {
-                if (ReferenceEquals(cfg, primaryConfig))
+                // 3. 构建辅助子表，并生成相对于主表时间轴的行映射
+                foreach (var cfg in configList)
                 {
-                    continue;
+                    if (ReferenceEquals(cfg, primaryConfig))
+                    {
+                        continue;
+                    }
+
+                    var subNullable = cfg.NullableFields != null
+                        ? new HashSet<string>(cfg.NullableFields, StringComparer.OrdinalIgnoreCase)
+                        : null;
+                    var subSource = TimeseriesSourceFactory.Create(resolver, cfg.TableId, startDate, endDate, cfg.TimeZone, subNullable);
+
+                    // 计算当前子表在主表各时间步的有效行索引映射
+                    int[] subRowMap = TimeseriesTimelineRouter.BuildAsOfMap(
+                        primaryTable.Metadata.TradeDates,
+                        subSource.TradeDates,
+                        cfg.TimeOffset);
+
+                    var subOptions = cfg.ToCacheOptions(resolver.StorageRoot, isLive);
+                    var subTable = TimeseriesTableFactory.Create(
+                        cfg.TableId,
+                        isPrimary: false,
+                        source: subSource,
+                        options: subOptions,
+                        subRowMap: subRowMap,
+                        ownsSource: true);
+
+                    // 预热显式声明的字段
+                    if (cfg.Fields != null && cfg.Fields.Count > 0)
+                    {
+                        foreach (var f in cfg.Fields)
+                        {
+                            if (subTable.HasField(f))
+                            {
+                                subTable.GetCacheManager(f).EnsureLoaded();
+                            }
+                        }
+                    }
+
+                    subTables.Add(subTable);
                 }
 
-                var subNullable = cfg.NullableFields != null
-                    ? new HashSet<string>(cfg.NullableFields, StringComparer.OrdinalIgnoreCase)
-                    : null;
-                var subSource = TimeseriesSourceFactory.Create(resolver, cfg.TableId, startDate, endDate, cfg.TimeZone, subNullable);
+                var registry = new TimeseriesRegistry(primaryTable, subTables);
 
-                // 计算当前子表在主表各时间步的有效行索引映射
-                int[] subRowMap = TimeseriesTimelineRouter.BuildAsOfMap(
-                    primaryTable.Metadata.TradeDates,
-                    subSource.TradeDates,
-                    cfg.TimeOffset);
-
-                var subTable = new TimeseriesTable(
-                    cfg.TableId,
-                    isPrimary: false,
-                    subSource,
-                    subSource,
-                    resolver.StorageRoot,
-                    pageSize: cfg.PageSize,
-                    enableCache: cfg.Cache,
-                    refreshMode: cfg.Refresh,
-                    compression: cfg.Compression,
-                    commitBatchSize: cfg.CommitBatchSize,
-                    maxPages: cfg.MaxPages,
-                    prefetch: cfg.Prefetch,
-                    isLive: isLive,
-                    ownsSource: true,
-                    subRowMap: subRowMap);
-
-                // 预热显式声明的字段
-                if (cfg.Fields != null && cfg.Fields.Count > 0)
+                // 预热主表显式声明的字段
+                if (primaryConfig.Fields != null && primaryConfig.Fields.Count > 0)
                 {
-                    foreach (var f in cfg.Fields)
+                    foreach (var f in primaryConfig.Fields)
                     {
-                        if (subTable.HasField(f))
+                        if (primaryTable.HasField(f))
                         {
-                            subTable.GetCacheManager(f).EnsureLoaded();
+                            primaryTable.GetCacheManager(f).EnsureLoaded();
                         }
                     }
                 }
 
-                subTables.Add(subTable);
+                return registry;
             }
-
-            var registry = new TimeseriesRegistry(primaryTable, subTables);
-
-            // 预热主表显式声明的字段
-            if (primaryConfig.Fields != null && primaryConfig.Fields.Count > 0)
+            catch
             {
-                foreach (var f in primaryConfig.Fields)
+                // 异常安全回滚：释放已创建的所有表句柄，防范文件句柄与连续非托管内存泄漏
+                primaryTable.Dispose();
+                for (int i = subTables.Count - 1; i >= 0; i--)
                 {
-                    if (primaryTable.HasField(f))
-                    {
-                        primaryTable.GetCacheManager(f).EnsureLoaded();
-                    }
+                    (subTables[i] as IDisposable)?.Dispose();
                 }
+                throw;
             }
-
-            return registry;
         }
 
         /// <summary>
@@ -176,37 +169,20 @@ namespace CarrotBacktesting.NET.Data
             bool isLive = false,
             int[]? subRowMap = null)
         {
-            ArgumentNullException.ThrowIfNull(resolver);
-            ArgumentNullException.ThrowIfNull(config);
-            ArgumentException.ThrowIfNullOrWhiteSpace(config.TableId);
-
-            var nullableFields = config.NullableFields != null
-                ? new HashSet<string>(config.NullableFields, StringComparer.OrdinalIgnoreCase)
-                : null;
-            var source = TimeseriesSourceFactory.Create(resolver, config.TableId, startDate, endDate, config.TimeZone, nullableFields);
-
-            return new TimeseriesTable(
-                config.TableId,
-                isPrimary: isPrimary,
-                source,
-                source,
-                resolver.StorageRoot,
-                pageSize: config.PageSize,
-                enableCache: config.Cache,
-                refreshMode: config.Refresh,
-                compression: config.Compression,
-                commitBatchSize: config.CommitBatchSize,
-                maxPages: config.MaxPages,
-                prefetch: config.Prefetch,
-                isLive: isLive,
-                ownsSource: true,
-                subRowMap: subRowMap);
+            return TimeseriesTableFactory.Create(
+                resolver,
+                config,
+                isPrimary,
+                startDate,
+                endDate,
+                isLive,
+                subRowMap);
         }
 
         /// <summary>
-        /// 根据物理存储根目录与单表配置装配并初始化 <see cref="ITimeseriesRegistry"/> 实例。
+        /// 根据物理存储根目录与单表配置装配并初始化 <see cref="TimeseriesRegistry"/> 实例。
         /// </summary>
-        public static ITimeseriesRegistry Create(
+        public static TimeseriesRegistry Create(
             string storageRoot,
             TimeseriesConfig config,
             MarketTime? startDate = null,

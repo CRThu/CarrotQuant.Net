@@ -65,63 +65,8 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 基于时序数据源构建时序表。
+        /// 检查当前时序表是否包含指定字段。
         /// </summary>
-        public TimeseriesTable(
-            string name,
-            bool isPrimary,
-            ITimeseriesSource source,
-            string storageRoot,
-            int pageSize = 4096,
-            bool enableCache = false,
-            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy,
-            CacheCompression compression = CacheCompression.Lz4,
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false,
-            bool ownsSource = false,
-            int[]? subRowMap = null)
-            : this(
-                name,
-                isPrimary,
-                source,
-                CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, name, compression, commitBatchSize, maxPages, prefetch, isLive),
-                subRowMap,
-                ownsSource ? source : null)
-        {
-        }
-
-        /// <summary>
-        /// 基于元数据与时序数据源构建时序表。
-        /// </summary>
-        public TimeseriesTable(
-            string name,
-            bool isPrimary,
-            IMarketMetadata metadata,
-            ITimeseriesSource source,
-            string storageRoot,
-            int pageSize = 4096,
-            bool enableCache = false,
-            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy,
-            CacheCompression compression = CacheCompression.Lz4,
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false,
-            bool ownsSource = false,
-            int[]? subRowMap = null)
-            : this(
-                name,
-                isPrimary,
-                metadata,
-                CreateDefaultFactory(source, storageRoot, pageSize, enableCache, refreshMode, name, compression, commitBatchSize, maxPages, prefetch, isLive),
-                subRowMap,
-                ownsSource ? source : null)
-        {
-        }
-
-        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool HasField(string fieldName)
         {
@@ -292,42 +237,6 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        private static Func<string, Type, ITimeseriesCacheManager> CreateDefaultFactory(
-            ITimeseriesSource source,
-            string storageRoot,
-            int pageSize,
-            bool enableCache,
-            CacheRefreshMode refreshMode,
-            string tableId,
-            CacheCompression compression,
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false)
-        {
-            ITimeseriesCache? store = null;
-            if (enableCache && !string.IsNullOrWhiteSpace(storageRoot))
-            {
-                store = new TimeseriesCache(storageRoot, tableId, pageSize, compression);
-            }
-
-            return (fieldName, dataType) =>
-            {
-                var managerType = typeof(TimeseriesCacheManager<>).MakeGenericType(dataType);
-                return (ITimeseriesCacheManager)Activator.CreateInstance(
-                    managerType,
-                    fieldName,
-                    source,
-                    source,
-                    store,
-                    pageSize,
-                    refreshMode,
-                    commitBatchSize,
-                    maxPages,
-                    prefetch,
-                    isLive)!;
-            };
-        }
 
         public void Dispose()
         {

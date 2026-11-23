@@ -36,9 +36,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy);
+                options: new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy });
 
             Assert.AreEqual("close", manager.FieldName);
             Assert.AreEqual(typeof(double), manager.DataType);
@@ -67,9 +65,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy);
+                options: new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy });
 
             // 初始状态：3 行，chunk 0 尚未写满
             Assert.AreEqual(3, manager.TotalRows);
@@ -108,9 +104,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 4096,
-                refreshMode: CacheRefreshMode.Lazy);
+                options: new TimeseriesCacheOptions { PageSize = 4096, RefreshMode = CacheRefreshMode.Lazy });
 
             manager.EnsureLoaded();
             Assert.AreEqual(4096, manager.TotalRows);
@@ -139,8 +133,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Force))
+                new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Force }))
             {
                 manager.EnsureLoaded();
                 Assert.AreEqual(4, manager.TotalRows);
@@ -160,8 +153,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy))
+                new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy }))
             {
                 manager.EnsureLoaded();
                 Assert.AreEqual(4, manager.TotalRows);
@@ -190,8 +182,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy))
+                new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy }))
             {
                 recoveryManager.EnsureLoaded();
                 Assert.AreEqual(6, recoveryManager.TotalRows);
@@ -219,8 +210,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Force))
+                new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Force }))
             {
                 manager.EnsureLoaded();
             }
@@ -231,8 +221,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy))
+                new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy }))
             {
                 manager.EnsureLoaded();
                 Assert.AreEqual(4, manager.TotalRows);
@@ -252,8 +241,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy))
+                new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy }))
             {
                 recoveryManager.EnsureLoaded();
                 Assert.AreEqual(4, recoveryManager.TotalRows);
@@ -271,9 +259,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy);
+                options: new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy });
 
             manager.EnsureLoaded();
             // 代码总数为 2，传入长度为 3 的截面
@@ -291,9 +277,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy);
+                options: new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy });
 
             manager.Dispose();
 
@@ -311,9 +295,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy);
+                options: new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy });
 
             var rawBuffer = manager.Matrix;
             Assert.IsNotNull(rawBuffer);
@@ -332,9 +314,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy);
+                options: new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy });
 
             manager.EnsureLoaded();
 
@@ -363,8 +343,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Force))
+                new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Force }))
             {
                 manager.EnsureLoaded();
             }
@@ -379,8 +358,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 4,
-                refreshMode: CacheRefreshMode.Lazy))
+                new TimeseriesCacheOptions { PageSize = 4, RefreshMode = CacheRefreshMode.Lazy }))
             {
                 manager2.EnsureLoaded();
                 Assert.AreEqual(4, manager2.TotalRows);
@@ -400,9 +378,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 16,
-                refreshMode: CacheRefreshMode.Force,
-                commitBatchSize: 3))
+                new TimeseriesCacheOptions
+                {
+                    PageSize = 16,
+                    RefreshMode = CacheRefreshMode.Force,
+                    CommitBatchSize = 3
+                }))
             {
                 manager.EnsureLoaded();
                 Assert.AreEqual(2, manager.TotalRows);
@@ -428,8 +409,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 16,
-                refreshMode: CacheRefreshMode.Lazy))
+                new TimeseriesCacheOptions { PageSize = 16, RefreshMode = CacheRefreshMode.Lazy }))
             {
                 recoveryManager.EnsureLoaded();
                 Assert.AreEqual(5, recoveryManager.TotalRows);
@@ -462,9 +442,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 16,
-                refreshMode: CacheRefreshMode.Force,
-                commitBatchSize: 64))
+                new TimeseriesCacheOptions
+                {
+                    PageSize = 16,
+                    RefreshMode = CacheRefreshMode.Force,
+                    CommitBatchSize = 64
+                }))
             {
                 manager.EnsureLoaded();
                 manager.AppendRow(new DateTime(2025, 2, 1), stackalloc double[] { 99.0 });
@@ -479,8 +462,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 16,
-                refreshMode: CacheRefreshMode.Lazy))
+                new TimeseriesCacheOptions { PageSize = 16, RefreshMode = CacheRefreshMode.Lazy }))
             {
                 recoveryManager.EnsureLoaded();
                 Assert.AreEqual(3, recoveryManager.TotalRows);
@@ -499,9 +481,12 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mock,
                 mock,
                 cacheStore,
-                pageSize: 16,
-                refreshMode: CacheRefreshMode.Force,
-                commitBatchSize: 64))
+                new TimeseriesCacheOptions
+                {
+                    PageSize = 16,
+                    RefreshMode = CacheRefreshMode.Force,
+                    CommitBatchSize = 64
+                }))
             {
                 manager.EnsureLoaded();
                 // 1. 先在内存中追加一行（未提交）
@@ -551,11 +536,13 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: pageSize,
-                refreshMode: CacheRefreshMode.Lazy,
-                commitBatchSize: 64,
-                maxPages: maxPages);
+                options: new TimeseriesCacheOptions
+                {
+                    PageSize = pageSize,
+                    RefreshMode = CacheRefreshMode.Lazy,
+                    CommitBatchSize = 64,
+                    MaxPages = maxPages
+                });
 
             Assert.AreEqual(4, manager.MaxPages);
             Assert.AreEqual(64, manager.TotalRows);
@@ -583,13 +570,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 16,
-                refreshMode: CacheRefreshMode.Lazy,
-                commitBatchSize: 64,
-                maxPages: 4,
-                prefetch: false,
-                isLive: false);
+                options: new TimeseriesCacheOptions
+                {
+                    PageSize = 16,
+                    RefreshMode = CacheRefreshMode.Lazy,
+                    CommitBatchSize = 64,
+                    MaxPages = 4,
+                    Prefetch = false,
+                    IsLive = false
+                });
 
             Assert.IsFalse(manager.CanPrefetch);
             Assert.IsFalse(manager.IsLive);
@@ -612,15 +601,17 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: 16,
-                refreshMode: CacheRefreshMode.Lazy,
-                commitBatchSize: 64,
-                maxPages: 4,
-                prefetch: true,
-                isLive: true);
+                options: new TimeseriesCacheOptions
+                {
+                    PageSize = 16,
+                    RefreshMode = CacheRefreshMode.Lazy,
+                    CommitBatchSize = 64,
+                    MaxPages = 4,
+                    Prefetch = true,
+                    IsLive = true
+                });
 
-            // 核心断言：实盘模式下即便 prefetch=true，也必须被一票否决
+            // 实盘模式下即便 prefetch=true，也必须被一票否决
             Assert.IsTrue(manager.IsLive);
             Assert.IsFalse(manager.CanPrefetch);
 
@@ -646,13 +637,15 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 "close",
                 mock,
                 mock,
-                store: null,
-                pageSize: pageSize,
-                refreshMode: CacheRefreshMode.Lazy,
-                commitBatchSize: 64,
-                maxPages: maxPages,
-                prefetch: true,
-                isLive: false);
+                options: new TimeseriesCacheOptions
+                {
+                    PageSize = pageSize,
+                    RefreshMode = CacheRefreshMode.Lazy,
+                    CommitBatchSize = 64,
+                    MaxPages = maxPages,
+                    Prefetch = true,
+                    IsLive = false
+                });
 
             manager.EnsureLoaded();
             Assert.AreEqual(64, manager.TotalRows);

@@ -97,6 +97,7 @@ Row N-1 [ val ]     [ val ]    ...     [ val ]
 时序数据分为注册管理层与表级抽象层，职责清晰单一：
 - **时序注册中心 (`ITimeseriesRegistry`)**：纯粹的多表聚合目录与路由，暴露主时序表 `Primary`、子表索引器 `this[tableName]`、`GetTable`、`HasTable` 与 `IsUpdated` 位掩码变更感知；
 - **时序表契约 (`ITimeseriesTable`)**：代表单一时序数据表（如 1 分钟主表或日线辅助表），提供二维矩阵只读访问 `GetMatrix<T>(fieldName)`、单标的一维视图 `GetSeries<T>`、以及与主时钟 As-Of 对齐的 `GetCurrentRowIndex` / `GetCurrentRow` / `GetCurrentValue`；
+- **工厂装配 (`TimeseriesTableFactory` & `TimeseriesRegistryFactory`)**：负责根据时序配置或数据源装配分块缓存选项（`TimeseriesCacheOptions`）与物理持久化存储，并生成 `TimeseriesTable` 与 `TimeseriesRegistry`；
 - **调度驱动契约 (`ITimeseriesScheduler`)**：专门面向回测/实盘引擎主时钟调度，暴露 `StepTo(int currentLogicalRow)`，负责滑动环形缓冲槽位并触发后台异步预读（Prefetch）；
 - **写入落盘契约 (`ITimeseriesWriter`)**：面向实盘/增量数据源，暴露 `AppendRow` 与 `Commit`。
 

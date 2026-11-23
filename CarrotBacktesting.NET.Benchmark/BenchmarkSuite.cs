@@ -59,12 +59,12 @@ public static class BenchmarkSuite
             }
         };
 
-        using var dummyTs = new TimeseriesRegistry(dummySource, "", pageSize: 4096, enableCache: false);
-        _ = dummyTs.GetMatrix<double>("close");
-        _ = dummyTs.GetMatrix<double>("open");
-        _ = dummyTs.GetMatrix<double>("high");
-        _ = dummyTs.GetMatrix<double>("low");
-        _ = dummyTs.GetMatrix<double>("volume");
+        using var dummyTs = TimeseriesRegistryFactory.Create(dummySource, new TimeseriesCacheOptions { EnableCache = false });
+        _ = dummyTs.Primary.GetMatrix<double>("close");
+        _ = dummyTs.Primary.GetMatrix<double>("open");
+        _ = dummyTs.Primary.GetMatrix<double>("high");
+        _ = dummyTs.Primary.GetMatrix<double>("low");
+        _ = dummyTs.Primary.GetMatrix<double>("volume");
 
         IStrategy[] warmupStrategies =
         {
@@ -297,7 +297,7 @@ public static class BenchmarkSuite
         long totalDataPoints = (long)symbols * timeSteps;
 
         using var mockSource = new SyntheticMarketGenerator(symbols, timeSteps, isMinute: true);
-        using var ts = new TimeseriesRegistry(mockSource, AppContext.BaseDirectory, pageSize: 4096, enableCache: false);
+        using var ts = TimeseriesRegistryFactory.Create(mockSource, new TimeseriesCacheOptions(AppContext.BaseDirectory, enableCache: false));
 
         var sessionConfig = new SessionConfig
         {
@@ -517,13 +517,10 @@ public static class BenchmarkSuite
 
                     // 使用官方底层驱动加载物理 Parquet
                     using var source = TimeseriesSourceFactory.Create(symDir, tableId, startDate, endDate);
-                    using var tsCold = new TimeseriesRegistry(
+                    using var tsCold = TimeseriesRegistryFactory.Create(
                         source,
-                        coldCacheDir,
-                        pageSize: 4096,
-                        enableCache: true,
-                        tableId: tableId,
-                        compression: CacheCompression.Lz4);
+                        new TimeseriesCacheOptions(coldCacheDir, enableCache: true),
+                        tableId: tableId);
 
                     var sessionConfig = new SessionConfig
                     {
@@ -572,13 +569,16 @@ public static class BenchmarkSuite
                     string warmCacheDir = Path.Combine(cacheRoot, $"cold_{mode}"); // 复用刚才冷启动生成的本地 Cache
 
                     using var source = TimeseriesSourceFactory.Create(symDir, tableId, startDate, endDate);
-                    using var tsWarm = new TimeseriesRegistry(
+                    using var tsWarm = TimeseriesRegistryFactory.Create(
                         source,
-                        warmCacheDir,
-                        pageSize: 4096,
-                        enableCache: true,
-                        tableId: tableId,
-                        compression: CacheCompression.Lz4);
+                        new TimeseriesCacheOptions
+                        {
+                            StorageRoot = warmCacheDir,
+                            PageSize = 4096,
+                            EnableCache = true,
+                            Compression = CacheCompression.Lz4
+                        },
+                        tableId);
 
                     var sessionConfig = new SessionConfig
                     {
@@ -624,14 +624,14 @@ public static class BenchmarkSuite
                 // --- 3. 热启动 (Hot): 内存矩阵全量常驻，零磁盘 I/O 纯内存会话回测 ---
                 {
                     using var source = TimeseriesSourceFactory.Create(symDir, tableId, startDate, endDate);
-                    using var tsHot = new TimeseriesRegistry(source, cacheRoot, pageSize: 4096, enableCache: false);
+                    using var tsHot = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions { StorageRoot = cacheRoot, PageSize = 4096, EnableCache = false });
 
                     // 预热矩阵进常驻内存
-                    _ = tsHot.GetMatrix<double>("close");
-                    _ = tsHot.GetMatrix<double>("open");
-                    _ = tsHot.GetMatrix<double>("high");
-                    _ = tsHot.GetMatrix<double>("low");
-                    _ = tsHot.GetMatrix<double>("volume");
+                    _ = tsHot.Primary.GetMatrix<double>("close");
+                    _ = tsHot.Primary.GetMatrix<double>("open");
+                    _ = tsHot.Primary.GetMatrix<double>("high");
+                    _ = tsHot.Primary.GetMatrix<double>("low");
+                    _ = tsHot.Primary.GetMatrix<double>("volume");
 
                     foreach (string mode in modes)
                     {
@@ -761,13 +761,16 @@ public static class BenchmarkSuite
                 // 1. 冷启动 (Cold): 首次生成 Cache
                 {
                     using var source = new SyntheticMarketGenerator(sym, timeSteps, isMinute: true);
-                    using var tsCold = new TimeseriesRegistry(
+                    using var tsCold = TimeseriesRegistryFactory.Create(
                         source, 
-                        symCacheDir, 
-                        pageSize: 4096, 
-                        enableCache: true, 
-                        tableId: "ashare.kline.1m", 
-                        compression: CacheCompression.Lz4);
+                        new TimeseriesCacheOptions
+                        {
+                            StorageRoot = symCacheDir,
+                            PageSize = 4096,
+                            EnableCache = true,
+                            Compression = CacheCompression.Lz4
+                        },
+                        "ashare.kline.1m");
 
                     var config = new SessionConfig
                     {
@@ -795,13 +798,16 @@ public static class BenchmarkSuite
                 // 2. 温启动 (Warm): 磁盘 Cache 已存在，新会话从磁盘 LZ4 加载
                 {
                     using var source = new SyntheticMarketGenerator(sym, timeSteps, isMinute: true);
-                    using var tsWarm = new TimeseriesRegistry(
+                    using var tsWarm = TimeseriesRegistryFactory.Create(
                         source, 
-                        symCacheDir, 
-                        pageSize: 4096, 
-                        enableCache: true, 
-                        tableId: "ashare.kline.1m", 
-                        compression: CacheCompression.Lz4);
+                        new TimeseriesCacheOptions
+                        {
+                            StorageRoot = symCacheDir,
+                            PageSize = 4096,
+                            EnableCache = true,
+                            Compression = CacheCompression.Lz4
+                        },
+                        "ashare.kline.1m");
 
                     var config = new SessionConfig
                     {
@@ -829,18 +835,21 @@ public static class BenchmarkSuite
                 // 3. 热启动 (Hot): 内存 Matrix 常驻，零磁盘 I/O 纯内存在线回测
                 {
                     using var source = new SyntheticMarketGenerator(sym, timeSteps, isMinute: true);
-                    using var tsHot = new TimeseriesRegistry(
+                    using var tsHot = TimeseriesRegistryFactory.Create(
                         source, 
-                        symCacheDir, 
-                        pageSize: 4096, 
-                        enableCache: false);
+                        new TimeseriesCacheOptions
+                        {
+                            StorageRoot = symCacheDir,
+                            PageSize = 4096,
+                            EnableCache = false
+                        });
 
                     // 预热加载矩阵至内存
-                    _ = tsHot.GetMatrix<double>("close");
-                    _ = tsHot.GetMatrix<double>("open");
-                    _ = tsHot.GetMatrix<double>("high");
-                    _ = tsHot.GetMatrix<double>("low");
-                    _ = tsHot.GetMatrix<double>("volume");
+                    _ = tsHot.Primary.GetMatrix<double>("close");
+                    _ = tsHot.Primary.GetMatrix<double>("open");
+                    _ = tsHot.Primary.GetMatrix<double>("high");
+                    _ = tsHot.Primary.GetMatrix<double>("low");
+                    _ = tsHot.Primary.GetMatrix<double>("volume");
 
                     var config = new SessionConfig
                     {
@@ -982,16 +991,16 @@ public static class BenchmarkSuite
                 {
                     // 先开启 Cache 加载一次生成本地缓存文件
                     using (var sourceWarm = TimeseriesSourceFactory.Create(symDir, tableId, startDate, endDate))
-                    using (var tsGen = new TimeseriesRegistry(sourceWarm, cacheDir, pageSize: 4096, enableCache: true))
+                    using (var tsGen = TimeseriesRegistryFactory.Create(sourceWarm, new TimeseriesCacheOptions { StorageRoot = cacheDir, PageSize = 4096, EnableCache = true }))
                     {
-                        _ = tsGen.GetMatrix<double>("close");
+                        _ = tsGen.Primary.GetMatrix<double>("close");
                     }
 
                     // 再次读取命中 LZ4 本地分块缓存
                     using var source = TimeseriesSourceFactory.Create(symDir, tableId, startDate, endDate);
-                    using var tsCache = new TimeseriesRegistry(source, cacheDir, pageSize: 4096, enableCache: true);
+                    using var tsCache = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions { StorageRoot = cacheDir, PageSize = 4096, EnableCache = true });
                     var sw = Stopwatch.StartNew();
-                    _ = tsCache.GetMatrix<double>("close");
+                    _ = tsCache.Primary.GetMatrix<double>("close");
                     sw.Stop();
                     double ms = sw.Elapsed.TotalMilliseconds;
                     long totalBars = (long)symCount * steps;
@@ -1003,12 +1012,12 @@ public static class BenchmarkSuite
 
                 // --- 准备热态环境 (消除磁盘与解压干扰，后续测试在纯内存中运行) ---
                 using var sourceHot = TimeseriesSourceFactory.Create(symDir, tableId, startDate, endDate);
-                using var tsHot = new TimeseriesRegistry(sourceHot, cacheDir, pageSize: 4096, enableCache: false);
-                _ = tsHot.GetMatrix<double>("close");
-                _ = tsHot.GetMatrix<double>("open");
-                _ = tsHot.GetMatrix<double>("high");
-                _ = tsHot.GetMatrix<double>("low");
-                _ = tsHot.GetMatrix<double>("volume");
+                using var tsHot = TimeseriesRegistryFactory.Create(sourceHot, new TimeseriesCacheOptions { StorageRoot = cacheDir, PageSize = 4096, EnableCache = false });
+                _ = tsHot.Primary.GetMatrix<double>("close");
+                _ = tsHot.Primary.GetMatrix<double>("open");
+                _ = tsHot.Primary.GetMatrix<double>("high");
+                _ = tsHot.Primary.GetMatrix<double>("low");
+                _ = tsHot.Primary.GetMatrix<double>("volume");
 
                 var sessionConfig = new SessionConfig
                 {

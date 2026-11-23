@@ -193,49 +193,16 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 初始化 <see cref="TimeseriesCacheManager{T}"/> 实例（默认定量 64 行自动提交，默认 4 个常驻分块）。
+        /// 基于配置选项初始化 <see cref="TimeseriesCacheManager{T}"/> 实例。
         /// </summary>
         public TimeseriesCacheManager(
             string fieldName,
             IMarketMetadata metadata,
             ITimeseriesSource source,
-            ITimeseriesCache? store,
-            int pageSize = 4096,
-            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy)
-            : this(fieldName, metadata, source, store, pageSize, refreshMode, 64, 4)
+            ITimeseriesCache? store = null,
+            TimeseriesCacheOptions? options = null)
         {
-        }
-
-        /// <summary>
-        /// 初始化 <see cref="TimeseriesCacheManager{T}"/> 实例。
-        /// </summary>
-        public TimeseriesCacheManager(
-            string fieldName,
-            IMarketMetadata metadata,
-            ITimeseriesSource source,
-            ITimeseriesCache? store,
-            int pageSize,
-            CacheRefreshMode refreshMode,
-            int commitBatchSize)
-            : this(fieldName, metadata, source, store, pageSize, refreshMode, commitBatchSize, 4)
-        {
-        }
-
-        /// <summary>
-        /// 初始化 <see cref="TimeseriesCacheManager{T}"/> 实例（包含常驻内存页数、预读与实盘模式配置）。
-        /// </summary>
-        public TimeseriesCacheManager(
-            string fieldName,
-            IMarketMetadata metadata,
-            ITimeseriesSource source,
-            ITimeseriesCache? store,
-            int pageSize,
-            CacheRefreshMode refreshMode,
-            int commitBatchSize,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false)
-        {
+            var opt = options ?? TimeseriesCacheOptions.Default;
             _fieldName = fieldName ?? throw new ArgumentNullException(nameof(fieldName));
             ArgumentNullException.ThrowIfNull(metadata);
             _metadata = metadata is DynamicMarketMetadata dynamicMeta
@@ -243,13 +210,13 @@ namespace CarrotBacktesting.NET.Data
                 : new DynamicMarketMetadata(metadata);
             _source = source ?? throw new ArgumentNullException(nameof(source));
             _store = store;
-            _pageSize = pageSize;
-            _refreshMode = refreshMode;
-            _commitBatchSize = commitBatchSize > 0 ? commitBatchSize : 64;
-            _maxPages = maxPages > 0 ? maxPages : 4;
-            _prefetch = prefetch;
-            _isLive = isLive;
-            _canPrefetch = prefetch && !isLive;
+            _pageSize = opt.PageSize > 0 ? opt.PageSize : 4096;
+            _refreshMode = opt.RefreshMode;
+            _commitBatchSize = opt.CommitBatchSize > 0 ? opt.CommitBatchSize : 64;
+            _maxPages = opt.MaxPages > 0 ? opt.MaxPages : 4;
+            _prefetch = opt.Prefetch;
+            _isLive = opt.IsLive;
+            _canPrefetch = opt.Prefetch && !opt.IsLive;
         }
 
         /// <summary>

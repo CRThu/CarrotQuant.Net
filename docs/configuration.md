@@ -600,14 +600,18 @@ using CarrotBacktesting.NET.Data;
 
 string storageRoot = "D:/QuantData";
 
-// 时序子系统（自动识别 CSV / Parquet）
+// 时序子系统（自动识别 CSV / Parquet 并装配分块缓存选项）
+var source = TimeseriesSourceFactory.Create(storageRoot, "ashare.kline.1d.raw.baostock");
 var timeseries = TimeseriesRegistryFactory.Create(
-    storageRoot: storageRoot,
-    source: TimeseriesSourceFactory.Create(storageRoot, "ashare.kline.1d.raw.baostock"),
-    pageSize: 4096,
-    maxPages: 4,
-    enableCache: true,
-    prefetch: true
+    source,
+    new TimeseriesCacheOptions
+    {
+        StorageRoot = storageRoot,
+        PageSize = 4096,
+        MaxPages = 4,
+        EnableCache = true,
+        Prefetch = true
+    }
 );
 
 // 事件子系统（批量装配）

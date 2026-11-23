@@ -158,7 +158,7 @@ var resolver = new StorageResolver(config.Data.Root);
 
 // 3. 构造数据供给器 (ITimeseriesRegistry)
 var seriesSource = new ParquetTimeseriesSource(resolver, "ashare.kline.1d.raw.baostock");
-var timeseriesRegistry = new TimeseriesRegistry(seriesSource, config.Data.Root);
+var timeseriesRegistry = TimeseriesRegistryFactory.Create(seriesSource, config.Data.Root);
 
 // 4. 挂载事件流
 var eventRegistry = new EventRegistry();

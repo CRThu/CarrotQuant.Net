@@ -241,7 +241,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data.Timeseries
                 managerFactory: (field, type) =>
                 {
                     var mockSource = new MockTimeseriesSource(metadata);
-                    return new TimeseriesCacheManager<double>(field, mockSource, mockSource, null);
+                    return new TimeseriesCacheManager<double>(field, mockSource, mockSource, null, null);
                 },
                 subRowMap: new[] { -1, 0, 1, 1 });
 
@@ -309,7 +309,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data.Timeseries
                 (f, t) =>
                 {
                     var src = new MockTimeseriesSource(metadata);
-                    return new TimeseriesCacheManager<double>(f, src, src, null);
+                    return new TimeseriesCacheManager<double>(f, src, src, null, null);
                 });
 
             var subTable = new TimeseriesTable(
@@ -319,7 +319,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data.Timeseries
                 (f, t) =>
                 {
                     var src = new MockTimeseriesSource(metadata);
-                    return new TimeseriesCacheManager<double>(f, src, src, null);
+                    return new TimeseriesCacheManager<double>(f, src, src, null, null);
                 },
                 subRowMap: new[] { 0 });
 
@@ -410,7 +410,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data.Timeseries
             var metadata = new DynamicMarketMetadata(symbols, dates, fieldTypes);
 
             using var source = new MockTimeseriesSource(metadata);
-            using var table = new TimeseriesTable("test", true, source, "");
+            using var table = TimeseriesTableFactory.Create("test", true, source);
 
             Assert.IsTrue(table.HasField("close"));
             Assert.IsFalse(table.HasField("open"));

@@ -491,17 +491,65 @@ public sealed class TimeseriesCacheManager<T> : ITimeseriesCacheManager where T 
     public void Dispose();
 }
 
-public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler, ITimeseriesWriter, IDisposable
+public class TimeseriesTable : ITimeseriesTable, ITimeseriesScheduler, ITimeseriesWriter, IDisposable
 {
+    public string Name { get; }
+    public bool IsPrimary { get; }
     public IMarketMetadata Metadata { get; }
     public bool HasField(string fieldName);
     public IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
     public ITimeseriesCacheManager GetCacheManager(string fieldName);
+    public int GetCurrentRowIndex(int primaryLogicalRow);
     public void StepTo(int currentLogicalRow);
     public void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
     public void AppendCol(string symbol);
     public void Commit();
     public void Dispose();
+}
+
+public class TimeseriesRegistry : ITimeseriesRegistry, ITimeseriesScheduler, ITimeseriesWriter, IDisposable
+{
+    public ITimeseriesTable Primary { get; }
+    public ITimeseriesTable this[string tableName] { get; }
+    public ITimeseriesTable GetTable(string tableName);
+    public bool HasTable(string tableName);
+    public IReadOnlyList<string> GetTableNames();
+    public bool IsUpdated(int tableIndex);
+    public bool IsUpdated(string tableName);
+    public int GetTableIndex(string tableName);
+    public void StepTo(int currentLogicalRow);
+    public void AppendRow<T>(string tableName, string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
+    public void AppendCol(string symbol);
+    public void Commit();
+    public void Dispose();
+}
+
+public static class TimeseriesTableFactory
+{
+    public static TimeseriesTable Create(string name, bool isPrimary, ITimeseriesSource source, TimeseriesCacheOptions? options = null, int[]? subRowMap = null, bool ownsSource = false);
+    public static TimeseriesTable Create(string name, bool isPrimary, IMarketMetadata metadata, ITimeseriesSource source, TimeseriesCacheOptions? options = null, int[]? subRowMap = null, bool ownsSource = false);
+    public static TimeseriesTable Create(IStorageResolver resolver, TimeseriesConfig config, bool isPrimary, MarketTime? startDate = null, MarketTime? endDate = null, bool isLive = false, int[]? subRowMap = null);
+}
+
+public static class TimeseriesRegistryFactory
+{
+    public static TimeseriesRegistry Create(ITimeseriesSource source, TimeseriesCacheOptions? options = null, string tableId = "primary", bool ownsSource = false);
+    public static TimeseriesRegistry Create(IStorageResolver resolver, TimeseriesConfig config, MarketTime? startDate = null, MarketTime? endDate = null, bool isLive = false);
+    public static TimeseriesRegistry Create(IStorageResolver resolver, IEnumerable<TimeseriesConfig> configs, MarketTime? startDate = null, MarketTime? endDate = null, bool isLive = false);
+}
+
+public sealed class TimeseriesCacheOptions
+{
+    public string? StorageRoot { get; init; }
+    public bool EnableCache { get; init; } = true;
+    public int PageSize { get; init; } = 4096;
+    public CacheRefreshMode RefreshMode { get; init; } = CacheRefreshMode.Auto;
+    public CacheCompression Compression { get; init; } = CacheCompression.Lz4;
+    public int CommitBatchSize { get; init; } = 1000;
+    public int MaxPages { get; init; } = 4;
+    public bool Prefetch { get; init; } = true;
+    public bool IsLive { get; init; } = false;
+    public static TimeseriesCacheOptions Default { get; } = new();
 }
 ```
 

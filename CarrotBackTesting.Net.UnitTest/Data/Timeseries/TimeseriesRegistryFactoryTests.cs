@@ -17,23 +17,28 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             
             using var source = TimeseriesSourceFactory.Create(storageRoot, tableId);
 
-            var provider = TimeseriesRegistryFactory.Create(storageRoot, source);
+            var provider = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions(storageRoot));
             
             Assert.IsNotNull(provider);
             Assert.IsInstanceOfType(provider, typeof(TimeseriesRegistry));
 
+            var customOptions = new TimeseriesCacheOptions
+            {
+                StorageRoot = storageRoot,
+                PageSize = 2048,
+                EnableCache = false,
+                RefreshMode = CacheRefreshMode.Lazy,
+                Compression = CacheCompression.Lz4,
+                CommitBatchSize = 32,
+                MaxPages = 8,
+                Prefetch = false,
+                IsLive = true
+            };
+
             var providerWithCustomParams = TimeseriesRegistryFactory.Create(
-                storageRoot,
                 source,
-                pageSize: 2048,
-                enableCache: false,
-                refreshMode: CacheRefreshMode.Lazy,
-                tableId: tableId,
-                compression: CacheCompression.Lz4,
-                commitBatchSize: 32,
-                maxPages: 8,
-                prefetch: false,
-                isLive: true);
+                customOptions,
+                tableId: tableId);
 
             Assert.IsNotNull(providerWithCustomParams);
             Assert.IsInstanceOfType(providerWithCustomParams, typeof(TimeseriesRegistry));

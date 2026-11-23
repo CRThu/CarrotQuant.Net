@@ -51,38 +51,6 @@ namespace CarrotBacktesting.NET.Data
             }
         }
 
-        /// <summary>
-        /// 直接基于单表时序数据源构建的时序注册中心（单主表模式）。
-        /// </summary>
-        public TimeseriesRegistry(
-            ITimeseriesSource source,
-            string storageRoot = "",
-            int pageSize = 4096,
-            bool enableCache = false,
-            CacheRefreshMode refreshMode = CacheRefreshMode.Lazy,
-            string tableId = "primary",
-            CacheCompression compression = CacheCompression.Lz4,
-            int commitBatchSize = 64,
-            int maxPages = 4,
-            bool prefetch = true,
-            bool isLive = false,
-            bool ownsSource = false)
-            : this(new TimeseriesTable(
-                string.IsNullOrWhiteSpace(tableId) ? "primary" : tableId,
-                isPrimary: true,
-                source,
-                storageRoot,
-                pageSize,
-                enableCache,
-                refreshMode,
-                compression,
-                commitBatchSize,
-                maxPages,
-                prefetch,
-                isLive,
-                ownsSource))
-        {
-        }
 
         /// <summary>
         /// 直接基于元数据与字段分块调度工厂构建的时序注册中心（单主表模式）。

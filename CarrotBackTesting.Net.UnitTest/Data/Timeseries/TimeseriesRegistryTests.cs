@@ -42,7 +42,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
             using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
-            using (var provider = new TimeseriesRegistry(source, _tempCacheDir))
+            using (var provider = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions(_tempCacheDir)))
             {
                 Assert.IsTrue(provider.Primary.HasField("close"));
                 
@@ -61,7 +61,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1m.raw.custom";
             using var source = TimeseriesSourceFactory.Create(parquetRoot, tableId);
 
-            using var provider = new TimeseriesRegistry(source, _tempCacheDir);
+            using var provider = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions(_tempCacheDir));
 
             Assert.IsTrue(provider.Primary.HasField("close"));
             Assert.IsTrue(provider.Primary.HasField("open"));
@@ -79,7 +79,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
             using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
-            using var provider = new TimeseriesRegistry(source, _tempCacheDir);
+            using var provider = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions(_tempCacheDir));
             
             Assert.ThrowsException<KeyNotFoundException>(() => provider.Primary.GetMatrix<double>("non_existent_field"));
         }
@@ -91,7 +91,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
             using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
-            using var provider = new TimeseriesRegistry(source, _tempCacheDir);
+            using var provider = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions(_tempCacheDir));
             var buffer = provider.Primary.GetMatrix<double>("close");
             
             Assert.AreEqual(provider.Primary.Metadata.TradeDates.Count, buffer.RowCount, "Buffer 行数与交易日数量不匹配");
@@ -105,7 +105,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             string tableId = "ashare.kline.1d.raw.baostock";
             using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
             
-            using (var provider = new TimeseriesRegistry(source, _tempCacheDir))
+            using (var provider = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions(_tempCacheDir)))
             {
                 var buffer = provider.Primary.GetMatrix<double>("close");
                 
@@ -142,12 +142,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             using var source = TimeseriesSourceFactory.Create(csvRoot, tableId);
 
             // 1. 首次加载（缓存未命中，从源数据构建并写入磁盘缓存）
-            using (var provider1 = new TimeseriesRegistry(
-                source, _tempCacheDir, 
-                pageSize: 1024, 
-                enableCache: true, 
-                refreshMode: CacheRefreshMode.Lazy, 
-                tableId: tableId))
+            var lazyOptions = new TimeseriesCacheOptions
+            {
+                StorageRoot = _tempCacheDir,
+                PageSize = 1024,
+                EnableCache = true,
+                RefreshMode = CacheRefreshMode.Lazy
+            };
+            using (var provider1 = TimeseriesRegistryFactory.Create(source, lazyOptions, tableId))
             {
                 var buf1 = provider1.Primary.GetMatrix<double>("close");
                 Assert.IsNotNull(buf1);
@@ -161,12 +163,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             Assert.AreEqual(source.TradeDates.Count, meta.RowCount);
 
             // 2. 第二次加载（缓存命中，直接从二进制分块文件加载）
-            using (var provider2 = new TimeseriesRegistry(
-                source, _tempCacheDir, 
-                pageSize: 1024, 
-                enableCache: true, 
-                refreshMode: CacheRefreshMode.Lazy, 
-                tableId: tableId))
+            using (var provider2 = TimeseriesRegistryFactory.Create(source, lazyOptions, tableId))
             {
                 var buf2 = provider2.Primary.GetMatrix<double>("close");
                 Assert.IsNotNull(buf2);
@@ -175,12 +172,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 3. 强制刷新测试（force 模式清空并重新构建）
-            using (var provider3 = new TimeseriesRegistry(
-                source, _tempCacheDir, 
-                pageSize: 1024, 
-                enableCache: true, 
-                refreshMode: CacheRefreshMode.Force, 
-                tableId: tableId))
+            var forceOptions = new TimeseriesCacheOptions
+            {
+                StorageRoot = _tempCacheDir,
+                PageSize = 1024,
+                EnableCache = true,
+                RefreshMode = CacheRefreshMode.Force
+            };
+            using (var provider3 = TimeseriesRegistryFactory.Create(source, forceOptions, tableId))
             {
                 var buf3 = provider3.Primary.GetMatrix<double>("close");
                 Assert.IsNotNull(buf3);
@@ -204,12 +203,14 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             mockSource.SymbolsList.AddRange(new[] { "sh.600000", "sz.000001" });
 
-            using (var provider1 = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 1024,
-                enableCache: true,
-                refreshMode: CacheRefreshMode.Lazy,
-                tableId: tableId))
+            var lazyOptions = new TimeseriesCacheOptions
+            {
+                StorageRoot = _tempCacheDir,
+                PageSize = 1024,
+                EnableCache = true,
+                RefreshMode = CacheRefreshMode.Lazy
+            };
+            using (var provider1 = TimeseriesRegistryFactory.Create(mockSource, lazyOptions, tableId))
             {
                 var buf1 = provider1.Primary.GetMatrix<double>(fieldName);
                 Assert.AreEqual(2, buf1.Width);
@@ -228,12 +229,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             // 扩充至 3 只股票
             mockSource.SymbolsList.Add("sz.000002");
 
-            using (var provider2 = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 1024,
-                enableCache: true,
-                refreshMode: CacheRefreshMode.Lazy,
-                tableId: tableId))
+            using (var provider2 = TimeseriesRegistryFactory.Create(mockSource, lazyOptions, tableId))
             {
                 var buf2 = provider2.Primary.GetMatrix<double>(fieldName);
                 Assert.AreEqual(3, buf2.Width);
@@ -262,12 +258,16 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             mockSource.SymbolsList.Add("sz.000001");
             mockSource.DatesList.Add(new DateTime(2025, 1, 6));
 
-            using (var provider1 = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 1024,
-                enableCache: true,
-                refreshMode: CacheRefreshMode.Force,
-                tableId: tableId))
+            using (var provider1 = TimeseriesRegistryFactory.Create(
+                mockSource,
+                new TimeseriesCacheOptions
+                {
+                    StorageRoot = _tempCacheDir,
+                    PageSize = 1024,
+                    EnableCache = true,
+                    RefreshMode = CacheRefreshMode.Force
+                },
+                tableId))
             {
                 var bufPe = provider1.Primary.GetMatrix<double>(fieldPe);
                 Assert.AreEqual(1, bufPe.Width);
@@ -275,12 +275,16 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             mockSource.SymbolsList.Add("sz.000002");
 
-            using (var provider2 = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 1024,
-                enableCache: true,
-                refreshMode: CacheRefreshMode.Lazy,
-                tableId: tableId))
+            using (var provider2 = TimeseriesRegistryFactory.Create(
+                mockSource,
+                new TimeseriesCacheOptions
+                {
+                    StorageRoot = _tempCacheDir,
+                    PageSize = 1024,
+                    EnableCache = true,
+                    RefreshMode = CacheRefreshMode.Lazy
+                },
+                tableId))
             {
                 var bufPe = provider2.Primary.GetMatrix<double>(fieldPe);
                 Assert.AreEqual(2, bufPe.Width);
@@ -296,7 +300,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             mockSource.SymbolsList.Add("sh.600000");
             mockSource.DatesList.Add(new DateTime(2025, 1, 2));
 
-            using var provider = new TimeseriesRegistry(mockSource, _tempCacheDir);
+            using var provider = TimeseriesRegistryFactory.Create(mockSource, new TimeseriesCacheOptions(_tempCacheDir));
             provider.Primary.GetMatrix<int>("close");
         }
 
@@ -310,9 +314,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             mockSource.DatesList.Add(new DateTime(2025, 1, 2));
 
             // 1. 初始化 provider 并载入
-            using (var provider = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
+            using (var provider = TimeseriesRegistryFactory.Create(
+                mockSource,
+                new TimeseriesCacheOptions { StorageRoot = _tempCacheDir, PageSize = 64, EnableCache = true, RefreshMode = CacheRefreshMode.Lazy },
+                tableId))
             {
                 var buffer = provider.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(1, buffer.RowCount);
@@ -332,9 +337,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 3. 重新打开一个 Provider，验证已落盘的 Cache 中数据准确
             mockSource.DatesList.Add(new DateTime(2025, 1, 3));
-            using (var providerRestart = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
+            using (var providerRestart = TimeseriesRegistryFactory.Create(
+                mockSource,
+                new TimeseriesCacheOptions { StorageRoot = _tempCacheDir, PageSize = 64, EnableCache = true, RefreshMode = CacheRefreshMode.Lazy },
+                tableId))
             {
                 var buffer = providerRestart.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(2, buffer.RowCount);
@@ -355,18 +361,20 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             }
 
             // 1. auto 模式首次写入
-            using (var provider1 = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
+            using (var provider1 = TimeseriesRegistryFactory.Create(
+                mockSource,
+                new TimeseriesCacheOptions { StorageRoot = _tempCacheDir, PageSize = 64, EnableCache = true, RefreshMode = CacheRefreshMode.Auto },
+                tableId))
             {
                 var buf = provider1.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
             }
 
             // 2. auto 模式同维度命中
-            using (var provider2 = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
+            using (var provider2 = TimeseriesRegistryFactory.Create(
+                mockSource,
+                new TimeseriesCacheOptions { StorageRoot = _tempCacheDir, PageSize = 64, EnableCache = true, RefreshMode = CacheRefreshMode.Auto },
+                tableId))
             {
                 var buf = provider2.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
@@ -374,9 +382,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
 
             // 3. auto 模式扩展股票代码
             mockSource.SymbolsList.Add("sh.600001");
-            using (var provider3 = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Auto, tableId: tableId))
+            using (var provider3 = TimeseriesRegistryFactory.Create(
+                mockSource,
+                new TimeseriesCacheOptions { StorageRoot = _tempCacheDir, PageSize = 64, EnableCache = true, RefreshMode = CacheRefreshMode.Auto },
+                tableId))
             {
                 var buf = provider3.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(2, buf.Width);
@@ -390,9 +399,10 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 File.WriteAllBytes(chunk0, new byte[] { 0xDE, 0xAD, 0xBE, 0xEF });
             }
 
-            using (var provider4 = new TimeseriesRegistry(
-                mockSource, _tempCacheDir,
-                pageSize: 64, enableCache: true, refreshMode: CacheRefreshMode.Lazy, tableId: tableId))
+            using (var provider4 = TimeseriesRegistryFactory.Create(
+                mockSource,
+                new TimeseriesCacheOptions { StorageRoot = _tempCacheDir, PageSize = 64, EnableCache = true, RefreshMode = CacheRefreshMode.Lazy },
+                tableId))
             {
                 var buf = provider4.Primary.GetMatrix<double>("close");
                 Assert.AreEqual(50, buf.RowCount);
@@ -409,8 +419,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource.DatesList.Add(new DateTime(2025, 1, 1).AddDays(i));
             }
 
-            // 使用精简构造函数（无需重复传 source）
-            using var provider = new TimeseriesRegistry(mockSource, _tempCacheDir);
+            using var provider = TimeseriesRegistryFactory.Create(mockSource, new TimeseriesCacheOptions(_tempCacheDir));
 
             // 1. 验证通过一维扩展获取默认标的（第 0 列）全量时间序列
             var defaultSeries = provider.Primary.GetSeries<double>("close");
@@ -446,7 +455,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
                 mockSource.DatesList.Add(new DateTime(2025, 1, 1).AddDays(i));
             }
 
-            using var provider = new TimeseriesRegistry(mockSource, _tempCacheDir);
+            using var provider = TimeseriesRegistryFactory.Create(mockSource, new TimeseriesCacheOptions(_tempCacheDir));
             var buffer = provider.Primary.GetMatrix<double>("close");
 
             // 并发模拟：20 个线程、10,000 次高频并发随机访问同一个只读二维矩阵
@@ -467,7 +476,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             mockSource.SymbolsList.Add("000001.SZ");
             mockSource.DatesList.Add(new DateTime(2025, 1, 1));
 
-            using var provider = new TimeseriesRegistry(mockSource, _tempCacheDir);
+            using var provider = TimeseriesRegistryFactory.Create(mockSource, new TimeseriesCacheOptions(_tempCacheDir));
 
             // 1. 正确获取 Manager（单例模式）
             var manager1 = provider.GetCacheManager("close");
@@ -493,7 +502,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
         public void TimeseriesRegistry_ShouldImplementBothReadAndWriteContracts()
         {
             var mockSource = new MockTimeseriesSource();
-            using var timeseries = new TimeseriesRegistry(mockSource, _tempCacheDir);
+            using var timeseries = TimeseriesRegistryFactory.Create(mockSource, new TimeseriesCacheOptions(_tempCacheDir));
 
             Assert.IsInstanceOfType(timeseries, typeof(ITimeseriesRegistry));
             Assert.IsInstanceOfType(timeseries, typeof(ITimeseriesWriter));
@@ -522,7 +531,7 @@ namespace CarrotBackTesting.Net.UnitTest.Data
             mockSource.FieldsList.Add("open");
             mockSource.FieldsList.Add("close");
 
-            using var registry = new TimeseriesRegistry(mockSource, _tempCacheDir);
+            using var registry = TimeseriesRegistryFactory.Create(mockSource, new TimeseriesCacheOptions(_tempCacheDir));
 
             // 通过非泛型 GetCacheManager 确保首批分块完成载入
             var openMgr = registry.GetCacheManager("open");

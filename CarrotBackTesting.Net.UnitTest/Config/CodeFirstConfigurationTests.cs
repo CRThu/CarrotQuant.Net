@@ -121,14 +121,17 @@ namespace CarrotBackTesting.Net.UnitTest.Config
 
             // 1. 时序子系统（自动识别 CSV / Parquet）
             using var source = TimeseriesSourceFactory.Create(storageRoot, "ashare.kline.1d.raw.baostock");
-            using var timeseries = (IDisposable)TimeseriesRegistryFactory.Create(
-                storageRoot: storageRoot,
-                source: source,
-                pageSize: 4096,
-                maxPages: 4,
-                enableCache: false,
-                prefetch: false);
-            var ts = (ITimeseriesRegistry)timeseries;
+            using var timeseries = TimeseriesRegistryFactory.Create(
+                source,
+                new TimeseriesCacheOptions
+                {
+                    StorageRoot = storageRoot,
+                    PageSize = 4096,
+                    MaxPages = 4,
+                    EnableCache = false,
+                    Prefetch = false
+                });
+            var ts = timeseries;
 
             // 2. 事件子系统（直接传入轻量列表）
             var events = EventRegistryFactory.Create(storageRoot, new[]
@@ -171,7 +174,7 @@ namespace CarrotBackTesting.Net.UnitTest.Config
 
             // 直接构建单字段时序矩阵
             using var source = TimeseriesSourceFactory.Create(resolver, "ashare.kline.1d.raw.baostock");
-            using var tsRegistry = new TimeseriesRegistry(source, resolver.StorageRoot, enableCache: false);
+            using var tsRegistry = TimeseriesRegistryFactory.Create(source, new TimeseriesCacheOptions(resolver.StorageRoot, enableCache: false));
             var closeMatrix = tsRegistry.Primary.GetMatrix<double>("close");
             Assert.IsNotNull(closeMatrix);
             Assert.IsTrue(closeMatrix.RowCount > 0);

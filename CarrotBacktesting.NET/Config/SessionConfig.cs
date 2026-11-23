@@ -203,6 +203,27 @@ namespace CarrotBacktesting.NET.Config
         /// 若 metadata.json 中也定义了 nullable_fields，此处将与元数据配置合并生效。
         /// </summary>
         public List<string>? NullableFields { get; set; }
+
+        /// <summary>
+        /// 将当前时序表配置转换为底层分块缓存与分页调度选项。
+        /// </summary>
+        /// <param name="storageRoot">物理存储根目录。</param>
+        /// <param name="isLive">是否运行于实盘模式。</param>
+        public TimeseriesCacheOptions ToCacheOptions(string storageRoot, bool isLive = false)
+        {
+            return new TimeseriesCacheOptions
+            {
+                StorageRoot = storageRoot,
+                EnableCache = Cache,
+                PageSize = PageSize,
+                RefreshMode = Refresh,
+                Compression = Compression,
+                CommitBatchSize = CommitBatchSize,
+                MaxPages = MaxPages,
+                Prefetch = Prefetch,
+                IsLive = isLive
+            };
+        }
     }
 
     /// <summary>
