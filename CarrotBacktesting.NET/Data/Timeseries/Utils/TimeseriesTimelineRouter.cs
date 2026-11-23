@@ -10,7 +10,8 @@ namespace CarrotBacktesting.NET.Data
     public static class TimeseriesTimelineRouter
     {
         /// <summary>
-        /// 解析时间偏移量字符串（支持标准格式如 "15:00:00"、"15:00" 及简写 "15h"、"1d"、"30m"、"10s"）。
+        /// 解析时间偏移量字符串（支持标准格式如 "15:00:00"、"15:00" 及简写 "15h"、"-8h"、"1d"、"30m"、"10s"）。
+        /// 支持有符号正负双向平移，用于跨时区对齐或期末结算时间戳校准。
         /// </summary>
         public static TimeSpan ParseTimeOffset(string offsetStr)
         {
@@ -21,7 +22,6 @@ namespace CarrotBacktesting.NET.Data
             {
                 return ts;
             }
-
             if (offsetStr.EndsWith("h", StringComparison.OrdinalIgnoreCase) &&
                 double.TryParse(offsetStr[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out double hours))
             {
@@ -44,7 +44,7 @@ namespace CarrotBacktesting.NET.Data
             }
 
             throw new ArgumentException(
-                $"无法解析 time_offset: '{offsetStr}'。格式支持如 '15:00:00', '15h', '1d', '30m'。",
+                $"无法解析 time_offset: '{offsetStr}'。格式支持如 '15:00:00', '15h', '-8h', '1d', '30m'。",
                 nameof(offsetStr));
         }
 

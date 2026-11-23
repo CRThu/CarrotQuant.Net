@@ -374,6 +374,53 @@ namespace CarrotBackTesting.Net.UnitTest.Data.Timeseries
             Assert.ThrowsException<KeyNotFoundException>(() => registry["kline_1h"]);
         }
 
+        [TestMethod]
+        public void TimelineRouter_SignedTimeOffset_ParsesAccurately_ForTimezoneOrSettlementAlignment()
+        {
+            // 验证 time_offset 作为有符号数学平移量，原生支持负数（用于跨时区或期末结算时间戳校准）
+            Assert.AreEqual(TimeSpan.FromHours(-8), TimeseriesTimelineRouter.ParseTimeOffset("-8h"));
+            Assert.AreEqual(TimeSpan.FromHours(-9), TimeseriesTimelineRouter.ParseTimeOffset("-9h"));
+            Assert.AreEqual(TimeSpan.FromHours(-1), TimeseriesTimelineRouter.ParseTimeOffset("-01:00:00"));
+            Assert.AreEqual(TimeSpan.FromMinutes(-30), TimeseriesTimelineRouter.ParseTimeOffset("-30m"));
+            Assert.AreEqual(TimeSpan.FromDays(-1), TimeseriesTimelineRouter.ParseTimeOffset("-1d"));
+
+            // 验证业务场景：若数据源标记为次日零点 (2023-01-04 00:00:00)，通过 -9h 偏移校准为当日 15:00:00 闭合
+            var primaryDates = new[]
+            {
+                MarketTime.FromDateTime(new DateTime(2023, 1, 3, 14, 59, 0)),
+                MarketTime.FromDateTime(new DateTime(2023, 1, 3, 15, 0, 0))
+            };
+            var subDatesWithNextDayMidnight = new[]
+            {
+                MarketTime.FromDateTime(new DateTime(2023, 1, 4, 0, 0, 0)) // 带有时刻 00:00:00 的次日标记
+            };
+
+            // 传入 -9h 偏移：2023-01-04 00:00:00 - 9h = 2023-01-03 15:00:00 闭合
+            var map = TimeseriesTimelineRouter.BuildAsOfMap(primaryDates, subDatesWithNextDayMidnight, "-9h");
+            Assert.AreEqual(-1, map[0], "14:59 时尚未达到 15:00 闭合点，不可见");
+            Assert.AreEqual(0, map[1], "15:00 恰好达到闭合点，可见索引 0");
+        }
+
+        [TestMethod]
+        public void TimeseriesTable_MatrixCache_ReturnsSameInstance_And_HasField_IsAccurate()
+        {
+            var dates = new[] { MarketTime.FromDateTime(new DateTime(2023, 1, 1)) };
+            var symbols = new[] { "sh.600000" };
+            var fieldTypes = new Dictionary<string, Type> { { "close", typeof(double) } };
+            var metadata = new DynamicMarketMetadata(symbols, dates, fieldTypes);
+
+            using var source = new MockTimeseriesSource(metadata);
+            using var table = new TimeseriesTable("test", true, source, "");
+
+            Assert.IsTrue(table.HasField("close"));
+            Assert.IsFalse(table.HasField("open"));
+
+            var matrix1 = table.GetMatrix<double>("close");
+            var matrix2 = table.GetMatrix<double>("close");
+
+            Assert.AreSame(matrix1, matrix2, "GetMatrix 必须返回缓存的只读矩阵实例，避免重复创建与重复校验。");
+        }
+
         private sealed class MockTimeseriesSource : ITimeseriesSource
         {
             private readonly IMarketMetadata _meta;

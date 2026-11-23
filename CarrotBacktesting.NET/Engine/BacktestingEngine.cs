@@ -49,6 +49,7 @@ namespace CarrotBacktesting.NET.Engine
 
         private const int StateVersion = 1;
         private int _resumeFromIndex = -1;
+        private ulong[]? _stepUpdatedMasks;
 
         private readonly EngineContext _context;
         private readonly object _stateLock = new();
@@ -91,11 +92,10 @@ namespace CarrotBacktesting.NET.Engine
         {
             Func<string, double>? finalPriceResolver = null;
             IReadOnlyMatrix2D<double>? closeMatrix = null;
-            try
+            if (_timeseries.Primary.HasField("close"))
             {
                 closeMatrix = _timeseries.Primary.GetMatrix<double>("close");
             }
-            catch { }
 
             if (closeMatrix != null)
             {
@@ -325,6 +325,8 @@ namespace CarrotBacktesting.NET.Engine
                     return;
                 }
 
+                BuildStepUpdatedMasks(tradeDates);
+
                 int startIndex = 0;
                 int endIndex = tradeDates.Count - 1;
 
@@ -406,8 +408,12 @@ namespace CarrotBacktesting.NET.Engine
 
                     MarketTime currentTime = tradeDates[i];
 
-                    // 5.1 更新上下文
+                    // 5.1 更新上下文与时序变更位掩码
                     _context.UpdateStep(i, currentTime);
+                    if (_stepUpdatedMasks != null && _timeseries is TimeseriesRegistry reg)
+                    {
+                        reg.SetUpdatedMask(_stepUpdatedMasks[i]);
+                    }
 
                     // 5.1.1 跨日检测与日终快照沉淀
                     if (currentTime.Date != _lastDate)
@@ -859,6 +865,48 @@ namespace CarrotBacktesting.NET.Engine
                 }
             }
             return result;
+        }
+
+        private void BuildStepUpdatedMasks(IReadOnlyList<MarketTime> tradeDates)
+        {
+            if (_timeseries is not TimeseriesRegistry reg) return;
+
+            var tableNames = reg.GetTableNames();
+            if (tableNames.Count <= 1)
+            {
+                return;
+            }
+
+            _stepUpdatedMasks = new ulong[tradeDates.Count];
+            var subTables = new List<(ITimeseriesTable Table, int Index)>();
+            for (int t = 0; t < tableNames.Count; t++)
+            {
+                var tbl = reg.GetTable(tableNames[t]);
+                if (!tbl.IsPrimary)
+                {
+                    int idx = reg.GetTableIndex(tableNames[t]);
+                    if (idx >= 0 && idx < 64)
+                    {
+                        subTables.Add((tbl, idx));
+                    }
+                }
+            }
+
+            for (int i = 0; i < tradeDates.Count; i++)
+            {
+                ulong mask = 1UL;
+                for (int s = 0; s < subTables.Count; s++)
+                {
+                    var (table, idx) = subTables[s];
+                    int curRow = table.GetCurrentRowIndex(i);
+                    int prevRow = i > 0 ? table.GetCurrentRowIndex(i - 1) : -1;
+                    if (curRow >= 0 && curRow > prevRow)
+                    {
+                        mask |= (1UL << idx);
+                    }
+                }
+                _stepUpdatedMasks[i] = mask;
+            }
         }
 
         #endregion

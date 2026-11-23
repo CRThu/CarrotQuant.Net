@@ -101,8 +101,8 @@ public class MultiTableStandardUsageTests
 
         public override void OnUpdate(IEngineContext context)
         {
-            // 标准用法：通过 context.Timeseries["sub_table"] 直取辅助日线表的当期切片值
-            double indexValue = context.Timeseries["index_daily"].GetCurrentValue<double>("close", 0, context);
+            // 标准用法：开盘决策时读取副表的开盘价 open（严禁在开盘相位偷看未完成的 close 价格）
+            double indexValue = context.Timeseries["index_daily"].GetCurrentValue<double>("open", 0, context);
 
             // 当参考副表指数处于强势区间（> 105.0）且无持仓时，买入主表标的
             if (indexValue > 105.0 && context.GetPosition("sh.600000") == 0m)

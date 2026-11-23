@@ -110,9 +110,14 @@ CarrotQuant.NET 采用契约解耦的**多层分离架构**，各层之间通过
 **变更感知掩码与事件到达感知 (Change Mask & Event Detection)**：
 1. **位掩码常数时间判定 (`ITimeseriesRegistry.IsUpdated`)**:
    - 引擎使用 64 位无符号位掩码 `_updatedMask` 记录当前时间步各时序表的更新状态，单寄存器位运算完成，零 GC、零装箱；
+   - 引擎驱动闭环：回测引擎在启动前由 `BuildStepUpdatedMasks` 预编译每步的位掩码数组，主循环步进时由寄存器级赋值刷新，激活跨周期事件驱动跳步优化；
    - 容量越界防御：分配序号时若 `tableIndex >= 64`，显式抛出 `NotSupportedException` 防御状态穿透；
    - 读无锁并发设计：支持通过 `GetTableIndex(tableName)` 缓存索引，按表名读路径纯无锁并发安全。
-2. **事件到达轻量探测 (`IEventRegistry.HasNewEvents`)**:
+2. **多时序 As-Of 因果对齐与时间偏移 (`time_offset`)**:
+   - 严格因果律（Zero Lookahead Bias）：回测时间轴完全由主时钟表推进，辅助子表通过 `TimeseriesTimelineRouter.BuildAsOfMap` 预编译为连续数组 `int[] _subRowMap`，仅当 $\tau_{\text{close}} \le t_{\text{primary}}$ 时子表 Bar 才可见；
+   - `time_offset` 支持正负双向有符号平移：日内收盘闭合（纯日期日线配 `15:00:00`，缺省为次日零点自然日闭合）、跨时区对齐（如副表 UTC 配 `-8h`）及期末标记时间戳校准（如次日零点配 `-9h`）；
+   - 热路径零 GC：`TimeseriesTable` 采用 `HashSet<string>` 消除字段判断闭包，`_matrixCache` 直出只读矩阵实例，固化一维数组迭代调度器消灭集合快照拷贝。
+3. **事件到达轻量探测 (`IEventRegistry.HasNewEvents`)**:
    - `HasNewEvents(DateTime time, string? tableName = null)`：在主时钟推进时，常数时间探测指定时刻全表或特定事件表是否存在新到达事件，避免空跑无用事件处理逻辑。
 
 **核心内存约束 (SSOT)**：
@@ -128,7 +133,7 @@ ITimeseriesSource ──(构造时扫描)──► IMarketMetadata (TradeDates, 
          │
          │  ReadSymbolSeries<T>()
          ▼
-  ChunkMatrix2D<T> ──(实现)──► IReadOnlyMatrix2D<T> ──► ITimeseriesRegistry.GetMatrix<T>()
+  ChunkMatrix2D<T> ──(实现)──► IReadOnlyMatrix2D<T> ──► ITimeseriesTable.GetMatrix<T>()
 ```
 - 架构归属：核心抽象契约与切片内存视图统一位于 `CarrotBacktesting.NET.Abstraction.Data`。
 - 关键类型：`ChunkMatrix2D<T>`、`IReadOnlyMatrix2D<T>`、`IMatrix2D<T>`、`ReadOnlyRowView<T>`、`ReadOnlyColumnView<T>`、`RowView<T>`、`ColumnView<T>`、`MatrixExtensions`。

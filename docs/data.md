@@ -104,7 +104,21 @@ Row N-1 [ val ]     [ val ]    ...     [ val ]
 引擎推进主时钟时，为了在策略层以位掩码常数时间判定各时序表当前步是否存在有效更新：
 - 采用 64 位无符号整数 `_updatedMask` 记录更新状态；
 - `IsUpdated(int tableIndex)` 通过单条 CPU 寄存器位运算 `(_updatedMask & (1UL << tableIndex)) != 0` 完成判定，零 GC、零装箱；
-- 序号容量防护：分配表索引时若 `tableIndex >= 64`，显式抛出 `NotSupportedException` 防御状态穿透。
+- 序号容量防护：分配表索引时若 `tableIndex >= 64`，显式抛出 `NotSupportedException` 防御状态穿透；
+- 引擎驱动闭环：回测引擎在启动前由 `BuildStepUpdatedMasks` 预编译每步的时序变更位掩码数组，在主循环推进时单寄存器指令赋值，激活跨周期事件驱动跳步优化。
+
+### 6. 多时序因果 As-Of 对齐与有符号时间偏移 (TimeseriesTimelineRouter & time_offset)
+- **严格因果单向律（Zero Lookahead Bias）**：
+  在多周期或跨表协同场景下（如“1分钟主表 + 日线辅助表”），回测时态必须且仅由权威主时钟表推进。辅助子表在主表当前时间步 $t_{\text{primary}}$ 下，仅当子表 Bar 满足 $\tau_{\text{close}} \le t_{\text{primary}}$ 时，历史最新已闭合 Bar 才对策略可见；
+- **有符号时间偏移量 (`time_offset`) 设计哲学**：
+  `time_offset` 数学上为通用有符号平移量（$\Delta t$），闭合时刻遵循公式 $T_{\text{close}} = T_{\text{source}} + \Delta t$：
+  - **日内收盘闭合**：纯日期日线数据（`00:00:00`）配置 `time_offset: "15:00:00"`，表示在当天 15:00 闭合可见；缺省时采用**自然日闭合（Natural Day Rollover）**，次日零点才可见；
+  - **跨时区对齐**：当副表数据使用 UTC 时间而主表为北京时间（UTC+8）时，支持配置负数偏移（如 `-8h`）完成时间戳平移校准；
+  - **期末/次日结算时间戳校准**：部分数据源以结算时刻（如次日 `00:00:00`）标记日线，配置 `-9h` 可将其因果闭合时刻精准校准至当日 `15:00:00`；
+- **$O(N+M)$ 双指针预编译与热路径零开销**：
+  在回测会话启动前，`TimeseriesTimelineRouter.BuildAsOfMap` 一次性预编译生成子表映射数组 `int[] _subRowMap`，运行期查询为常数时间 $O(1)$ 数组下标直取；
+- **热路径零 GC 与矩阵实例直出**：
+  `TimeseriesTable` 采用 `HashSet<string>` 消除字段判断的 LINQ 堆分配，通过 `_matrixCache` 直出 `IReadOnlyMatrix2D<T>` 实例，并使用一维不可变数组固化调度器（`_managerArray`、`_schedulers`、`_writers`），彻底消除运行期 `ConcurrentDictionary.Values` 集合快照拷贝。
 
 ---
 

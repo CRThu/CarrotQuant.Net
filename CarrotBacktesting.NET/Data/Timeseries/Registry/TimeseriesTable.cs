@@ -15,8 +15,12 @@ namespace CarrotBacktesting.NET.Data
         private readonly IMarketMetadata _metadata;
         private readonly Func<string, Type, ITimeseriesCacheManager> _managerFactory;
         private readonly ConcurrentDictionary<string, ITimeseriesCacheManager> _managers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, object> _matrixCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _fieldSet;
         private readonly int[]? _subRowMap;
         private readonly IDisposable? _disposableSource;
+        private readonly object _managerLock = new();
+        private ITimeseriesCacheManager[] _managerArray = Array.Empty<ITimeseriesCacheManager>();
         private bool _disposed;
 
         /// <inheritdoc />
@@ -54,6 +58,7 @@ namespace CarrotBacktesting.NET.Data
             _metadata = metadata is DynamicMarketMetadata dynamicMeta
                 ? dynamicMeta
                 : new DynamicMarketMetadata(metadata);
+            _fieldSet = new HashSet<string>(_metadata.FieldNames, StringComparer.OrdinalIgnoreCase);
             _managerFactory = managerFactory;
             _subRowMap = subRowMap;
             _disposableSource = disposableSource;
@@ -120,7 +125,7 @@ namespace CarrotBacktesting.NET.Data
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool HasField(string fieldName)
         {
-            return _metadata.FieldNames.Any(f => f.Equals(fieldName, StringComparison.OrdinalIgnoreCase));
+            return !string.IsNullOrEmpty(fieldName) && _fieldSet.Contains(fieldName);
         }
 
         /// <inheritdoc />
@@ -129,6 +134,16 @@ namespace CarrotBacktesting.NET.Data
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
+            if (_matrixCache.TryGetValue(fieldName, out var cached))
+            {
+                return (IReadOnlyMatrix2D<T>)cached;
+            }
+
+            return GetMatrixSlow<T>(fieldName);
+        }
+
+        private IReadOnlyMatrix2D<T> GetMatrixSlow<T>(string fieldName) where T : unmanaged
+        {
             if (!HasField(fieldName))
             {
                 throw new KeyNotFoundException($"时序表 '{Name}' 中未找到字段 '{fieldName}'。");
@@ -142,7 +157,10 @@ namespace CarrotBacktesting.NET.Data
             }
 
             var manager = (TimeseriesCacheManager<T>)_managers.GetOrAdd(fieldName, name => _managerFactory(name, typeof(T)));
-            return manager.AsReadOnly();
+            UpdateManagerArray();
+            var matrix = manager.AsReadOnly();
+            _matrixCache[fieldName] = matrix;
+            return matrix;
         }
 
         /// <summary>
@@ -158,7 +176,17 @@ namespace CarrotBacktesting.NET.Data
             }
 
             var fieldType = _metadata.GetFieldType(fieldName);
-            return _managers.GetOrAdd(fieldName, name => _managerFactory(name, fieldType));
+            var manager = _managers.GetOrAdd(fieldName, name => _managerFactory(name, fieldType));
+            UpdateManagerArray();
+            return manager;
+        }
+
+        private void UpdateManagerArray()
+        {
+            lock (_managerLock)
+            {
+                _managerArray = _managers.Values.ToArray();
+            }
         }
 
         /// <inheritdoc />
@@ -214,9 +242,10 @@ namespace CarrotBacktesting.NET.Data
             int targetRow = GetCurrentRowIndex(stepIndex);
             if (targetRow < 0) return;
 
-            foreach (var manager in _managers.Values)
+            var managers = _managerArray;
+            for (int i = 0; i < managers.Length; i++)
             {
-                manager.StepTo(targetRow);
+                managers[i].StepTo(targetRow);
             }
         }
 
@@ -246,18 +275,20 @@ namespace CarrotBacktesting.NET.Data
                 throw new NotSupportedException($"时序表 '{Name}' 元数据不支持动态拓宽标的代码。");
             }
 
-            foreach (var manager in _managers.Values)
+            var managers = _managerArray;
+            for (int i = 0; i < managers.Length; i++)
             {
-                manager.AppendCol(symbol);
+                managers[i].AppendCol(symbol);
             }
         }
 
         /// <inheritdoc />
         public void Commit()
         {
-            foreach (var manager in _managers.Values)
+            var managers = _managerArray;
+            for (int i = 0; i < managers.Length; i++)
             {
-                manager.Commit();
+                managers[i].Commit();
             }
         }
 
@@ -303,14 +334,17 @@ namespace CarrotBacktesting.NET.Data
             if (_disposed) return;
             _disposed = true;
 
-            foreach (var manager in _managers.Values)
+            var managers = _managerArray;
+            for (int i = 0; i < managers.Length; i++)
             {
-                if (manager is IDisposable disposable)
+                if (managers[i] is IDisposable disposable)
                 {
                     disposable.Dispose();
                 }
             }
             _managers.Clear();
+            _matrixCache.Clear();
+            _managerArray = Array.Empty<ITimeseriesCacheManager>();
             _disposableSource?.Dispose();
         }
     }

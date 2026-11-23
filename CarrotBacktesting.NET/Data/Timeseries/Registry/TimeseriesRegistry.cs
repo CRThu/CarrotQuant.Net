@@ -15,6 +15,9 @@ namespace CarrotBacktesting.NET.Data
         private readonly ConcurrentDictionary<string, int> _tableIndices = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<string> _tableNames = new();
         private readonly object _tableLock = new();
+        private ITimeseriesScheduler[] _schedulers = Array.Empty<ITimeseriesScheduler>();
+        private ITimeseriesWriter[] _writers = Array.Empty<ITimeseriesWriter>();
+        private ITimeseriesTable[] _tableArray = Array.Empty<ITimeseriesTable>();
         private ulong _updatedMask = ulong.MaxValue;
         private bool _disposed;
 
@@ -96,6 +99,13 @@ namespace CarrotBacktesting.NET.Data
         {
             _tables[tableName] = table;
             RegisterTable(tableName);
+            lock (_tableLock)
+            {
+                var tables = _tables.Values.ToArray();
+                _tableArray = tables;
+                _schedulers = tables.OfType<ITimeseriesScheduler>().ToArray();
+                _writers = tables.OfType<ITimeseriesWriter>().ToArray();
+            }
         }
 
         /// <inheritdoc />
@@ -125,31 +135,11 @@ namespace CarrotBacktesting.NET.Data
         }
 
         /// <summary>
-        /// 精确获取指定时序表的只读二维矩阵。
-        /// </summary>
-        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-        public IReadOnlyMatrix2D<T> GetMatrix<T>(string tableName, string fieldName) where T : unmanaged
-        {
-            return GetTable(tableName).GetMatrix<T>(fieldName);
-        }
-
-        /// <summary>
         /// 获取指定字段的分块调度器实例（供缓存预热与分块加载管理使用）。
-        /// 若字段包含点号（例如 "daily.close"），则路由至对应子表；否则路由至主表。
+        /// 默认调度主时钟表对应字段的分块调度器。
         /// </summary>
         public ITimeseriesCacheManager GetCacheManager(string fieldName)
         {
-            int dotIdx = fieldName.IndexOf('.');
-            if (dotIdx > 0 && dotIdx < fieldName.Length - 1)
-            {
-                string tblName = fieldName[..dotIdx];
-                string subField = fieldName[(dotIdx + 1)..];
-                if (GetTable(tblName) is TimeseriesTable typedTbl)
-                {
-                    return typedTbl.GetCacheManager(subField);
-                }
-            }
-
             if (_primaryTable is TimeseriesTable primaryTyped)
             {
                 return primaryTyped.GetCacheManager(fieldName);
@@ -188,12 +178,10 @@ namespace CarrotBacktesting.NET.Data
         public void StepTo(int currentLogicalRow)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            foreach (var table in _tables.Values)
+            var schedulers = _schedulers;
+            for (int i = 0; i < schedulers.Length; i++)
             {
-                if (table is ITimeseriesScheduler scheduler)
-                {
-                    scheduler.StepTo(currentLogicalRow);
-                }
+                schedulers[i].StepTo(currentLogicalRow);
             }
         }
 
@@ -201,12 +189,10 @@ namespace CarrotBacktesting.NET.Data
         public void Commit()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            foreach (var table in _tables.Values)
+            var writers = _writers;
+            for (int i = 0; i < writers.Length; i++)
             {
-                if (table is ITimeseriesWriter writer)
-                {
-                    writer.Commit();
-                }
+                writers[i].Commit();
             }
         }
 
@@ -320,14 +306,18 @@ namespace CarrotBacktesting.NET.Data
         {
             if (_disposed) return;
             _disposed = true;
-            foreach (var table in _tables.Values)
+            var tables = _tableArray;
+            for (int i = 0; i < tables.Length; i++)
             {
-                if (table is IDisposable disposable)
+                if (tables[i] is IDisposable disposable)
                 {
                     disposable.Dispose();
                 }
             }
             _tables.Clear();
+            _tableArray = Array.Empty<ITimeseriesTable>();
+            _schedulers = Array.Empty<ITimeseriesScheduler>();
+            _writers = Array.Empty<ITimeseriesWriter>();
         }
     }
 }

@@ -266,17 +266,33 @@ public interface IMarketMetadata
 namespace CarrotBacktesting.NET.Abstraction.Data;
 
 /// <summary>
-/// 纯只读数据契约（面向策略与回测消费，零调度污染）。
+/// 时序多表聚合注册中心契约（面向策略与回测消费，纯粹多表聚合目录，零调度污染）。
 /// </summary>
 public interface ITimeseriesRegistry
 {
+    ITimeseriesTable this[string tableName] { get; }
+    ITimeseriesTable GetTable(string tableName);
+    ITimeseriesTable Primary { get; }
+    bool HasTable(string tableName);
+    IReadOnlyList<string> GetTableNames();
+    bool IsUpdated(int tableIndex);
+    bool IsUpdated(string tableName);
+    int GetTableIndex(string tableName);
+}
+
+/// <summary>
+/// 单一时序表抽象契约（统筹单表二维矩阵、元数据及基于主时钟的因果投影）。
+/// </summary>
+public interface ITimeseriesTable
+{
+    string Name { get; }
+    bool IsPrimary { get; }
     IMarketMetadata Metadata { get; }
-    bool HasField(string fieldName);
-    
-    /// <summary>
-    /// 获取指定字段的全局二维只读时序矩阵（Row=交易日/时间步，Col=股票代码）。
-    /// </summary>
     IReadOnlyMatrix2D<T> GetMatrix<T>(string fieldName) where T : unmanaged;
+    bool HasField(string fieldName);
+    int GetCurrentRowIndex(int primaryStepIndex);
+    ReadOnlySpan<T> GetCurrentRow<T>(string fieldName, int primaryStepIndex) where T : unmanaged;
+    T GetCurrentValue<T>(string fieldName, int symbolIndex, int primaryStepIndex) where T : unmanaged;
 }
 
 /// <summary>
@@ -292,7 +308,7 @@ public interface ITimeseriesScheduler
 /// </summary>
 public interface ITimeseriesWriter
 {
-    void AppendRow<T>(string fieldName, DateTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
+    void AppendRow<T>(string fieldName, MarketTime timestamp, ReadOnlySpan<T> rowValues) where T : unmanaged;
     void AppendCol(string symbol);
     void Commit();
 }
@@ -522,8 +538,8 @@ public static class MatrixExtensions
     public static bool IsNaN<T>(this IReadOnlyMatrix2D<T> matrix, int row, int col) where T : unmanaged;
     public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, int symbolIndex = 0) where T : unmanaged;
     public static ReadOnlyColumnView<T> GetSeries<T>(this IReadOnlyMatrix2D<T> matrix, string symbol, IMarketMetadata metadata) where T : unmanaged;
-    public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry provider, string fieldName, int symbolIndex = 0) where T : unmanaged;
-    public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesRegistry provider, string fieldName, string symbol) where T : unmanaged;
+    public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesTable table, string fieldName, int symbolIndex = 0) where T : unmanaged;
+    public static ReadOnlyColumnView<T> GetSeries<T>(this ITimeseriesTable table, string fieldName, string symbol) where T : unmanaged;
 }
 ```
 
