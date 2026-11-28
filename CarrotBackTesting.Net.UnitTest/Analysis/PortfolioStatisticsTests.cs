@@ -432,4 +432,29 @@ public class PortfolioStatisticsTests
         Assert.IsFalse(double.IsNaN(portfolio.AnnualizedReturn));
         Assert.IsTrue(portfolio.AnnualizedReturn > 0.0);
     }
+
+    [TestMethod]
+    public void Calculate_WithBenchmarkReturns_PopulatesNormalizedBenchmarkCurve()
+    {
+        var t0 = new DateTime(2024, 1, 1);
+        var points = new List<EquityPoint>
+        {
+            new(t0, 100000.0, 100000.0, 0, 0, 0, 0),
+            new(t0.AddDays(1), 105000.0, 105000.0, 0, 0, 0, 0),
+            new(t0.AddDays(2), 102900.0, 102900.0, 0, 0, 0, 0)
+        };
+        var benchmarkReturns = new[] { 0.10, -0.05 };
+
+        var portfolio = PortfolioAnalyzer.Calculate(
+            points,
+            Array.Empty<DailySnapshot>(),
+            new AnalysisOptions(),
+            benchmarkReturns);
+
+        Assert.IsNotNull(portfolio.BenchmarkCurve);
+        Assert.AreEqual(3, portfolio.BenchmarkCurve.Count);
+        Assert.AreEqual(1.0, portfolio.BenchmarkCurve[0].NormalizedValue, 1e-9);
+        Assert.AreEqual(1.10, portfolio.BenchmarkCurve[1].NormalizedValue, 1e-9);
+        Assert.AreEqual(1.045, portfolio.BenchmarkCurve[2].NormalizedValue, 1e-9);
+    }
 }

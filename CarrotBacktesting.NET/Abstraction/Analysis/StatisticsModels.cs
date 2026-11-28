@@ -4,6 +4,13 @@ using System.Collections.Generic;
 namespace CarrotBacktesting.NET.Abstraction.Analysis
 {
     /// <summary>
+    /// 基准归一化净值点（起点为 1.0）。
+    /// </summary>
+    /// <param name="Time">时间戳。</param>
+    /// <param name="NormalizedValue">归一化净值倍数（1.0 表示期初基准水平）。</param>
+    public readonly record struct BenchmarkPoint(MarketTime Time, double NormalizedValue);
+
+    /// <summary>
     /// 自然月度收益率数据模型。
     /// </summary>
     /// <param name="Year">自然年份。</param>
@@ -35,7 +42,8 @@ namespace CarrotBacktesting.NET.Abstraction.Analysis
         double? Alpha,
         double? Beta,
         double? InformationRatio,
-        IReadOnlyList<MonthlyReturn> MonthlyReturns
+        IReadOnlyList<MonthlyReturn> MonthlyReturns,
+        IReadOnlyList<BenchmarkPoint>? BenchmarkCurve = null
     ) : IAnalysisResult
     {
         /// <inheritdoc />

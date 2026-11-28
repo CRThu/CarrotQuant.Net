@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageReference Include="Spectre.Console" Version="0.57.2" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
@@ -19,8 +20,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Analysis\Exporters\Resources\echarts.min.js" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="CarrotBackTesting.Net.UnitTest" />
     <InternalsVisibleTo Include="carrot-benchmark" />
+    <InternalsVisibleTo Include="carrot-backtest" />
   </ItemGroup>
 
 </Project>

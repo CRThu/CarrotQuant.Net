@@ -34,9 +34,10 @@ CarrotQuant.NET 遵循**表现层物理隔离**原则，分析内核完全不依
 graph TD
     AnalysisEngine[AnalysisEngine 纯分析引擎] -->|产出不可变报告| Report[AnalysisReport 综合分析报告]
 
-    subgraph Exporters [报表导出与呈现子系统 (IReportExporter)]
+    subgraph Exporters ["报表导出与呈现子系统 (IReportExporter)"]
         Report --> Console[ConsoleExporter<br>Spectre.Console 彩色终端仪表盘]
-        Report --> Html[ConsoleExporter<br>深色主题 HTML 报表持久化]
+        Report --> Html[HtmlReportExporter<br>交互式 ECharts Tear Sheet]
+        Report --> Excel[ExcelReportExporter<br>ClosedXML 多 Sheet 工作簿]
         Report --> Json[JsonReportExporter<br>结构化 JSON 交付]
         Report --> Custom[第三方自定义 Exporter<br>CSV / PDF / 钉钉 Webhook]
     end
@@ -247,6 +248,18 @@ exporters:
     params:
       output_path: "output/report.json"
       indented: true
+  - type: "html"
+    params:
+      output_path: "output/tearsheet.html"
+      title: "策略回测 Tear Sheet"
+      dark_theme: true
+      max_chart_points: 5000
+  - type: "excel"
+    params:
+      output_path: "output/report.xlsx"
+      include_daily_snapshots: true
+      include_signals: true
+      include_order_events: true
   - type: "MyNamespace.CustomExporter, MyAssembly"
     params:
       custom_param: 100
@@ -256,7 +269,9 @@ exporters:
 1. **约定优于配置**：当 `config == null` 或 `config.Exporters` 为空时，默认返回 `ConsoleExporter.Default`，零配置直接使用；
 2. **官方短名称派发**：
    - `"console"` / `"consoleexporter"` -> 实例化 `ConsoleExporter`，并通过 `ConfigPropertyInjector` 安全注入 `ConsoleExporterOptions` 参数；
-   - `"json"` / `"jsonexporter"` / `"jsonreportexporter"` -> 实例化 `JsonReportExporter`，提取 `output_path` 与 `indented` 参数；
+   - `"json"` -> 实例化 `JsonReportExporter`，提取 `output_path` 与 `indented` 参数；
+   - `"html"` -> 实例化 `HtmlReportExporter`（内嵌离线 ECharts 交互式 Tear Sheet，支持策略/基准/超额净值对比、水下回撤、仓位敞口、月度热力图、滚动夏普/波动率、标的盈亏榜、ExitTiming、双口径信号与交易明细）；
+   - `"excel"` -> 实例化 `ExcelReportExporter`（基于 ClosedXML 导出多 Sheet 结构化工作簿，含 `Dashboard`、`Monthly_Returns`、`Closed_Trades`、`Settlements`、`Daily_Snapshots`、`Open_Positions`、`Exit_Timing`、`Trade_Tags`、`Signal_Analysis` 等）。
 3. **通用反射加载**：支持通过短类名（当前 AppDomain 扫描）或完整限定名载入任意实现了 `IReportExporter` 的外部类型；
 4. **路径自动归一化**：导出器中声明的相对输出路径（如 `output_path`, `html_output_path`）将自动以配置文件的所在物理目录（`baseDirectory`）为基准合并为绝对路径，杜绝工作目录漂移问题。
 
@@ -303,3 +318,19 @@ public sealed class CsvReportExporter : IReportExporter
     }
 }
 ```
+
+---
+
+## 八、轻量交互式本地看板 (`carrot-backtest view`)
+
+当平仓流水达到十万级或需要结合个股实际 K 线图复盘买卖点时，可通过 CLI 启动基于 ASP.NET Core Minimal API 的轻量本地分析 Server（按需加载单只标的 OHLCV，不将全市场行情塞入静态 HTML）：
+
+```bash
+# 1. 仅查看 report.json（支持十万级交易明细服务端分页过滤）
+carrot-backtest view output/report.json
+
+# 2. 挂载行情目录，开启个股 K 线 + 成交量 + B/S 买卖点联动复盘
+carrot-backtest view output/report.json --data D:\Quant\Data --table daily
+```
+
+- **可用参数**：`--data / -d`（行情根目录）、`--table / -t`（时序表名，默认 `daily`）、`--port / -p`（监听端口，默认自动分配空闲端口）、`--no-open`（不自动打开浏览器）。

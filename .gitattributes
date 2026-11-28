@@ -62,5 +62,5 @@
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
 
-echarts.js linguist-vendored
+CarrotBacktesting.NET/Analysis/Exporters/Resources/** linguist-vendored -diff
 CarrotBackTesting.NET.TestData/** linguist-vendored

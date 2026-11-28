@@ -145,6 +145,7 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
         double? alpha = null;
         double? beta = null;
         double? infoRatio = null;
+        IReadOnlyList<BenchmarkPoint>? benchmarkCurve = null;
 
         if (benchmarkReturns != null && benchmarkReturns.Count == returns.Length && returns.Length > 1)
         {
@@ -153,6 +154,7 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
             alpha = a;
             beta = b;
             infoRatio = ir;
+            benchmarkCurve = BuildBenchmarkCurve(dailySnapshots, equityCurve, benchmarkReturns);
         }
 
         // 7. 自然月度收益率矩阵
@@ -177,7 +179,8 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
             Alpha: alpha,
             Beta: beta,
             InformationRatio: infoRatio,
-            MonthlyReturns: monthlyReturns
+            MonthlyReturns: monthlyReturns,
+            BenchmarkCurve: benchmarkCurve
         );
     }
 
@@ -410,6 +413,29 @@ public sealed class PortfolioAnalyzer : AnalyzerBase<PortfolioStatistics>
         double infoRatio = trackingError > 1e-9 ? (strategyCagr - benchmarkCagr) / trackingError : 0.0;
 
         return (benchmarkTotalReturn, alpha, beta, infoRatio);
+    }
+
+    private static IReadOnlyList<BenchmarkPoint> BuildBenchmarkCurve(
+        IReadOnlyList<DailySnapshot>? dailySnapshots,
+        IReadOnlyList<EquityPoint> equityCurve,
+        IReadOnlyList<double> bReturns)
+    {
+        bool useSnapshots = dailySnapshots != null && dailySnapshots.Count == bReturns.Count + 1;
+        int pointCount = bReturns.Count + 1;
+        var curve = new BenchmarkPoint[pointCount];
+
+        MarketTime firstTime = useSnapshots ? dailySnapshots![0].Time : equityCurve[0].Time;
+        double nav = 1.0;
+        curve[0] = new BenchmarkPoint(firstTime, nav);
+
+        for (int i = 0; i < bReturns.Count; i++)
+        {
+            nav *= (1.0 + bReturns[i]);
+            MarketTime t = useSnapshots ? dailySnapshots![i + 1].Time : equityCurve[i + 1].Time;
+            curve[i + 1] = new BenchmarkPoint(t, nav);
+        }
+
+        return curve;
     }
 
     private static IReadOnlyList<MonthlyReturn> CalculateMonthlyReturns(

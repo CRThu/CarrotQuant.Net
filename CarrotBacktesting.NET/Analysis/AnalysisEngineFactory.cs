@@ -29,7 +29,9 @@ public static class AnalysisEngineFactory
     private static readonly Dictionary<string, Type> KnownExporters = new(StringComparer.OrdinalIgnoreCase)
     {
         { "console", typeof(ConsoleExporter) },
-        { "json", typeof(JsonReportExporter) }
+        { "json", typeof(JsonReportExporter) },
+        { "html", typeof(HtmlReportExporter) },
+        { "excel", typeof(ExcelReportExporter) }
     };
 
     /// <summary>
@@ -190,9 +192,17 @@ public static class AnalysisEngineFactory
             ConfigPropertyInjector.Inject(instance, node.Params, targetType.Name);
         }
 
-        if (instance is JsonReportExporter jsonExp && !Path.IsPathRooted(jsonExp.OutputPath))
+        switch (instance)
         {
-            jsonExp.OutputPath = Path.GetFullPath(Path.Combine(baseDir, jsonExp.OutputPath));
+            case JsonReportExporter jsonExp when !Path.IsPathRooted(jsonExp.OutputPath):
+                jsonExp.OutputPath = Path.GetFullPath(Path.Combine(baseDir, jsonExp.OutputPath));
+                break;
+            case HtmlReportExporter htmlExp when !Path.IsPathRooted(htmlExp.OutputPath):
+                htmlExp.OutputPath = Path.GetFullPath(Path.Combine(baseDir, htmlExp.OutputPath));
+                break;
+            case ExcelReportExporter excelExp when !Path.IsPathRooted(excelExp.OutputPath):
+                excelExp.OutputPath = Path.GetFullPath(Path.Combine(baseDir, excelExp.OutputPath));
+                break;
         }
 
         return instance;

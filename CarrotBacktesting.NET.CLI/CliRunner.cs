@@ -1,6 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Threading;
+using CarrotBacktesting.NET.Analysis.Exporters;
 using CarrotBacktesting.NET.Config;
 
 namespace CarrotBacktesting.NET.CLI;
@@ -30,6 +33,12 @@ public static class CliRunner
         {
             PrintUsage(stdout);
             return ExitSuccess;
+        }
+
+        // 兼容 "view" 子命令启动轻量交互式看板
+        if (string.Equals(args[0], "view", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunView(args, stdout, stderr);
         }
 
         int index = 0;
@@ -127,6 +136,130 @@ public static class CliRunner
         }
     }
 
+    private static int RunView(string[] args, TextWriter stdout, TextWriter stderr)
+    {
+        if (args.Length < 2 || args[1].StartsWith('-'))
+        {
+            stderr.WriteLine("[错误] 缺少报告文件路径 (report.json)。");
+            PrintUsage(stderr);
+            return ExitInvalidArgs;
+        }
+
+        string reportPath = args[1];
+        if (!File.Exists(reportPath))
+        {
+            stderr.WriteLine($"[错误] 指定的报告文件不存在: {reportPath}");
+            return ExitInvalidArgs;
+        }
+
+        string? dataRoot = null;
+        string tableId = "daily";
+        int port = 0;
+        bool openBrowser = true;
+
+        int i = 2;
+        while (i < args.Length)
+        {
+            string arg = args[i++];
+            switch (arg)
+            {
+                case "--data":
+                case "-d":
+                    if (i >= args.Length)
+                    {
+                        stderr.WriteLine("[错误] --data 参数缺少目录路径。");
+                        return ExitInvalidArgs;
+                    }
+                    dataRoot = args[i++];
+                    break;
+                case "--table":
+                case "-t":
+                    if (i >= args.Length)
+                    {
+                        stderr.WriteLine("[错误] --table 参数缺少表名。");
+                        return ExitInvalidArgs;
+                    }
+                    tableId = args[i++];
+                    break;
+                case "--port":
+                case "-p":
+                    if (i >= args.Length || !int.TryParse(args[i++], out port) || port < 0 || port > 65535)
+                    {
+                        stderr.WriteLine("[错误] --port 参数无效。");
+                        return ExitInvalidArgs;
+                    }
+                    break;
+                case "--no-open":
+                    openBrowser = false;
+                    break;
+                default:
+                    stderr.WriteLine($"[错误] 未知参数: {arg}");
+                    PrintUsage(stderr);
+                    return ExitInvalidArgs;
+            }
+        }
+
+        try
+        {
+            var report = JsonReportExporter.Load(reportPath);
+            using var cts = new CancellationTokenSource();
+            ConsoleCancelEventHandler cancelHandler = (_, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+            };
+            Console.CancelKeyPress += cancelHandler;
+
+            try
+            {
+                var server = new ReportViewerServer(report, dataRoot, tableId, $"CarrotQuant - {Path.GetFileName(reportPath)}", port: port);
+                server.StartAsync(cts.Token).GetAwaiter().GetResult();
+
+                stdout.WriteLine($"[CarrotQuant] 交互式分析看板已启动: {server.BaseUrl}");
+                if (dataRoot != null)
+                {
+                    stdout.WriteLine($"[CarrotQuant] 已挂载行情目录: {Path.GetFullPath(dataRoot)} (table={tableId})");
+                }
+                stdout.WriteLine("按 Ctrl+C 停止服务...");
+
+                if (openBrowser)
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo(server.BaseUrl) { UseShellExecute = true });
+                    }
+                    catch
+                    {
+                        // 无桌面环境时忽略拉起浏览器失败
+                    }
+                }
+
+                try
+                {
+                    Task.Delay(Timeout.Infinite, cts.Token).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException)
+                {
+                    // 正常 Ctrl+C 退出
+                }
+
+                server.StopAsync().GetAwaiter().GetResult();
+                server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+            finally
+            {
+                Console.CancelKeyPress -= cancelHandler;
+            }
+
+            return ExitSuccess;
+        }
+        catch (Exception ex)
+        {
+            stderr.WriteLine($"[CarrotQuant 异常中止] {ex.Message}");
+            return ExitExecutionError;
+        }
+    }
+
     private static void PrintUsage(TextWriter writer)
     {
         writer.WriteLine("""
@@ -134,14 +267,20 @@ public static class CliRunner
 
         用法:
           carrot-backtest [run] <config.yaml> [选项]
+          carrot-backtest view <report.json> [选项]
 
-        参数:
-          <config.yaml>              回测 YAML 配置文件物理路径
-
-        选项:
+        run 选项:
           -s, --start-date <YYYY-MM-DD>  动态覆盖回测起始日期
           -e, --end-date <YYYY-MM-DD>    动态覆盖回测结束日期
           --no-export                    禁用报表文件导出（仅保留控制台打印）
+
+        view 选项:
+          -d, --data <dir>               可选行情数据根目录（用于按需加载 K 线买卖点）
+          -t, --table <table_id>         行情时序表名（默认: daily）
+          -p, --port <port>              指定监听端口（默认自动分配空闲端口）
+          --no-open                      启动后不自动打开浏览器
+
+        通用选项:
           -h, --help                     显示此帮助信息
         """);
     }
